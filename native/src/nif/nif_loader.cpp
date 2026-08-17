@@ -31,6 +31,51 @@ void flatten_transform(const nifly::MatTransform &t, SubMesh &out) {
 	out.scale = t.scale;
 }
 
+// A NiAVObject's own GetTransformToParent() is relative to its IMMEDIATE
+// parent only, not flattened to the NIF's root. Bethesda's articulated
+// props (doors, lidded containers) commonly put the actual positioning
+// offset on an intermediate NiNode (a hinge/pivot node) one or more levels
+// above the renderable NiShape/collision-bearing NiAVObject itself — using
+// GetTransformToParent() alone silently drops that offset entirely.
+// Confirmed against real data (phases/2/04-articulated-prop-transforms.md):
+// Clutter\Fridge\FridgeClosed01.NIF's body render mesh has an identity
+// local transform of its own; the real ~1.05m Z lift that keeps it off the
+// floor lives entirely on its parent "FridgeContainer" NiNode. nifly's own
+// NifFile::GetNodeTransformToGlobal() was tried first and rejected — it
+// silently fails (returns false) for NiShape/NiTriStrips leaf blocks in
+// testing, only working for NiNode-type blocks — so this walks the parent
+// chain manually instead, which works for any NiAVObject type.
+//
+// The file's own ROOT block's transform is deliberately NEVER composed in
+// (whether encountered as an ancestor, or as `obj` itself for the common
+// case of collision attached directly to the root) — confirmed against
+// real data (phases/2/05-root-transform-exclusion.md) that this is required,
+// not optional: some Bethesda architecture-kit NIFs (e.g.
+// NVCraftsmanRmEndB.nif) bake a real, nonzero rotation directly onto their
+// root block (a -90 degree roll in that example) that is NOT meant to be
+// applied when the file is instanced as a placed object — verified by
+// comparing multiple real kit pieces, where the ones rendering correctly
+// all have an identity root transform and the ones rendering wrong all
+// have a nonzero one. The original (pre-flattening) code got this right by
+// accident for single-level objects, since shape->GetTransformToParent()
+// when the shape's parent IS the root never reads the root's own field —
+// an earlier version of this function broke that by composing the root's
+// own transform back in during the ancestor walk.
+nifly::MatTransform flatten_to_root(const nifly::NifFile &nif, nifly::NiAVObject *obj) {
+	nifly::MatTransform result;
+	result.Clear();
+	nifly::NiAVObject *current = obj;
+	while (current) {
+		nifly::NiNode *parent = nif.GetParentNode(current);
+		if (!parent) {
+			break; // `current` is the file's root -- its own transform is excluded
+		}
+		result = current->GetTransformToParent().ComposeTransforms(result);
+		current = parent;
+	}
+	return result;
+}
+
 void flatten_transform(const nifly::MatTransform &t, CollisionShape &out) {
 	out.translation[0] = t.translation.x * units::kGamebryoUnitsToMeters;
 	out.translation[1] = t.translation.y * units::kGamebryoUnitsToMeters;
@@ -162,6 +207,19 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			}
 		}
 
+		if (shape->HasVertexColors()) {
+			std::vector<nifly::Color4> colors;
+			if (nif.GetColorsForShape(shape, colors)) {
+				sub.colors.reserve(colors.size() * 4);
+				for (const auto &c : colors) {
+					sub.colors.push_back(c.r);
+					sub.colors.push_back(c.g);
+					sub.colors.push_back(c.b);
+					sub.colors.push_back(c.a);
+				}
+			}
+		}
+
 		std::vector<nifly::Triangle> tris;
 		shape->GetTriangles(tris);
 		sub.indices.reserve(tris.size() * 3);
@@ -177,6 +235,8 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			sub.indices.push_back(t.p3);
 			sub.indices.push_back(t.p2);
 		}
+
+		sub.no_lighting = dynamic_cast<nifly::BSShaderNoLightingProperty *>(nif.GetShader(shape)) != nullptr;
 
 		std::string tex;
 		nif.GetTextureSlot(shape, tex, 0); // slot 0: diffuse/base
@@ -197,7 +257,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			sub.alpha_threshold = static_cast<float>(alpha->threshold) / 255.0f;
 		}
 
-		flatten_transform(shape->GetTransformToParent(), sub);
+		flatten_transform(flatten_to_root(nif, shape), sub);
 
 		mesh.submeshes.push_back(std::move(sub));
 	}
@@ -231,7 +291,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			continue; // unhandled shape type (composite/phantom) — not needed for Phase 1
 		}
 		cs.node_name = av->name.get();
-		flatten_transform(av->GetTransformToParent(), cs);
+		flatten_transform(flatten_to_root(nif, av), cs);
 		mesh.collision_shapes.push_back(std::move(cs));
 	}
 

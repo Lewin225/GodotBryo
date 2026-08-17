@@ -113,24 +113,18 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
-# Bethesda REFR.DATA rotation: X/Y/Z Euler radians, composed as Rz*Ry*Rx,
-# with the angles NEGATED before building each axis rotation — confirmed
-# against OpenMW's actual source (an independent, working Gamebryo-era
-# engine reimplementation), which builds this exact rotation as
-# `Quat(-euler[0], X) ...` per axis, composed zr*yr*xr. (An earlier version
-# of this function didn't negate the angles — wrong sign, not wrong order —
-# and produced visibly broken interior geometry: some rotations looked
-# fine by coincidence, one-sided wall panels pointed their only valid face
-# the wrong way. Caught by eye, not by this test's own checks — see
-# phases/1/00-interior-cell-loader.md.) Kept in the NIF's native Z-up space
-# — the scene root applies the single Z-up -> Y-up remap for everything
-# uniformly, same as 0.4/0.5's demos, so placements here don't need their
-# own axis conversion.
+# Bethesda REFR.DATA rotation: X/Y/Z Euler radians, angles NEGATED before
+# building each per-axis rotation (OpenMW cross-check, phases/1/00-interior-
+# cell-loader.md). Composition order corrected in Phase 2 — see
+# gamebryo/mesh_resolver.gd's refr_basis() and
+# phases/2/03-refr-rotation-order.md for the finding (the OpenMW-derived
+# `zr*yr*xr` order doesn't hold for FO3/NV; `xr*yr*zr` does, confirmed
+# against a real visual counterexample).
 func refr_basis(rot: Vector3) -> Basis:
 	var bx := Basis(Vector3(1, 0, 0), -rot.x)
 	var by := Basis(Vector3(0, 1, 0), -rot.y)
 	var bz := Basis(Vector3(0, 0, 1), -rot.z)
-	return bz * by * bx
+	return bx * by * bz
 
 func load_stat_placements(esm: EsmReader, cell_form_id: int) -> Array:
 	var refs: Array = esm.get_cell_references(cell_form_id)
