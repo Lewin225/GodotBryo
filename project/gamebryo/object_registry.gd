@@ -63,8 +63,8 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	if nif == null or nif.get_submesh_count() == 0:
 		return null
 	var node = cls.new()
-	mesh_resolver.populate_mesh_children(node, nif)
-	mesh_resolver.populate_collision_children(node, nif)
+	mesh_resolver.populate_mesh_children(node, nif, model)
+	mesh_resolver.populate_collision_children(node, nif, model)
 	return _finalize(node, placement)
 
 ## SCOL bundles multiple STAT placements inside its own record body (not via
@@ -94,8 +94,8 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 	if model != "":
 		var nif := mesh_resolver.load_nif(model)
 		if nif != null and nif.get_submesh_count() > 0:
-			mesh_resolver.populate_mesh_children(node, nif)
-			mesh_resolver.populate_collision_children(node, nif)
+			mesh_resolver.populate_mesh_children(node, nif, model)
+			mesh_resolver.populate_collision_children(node, nif, model)
 
 	var light_data: Dictionary = esm.get_light_data(int(placement.get("base_form_id", 0)))
 	if not light_data.is_empty():

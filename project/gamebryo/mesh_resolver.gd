@@ -10,6 +10,18 @@ extends RefCounted
 ## DLC archives, then the base SArchiveList reversed) — see
 ## phases/0/results.md for why it's an approximation, not a load-order
 ## simulation.
+##
+## phases/2/00-resource-caching-instancing.md: every resolved NIF, built
+## ArrayMesh/collision Shape3D, and decoded texture is now cached by its
+## resolved path, since Fallout cells routinely place the same base object
+## (rocks, fence posts, clutter) dozens of times. Confirmed before this was
+## added: none of this was cached at all — every placement rebuilt its
+## geometry/collision and re-decoded its textures from scratch, even for an
+## object already resolved earlier in the same load. Node instances
+## (MeshInstance3D, CollisionShape3D) are still created fresh per placement
+## (they're scene-graph position/parenting, not shareable), but the
+## Resources they reference (Mesh, Shape3D, Texture2D, Material) are shared
+## across every instance of the same base object.
 
 const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
@@ -23,6 +35,49 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 
 var _bsa_readers := {}
 var _bsa_order: Array[String] = []
+
+var _nif_cache := {} # model_path -> NifReader or null (null cached too, so a
+		# missing/unparseable NIF isn't re-attempted on every repeat placement)
+var _mesh_cache := {} # "model_path#submesh_index" -> ArrayMesh
+var _texture_cache := {} # tex_path -> ImageTexture or null
+var _material_cache := {} # tex_path -> StandardMaterial3D
+var _collision_cache := {} # model_path -> Array of collision descriptor Dictionaries
+		# ({ "kind": "shape"/"fallback_bbox", "shape": Resource, "transform": Transform3D, "name": String })
+
+## Cache hit/miss counters — phases/2/00-resource-caching-instancing.md asks
+## for a measured before/after, not just an assumed improvement. Cheap
+## enough to always track; call reset_cache_stats() to zero between
+## measurement runs.
+var mesh_cache_hits := 0
+var mesh_cache_misses := 0
+var texture_cache_hits := 0
+var texture_cache_misses := 0
+## Material cache is checked BEFORE texture cache in _get_material() (a
+## material-cache hit never calls load_texture() at all) — track it
+## separately, since texture_cache_hits alone would misleadingly read ~0
+## even though repeats are genuinely being caught, one layer up.
+var material_cache_hits := 0
+var material_cache_misses := 0
+
+func reset_cache_stats() -> void:
+	mesh_cache_hits = 0
+	mesh_cache_misses = 0
+	texture_cache_hits = 0
+	texture_cache_misses = 0
+	material_cache_hits = 0
+	material_cache_misses = 0
+
+func get_cache_stats() -> Dictionary:
+	return {
+		"mesh_cache_hits": mesh_cache_hits,
+		"mesh_cache_misses": mesh_cache_misses,
+		"texture_cache_hits": texture_cache_hits,
+		"texture_cache_misses": texture_cache_misses,
+		"material_cache_hits": material_cache_hits,
+		"material_cache_misses": material_cache_misses,
+		"unique_nifs_loaded": _nif_cache.size(),
+		"unique_textures_loaded": _texture_cache.size(),
+	}
 
 func _init() -> void:
 	_build_bsa_order()
@@ -87,29 +142,59 @@ func resolve_bytes(rel_path: String) -> Dictionary:
 ## Loads a NIF from its Data/Meshes/-relative path (as stored in a MODL
 ## subrecord — the "meshes\" prefix is added here, see
 ## phases/1/00-interior-cell-loader.md's MODL-path finding). Returns null if
-## not found or unparseable.
+## not found or unparseable. Cached by model_path — repeat placements of the
+## same base object (the common case) skip the BSA extract + NIF parse
+## entirely after the first resolution.
 func load_nif(model_path: String) -> NifReader:
+	if _nif_cache.has(model_path):
+		return _nif_cache[model_path]
 	var found := resolve_bytes("meshes\\" + model_path)
-	if found.is_empty():
-		return null
-	var nif := NifReader.new()
-	if not nif.load(found["data"]):
-		return null
+	var nif: NifReader = null
+	if not found.is_empty():
+		var candidate := NifReader.new()
+		if candidate.load(found["data"]):
+			nif = candidate
+	_nif_cache[model_path] = nif
 	return nif
 
 ## Loads a texture from its Data/-relative path (as stored in a NIF's
 ## texture slot, already including "textures\"). Returns null if not found
-## or undecodable.
+## or undecodable. Cached by tex_path.
 func load_texture(tex_path: String) -> ImageTexture:
 	if tex_path == "":
 		return null
+	if _texture_cache.has(tex_path):
+		texture_cache_hits += 1
+		return _texture_cache[tex_path]
+	texture_cache_misses += 1
+	var tex: ImageTexture = null
 	var found := resolve_bytes(tex_path)
-	if found.is_empty():
+	if not found.is_empty():
+		var img := Image.new()
+		if img.load_dds_from_buffer(found["data"]) == OK:
+			tex = ImageTexture.create_from_image(img)
+	_texture_cache[tex_path] = tex
+	return tex
+
+## Same texture, same StandardMaterial3D — shared across every submesh that
+## uses it, not just the decoded texture. Godot Materials are Resources like
+## any other; many MeshInstance3D nodes referencing one Material is the
+## normal, supported pattern (this is what an imported glTF scene with
+## repeated materials does too).
+func _get_material(tex_path: String) -> StandardMaterial3D:
+	if tex_path == "":
 		return null
-	var img := Image.new()
-	if img.load_dds_from_buffer(found["data"]) != OK:
-		return null
-	return ImageTexture.create_from_image(img)
+	if _material_cache.has(tex_path):
+		material_cache_hits += 1
+		return _material_cache[tex_path]
+	material_cache_misses += 1
+	var mat: StandardMaterial3D = null
+	var tex := load_texture(tex_path)
+	if tex != null:
+		mat = StandardMaterial3D.new()
+		mat.albedo_texture = tex
+	_material_cache[tex_path] = mat
+	return mat
 
 func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	var pos_flat := nif.get_positions(index)
@@ -154,17 +239,26 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 
 ## Builds every MeshInstance3D child (one per NIF submesh, with resolved
 ## texture) under `parent`. Shared by every GamebryoVisual-shaped factory.
-func populate_mesh_children(parent: Node3D, nif: NifReader) -> void:
+## `model_path` is the same string passed to load_nif() for this `nif` —
+## required (not derived from `nif` itself) so the per-submesh ArrayMesh can
+## be cached the same way load_nif() caches the parsed NIF.
+func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String) -> void:
 	for i in range(nif.get_submesh_count()):
-		var mesh := build_submesh(nif, i)
+		var mesh_key := "%s#%d" % [model_path, i]
+		var mesh: ArrayMesh
+		if _mesh_cache.has(mesh_key):
+			mesh_cache_hits += 1
+			mesh = _mesh_cache[mesh_key]
+		else:
+			mesh_cache_misses += 1
+			mesh = build_submesh(nif, i)
+			_mesh_cache[mesh_key] = mesh
 		var mi := MeshInstance3D.new()
 		mi.name = "sub%d" % i
 		mi.mesh = mesh
 		mi.transform = nif.get_transform(i)
-		var tex := load_texture(nif.get_texture_path(i))
-		if tex != null:
-			var mat := StandardMaterial3D.new()
-			mat.albedo_texture = tex
+		var mat := _get_material(nif.get_texture_path(i))
+		if mat != null:
 			mi.material_override = mat
 		parent.add_child(mi)
 
@@ -172,21 +266,39 @@ func populate_mesh_children(parent: Node3D, nif: NifReader) -> void:
 ## collision-extraction.md), or one bounding-box fallback collider (from the
 ## render mesh's own AABB) if the NIF has no collision data at all — per
 ## the phase doc's explicit requirement that meshless-collision objects
-## still get *something* walkable rather than no collision.
-func populate_collision_children(parent: Node3D, nif: NifReader) -> void:
+## still get *something* walkable rather than no collision. The underlying
+## Shape3D Resources (and the fallback box's size/position) are cached per
+## model_path — only the CollisionShape3D *nodes* are built fresh per
+## placement, same reasoning as populate_mesh_children().
+func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String) -> void:
+	var descriptors: Array
+	if _collision_cache.has(model_path):
+		descriptors = _collision_cache[model_path]
+	else:
+		descriptors = _build_collision_descriptors(nif)
+		_collision_cache[model_path] = descriptors
+	for d in descriptors:
+		var col := CollisionShape3D.new()
+		col.name = String(d.get("name", "collision"))
+		col.shape = d["shape"]
+		col.transform = d["transform"]
+		parent.add_child(col)
+
+func _build_collision_descriptors(nif: NifReader) -> Array:
 	var shapes: Array = nif.get_collision_shapes()
 	if shapes.is_empty():
-		_add_fallback_collision(parent, nif)
-		return
+		return _build_fallback_collision_descriptors(nif)
+
+	var out: Array = []
 	for s in shapes:
-		var col := CollisionShape3D.new()
-		col.name = "collision_%s" % String(s.get("name", ""))
 		var kind: String = s.get("kind", "")
+		var shape: Resource = null
+		var transform: Transform3D = s.get("transform", Transform3D.IDENTITY)
 
 		match kind:
 			"triangle_mesh":
-				var shape := ConcavePolygonShape3D.new()
-				shape.set_faces(_expand_triangles(s.get("positions", PackedFloat32Array()), s.get("indices", PackedInt32Array())))
+				var tri := ConcavePolygonShape3D.new()
+				tri.set_faces(_expand_triangles(s.get("positions", PackedFloat32Array()), s.get("indices", PackedInt32Array())))
 				# Godot's ConcavePolygonShape3D is one-sided by default
 				# (backface_collision = false). Havok's own triangle winding
 				# (a separate data source from the render mesh, which needed
@@ -196,43 +308,39 @@ func populate_collision_children(parent: Node3D, nif: NifReader) -> void:
 				# solid from both sides. Confirmed necessary: a physics test
 				# ball fell straight through a real floor's triangle-mesh
 				# collision before this was added.
-				shape.backface_collision = true
-				col.shape = shape
-				col.transform = s.get("transform", Transform3D.IDENTITY)
+				tri.backface_collision = true
+				shape = tri
 			"convex_hull":
-				var shape := ConvexPolygonShape3D.new()
-				shape.points = _flat_to_vector3(s.get("positions", PackedFloat32Array()))
-				col.shape = shape
-				col.transform = s.get("transform", Transform3D.IDENTITY)
+				var hull := ConvexPolygonShape3D.new()
+				hull.points = _flat_to_vector3(s.get("positions", PackedFloat32Array()))
+				shape = hull
 			"box":
-				var shape := BoxShape3D.new()
+				var box := BoxShape3D.new()
 				var he: Vector3 = s.get("half_extents", Vector3.ONE)
-				shape.size = he * 2.0
-				col.shape = shape
-				col.transform = s.get("transform", Transform3D.IDENTITY)
+				box.size = he * 2.0
+				shape = box
 			"sphere":
-				var shape := SphereShape3D.new()
-				shape.radius = max(float(s.get("radius", 0.1)), 0.01)
-				col.shape = shape
-				col.transform = s.get("transform", Transform3D.IDENTITY)
+				var sph := SphereShape3D.new()
+				sph.radius = max(float(s.get("radius", 0.1)), 0.01)
+				shape = sph
 			"capsule":
-				var shape := CapsuleShape3D.new()
+				var cap := CapsuleShape3D.new()
 				var a: Vector3 = s.get("point_a", Vector3.ZERO)
 				var b: Vector3 = s.get("point_b", Vector3.ZERO)
-				shape.radius = max(float(s.get("capsule_radius", 0.1)), 0.01)
-				shape.height = max(a.distance_to(b) + shape.radius * 2.0, shape.radius * 2.0)
+				cap.radius = max(float(s.get("capsule_radius", 0.1)), 0.01)
+				cap.height = max(a.distance_to(b) + cap.radius * 2.0, cap.radius * 2.0)
 				# CapsuleShape3D is aligned along local Y by convention — build
 				# a basis whose Y axis points from a to b, positioned at the
 				# midpoint, then compose with the shape's own base transform.
-				var base_transform: Transform3D = s.get("transform", Transform3D.IDENTITY)
 				var mid := (a + b) * 0.5
 				var dir := b - a
 				var cap_basis := _basis_aligned_to_y(dir) if dir.length() > 0.0001 else Basis.IDENTITY
-				col.transform = base_transform * Transform3D(cap_basis, mid)
-				col.shape = shape
+				transform = transform * Transform3D(cap_basis, mid)
+				shape = cap
 			_:
 				continue
-		parent.add_child(col)
+		out.append({ "kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", "")) })
+	return out
 
 func _expand_triangles(positions: PackedFloat32Array, indices: PackedInt32Array) -> PackedVector3Array:
 	var out := PackedVector3Array()
@@ -256,7 +364,7 @@ func _basis_aligned_to_y(dir: Vector3) -> Basis:
 	var z := x.cross(y).normalized()
 	return Basis(x, y, z)
 
-func _add_fallback_collision(parent: Node3D, nif: NifReader) -> void:
+func _build_fallback_collision_descriptors(nif: NifReader) -> Array:
 	var combined := AABB()
 	var have := false
 	for i in range(nif.get_submesh_count()):
@@ -271,15 +379,11 @@ func _add_fallback_collision(parent: Node3D, nif: NifReader) -> void:
 		combined = world_aabb if not have else combined.merge(world_aabb)
 		have = true
 	if not have:
-		return
+		return []
 
-	var col := CollisionShape3D.new()
-	col.name = "collision_fallback_bbox"
-	var shape := BoxShape3D.new()
-	shape.size = combined.size.max(Vector3.ONE * 0.05) # avoid a degenerate zero-thickness box
-	col.shape = shape
-	col.position = combined.get_center()
-	parent.add_child(col)
+	var box := BoxShape3D.new()
+	box.size = combined.size.max(Vector3.ONE * 0.05) # avoid a degenerate zero-thickness box
+	return [{ "kind": "fallback_bbox", "shape": box, "transform": Transform3D(Basis.IDENTITY, combined.get_center()), "name": "collision_fallback_bbox" }]
 
 ## Bethesda REFR.DATA rotation: X/Y/Z Euler radians composed as Rz*Ry*Rx,
 ## with the angles NEGATED before building each axis rotation — see

@@ -60,10 +60,48 @@ between repeats.
 
 ## Acceptance criteria
 
-- [ ] Cache hit rate is measured and non-zero on a cell with repeated props
+- [x] Cache hit rate is measured and non-zero on a cell with repeated props
       (Goodsprings qualifies).
-- [ ] No correctness regression — `test_terrain.gd`, `test_object_registry.gd`,
+- [x] No correctness regression — `test_terrain.gd`, `test_object_registry.gd`,
       `test_interior_cell.gd`, and `test_phase1_integration.gd` all still pass.
-- [ ] Measured load-time / resource-count improvement is documented, not just assumed.
+- [x] Measured load-time / resource-count improvement is documented, not just assumed.
 - [ ] `MultiMeshInstance3D` batching is either demonstrated or explicitly deferred with
       a stated reason.
+
+## Results
+
+Caching (mesh, texture, material, collision shape — all keyed by resolved path) was
+added to `GamebryoMeshResolver` (`project/gamebryo/mesh_resolver.gd`), and
+`populate_mesh_children()`/`populate_collision_children()` were changed to accept the
+resolved `model_path` as a cache key (the two `object_registry.gd` call sites were
+updated accordingly — the only two callers in the codebase).
+
+Measured via a new benchmark, `project/test_resource_caching.gd`: loads the same two
+cells (Goodsprings exterior + `GSDocMitchellHouse` interior, 536 placed objects total)
+twice through one shared resolver — pass 1 cold, pass 2 entirely repeat placements of
+objects pass 1 already resolved.
+
+```
+pass 1 (cold): placed=536 time=565.7ms  mesh_cache_hits=388  mesh_cache_misses=512
+pass 2 (warm): placed=536 time=164.7ms  mesh_cache_hits=900  mesh_cache_misses=0
+unique NIFs actually loaded: 266   unique textures actually loaded: 195
+```
+
+**3.4x faster on a full repeat load** (565.7ms → 164.7ms), with pass 2 landing at zero
+mesh/material cache misses — every one of the 536 placements in pass 2 reused an
+already-built resource, none rebuilt. Even **pass 1 alone** (first-ever load of these
+two cells) had a 43.1% in-cell mesh cache hit rate (388/900): only 266 of the 536
+placed objects' meshes are actually unique — the other ~270+ are repeats of a prop
+already seen earlier in the *same* cold load. That's the concrete number behind "hundreds
+of the same prop in a scene": more than half of any given cell's object placements were
+already duplicate work before caching, not just across repeat loads.
+
+## What's deferred
+
+`MultiMeshInstance3D` batching was not attempted in this pass. Caching alone captures
+the decode/build-cost win measured above; instancing is about draw-call count, a
+separate concern, and grouping REFRs by `base_form_id` into `MultiMesh` buffers while
+keeping per-instance collision correct is a real design task on its own — deferred
+pending a decision on whether it's worth pursuing now or after seeing how far caching
+alone gets Phase 2's actual streaming/frame-rate goals.
+
