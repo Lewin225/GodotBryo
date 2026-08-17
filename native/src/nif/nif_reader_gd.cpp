@@ -23,6 +23,9 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_uvs", "index"), &NifReader::get_uvs);
 	ClassDB::bind_method(D_METHOD("get_indices", "index"), &NifReader::get_indices);
 	ClassDB::bind_method(D_METHOD("get_texture_path", "index"), &NifReader::get_texture_path);
+	ClassDB::bind_method(D_METHOD("get_normal_texture_path", "index"), &NifReader::get_normal_texture_path);
+	ClassDB::bind_method(D_METHOD("get_glow_texture_path", "index"), &NifReader::get_glow_texture_path);
+	ClassDB::bind_method(D_METHOD("get_alpha_info", "index"), &NifReader::get_alpha_info);
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
@@ -120,6 +123,26 @@ PackedInt32Array NifReader::get_indices(int index) const {
 String NifReader::get_texture_path(int index) const {
 	const nif::SubMesh *s = submesh(index);
 	return s ? String(s->texture_path.c_str()) : String();
+}
+
+String NifReader::get_normal_texture_path(int index) const {
+	const nif::SubMesh *s = submesh(index);
+	return s ? String(s->normal_texture_path.c_str()) : String();
+}
+
+String NifReader::get_glow_texture_path(int index) const {
+	const nif::SubMesh *s = submesh(index);
+	return s ? String(s->glow_texture_path.c_str()) : String();
+}
+
+Dictionary NifReader::get_alpha_info(int index) const {
+	Dictionary out;
+	const nif::SubMesh *s = submesh(index);
+	out["has_alpha_property"] = s ? s->has_alpha_property : false;
+	out["blend_enabled"] = s ? s->alpha_blend_enabled : false;
+	out["test_enabled"] = s ? s->alpha_test_enabled : false;
+	out["threshold"] = s ? s->alpha_threshold : 0.5f;
+	return out;
 }
 
 Transform3D NifReader::get_transform(int index) const {
