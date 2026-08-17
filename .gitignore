@@ -1,0 +1,29 @@
+# Reference game copy — copyrighted assets, never committed
+fresh_nv_copy/
+
+# Build outputs (the .gdextension manifest in project/bin/ IS source — keep it)
+native/bin/
+native/src/gen/
+project/bin/*.so
+project/bin/*.dll
+project/bin/*.framework
+*.o
+*.os
+*.obj
+.sconsign.dblite
+native/tools/dump_object
+native/tools/dump_object_output/
+
+# Godot editor artifacts
+.godot/
+project/.godot/
+
+# Native Godot binary — large (~140MB), fetched per-machine, not source
+tools/Godot_v4.7.1-stable_linux.x86_64
+
+# OS/editor cruft
+.DS_Store
+*.swp
+
+# Claude Code harness temp files
+.claude/*.tmp.*

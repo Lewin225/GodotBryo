@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+import os
+
+env = SConscript("godot-cpp/SConstruct")
+
+# Phase 0 module include/source directories. Each sub-task (bsa/esm/nif/dds)
+# adds its sources here as it's implemented; common/ holds shared helpers
+# (endian-aware byte reading, etc.) used by all of them.
+env.Append(CPPPATH=["src/"])
+env.Append(LIBS=["z"]) # zlib, for BSA per-file decompression
+sources = Glob("src/*.cpp")
+sources += Glob("src/common/*.cpp")
+sources += Glob("src/bsa/*.cpp")
+sources += Glob("src/esm/*.cpp")
+sources += Glob("src/nif/*.cpp")
+sources += Glob("src/dds/*.cpp")
+
+# nifly (vendored, native/nifly/ — see native/README.md): clean-room NIF
+# mesh library, used as-is rather than reimplementing the format. Its own
+# headers are added as a "system" include path so its warnings don't get
+# mixed into our -Werror-adjacent build output.
+env.Append(CPPPATH=["nifly/include", "nifly/external"])
+sources += Glob("nifly/src/*.cpp")
+
+if env["target"] in ["editor", "template_debug"]:
+	try:
+		doc_data = env.GodotCPPDocData(
+			"src/gen/doc_data.gen.cpp", source=Glob("doc_classes/*.xml")
+		)
+		sources.append(doc_data)
+	except AttributeError:
+		print("Not including class reference as we're targeting a pre-4.3 baseline.")
+
+extension_name = "nv_engine"
+project_bin_dir = "../project/bin/"
+
+if env["platform"] == "macos":
+	library = env.SharedLibrary(
+		project_bin_dir + "lib{}.{}.{}.framework/lib{}.{}.{}".format(
+			extension_name, env["platform"], env["target"], extension_name, env["platform"], env["target"],
+		),
+		source=sources,
+	)
+else:
+	library = env.SharedLibrary(
+		project_bin_dir + "lib{}{}{}".format(extension_name, env["suffix"], env["SHLIBSUFFIX"]),
+		source=sources,
+	)
+
+Default(library)
