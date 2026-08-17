@@ -28,6 +28,14 @@ task files.
 | 2.4 | Articulated prop transform flattening fix | [04-articulated-prop-transforms.md](04-articulated-prop-transforms.md) |
 | 2.6 | Vertex color + unlit shading fix | [06-vertex-color-transparency.md](06-vertex-color-transparency.md) |
 
+## Open issues (parked, not yet investigated)
+
+- **External lighting — window emissive backdrops.** Interior visuals are at/near
+  parity with the base game as of 2.6, but exterior-facing lighting (light seen
+  through windows from outside, and/or window-shaped emissive backdrop meshes used to
+  fake exterior light/scenery) hasn't been looked at. Parked at the user's request to
+  keep interior work unblocked — pick up next once resumed.
+
 ## Why these three, and why now
 
 Phase 1 proved *correctness* (one interior cell, one exterior cell, loaded once, no
