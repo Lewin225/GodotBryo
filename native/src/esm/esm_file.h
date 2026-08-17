@@ -1,0 +1,141 @@
+#ifndef ESM_FILE_H
+#define ESM_FILE_H
+
+#include "esm_types.h"
+
+#include <cstdio>
+#include <functional>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace esm {
+
+// Read-only structural reader for Bethesda TES4-family plugin/master files
+// (.esm/.esp) — Oblivion/FO3/FNV/Skyrim all share the same 24-byte
+// GRUP/record header layout. Not thread-safe (single FILE* with seek+read).
+//
+// This does NOT decode subrecord semantics for most record types — see
+// phases/0/02-esm-parser.md. It walks the GRUP/record tree, exposes each
+// record's header (type/size/flags/formID) cheaply without reading its
+// data, and decompresses+parses subrecords only on demand for callers that
+// ask for a specific record's data.
+class EsmFile {
+public:
+	EsmFile() = default;
+	~EsmFile();
+
+	EsmFile(const EsmFile &) = delete;
+	EsmFile &operator=(const EsmFile &) = delete;
+
+	// Throws std::runtime_error on structural problems (bad TES4 header,
+	// truncated file, etc).
+	void open(const std::string &path);
+
+	const FileHeader &header() const { return header_; }
+
+	// Walks every record in the file (all nested GRUPs recursed into),
+	// invoking the callback with each record's header. Data is NOT read
+	// automatically — call read_record_data() from within the callback if
+	// the data is needed. Cheap: only 24-byte headers are read, everything
+	// else is skipped via fseek.
+	void for_each_record(const std::function<void(const RecordInfo &)> &callback) const;
+
+	// Reads and (if needed) zlib-decompresses a record's data blob.
+	std::vector<uint8_t> read_record_data(const RecordInfo &record) const;
+
+	// Splits a decompressed record data buffer into subrecords, handling
+	// the XXXX oversize-size marker. The returned Subrecords' data pointers
+	// point into `data` — keep `data` alive as long as the result is used.
+	static std::vector<Subrecord> parse_subrecords(const std::vector<uint8_t> &data);
+
+	// Convenience: record-type -> occurrence count, over the whole file.
+	std::unordered_map<std::string, uint32_t> record_type_histogram() const;
+
+	// Finds any record by FormID, anywhere in the file. Builds (and caches) a
+	// FormID -> RecordInfo index on first call — a linear scan per lookup
+	// would be too slow once a cell's worth of REFRs are each resolving
+	// their base record (phases/1/00-interior-cell-loader.md).
+	std::optional<RecordInfo> find_record_by_form_id(uint32_t form_id) const;
+
+	// Finds a CELL record by its EDID (exact match) or FormID. std::nullopt
+	// if not found, or if the FormID resolves to a non-CELL record.
+	std::optional<RecordInfo> find_cell_by_editor_id(const std::string &editor_id) const;
+	std::optional<RecordInfo> find_cell_by_form_id(uint32_t form_id) const;
+
+	// Collects every record inside `parent`'s immediately-following child
+	// GRUP (if any — per TES4-family convention, a record's child GRUP
+	// comes right after its own bytes), recursing into any nested
+	// sub-GRUPs. Empty if the record has no child GRUP. Not filtered by
+	// type — a CELL's children include REFR, ACHR, PGRD, NAVM, etc.
+	std::vector<RecordInfo> get_child_records(const RecordInfo &parent) const;
+
+	// Resolves every REFR directly under `cell` (via get_child_records) to a
+	// ReferencePlacement: its transform plus its base record's type/EDID/
+	// MODL. Generic across every base record type — see ReferencePlacement's
+	// comment in esm_types.h. REFRs with no NAME/DATA subrecord (malformed
+	// or a record kind other than plain REFR) are skipped.
+	std::vector<ReferencePlacement> get_cell_references(const RecordInfo &cell) const;
+
+	// A Static Collection (SCOL) bundles multiple STAT placements inside its
+	// own record body — not via child REFRs. Its subrecords are repeated
+	// (ONAM, DATA) pairs: ONAM is the FormID of a STAT, DATA is that part's
+	// own local position/rotation/scale (28 bytes: pos+rot+scale; scale
+	// defaults to 1.0 if a part's DATA is only 24 bytes, matching REFR's
+	// convention where scale is a separate optional field). Returns one
+	// ReferencePlacement per part, resolved the same way get_cell_references
+	// resolves a REFR's base record — `refr_form_id` is set to the SCOL's
+	// own FormID (parts have no FormID of their own) for traceability.
+	std::vector<ReferencePlacement> get_scol_parts(const RecordInfo &scol) const;
+
+	// Reads a LIGH record's own DATA subrecord (phases/1/03-light-sources.md).
+	// std::nullopt if the FormID doesn't resolve to a LIGH record or has no
+	// DATA subrecord.
+	std::optional<LightData> get_light_data(uint32_t light_form_id) const;
+
+	// phases/1/04-exterior-cell-terrain.md additions:
+
+	// Finds a WRLD (worldspace) record by its EDID (exact match).
+	std::optional<RecordInfo> find_worldspace_by_editor_id(const std::string &editor_id) const;
+
+	// Finds the exterior CELL at grid coordinate (x, y) within a worldspace.
+	// Full-scan of the worldspace's children, same rationale as 1.0's
+	// interior lookup — block/sub-block coordinate hashing is a Phase 2
+	// streaming optimization, not needed for one hardcoded cell.
+	std::optional<RecordInfo> find_exterior_cell(uint32_t wrld_form_id, int32_t x, int32_t y) const;
+
+	// Reads a LAND record's heightmap + per-quadrant base texture. See
+	// LandData's comment in esm_types.h for what is and isn't parsed.
+	std::optional<LandData> get_land_data(const RecordInfo &land) const;
+
+	// Resolves an LTEX FormID to its diffuse texture path, via
+	// LTEX.TNAM -> TXST -> TXST.TX00. Unlike MODL paths (relative to
+	// Data/Meshes/), TXST paths are relative to Data/Textures/ with no
+	// "textures\" prefix stored in the file — confirmed against real data
+	// during this task, the caller must prepend it before a BSA lookup, the
+	// same way "meshes\" is prepended for MODL. Empty string if the FormID
+	// doesn't resolve all the way through.
+	std::string resolve_ltex_texture_path(uint32_t ltex_form_id) const;
+
+private:
+	std::FILE *file_ = nullptr;
+	long file_size_ = 0;
+	FileHeader header_;
+	RecordInfo tes4_record_; // the first record in the file
+
+	mutable std::unordered_map<uint32_t, RecordInfo> form_id_index_;
+	mutable bool form_id_index_built_ = false;
+	void ensure_form_id_index() const;
+
+	std::vector<uint8_t> read_at(long offset, size_t size) const;
+
+	// Recursive walk helper: [start, end) is a byte range containing a
+	// sequence of sibling GRUPs/records (either the whole file, or one
+	// GRUP's inner content).
+	void walk(long start, long end, const std::function<void(const RecordInfo &)> &callback) const;
+};
+
+} // namespace esm
+
+#endif // ESM_FILE_H
