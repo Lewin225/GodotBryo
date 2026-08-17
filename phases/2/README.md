@@ -24,6 +24,9 @@ task files.
 | 2.0 | Resource caching + instancing (mesh/material dedup) | [00-resource-caching-instancing.md](00-resource-caching-instancing.md) |
 | 2.1 | Material pipeline completeness (normal/alpha/specular) | [01-material-pipeline.md](01-material-pipeline.md) |
 | 2.2 | Async/streamed cell loading (production version of the exterior_viewer.gd prototype) | [02-async-streaming-loader.md](02-async-streaming-loader.md) |
+| 2.3 | REFR rotation composition order fix | [03-refr-rotation-order.md](03-refr-rotation-order.md) |
+| 2.4 | Articulated prop transform flattening fix | [04-articulated-prop-transforms.md](04-articulated-prop-transforms.md) |
+| 2.6 | Vertex color + unlit shading fix | [06-vertex-color-transparency.md](06-vertex-color-transparency.md) |
 
 ## Why these three, and why now
 

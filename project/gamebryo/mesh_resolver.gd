@@ -192,12 +192,26 @@ func load_texture(tex_path: String) -> ImageTexture:
 ## deciding whether a channel flip is actually needed, not assumed either
 ## way. Slots 3+ (height/parallax, environment map/mask) are not extracted
 ## at all yet (core-layer gap, not just unwired here — see nif_types.h).
-func _get_material(tex_path: String, normal_path: String, glow_path: String, alpha: Dictionary) -> StandardMaterial3D:
-	if tex_path == "" and normal_path == "" and glow_path == "" and not bool(alpha.get("has_alpha_property", false)):
+##
+## phases/2/06-vertex-color-transparency.md: `has_vertex_colors` is part of
+## the cache key (not just the texture/alpha inputs) because it changes
+## which pixels this material actually is, not just how it looks — a
+## texture-less shape with real per-vertex alpha (Bethesda's soft shadow/AO
+## "blob" decals under furniture) has nothing else to blend against, and
+## rendered as a solid opaque white blob before this was wired in.
+##
+## `is_unlit` mirrors the shape's own NIF shader: BSShaderNoLightingProperty
+## instead of the normal BSShaderPPLightingProperty — Bethesda's own signal
+## that scene lighting shouldn't affect this shape, confirmed against real
+## data rather than inferred from "no texture" alone (a shadow/AO blob's
+## intended dark-to-transparent gradient washes out to lit gray under normal
+## ambient/directional shading, which is what NoLighting exists to prevent).
+func _get_material(tex_path: String, normal_path: String, glow_path: String, alpha: Dictionary, has_vertex_colors: bool, is_unlit: bool) -> StandardMaterial3D:
+	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
 		return null
-	var key := "%s|%s|%s|%s|%s|%.4f" % [tex_path, normal_path, glow_path,
+	var key := "%s|%s|%s|%s|%s|%.4f|%s|%s" % [tex_path, normal_path, glow_path,
 			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
-			float(alpha.get("threshold", 0.5))]
+			float(alpha.get("threshold", 0.5)), has_vertex_colors, is_unlit]
 	if _material_cache.has(key):
 		material_cache_hits += 1
 		return _material_cache[key]
@@ -205,6 +219,14 @@ func _get_material(tex_path: String, normal_path: String, glow_path: String, alp
 
 	var mat := StandardMaterial3D.new()
 	var have_content := false
+
+	if is_unlit:
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		have_content = true
+
+	if has_vertex_colors:
+		mat.vertex_color_use_as_albedo = true
+		have_content = true
 
 	var albedo := load_texture(tex_path)
 	if albedo != null:
@@ -240,6 +262,7 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	var norm_flat := nif.get_normals(index)
 	var uv_flat := nif.get_uvs(index)
 	var idx_flat := nif.get_indices(index)
+	var colors := nif.get_colors(index)
 
 	var verts := PackedVector3Array()
 	verts.resize(pos_flat.size() / 3)
@@ -270,6 +293,8 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 		arrays[Mesh.ARRAY_NORMAL] = normals
 	if uvs.size() == verts.size():
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
+	if colors.size() == verts.size():
+		arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = indices
 
 	var mesh := ArrayMesh.new()
@@ -297,7 +322,7 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String) 
 		mi.mesh = mesh
 		mi.transform = nif.get_transform(i)
 		var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
-				nif.get_glow_texture_path(i), nif.get_alpha_info(i))
+				nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
 		if mat != null:
 			mi.material_override = mat
 		parent.add_child(mi)
@@ -425,12 +450,22 @@ func _build_fallback_collision_descriptors(nif: NifReader) -> Array:
 	box.size = combined.size.max(Vector3.ONE * 0.05) # avoid a degenerate zero-thickness box
 	return [{ "kind": "fallback_bbox", "shape": box, "transform": Transform3D(Basis.IDENTITY, combined.get_center()), "name": "collision_fallback_bbox" }]
 
-## Bethesda REFR.DATA rotation: X/Y/Z Euler radians composed as Rz*Ry*Rx,
-## with the angles NEGATED before building each axis rotation — see
-## phases/1/00-interior-cell-loader.md for how this was found (OpenMW
-## source cross-check, after a visibly-wrong first attempt).
+## Bethesda REFR.DATA rotation: X/Y/Z Euler radians, angles NEGATED before
+## building each per-axis rotation — see phases/1/00-interior-cell-loader.md
+## for that finding (OpenMW source cross-check). Composition order corrected
+## in Phase 2 (phases/2/03-refr-rotation-order.md): the OpenMW cross-check's
+## `zr*yr*xr` order (Morrowind/Oblivion-era) does not hold for FO3/NV.
+## Real, visually-confirmed counterexample: GSProspectorSaloonInterior's
+## TornPaintingLg01 (rotation ~(90°, 0°, 90°)) rendered face-up against the
+## ceiling instead of flush on the wall under the old order; `bx*by*bz`
+## fixes it (confirmed with a direct before/after render from the same
+## camera) while leaving every rotation with at most one non-zero axis
+## (the common case, and every case checked as "already correct" before
+## this fix) mathematically unchanged. `bx*by*bz` is exactly Godot's own
+## Basis.from_euler(rot, EULER_ORDER_XYZ) convention — confirmed by direct
+## comparison against Godot's implementation, not assumed from the name.
 static func refr_basis(rot: Vector3) -> Basis:
 	var bx := Basis(Vector3(1, 0, 0), -rot.x)
 	var by := Basis(Vector3(0, 1, 0), -rot.y)
 	var bz := Basis(Vector3(0, 0, 1), -rot.z)
-	return bz * by * bx
+	return bx * by * bz

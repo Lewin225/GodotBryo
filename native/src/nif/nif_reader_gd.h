@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -34,6 +35,9 @@ public:
 	PackedFloat32Array get_positions(int index) const;
 	PackedFloat32Array get_normals(int index) const;
 	PackedFloat32Array get_uvs(int index) const;
+	// Per-vertex RGBA, or empty if the shape has none — see
+	// phases/2/06-vertex-color-transparency.md.
+	PackedColorArray get_colors(int index) const;
 	PackedInt32Array get_indices(int index) const;
 	String get_texture_path(int index) const;
 	// phases/2/01-material-pipeline.md: additional BSShaderTextureSet slots
@@ -45,6 +49,10 @@ public:
 	// bool, "threshold": float (0..1) } — from the shape's NiAlphaProperty,
 	// or has_alpha_property=false if it has none (treat as fully opaque).
 	Dictionary get_alpha_info(int index) const;
+	// True if the shape's NIF shader is BSShaderNoLightingProperty (see
+	// phases/2/06-vertex-color-transparency.md) — Bethesda's own signal
+	// that scene lighting should not affect this shape.
+	bool is_unlit(int index) const;
 	Transform3D get_transform(int index) const;
 
 	// Writes a self-contained .gltf for the currently loaded mesh (see

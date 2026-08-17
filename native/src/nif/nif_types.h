@@ -19,6 +19,16 @@ struct SubMesh {
 	std::vector<float> uvs; // uv, length == vertex_count * 2, or empty if the shape has none
 	std::vector<uint32_t> indices; // triangle list, length == triangle_count * 3
 
+	// Per-vertex RGBA, length == vertex_count * 4, or empty if the shape has
+	// none (see phases/2/06-vertex-color-transparency.md). Bethesda uses
+	// this for soft shadow/AO "blob" decals under furniture — a
+	// texture-less shape whose alpha channel fades the shape's visibility
+	// per-vertex — and, more generally, as a per-vertex tint multiplied
+	// into the diffuse texture where one is present. Without this, a
+	// texture-less alpha-blended shape has nothing to blend against and
+	// renders as a solid, fully-opaque white blob instead of a soft fade.
+	std::vector<float> colors;
+
 	// Texture paths as stored in the NIF (BSA-relative, e.g.
 	// "textures\architecture\ncr\...dds"), not yet resolved through the BSA
 	// reader (0.1) — that's the integration task in 0.5. Empty if none.
@@ -33,6 +43,17 @@ struct SubMesh {
 	std::string texture_path; // slot 0: diffuse/base
 	std::string normal_texture_path; // slot 1: normal map (alpha channel is specular/gloss)
 	std::string glow_texture_path; // slot 2: glow/emissive
+
+	// True if this shape's NIF shader block is BSShaderNoLightingProperty
+	// rather than the normal BSShaderPPLightingProperty (see
+	// phases/2/06-vertex-color-transparency.md) — Bethesda's own signal
+	// that a shape should render without scene lighting affecting it.
+	// Confirmed against real data: soft shadow/AO "blob" decals under
+	// furniture use this shader type, texture-less, with the shadow shape
+	// carried entirely by per-vertex color/alpha — applying normal ambient/
+	// directional lighting on top washes the intended dark gradient out to
+	// a lit gray instead of a clean fade.
+	bool no_lighting = false;
 
 	// NiAlphaProperty, if present on this shape — controls whether the
 	// render mesh should be alpha-blended/alpha-tested rather than treated

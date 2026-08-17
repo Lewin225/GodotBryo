@@ -21,11 +21,13 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_positions", "index"), &NifReader::get_positions);
 	ClassDB::bind_method(D_METHOD("get_normals", "index"), &NifReader::get_normals);
 	ClassDB::bind_method(D_METHOD("get_uvs", "index"), &NifReader::get_uvs);
+	ClassDB::bind_method(D_METHOD("get_colors", "index"), &NifReader::get_colors);
 	ClassDB::bind_method(D_METHOD("get_indices", "index"), &NifReader::get_indices);
 	ClassDB::bind_method(D_METHOD("get_texture_path", "index"), &NifReader::get_texture_path);
 	ClassDB::bind_method(D_METHOD("get_normal_texture_path", "index"), &NifReader::get_normal_texture_path);
 	ClassDB::bind_method(D_METHOD("get_glow_texture_path", "index"), &NifReader::get_glow_texture_path);
 	ClassDB::bind_method(D_METHOD("get_alpha_info", "index"), &NifReader::get_alpha_info);
+	ClassDB::bind_method(D_METHOD("is_unlit", "index"), &NifReader::is_unlit);
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
@@ -107,6 +109,20 @@ PackedFloat32Array NifReader::get_uvs(int index) const {
 	return out;
 }
 
+PackedColorArray NifReader::get_colors(int index) const {
+	PackedColorArray out;
+	const nif::SubMesh *s = submesh(index);
+	if (!s) {
+		return out;
+	}
+	size_t count = s->colors.size() / 4;
+	out.resize(static_cast<int>(count));
+	for (size_t i = 0; i < count; ++i) {
+		out[static_cast<int>(i)] = Color(s->colors[i * 4], s->colors[i * 4 + 1], s->colors[i * 4 + 2], s->colors[i * 4 + 3]);
+	}
+	return out;
+}
+
 PackedInt32Array NifReader::get_indices(int index) const {
 	PackedInt32Array out;
 	const nif::SubMesh *s = submesh(index);
@@ -143,6 +159,11 @@ Dictionary NifReader::get_alpha_info(int index) const {
 	out["test_enabled"] = s ? s->alpha_test_enabled : false;
 	out["threshold"] = s ? s->alpha_threshold : 0.5f;
 	return out;
+}
+
+bool NifReader::is_unlit(int index) const {
+	const nif::SubMesh *s = submesh(index);
+	return s ? s->no_lighting : false;
 }
 
 Transform3D NifReader::get_transform(int index) const {

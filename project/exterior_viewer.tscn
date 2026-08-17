@@ -1,6 +1,34 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://02ukouwln3o"]
 
-[ext_resource type="Script" path="res://exterior_viewer.gd" id="1"]
+[ext_resource type="Script" uid="uid://cf3sb07lm68fj" path="res://exterior_viewer.gd" id="1"]
 
-[node name="ExteriorViewer" type="Node3D"]
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_mq1s4"]
+energy_multiplier = 3.0
+
+[sub_resource type="Sky" id="Sky_e17n5"]
+sky_material = SubResource("ProceduralSkyMaterial_mq1s4")
+
+[sub_resource type="Environment" id="Environment_f4njh"]
+background_mode = 2
+background_color = Color(0.5, 0.6, 0.75, 1)
+sky = SubResource("Sky_e17n5")
+ambient_light_source = 3
+reflected_light_source = 2
+ssr_enabled = true
+ssao_enabled = true
+ssil_enabled = true
+glow_enabled = true
+
+[node name="ExteriorViewer" type="Node3D" unique_id=597994041]
 script = ExtResource("1")
+grid_x_min = -20
+grid_x_max = -15
+grid_y_min = -3
+grid_y_max = 3
+
+[node name="EditorPreviewLight" type="DirectionalLight3D" parent="." unique_id=125768679]
+transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
+shadow_enabled = true
+
+[node name="EditorPreviewEnv" type="WorldEnvironment" parent="." unique_id=1542746940]
+environment = SubResource("Environment_f4njh")
