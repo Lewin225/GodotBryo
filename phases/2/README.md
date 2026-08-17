@@ -1,0 +1,44 @@
+# Phase 2 — World Streaming & Scale
+
+Parent: [ROADMAP.md](../../ROADMAP.md)
+
+Goal (per ROADMAP.md): move continuously through the game's actual worldspace, not one
+cell at a time — adjacent-cell loading/unloading, interior/exterior transitions,
+distant LOD, memory/streaming-radius tuning against the real Mojave worldspace.
+Exit criterion: walk from Goodsprings to Primm without load screens beyond intended
+interior transitions, at a stable frame rate.
+
+**This README currently only scopes the performance-track tasks below** — surfaced
+during a post-1.5 experiment (`project/exterior_viewer.gd`, a `@tool` editor scene that
+loads an *area* of exterior cells rather than one hardcoded default) and a follow-up
+discussion about what "loading things proper" at Fallout's actual prop density
+requires. The rest of Phase 2 (cell grid streaming logic itself, interior/exterior
+door transitions, distant LOD, streaming-radius tuning) still needs its own planning
+pass, informed by whatever these performance tasks find, before those get their own
+task files.
+
+## Sub-tasks
+
+| # | Task | File |
+|---|------|------|
+| 2.0 | Resource caching + instancing (mesh/material dedup) | [00-resource-caching-instancing.md](00-resource-caching-instancing.md) |
+| 2.1 | Material pipeline completeness (normal/alpha/specular) | [01-material-pipeline.md](01-material-pipeline.md) |
+| 2.2 | Async/streamed cell loading (production version of the exterior_viewer.gd prototype) | [02-async-streaming-loader.md](02-async-streaming-loader.md) |
+
+## Why these three, and why now
+
+Phase 1 proved *correctness* (one interior cell, one exterior cell, loaded once, no
+performance targets — explicitly out of scope per `phases/1/README.md`). Phase 2's
+whole premise is scale: many cells, continuously, at a stable frame rate. Loading each
+cell the way Phase 1 does — a fresh `ArrayMesh`/`ImageTexture` per REFR, single
+diffuse-only materials, everything built synchronously in one frame — works for one
+cell loaded once, but Fallout cells routinely place the same prop (rocks, fence posts,
+plants, clutter) dozens of times, and Phase 2 needs many cells resident at once. These
+three tasks are the load-bearing prerequisites for Phase 2's own exit criterion, not
+speculative optimization:
+
+- **2.0/2.1** determine how much real work each cell load actually costs (duplicate
+  decode/upload work, missing material fidelity) — needed before streaming-radius/
+  memory-budget tuning (ROADMAP's own Phase 2 bullet) means anything.
+- **2.2** determines whether cell loads can happen without a frame hitch at all —
+  directly the "without load screens... at a stable frame rate" exit criterion.

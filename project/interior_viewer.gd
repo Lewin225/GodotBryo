@@ -1,16 +1,21 @@
 @tool
 extends Node3D
 
-# Editor-mode version of cell_viewer.gd: populates the cell as real child
-# nodes of this scene while open in the Godot editor, so you can use the
-# editor's own 3D viewport navigation (right-click + WASD, scroll to zoom)
-# and the Scene dock / inspector to poke around individual objects, instead
-# of the standalone runtime viewer's custom free-cam. Loading only happens
+# Editor-mode interior cell viewer (formerly cell_viewer_editor.gd — renamed
+# once exterior_viewer.gd gave world cells their own editor tool). Populates
+# a single interior CELL's REFRs as real child nodes of this scene while
+# open in the Godot editor, so you can use the editor's own 3D viewport
+# navigation (right-click + WASD, scroll to zoom) and the Scene dock /
+# inspector to poke around individual objects, instead of the standalone
+# runtime viewer's (cell_viewer.gd) custom free-cam. Loading only happens
 # when you press the "Load Cell" button in the Inspector (not automatically
 # on scene open) since it's a few hundred BSA/NIF/DDS resolutions — not
 # instant, and re-triggering on every editor hiccup would be annoying.
 #
-# Now routes through the real GamebryoObjectRegistry
+# Interior-only — no WRLD/LAND handling. exterior_viewer.gd is the world-cell
+# counterpart.
+#
+# Routes through the real GamebryoObjectRegistry
 # (phases/1/01-object-type-registry.md) instead of the ad hoc "any REFR with
 # a model" heuristic this started as — typed nodes (DoorNode/ContainerNode/
 # ...) show up correctly named in the Scene dock.
