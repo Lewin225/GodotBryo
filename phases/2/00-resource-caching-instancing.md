@@ -98,10 +98,14 @@ already duplicate work before caching, not just across repeat loads.
 
 ## What's deferred
 
-`MultiMeshInstance3D` batching was not attempted in this pass. Caching alone captures
-the decode/build-cost win measured above; instancing is about draw-call count, a
-separate concern, and grouping REFRs by `base_form_id` into `MultiMesh` buffers while
-keeping per-instance collision correct is a real design task on its own — deferred
-pending a decision on whether it's worth pursuing now or after seeing how far caching
-alone gets Phase 2's actual streaming/frame-rate goals.
+`MultiMeshInstance3D` batching was not attempted in this pass, and is deliberately
+deferred further than "later in Phase 2" — decided once caching's results were in.
+`MultiMesh` only applies to genuinely static, behaviorally-inert geometry; deciding
+*which* placed objects qualify (as opposed to anything that will eventually need
+per-instance state — activation, opening/closing, damage, scripted movement) requires
+comprehension of the object types this project doesn't have yet (most of Phase 1's
+placed objects still resolve through the generic `GamebryoVisual` structural fallback,
+not a type-aware factory — see `phases/1/01-object-type-registry.md`). Revisit once
+more of the visual/object-type breadth is actually implemented, not now while most
+objects are still an undifferentiated fallback shape.
 

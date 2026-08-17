@@ -179,8 +179,23 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		}
 
 		std::string tex;
-		nif.GetTextureSlot(shape, tex, 0); // slot 0: diffuse/base, via BSShaderTextureSet for FO3/NV
+		nif.GetTextureSlot(shape, tex, 0); // slot 0: diffuse/base
 		sub.texture_path = tex;
+		nif.GetTextureSlot(shape, tex, 1); // slot 1: normal + gloss(alpha)
+		sub.normal_texture_path = tex;
+		nif.GetTextureSlot(shape, tex, 2); // slot 2: glow/emissive
+		sub.glow_texture_path = tex;
+
+		if (nifly::NiAlphaProperty *alpha = nif.GetAlphaProperty(shape)) {
+			sub.has_alpha_property = true;
+			// Standard NIF NiAlphaProperty.flags bitfield (niftools spec,
+			// stable across NIF versions, not nifly-specific): bit 0 =
+			// alpha blend enable, bit 9 = alpha test enable. threshold is a
+			// raw 0..255 byte, normalized here to 0..1 for the Godot side.
+			sub.alpha_blend_enabled = (alpha->flags & 0x0001) != 0;
+			sub.alpha_test_enabled = (alpha->flags & 0x0200) != 0;
+			sub.alpha_threshold = static_cast<float>(alpha->threshold) / 255.0f;
+		}
 
 		flatten_transform(shape->GetTransformToParent(), sub);
 

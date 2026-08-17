@@ -176,25 +176,64 @@ func load_texture(tex_path: String) -> ImageTexture:
 	_texture_cache[tex_path] = tex
 	return tex
 
-## Same texture, same StandardMaterial3D — shared across every submesh that
-## uses it, not just the decoded texture. Godot Materials are Resources like
-## any other; many MeshInstance3D nodes referencing one Material is the
-## normal, supported pattern (this is what an imported glTF scene with
-## repeated materials does too).
-func _get_material(tex_path: String) -> StandardMaterial3D:
-	if tex_path == "":
+## Same texture set + alpha mode, same StandardMaterial3D — shared across
+## every submesh that uses it, not just the decoded textures. Godot
+## Materials are Resources like any other; many MeshInstance3D nodes
+## referencing one Material is the normal, supported pattern (this is what
+## an imported glTF scene with repeated materials does too).
+##
+## phases/2/01-material-pipeline.md: normal map (slot 1) and glow/emissive
+## (slot 2) wired in alongside diffuse, plus NiAlphaProperty's blend/test
+## mode — confirmed against real FO3/NV data before trusting the slot
+## convention (see that task's write-up). Bethesda's normal maps are
+## DirectX-convention (green channel down); Godot's StandardMaterial3D
+## expects OpenGL-convention (green channel up) like glTF. Not corrected
+## here — needs a visual check against a known normal-mapped object before
+## deciding whether a channel flip is actually needed, not assumed either
+## way. Slots 3+ (height/parallax, environment map/mask) are not extracted
+## at all yet (core-layer gap, not just unwired here — see nif_types.h).
+func _get_material(tex_path: String, normal_path: String, glow_path: String, alpha: Dictionary) -> StandardMaterial3D:
+	if tex_path == "" and normal_path == "" and glow_path == "" and not bool(alpha.get("has_alpha_property", false)):
 		return null
-	if _material_cache.has(tex_path):
+	var key := "%s|%s|%s|%s|%s|%.4f" % [tex_path, normal_path, glow_path,
+			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
+			float(alpha.get("threshold", 0.5))]
+	if _material_cache.has(key):
 		material_cache_hits += 1
-		return _material_cache[tex_path]
+		return _material_cache[key]
 	material_cache_misses += 1
-	var mat: StandardMaterial3D = null
-	var tex := load_texture(tex_path)
-	if tex != null:
-		mat = StandardMaterial3D.new()
-		mat.albedo_texture = tex
-	_material_cache[tex_path] = mat
-	return mat
+
+	var mat := StandardMaterial3D.new()
+	var have_content := false
+
+	var albedo := load_texture(tex_path)
+	if albedo != null:
+		mat.albedo_texture = albedo
+		have_content = true
+
+	var normal_tex := load_texture(normal_path)
+	if normal_tex != null:
+		mat.normal_enabled = true
+		mat.normal_texture = normal_tex
+		have_content = true
+
+	var glow_tex := load_texture(glow_path)
+	if glow_tex != null:
+		mat.emission_enabled = true
+		mat.emission_texture = glow_tex
+		have_content = true
+
+	if bool(alpha.get("blend_enabled", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		have_content = true
+	elif bool(alpha.get("test_enabled", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		mat.alpha_scissor_threshold = float(alpha.get("threshold", 0.5))
+		have_content = true
+
+	var result := mat if have_content else null
+	_material_cache[key] = result
+	return result
 
 func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	var pos_flat := nif.get_positions(index)
@@ -257,7 +296,8 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String) 
 		mi.name = "sub%d" % i
 		mi.mesh = mesh
 		mi.transform = nif.get_transform(i)
-		var mat := _get_material(nif.get_texture_path(i))
+		var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
+				nif.get_glow_texture_path(i), nif.get_alpha_info(i))
 		if mat != null:
 			mi.material_override = mat
 		parent.add_child(mi)

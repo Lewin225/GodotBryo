@@ -129,9 +129,40 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 		return null # no mesh and no light data resolved — nothing to place
 	return _finalize(node, placement)
 
+## Node name + editor description, for every placed object regardless of
+## whether it got a dedicated typed class (DoorNode, ...) or fell through to
+## the generic structural fallback (GamebryoVisual — most base records that
+## haven't gotten a dedicated factory yet, per
+## phases/1/01-object-type-registry.md). Most base records have no
+## EditorID at all (only a minority are human-authored with one in the
+## CK) — falling back to a bare "REFR_<formid>" loses the one identifying
+## thing left, the record type, so the fallback name includes base_type
+## too. The editor_description carries the full picture (base type, both
+## FormIDs in hex, resolved model path) so it's visible in the Godot
+## Inspector even for objects whose class doesn't yet expose any of this as
+## real fields — doesn't require the type to be implemented to stay
+## identifiable.
 func _finalize(node: Node3D, placement: Dictionary) -> Node3D:
 	var editor_id: String = placement.get("editor_id", "")
-	node.name = editor_id if editor_id != "" else "REFR_%d" % int(placement.get("refr_form_id", 0))
+	var base_type: String = placement.get("base_type", "")
+	var refr_form_id := int(placement.get("refr_form_id", 0))
+	var base_form_id := int(placement.get("base_form_id", 0))
+	var model: String = placement.get("model", "")
+
+	if editor_id != "":
+		node.name = editor_id
+	else:
+		node.name = "%s_%X" % [base_type if base_type != "" else "REFR", refr_form_id]
+
+	var desc_lines := PackedStringArray()
+	desc_lines.append("base_type: %s" % (base_type if base_type != "" else "(unknown)"))
+	desc_lines.append("base_editor_id: %s" % (editor_id if editor_id != "" else "(none)"))
+	desc_lines.append("base_form_id: 0x%X" % base_form_id)
+	desc_lines.append("refr_form_id: 0x%X" % refr_form_id)
+	if model != "":
+		desc_lines.append("model: %s" % model)
+	node.editor_description = "\n".join(desc_lines)
+
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)

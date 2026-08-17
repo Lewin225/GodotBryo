@@ -19,10 +19,29 @@ struct SubMesh {
 	std::vector<float> uvs; // uv, length == vertex_count * 2, or empty if the shape has none
 	std::vector<uint32_t> indices; // triangle list, length == triangle_count * 3
 
-	// Diffuse/base texture path as stored in the NIF (BSA-relative, e.g.
+	// Texture paths as stored in the NIF (BSA-relative, e.g.
 	// "textures\architecture\ncr\...dds"), not yet resolved through the BSA
 	// reader (0.1) — that's the integration task in 0.5. Empty if none.
-	std::string texture_path;
+	//
+	// Slot indices follow BSShaderTextureSet's flat 13-slot array
+	// (nifly's Shaders.hpp — nifly itself doesn't name the slots, this is
+	// the community-documented FO3/NV convention used by nifskope/niftools:
+	// 0=diffuse, 1=normal+gloss(alpha), 2=glow/emissive). Only the first
+	// three are extracted (phases/2/01-material-pipeline.md) — slots 3+
+	// (height/parallax, environment map/mask) are rare in base-game FO3/NV
+	// content and not wired into rendering yet.
+	std::string texture_path; // slot 0: diffuse/base
+	std::string normal_texture_path; // slot 1: normal map (alpha channel is specular/gloss)
+	std::string glow_texture_path; // slot 2: glow/emissive
+
+	// NiAlphaProperty, if present on this shape — controls whether the
+	// render mesh should be alpha-blended/alpha-tested rather than treated
+	// as fully opaque (foliage, fences, glass, hair). threshold is already
+	// normalized to 0..1 (raw NIF value is a 0..255 byte).
+	bool has_alpha_property = false;
+	bool alpha_blend_enabled = false;
+	bool alpha_test_enabled = false;
+	float alpha_threshold = 0.5f;
 
 	// Local transform relative to the NIF's root (or parent shape node),
 	// for meshes composed of multiple sub-shapes. Rotation is row-major 3x3

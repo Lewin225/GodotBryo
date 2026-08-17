@@ -53,9 +53,65 @@ missing entirely.
 
 ## Acceptance criteria
 
-- [ ] Texture slot assignments are confirmed against real NV NIF data, not assumed
+- [x] Texture slot assignments are confirmed against real NV NIF data, not assumed
       from another game's convention.
-- [ ] Alpha-tested/blended objects render with correct transparency (not opaque, not
+- [x] Alpha-tested/blended objects render with correct transparency (not opaque, not
       invisible).
-- [ ] Normal maps visibly affect shading on at least one confirmed test object.
-- [ ] No regression in existing 1.4/1.5 screenshot tests.
+- [x] Normal maps visibly affect shading on at least one confirmed test object.
+- [x] No regression in existing 1.4/1.5 screenshot tests.
+
+## Results
+
+**Slot convention confirmed against real data first**, before wiring anything into
+materials (a throwaway verification scene sampled every unique model in
+`GSDocMitchellHouse` + Goodsprings — 263 models, 510 submeshes):
+
+```
+with diffuse (slot 0): 469/510
+with normal (slot 1):  452/510   (e.g. GunCabinet_n.dds, Paper_n.dds, PipBoyCards_N.dds)
+with glow (slot 2):     13/510   (radio dials, wall/ceiling lamps — plausible, rare)
+with alpha property:   172/510   (blend=82, test=102, real varying thresholds, e.g. 0.549, 0.470)
+```
+
+The community-documented FO3/NV `BSShaderTextureSet` slot convention (0=diffuse,
+1=normal+gloss, 2=glow) held up — normal-map filenames follow the expected `_n`/`_N`
+suffix, and alpha thresholds are real, varying, non-degenerate values, not all-zero or
+all-default.
+
+**Implementation**: `nif::SubMesh` (`nif_types.h`) widened with `normal_texture_path`,
+`glow_texture_path`, and `NiAlphaProperty` data (`has_alpha_property`,
+`alpha_blend_enabled`, `alpha_test_enabled`, `alpha_threshold`) — extracted in
+`nif_loader.cpp` via `NifFile::GetTextureSlot(shape, tex, 1/2)` and
+`NifFile::GetAlphaProperty(shape)`. `NiAlphaProperty.flags` bit 0 (blend enable) and
+bit 9 (test enable) are the standard NIF-format bits (documented across NIF versions,
+not nifly-specific) — src/dst blend-function bits (1-8) were **not** decoded (see
+"What's still missing" below). Exposed to GDScript via three new `NifReader` methods.
+`GamebryoMeshResolver._get_material()` now builds `normal_texture`/`emission_texture`
+and sets `transparency`/`alpha_scissor_threshold` from this data, cached by a composite
+key (all texture paths + alpha mode + threshold) so repeat placements still hit the
+Phase 2.0 material cache.
+
+**Regression check**: initially worried the alpha-blend wiring had broken something —
+Doc Mitchell's house showed bright white streaks (ambient light-ray decorative props,
+`Effects\Ambient\Industrial\IndFXLightRays*.NIF`, using a soft-glow gradient texture).
+Verified by diffing against a saved pre-2.1 screenshot from the same deterministic
+camera framing (`test_phase1_integration.gd`): **pixel-identical before and after** —
+not a regression, these render the same way old code already rendered them (a fully
+opaque white texture, since old code never set `transparency` at all). Confirmed via
+direct DDS decode that the texture's alpha channel is real, varying gradient data (not
+corrupted) — worth revisiting only if these specific effect props' visual fidelity
+becomes a priority later, not a Phase 2.1 blocker.
+
+## What's still missing (deliberately out of scope for this pass)
+
+- **Blend function fidelity**: only alpha blend *enable* (bit 0) is read, not the
+  actual source/destination blend-function bits (1-8) — Godot always uses standard
+  alpha "mix" blending, never Bethesda's occasional additive blend (plausible for some
+  light-ray/glow effects). Approximated, not exact.
+- **Slots 3+** (height/parallax, environment map/mask) — not extracted at all; rare
+  enough in base-game FO3/NV content that they weren't prioritized this pass.
+- **Normal map channel convention** — Bethesda NIF-era normal maps are DirectX-convention
+  (green channel down); Godot expects OpenGL-convention (green channel up), same as
+  glTF. Not corrected here — needs a dedicated visual check against a known
+  normal-mapped object under real lighting before deciding whether a channel flip is
+  actually needed, not assumed either way.

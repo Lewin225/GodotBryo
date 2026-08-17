@@ -36,6 +36,15 @@ public:
 	PackedFloat32Array get_uvs(int index) const;
 	PackedInt32Array get_indices(int index) const;
 	String get_texture_path(int index) const;
+	// phases/2/01-material-pipeline.md: additional BSShaderTextureSet slots
+	// beyond slot 0 (diffuse) — see nif_types.h's SubMesh comment for the
+	// slot-index convention. Empty string if the shape has none.
+	String get_normal_texture_path(int index) const;
+	String get_glow_texture_path(int index) const;
+	// { "has_alpha_property": bool, "blend_enabled": bool, "test_enabled":
+	// bool, "threshold": float (0..1) } — from the shape's NiAlphaProperty,
+	// or has_alpha_property=false if it has none (treat as fully opaque).
+	Dictionary get_alpha_info(int index) const;
 	Transform3D get_transform(int index) const;
 
 	// Writes a self-contained .gltf for the currently loaded mesh (see
