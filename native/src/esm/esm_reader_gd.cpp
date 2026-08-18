@@ -44,6 +44,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
 	ClassDB::bind_method(D_METHOD("get_cell_child_type_counts", "cell_form_id"), &EsmReader::get_cell_child_type_counts);
+	ClassDB::bind_method(D_METHOD("resolve_refr_xtel", "refr_form_id"), &EsmReader::resolve_refr_xtel);
 	ClassDB::bind_method(D_METHOD("get_door_destination", "door_refr_form_id"), &EsmReader::get_door_destination);
 	ClassDB::bind_method(D_METHOD("resolve_ltex_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_texture_path);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
@@ -362,13 +363,13 @@ Dictionary EsmReader::get_cell_child_type_counts(int64_t cell_form_id) const {
 	return out;
 }
 
-Dictionary EsmReader::get_door_destination(int64_t door_refr_form_id) const {
+Dictionary EsmReader::resolve_refr_xtel(int64_t refr_form_id) const {
 	Dictionary out;
 	if (!opened_) {
 		return out;
 	}
 	try {
-		auto dest = file_.get_door_destination(static_cast<uint32_t>(door_refr_form_id));
+		auto dest = file_.resolve_refr_xtel(static_cast<uint32_t>(refr_form_id));
 		if (!dest) {
 			return out;
 		}

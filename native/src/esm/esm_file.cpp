@@ -139,8 +139,8 @@ std::optional<RecordInfo> EsmFile::find_cell_containing_ref(uint32_t refr_form_i
 	return std::nullopt;
 }
 
-std::optional<DoorDestination> EsmFile::get_door_destination(uint32_t door_refr_form_id) const {
-	auto refr = find_record_by_form_id(door_refr_form_id);
+std::optional<DoorDestination> EsmFile::resolve_refr_xtel(uint32_t refr_form_id) const {
+	auto refr = find_record_by_form_id(refr_form_id);
 	if (!refr || refr->type != "REFR") {
 		return std::nullopt;
 	}

@@ -61,10 +61,13 @@ The harder part (REFR → containing CELL) resolved as a **positional-bisection 
 (`EsmFile::find_owner_of()`/`find_cell_containing_ref()`): every `GRUP` header carries
 its own byte size, so the walk only ever descends into whichever nested group's byte
 range actually contains the target record — no content scanning, cheap regardless of
-worldspace size or how many sibling cells exist at each level. Combined into
-`EsmFile::get_door_destination(door_refr_form_id)` / `EsmReader.get_door_destination()`,
-which a caller can use knowing only the door's own REFR FormID (no need to already know
-its home cell).
+worldspace size or how many sibling cells exist at each level. Combined into `EsmFile::resolve_refr_xtel(refr_form_id)` /
+`EsmReader.resolve_refr_xtel()` — deliberately named for what it actually does (resolve
+any REFR's `XTEL`, not DOOR-specific; nothing here checks `base_type`) rather than
+`get_door_destination`, after confirming that name was misleadingly narrow —
+`get_door_destination()` still exists as a thin same-signature wrapper, since that's the
+name a door-interaction call site actually reaches for. Either way, a caller only needs
+the REFR's own FormID (no need to already know its home cell).
 
 **Verified against real data three ways, not just unit-tested**: (1) confirmed
 `GSDocMitchellDoor`'s destination position/rotation match the raw `XTEL` bytes
