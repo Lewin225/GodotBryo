@@ -104,9 +104,13 @@ public:
 
 	// phases/2/07-runtime-cell-loader.md: { "dest_cell_form_id": int,
 	// "dest_position": Vector3, "dest_rotation": Vector3 }, or {} if
-	// door_refr_form_id isn't a REFR, has no XTEL (non-teleporting door —
-	// valid, not an error), or its destination doesn't resolve to a CELL.
-	Dictionary get_door_destination(int64_t door_refr_form_id) const;
+	// refr_form_id isn't a REFR, has no XTEL (a real, valid case — most
+	// REFRs don't teleport), or its destination doesn't resolve to a CELL.
+	// Generic — not restricted to DOOR placements, XTEL is a REFR-level
+	// subrecord. get_door_destination() below is the same thing under the
+	// name a door-interaction call site actually reaches for.
+	Dictionary resolve_refr_xtel(int64_t refr_form_id) const;
+	Dictionary get_door_destination(int64_t door_refr_form_id) const { return resolve_refr_xtel(door_refr_form_id); }
 
 	// First record whose compression flag is set, with its data actually
 	// decompressed (proves the zlib path works, not just that the flag

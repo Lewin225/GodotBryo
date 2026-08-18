@@ -75,15 +75,25 @@ public:
 	// level.
 	std::optional<RecordInfo> find_cell_containing_ref(uint32_t refr_form_id) const;
 
-	// Resolves a door's own REFR (by FormID — the caller doesn't need to
+	// Resolves any REFR's own XTEL (by FormID — the caller doesn't need to
 	// already know which cell it lives in) to its teleport destination:
 	// which CELL it leads to, plus the landing position/rotation. Reads the
-	// door REFR's own XTEL directly rather than requiring the caller to
-	// already have called get_cell_references() on its home cell.
-	// std::nullopt if the FormID isn't a REFR, has no XTEL (a non-teleporting
-	// door — a real, valid case), or its XTEL destination doesn't resolve to
-	// a CELL.
-	std::optional<DoorDestination> get_door_destination(uint32_t door_refr_form_id) const;
+	// REFR's own XTEL directly rather than requiring the caller to already
+	// have called get_cell_references() on its home cell. Not restricted to
+	// DOOR placements — XTEL is a REFR-level subrecord and this makes no
+	// assumption about the REFR's base type; get_door_destination() below is
+	// the DOOR-specific name callers actually reach for.
+	// std::nullopt if the FormID isn't a REFR, has no XTEL (a real, valid
+	// case — most REFRs don't teleport), or its XTEL destination doesn't
+	// resolve to a CELL.
+	std::optional<DoorDestination> resolve_refr_xtel(uint32_t refr_form_id) const;
+
+	// DOOR-specific convenience name for resolve_refr_xtel() — same thing,
+	// clearer at a door-interaction call site. See resolve_refr_xtel() for
+	// the actual (generic) implementation and doc comment.
+	std::optional<DoorDestination> get_door_destination(uint32_t door_refr_form_id) const {
+		return resolve_refr_xtel(door_refr_form_id);
+	}
 
 	// Collects every record inside `parent`'s immediately-following child
 	// GRUP (if any — per TES4-family convention, a record's child GRUP
