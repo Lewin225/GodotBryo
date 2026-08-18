@@ -102,6 +102,12 @@ public:
 	// "ACHR/ACRE/etc — actors, not handled in Phase 1" skip.
 	Dictionary get_cell_child_type_counts(int64_t cell_form_id) const;
 
+	// phases/2/07-runtime-cell-loader.md: { "dest_cell_form_id": int,
+	// "dest_position": Vector3, "dest_rotation": Vector3 }, or {} if
+	// door_refr_form_id isn't a REFR, has no XTEL (non-teleporting door —
+	// valid, not an error), or its destination doesn't resolve to a CELL.
+	Dictionary get_door_destination(int64_t door_refr_form_id) const;
+
 	// First record whose compression flag is set, with its data actually
 	// decompressed (proves the zlib path works, not just that the flag
 	// parses): { "type": String, "form_id": int, "compressed_size": int,

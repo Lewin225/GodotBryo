@@ -18,6 +18,12 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["position"] = Vector3(pl.position[0], pl.position[1], pl.position[2]);
 	d["rotation"] = Vector3(pl.rotation[0], pl.rotation[1], pl.rotation[2]);
 	d["scale"] = pl.scale;
+	d["has_xtel"] = pl.has_xtel;
+	if (pl.has_xtel) {
+		d["dest_refr_form_id"] = static_cast<int64_t>(pl.dest_refr_form_id);
+		d["dest_position"] = Vector3(pl.dest_position[0], pl.dest_position[1], pl.dest_position[2]);
+		d["dest_rotation"] = Vector3(pl.dest_rotation[0], pl.dest_rotation[1], pl.dest_rotation[2]);
+	}
 	return d;
 }
 } // namespace
@@ -38,6 +44,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
 	ClassDB::bind_method(D_METHOD("get_cell_child_type_counts", "cell_form_id"), &EsmReader::get_cell_child_type_counts);
+	ClassDB::bind_method(D_METHOD("get_door_destination", "door_refr_form_id"), &EsmReader::get_door_destination);
 	ClassDB::bind_method(D_METHOD("resolve_ltex_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_texture_path);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
 }
@@ -349,6 +356,25 @@ Dictionary EsmReader::get_cell_child_type_counts(int64_t cell_form_id) const {
 			String type = String(c.type.c_str());
 			out[type] = int64_t(out.get(type, 0)) + 1;
 		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_door_destination(int64_t door_refr_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto dest = file_.get_door_destination(static_cast<uint32_t>(door_refr_form_id));
+		if (!dest) {
+			return out;
+		}
+		out["dest_cell_form_id"] = static_cast<int64_t>(dest->dest_cell_form_id);
+		out["dest_position"] = Vector3(dest->dest_position[0], dest->dest_position[1], dest->dest_position[2]);
+		out["dest_rotation"] = Vector3(dest->dest_rotation[0], dest->dest_rotation[1], dest->dest_rotation[2]);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

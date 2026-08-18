@@ -80,6 +80,26 @@ struct ReferencePlacement {
 	float position[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;
+
+	// XTEL, present on teleporting doors (phases/2/07-runtime-cell-loader.md).
+	// Confirmed against real data: 32 bytes — dest REFR FormID (4), dest
+	// position (12, Gamebryo units, same as DATA's own position), dest
+	// rotation (12, radians), flags (4, currently unused/unread). A door
+	// that just swings open (no teleport) has no XTEL — has_xtel=false is a
+	// real, valid case, not an error.
+	bool has_xtel = false;
+	uint32_t dest_refr_form_id = 0;
+	float dest_position[3] = { 0.0f, 0.0f, 0.0f };
+	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
+};
+
+// phases/2/07-runtime-cell-loader.md: a door REFR's resolved teleport
+// destination — the CELL it leads to (not just the destination REFR's
+// FormID) plus the landing transform.
+struct DoorDestination {
+	uint32_t dest_cell_form_id = 0;
+	float dest_position[3] = { 0.0f, 0.0f, 0.0f };
+	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
 };
 
 // LIGH's DATA subrecord — confirmed layout (phases/1/03-light-sources.md):

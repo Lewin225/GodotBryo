@@ -167,7 +167,7 @@ func _ready() -> void:
 		check(fallback_node != null and not (fallback_node is DoorNode) and fallback_node is GamebryoVisual,
 				"fallback result is a plain GamebryoVisual, not DoorNode")
 
-		registry.register("DOOR", func(p, r): return registry._instantiate_visual(DoorNode, p, r))
+		registry.register("DOOR", func(p, r): return registry._build_door(p, r))
 		var restored_node := registry.build(door_placement)
 		check(restored_node is DoorNode, "DOOR resolves to DoorNode again after re-registering")
 
