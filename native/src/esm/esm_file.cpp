@@ -80,6 +80,102 @@ void EsmFile::walk(long start, long end, const std::function<void(const RecordIn
 	}
 }
 
+std::optional<RecordInfo> EsmFile::find_owner_of(long start, long end, long target_header_offset) const {
+	long pos = start;
+	bool have_last = false;
+	RecordInfo last_record;
+
+	while (pos < end) {
+		std::vector<uint8_t> hdr = read_at(pos, kHeaderSize);
+		util::ByteReader hr(hdr.data(), hdr.size());
+		std::string tag(reinterpret_cast<const char *>(hr.read_bytes(4).data()), 4);
+
+		if (tag == "GRUP") {
+			uint32_t group_size = hr.read_u32();
+			hr.read_u32(); // label
+			hr.read_u32(); // group_type
+			hr.read_u32(); // timestamp
+			hr.read_u32(); // unknown/VCS
+
+			long content_start = pos + static_cast<long>(kHeaderSize);
+			long content_end = pos + static_cast<long>(group_size);
+			if (target_header_offset >= content_start && target_header_offset < content_end) {
+				if (auto deeper = find_owner_of(content_start, content_end, target_header_offset)) {
+					return deeper;
+				}
+				// target is a direct child of this GRUP — the owner is
+				// whatever record's bytes immediately preceded it.
+				return have_last ? std::optional<RecordInfo>(last_record) : std::nullopt;
+			}
+			pos = content_end;
+		} else {
+			RecordInfo info;
+			info.type = tag;
+			info.data_size = hr.read_u32();
+			info.flags = hr.read_u32();
+			info.form_id = hr.read_u32();
+			hr.read_u32(); // version control info — unused
+			hr.read_u32(); // internal form version + unknown — unused
+			info.data_offset = pos + static_cast<long>(kHeaderSize);
+
+			last_record = info;
+			have_last = true;
+			pos = info.data_offset + static_cast<long>(info.data_size);
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<RecordInfo> EsmFile::find_cell_containing_ref(uint32_t refr_form_id) const {
+	auto target = find_record_by_form_id(refr_form_id);
+	if (!target) {
+		return std::nullopt;
+	}
+	long target_header_offset = target->data_offset - static_cast<long>(kHeaderSize);
+	auto owner = find_owner_of(0, file_size_, target_header_offset);
+	if (owner && owner->type == "CELL") {
+		return owner;
+	}
+	return std::nullopt;
+}
+
+std::optional<DoorDestination> EsmFile::get_door_destination(uint32_t door_refr_form_id) const {
+	auto refr = find_record_by_form_id(door_refr_form_id);
+	if (!refr || refr->type != "REFR") {
+		return std::nullopt;
+	}
+
+	std::vector<uint8_t> data = read_record_data(*refr);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	for (const auto &s : subs) {
+		if (s.type != "XTEL" || s.size < 32) {
+			continue;
+		}
+		util::ByteReader sr(s.data, s.size);
+		uint32_t dest_refr_form_id = sr.read_u32();
+		float dest_position[3];
+		dest_position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+		dest_position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+		dest_position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+		float dest_rotation[3];
+		dest_rotation[0] = read_f32(sr);
+		dest_rotation[1] = read_f32(sr);
+		dest_rotation[2] = read_f32(sr);
+
+		auto dest_cell = find_cell_containing_ref(dest_refr_form_id);
+		if (!dest_cell) {
+			return std::nullopt;
+		}
+		DoorDestination dest;
+		dest.dest_cell_form_id = dest_cell->form_id;
+		std::memcpy(dest.dest_position, dest_position, sizeof(dest_position));
+		std::memcpy(dest.dest_rotation, dest_rotation, sizeof(dest_rotation));
+		return dest;
+	}
+	return std::nullopt; // no XTEL — a non-teleporting door
+}
+
 std::vector<uint8_t> EsmFile::read_record_data(const RecordInfo &record) const {
 	std::vector<uint8_t> raw = read_at(record.data_offset, record.data_size);
 	if (!record.is_compressed()) {
@@ -275,6 +371,10 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		float rotation[3] = { 0.0f, 0.0f, 0.0f };
 		float scale = 1.0f;
 		bool has_data = false;
+		bool has_xtel = false;
+		uint32_t dest_refr_form_id = 0;
+		float dest_position[3] = { 0.0f, 0.0f, 0.0f };
+		float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
 
 		for (const auto &s : subs) {
 			if (s.type == "NAME" && s.size >= 4) {
@@ -293,6 +393,18 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 			} else if (s.type == "XSCL" && s.size >= 4) {
 				util::ByteReader sr(s.data, s.size);
 				scale = read_f32(sr);
+			} else if (s.type == "XTEL" && s.size >= 32) {
+				util::ByteReader sr(s.data, s.size);
+				dest_refr_form_id = sr.read_u32();
+				// Same convention as DATA: position in Gamebryo units -> meters,
+				// rotation left in radians.
+				dest_position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				dest_position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				dest_position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				dest_rotation[0] = read_f32(sr);
+				dest_rotation[1] = read_f32(sr);
+				dest_rotation[2] = read_f32(sr);
+				has_xtel = true;
 			}
 		}
 
@@ -306,6 +418,10 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		std::memcpy(pl.position, position, sizeof(position));
 		std::memcpy(pl.rotation, rotation, sizeof(rotation));
 		pl.scale = scale;
+		pl.has_xtel = has_xtel;
+		pl.dest_refr_form_id = dest_refr_form_id;
+		std::memcpy(pl.dest_position, dest_position, sizeof(dest_position));
+		std::memcpy(pl.dest_rotation, dest_rotation, sizeof(dest_rotation));
 
 		if (auto base = find_record_by_form_id(base_form_id)) {
 			pl.base_type = base->type;

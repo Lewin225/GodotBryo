@@ -64,6 +64,27 @@ public:
 	std::optional<RecordInfo> find_cell_by_editor_id(const std::string &editor_id) const;
 	std::optional<RecordInfo> find_cell_by_form_id(uint32_t form_id) const;
 
+	// phases/2/07-runtime-cell-loader.md: finds the CELL that directly
+	// contains the given REFR (e.g. a door's XTEL destination REFR).
+	// std::nullopt if the REFR doesn't exist, or its immediate structural
+	// parent isn't a CELL. Every GRUP header carries its own byte size, so
+	// this walks toward the target by size-range containment (only
+	// descending into whichever nested GRUP's byte range actually contains
+	// the target) rather than scanning file content — cheap regardless of
+	// how large the file or how many sibling records/cells exist at each
+	// level.
+	std::optional<RecordInfo> find_cell_containing_ref(uint32_t refr_form_id) const;
+
+	// Resolves a door's own REFR (by FormID — the caller doesn't need to
+	// already know which cell it lives in) to its teleport destination:
+	// which CELL it leads to, plus the landing position/rotation. Reads the
+	// door REFR's own XTEL directly rather than requiring the caller to
+	// already have called get_cell_references() on its home cell.
+	// std::nullopt if the FormID isn't a REFR, has no XTEL (a non-teleporting
+	// door — a real, valid case), or its XTEL destination doesn't resolve to
+	// a CELL.
+	std::optional<DoorDestination> get_door_destination(uint32_t door_refr_form_id) const;
+
 	// Collects every record inside `parent`'s immediately-following child
 	// GRUP (if any — per TES4-family convention, a record's child GRUP
 	// comes right after its own bytes), recursing into any nested
@@ -134,6 +155,13 @@ private:
 	// sequence of sibling GRUPs/records (either the whole file, or one
 	// GRUP's inner content).
 	void walk(long start, long end, const std::function<void(const RecordInfo &)> &callback) const;
+
+	// Recursive helper for find_cell_containing_ref(): within [start, end),
+	// finds the record immediately preceding whichever nested GRUP's byte
+	// range contains target_header_offset (the target record's own header
+	// start, i.e. RecordInfo::data_offset - kHeaderSize). std::nullopt if
+	// target_header_offset isn't inside any GRUP within this range.
+	std::optional<RecordInfo> find_owner_of(long start, long end, long target_header_offset) const;
 };
 
 } // namespace esm

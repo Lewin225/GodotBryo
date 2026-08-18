@@ -42,7 +42,7 @@ func build(placement: Dictionary) -> Node3D:
 	return null
 
 func _register_defaults() -> void:
-	register("DOOR", func(p, r): return _instantiate_visual(DoorNode, p, r))
+	register("DOOR", func(p, r): return _build_door(p, r))
 	register("CONT", func(p, r): return _instantiate_visual(ContainerNode, p, r))
 	register("ACTI", func(p, r): return _instantiate_visual(ActivatorNode, p, r))
 	register("FURN", func(p, r): return _instantiate_visual(FurnitureNode, p, r))
@@ -66,6 +66,15 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	mesh_resolver.populate_mesh_children(node, nif, model)
 	mesh_resolver.populate_collision_children(node, nif, model)
 	return _finalize(node, placement)
+
+## DOOR: same shape as any other _instantiate_visual type, plus its teleport
+## destination (if any) resolved once here — phases/2/07-runtime-cell-loader.md
+## — rather than looked up lazily on interaction.
+func _build_door(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var node := _instantiate_visual(DoorNode, placement, mesh_resolver)
+	if node is DoorNode:
+		node.resolve_destination(esm)
+	return node
 
 ## SCOL bundles multiple STAT placements inside its own record body (not via
 ## child REFRs) — see esm::EsmFile::get_scol_parts(). Each part resolves

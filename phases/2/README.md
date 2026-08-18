@@ -27,6 +27,7 @@ task files.
 | 2.3 | REFR rotation composition order fix | [03-refr-rotation-order.md](03-refr-rotation-order.md) |
 | 2.4 | Articulated prop transform flattening fix | [04-articulated-prop-transforms.md](04-articulated-prop-transforms.md) |
 | 2.6 | Vertex color + unlit shading fix | [06-vertex-color-transparency.md](06-vertex-color-transparency.md) |
+| 2.7 | Runtime cell loader (door-triggered, interior/exterior unified) | [07-runtime-cell-loader.md](07-runtime-cell-loader.md) |
 
 ## Open issues (parked, not yet investigated)
 
