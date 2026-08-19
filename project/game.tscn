@@ -4,26 +4,8 @@
 [ext_resource type="PackedScene" uid="uid://cc1m2a1obsyn4" path="res://addons/fpc/character.tscn" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
-
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_4h0r7"]
-
-[sub_resource type="Sky" id="Sky_p6biy"]
-sky_material = SubResource("ProceduralSkyMaterial_4h0r7")
-
-[sub_resource type="Environment" id="Environment_1"]
-background_mode = 2
-background_color = Color(0.5, 0.6, 0.75, 1)
-sky = SubResource("Sky_p6biy")
-ambient_light_source = 3
-ambient_light_energy = 0.8
-tonemap_mode = 2
-ssr_enabled = true
-ssao_enabled = true
-ssil_enabled = true
-glow_enabled = true
-volumetric_fog_density = 0.0155
-adjustment_enabled = true
-adjustment_contrast = 1.035
+[ext_resource type="Environment" path="res://exterior_environment.tres" id="5_exterior_env"]
+[ext_resource type="Environment" path="res://interior_environment.tres" id="6_interior_env"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kp17n"]
 albedo_color = Color(0.909804, 0.596078, 0, 1)
@@ -53,7 +35,7 @@ light_energy = 0.355
 shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
-environment = SubResource("Environment_1")
+environment = ExtResource("5_exterior_env")
 
 [node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_e2o6t")]
 default_reticle = "uid://y6etiws4d5gs"
