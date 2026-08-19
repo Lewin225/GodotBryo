@@ -169,8 +169,30 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	_set_exterior_environment(true)
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
 	reposition_player(spawn["position"], spawn["rotation"])
+
+	# Freeze the player for the duration of the initial streaming catch-up --
+	# without this, gravity keeps applying every physics frame while the
+	# destination's own terrain/collision is still streaming in behind the
+	# scenes, and the player falls through the world before it's ready.
+	# set_physics_process(false) stops the FPC addon's own gravity/movement
+	# processing entirely (it's all driven from CharacterBody3D's own
+	# _physics_process()), not just gravity specifically -- also freezes
+	# input, which is fine/expected here (matches the "release the player
+	# once streaming_settled fires" design this signal was built for).
+	var player := _find_character_body(self)
+	if player != null:
+		player.set_physics_process(false)
+		if "velocity" in player:
+			player.velocity = Vector3.ZERO
+
 	world_streamer.activate(wrld_form_id)
 	await world_streamer.streaming_settled # lets a future loading-screen UI know when it's safe to release the player -- WorldStreamer itself has no idea a screen exists
+
+	if player != null:
+		if "velocity" in player:
+			player.velocity = Vector3.ZERO # discard whatever residual state accumulated, if any
+		player.set_physics_process(true)
+
 	var cell_form_id := world_streamer.get_current_cell_form_id()
 	if cell_form_id != 0:
 		_update_cell_hud(cell_form_id)
