@@ -136,6 +136,12 @@ public:
 	// streaming optimization, not needed for one hardcoded cell.
 	std::optional<RecordInfo> find_exterior_cell(uint32_t wrld_form_id, int32_t x, int32_t y) const;
 
+	// phases/2/07-runtime-cell-loader.md: the reverse of find_exterior_cell()
+	// — given a CELL's own FormID, reads its XCLC grid coordinate directly.
+	// std::nullopt if the FormID isn't a CELL, or is a CELL with no XCLC (an
+	// interior cell — a real, valid case, not an error).
+	std::optional<ExteriorCellGrid> get_exterior_cell_grid(uint32_t cell_form_id) const;
+
 	// Reads a LAND record's heightmap + per-quadrant base texture. See
 	// LandData's comment in esm_types.h for what is and isn't parsed.
 	std::optional<LandData> get_land_data(const RecordInfo &land) const;

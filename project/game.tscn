@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://o1xfly76gv3"]
+
+[ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://cc1m2a1obsyn4" path="res://addons/fpc/character.tscn" id="2_e2o6t"]
+[ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
+
+[sub_resource type="Environment" id="Environment_1"]
+background_color = Color(0.5, 0.6, 0.75, 1)
+ambient_light_energy = 0.8
+tonemap_mode = 2
+ssr_enabled = true
+ssao_enabled = true
+ssil_enabled = true
+glow_enabled = true
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0155
+
+[node name="Game" type="Node3D" unique_id=215906396]
+script = ExtResource("1")
+
+[node name="CellLoader" type="Node3D" parent="." unique_id=237117943]
+script = ExtResource("3_cellloader")
+cell_editor_id = "GSDocMitchellHouse"
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
+transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
+visible = false
+light_energy = 1.3
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
+environment = SubResource("Environment_1")
+
+[node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_e2o6t")]
+controls = {
+&"BACKWARD": "backward",
+&"CROUCH": "crouch",
+&"FORWARD": "forward",
+&"JUMP": "jump",
+&"LEFT": "left",
+&"PAUSE": "ui_cancel",
+&"RIGHT": "right",
+&"SPRINT": "sprint"
+}
