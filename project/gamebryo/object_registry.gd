@@ -75,7 +75,7 @@ func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
 	var nif := resolver.load_nif(model)
 	if nif == null or nif.get_submesh_count() == 0:
 		return false
-	var geometry: Dictionary = resolver.get_direct_geometry_entries(nif, model)
+	var geometry: Dictionary = resolver.resolve_geometry_entries(nif, model)
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
@@ -105,8 +105,9 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	if nif == null or nif.get_submesh_count() == 0:
 		return null
 	var node = cls.new()
-	mesh_resolver.populate_mesh_children(node, nif, model)
-	mesh_resolver.populate_collision_children(node, nif, model)
+	var geometry := mesh_resolver.resolve_geometry_entries(nif, model)
+	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
+	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
 
 ## DOOR: same shape as any other _instantiate_visual type, plus its teleport
@@ -155,8 +156,9 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 	if model != "":
 		var nif := mesh_resolver.load_nif(model)
 		if nif != null and nif.get_submesh_count() > 0:
-			mesh_resolver.populate_mesh_children(node, nif, model)
-			mesh_resolver.populate_collision_children(node, nif, model)
+			var geometry := mesh_resolver.resolve_geometry_entries(nif, model)
+			mesh_resolver.populate_mesh_children(node, nif, model, geometry)
+			mesh_resolver.populate_collision_children(node, nif, model, geometry)
 
 	var light_data: Dictionary = esm.get_light_data(int(placement.get("base_form_id", 0)))
 	if not light_data.is_empty():

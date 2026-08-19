@@ -306,26 +306,24 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 ## `model_path` is the same string passed to load_nif() for this `nif` —
 ## required (not derived from `nif` itself) so the per-submesh ArrayMesh can
 ## be cached the same way load_nif() caches the parsed NIF.
-func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String) -> void:
-	for i in range(nif.get_submesh_count()):
-		var mesh_key := "%s#%d" % [model_path, i]
-		var mesh: ArrayMesh
-		if _mesh_cache.has(mesh_key):
-			mesh_cache_hits += 1
-			mesh = _mesh_cache[mesh_key]
-		else:
-			mesh_cache_misses += 1
-			mesh = build_submesh(nif, i)
-			_mesh_cache[mesh_key] = mesh
+##
+## `geometry` (2.10 step 1, optional): a pre-resolved result from
+## resolve_geometry_entries() for this exact (nif, model_path) — pass it when
+## the caller already resolved it (e.g. also needs populate_collision_children()
+## for the same placement, or a future threaded resolve task handed back
+## already-resolved data), so resolution doesn't happen twice. Resolves it
+## itself (the original all-in-one behavior) when omitted.
+func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+	if geometry.is_empty():
+		geometry = resolve_geometry_entries(nif, model_path)
+	var i := 0
+	for entry in geometry["mesh_entries"]:
 		var mi := MeshInstance3D.new()
 		mi.name = "sub%d" % i
-		mi.mesh = mesh
-		mi.transform = nif.get_transform(i)
-		var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
-				nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
-		if mat != null:
-			mi.material_override = mat
+		mi.mesh = entry["mesh"]
+		mi.transform = entry["transform"]
 		parent.add_child(mi)
+		i += 1
 
 ## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
 ## collision-extraction.md), or one bounding-box fallback collider (from the
@@ -335,43 +333,53 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String) 
 ## Shape3D Resources (and the fallback box's size/position) are cached per
 ## model_path — only the CollisionShape3D *nodes* are built fresh per
 ## placement, same reasoning as populate_mesh_children().
-func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String) -> void:
-	var descriptors: Array
-	if _collision_cache.has(model_path):
-		descriptors = _collision_cache[model_path]
-	else:
-		descriptors = _build_collision_descriptors(nif)
-		_collision_cache[model_path] = descriptors
-	for d in descriptors:
+##
+## `geometry` (2.10 step 1, optional): see populate_mesh_children()'s own doc
+## comment — same pre-resolved-data-sharing purpose.
+func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+	if geometry.is_empty():
+		geometry = resolve_geometry_entries(nif, model_path)
+	for entry in geometry["shape_entries"]:
 		var col := CollisionShape3D.new()
-		col.name = String(d.get("name", "collision"))
-		col.shape = d["shape"]
-		col.transform = d["transform"]
+		col.name = String(entry.get("name", "collision"))
+		col.shape = entry["shape"]
+		col.transform = entry["transform"]
 		parent.add_child(col)
 
-## phases/2/09-direct-server-static-geometry.md, step 2: the same mesh/
-## collision data populate_mesh_children()/populate_collision_children()
-## build, but returned as plain data (Array of { "mesh"/"shape": Resource,
-## "transform": Transform3D }) instead of Node children -- for
-## DirectGeometryBatch's RID-based path, which has no Node to attach
-## children to at all. Reuses the exact same _mesh_cache/_get_material()/
-## _build_collision_descriptors() caching as the Node-based path, so this
-## is purely a different way of presenting data already being built today,
-## not new asset/parsing work.
+## The single resolve step every geometry-bearing factory builds from --
+## introduced in phases/2/09-direct-server-static-geometry.md (step 2) as
+## get_direct_geometry_entries(), for DirectGeometryBatch's RID-based path
+## (no Node to attach children to at all); generalized in phases/2/10-
+## threaded-streaming-workers.md (step 1) to be the ONE place resolve work
+## happens at all -- populate_mesh_children()/populate_collision_children()
+## (the Node-based path) now build their children from this same data
+## instead of duplicating the cache/material/collision-descriptor logic
+## inline. Matters beyond just not-repeating-yourself: 2.10's threaded tile
+## resolve needs a resolve step with zero Node/RenderingServer/
+## PhysicsServer3D involvement at all so it's safe to run on a worker
+## thread -- this already was exactly that shape for the RID path, it just
+## wasn't yet the Node path's own source of truth too.
+##
+## Returns plain data only: { "mesh_entries": Array of { "mesh": ArrayMesh,
+## "transform": Transform3D }, "shape_entries": Array of { "shape": Shape3D,
+## "transform": Transform3D, "name": String } }. Reuses the exact same
+## _mesh_cache/_get_material()/_build_collision_descriptors() caching
+## regardless of caller, so this is purely a different way of presenting
+## data already being built today, not new asset/parsing work.
 ##
 ## Material is baked directly onto the cached ArrayMesh's own surface
 ## (surface_set_material()) rather than applied as a per-instance override
-## the way populate_mesh_children() does via MeshInstance3D.material_override
-## -- RenderingServer instances have no per-instance override concept as
-## cheap as a Node property, and since material is already a pure function
-## of (model_path, submesh index) with no placement-specific inputs (the
-## same invariant the existing material cache already relies on), baking it
-## onto the shared cached mesh resource is correct for every placement that
-## reuses it, not just this one. Safe to call repeatedly (idempotent) --
-## deliberately not tracked with an extra "already baked" flag, since
-## surface_set_material() on an already-correct value is a cheap no-op, not
-## worth the bookkeeping to skip.
-func get_direct_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
+## the way populate_mesh_children() used to via MeshInstance3D.
+## material_override -- RenderingServer instances have no per-instance
+## override concept as cheap as a Node property, and since material is
+## already a pure function of (model_path, submesh index) with no
+## placement-specific inputs (the same invariant the existing material
+## cache already relies on), baking it onto the shared cached mesh resource
+## is correct for every placement that reuses it, Node-based or RID-based
+## alike. Safe to call repeatedly (idempotent) -- deliberately not tracked
+## with an extra "already baked" flag, since surface_set_material() on an
+## already-correct value is a cheap no-op, not worth the bookkeeping to skip.
+func resolve_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
 	var mesh_entries := []
 	for i in range(nif.get_submesh_count()):
 		var mesh_key := "%s#%d" % [model_path, i]
@@ -397,7 +405,7 @@ func get_direct_geometry_entries(nif: NifReader, model_path: String) -> Dictiona
 		descriptors = _build_collision_descriptors(nif)
 		_collision_cache[model_path] = descriptors
 	for d in descriptors:
-		shape_entries.append({ "shape": d["shape"], "transform": d["transform"] })
+		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
 
 	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
 
