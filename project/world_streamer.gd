@@ -69,6 +69,7 @@ var _persistent_root: Node3D = null
 var _persistent_batch: DirectGeometryBatch = null
 var _in_flight_count := 0
 var _check_timer := 0.0
+var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own throttled cycle -- see get_current_cell_form_id()'s doc comment for why this exists
 
 func _ready() -> void:
 	esm = EsmReader.new()
@@ -98,6 +99,7 @@ func deactivate() -> void:
 		return
 	_active_wrld_form_id = -1
 	_generation += 1 # invalidates any in-flight tile/persistent-root streams
+	_current_cell_form_id_cache = 0
 	for coord in _resident:
 		_resident[coord].free()
 		if _resident_batches.has(coord):
@@ -150,6 +152,7 @@ func _check_streaming() -> void:
 	var center: Variant = _current_grid_coord()
 	if center == null:
 		return
+	_current_cell_form_id_cache = _tile_cell_form_id(center) # cached here, on this already-throttled cycle, instead of get_current_cell_form_id() re-deriving it from a fresh find_exterior_cell() scan on every single call -- caught directly: that scan alone costs ~41ms (a full linear walk over WastelandNV's 185,720 child records), and game.gd's own _process() was calling get_current_cell_form_id() completely unthrottled, every frame, while active. Real, severe, unrelated to rendering at all -- explained the entire flat ~30fps ceiling this whole investigation was chasing.
 
 	for dx in range(-RADIUS_LOAD, RADIUS_LOAD + 1):
 		for dy in range(-RADIUS_LOAD, RADIUS_LOAD + 1):
@@ -225,6 +228,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 
 	CellStreamBuilder.set_collision_disabled(tile_root, false)
 	tile_root.visible = true
+	batch.build() # creates the actual (batched, one-per-distinct-mesh) RenderingServer instances -- must happen before set_enabled() has anything to enable
 	batch.set_enabled(true)
 	_resident[coord] = tile_root
 	_resident_batches[coord] = batch
@@ -264,6 +268,7 @@ func _stream_persistent_root() -> void:
 
 	CellStreamBuilder.set_collision_disabled(root, false)
 	root.visible = true
+	batch.build()
 	batch.set_enabled(true)
 	_persistent_root = root
 	_persistent_batch = batch
@@ -294,10 +299,19 @@ func _tile_cell_form_id(coord: Vector2i) -> int:
 ## in -- for a caller wanting to display/query "where is the player right
 ## now" (e.g. game.gd's cell HUD). 0 if inactive, there's no active camera,
 ## or there's genuinely no cell at that grid coordinate (a worldspace edge).
+##
+## Returns a value cached on _check_streaming()'s own throttled cycle
+## (CHECK_INTERVAL_SEC) rather than re-deriving it here on every call.
+## Caught directly, not hypothetical: find_exterior_cell() is a full linear
+## scan over the worldspace's child records (185,720 for WastelandNV) and
+## costs ~41ms per call -- game.gd's own _process() was calling this
+## function completely unthrottled, every single frame, while active. That
+## single bug alone accounted for the entire flat ~30fps ceiling this
+## session's whole rendering-performance investigation was chasing --
+## camera-direction/window-size/node-count/draw-call independence all
+## immediately made sense once this was found, since none of those things
+## have anything to do with a per-frame ESM file scan.
 func get_current_cell_form_id() -> int:
 	if _active_wrld_form_id == -1:
 		return 0
-	var coord: Variant = _current_grid_coord()
-	if coord == null:
-		return 0
-	return _tile_cell_form_id(coord)
+	return _current_cell_form_id_cache
