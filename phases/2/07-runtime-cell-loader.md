@@ -254,6 +254,45 @@ destination to `CellLoader.load_cell()` and its own transform on `load_completed
 - `load_started`/`load_progress`/`load_completed` signals.
 - A minimal door-trigger stub sufficient to demonstrate an end-to-end transition.
 
+## Known gap — a worldspace's "persistent" cell isn't loaded at all
+
+Found while testing door transitions against `GSProspectorSaloonInterior` (not part of
+this task's original scope, but blocking enough to record here rather than let it sit
+undiscovered). `resolve_refr_xtel()`'s original CELL-resolution logic (fixed separately
+— see the `bhkRigidBodyT`/XTEL commits) exposed a real structural fact about exterior
+worldspace data that `CellLoader` doesn't account for at all yet:
+
+Every worldspace has exactly **one persistent cell** — the Construction Set's bucket
+for always-loaded references (quest markers, fast-travel triggers, LOD imposters, ...)
+that live directly under the `WRLD`'s own "World Children" GRUP rather than nested in
+the normal exterior block/sub-block hierarchy, and aren't tied to any real grid
+location (confirmed: `WastelandNV`'s reports a nominal XCLC of `(0, 0)`, which is
+coincidentally near Black Mountain on the real map and has nothing to do with where any
+given door leads). Confirmed directly against `WastelandNV`'s persistent cell
+(FormID `0x846EA`): **4,468 references**, of which **389 are DOOR placements** — every
+exterior-facing entrance door in the base game, including `NVProspectorSaloonDoor`
+itself, checked directly.
+
+`CellLoader.load_cell()` only fetches `get_cell_references()` for the one grid-tile
+CELL being loaded. It has no concept of also loading the owning worldspace's persistent
+cell alongside it — meaning right now, walking around any exterior grid tile, **none of
+that tile's building entrance doors exist as nodes at all**, since their home cell is
+the persistent cell, not the grid tile. This didn't surface earlier because every test
+so far exercised either an interior cell or a door *destination* (now fixed to resolve
+through the real grid cell) — never the population of an exterior grid cell itself
+against a real building's own front door.
+
+Not fixed yet. The real engine always loads a worldspace's persistent cell alongside
+whichever grid cell the player is in — `load_cell()` for an exterior destination needs
+to do the same: resolve the cell's owning `WRLD` (the new `find_cell_containing_ref(...,
+&out_wrld_form_id)` plumbing already exposes this), fetch and place the persistent
+cell's own refs too, not just the grid tile's. Loading all 4,468 persistent refs
+unconditionally on every exterior load is almost certainly overkill for a single town
+visit (most are quest triggers/markers for locations far away) — worth measuring before
+deciding whether unconditional loading is fine or a spatial filter is needed, per this
+project's own habit of confirming before assuming a filter's actually necessary. See
+[ROADMAP.md](../../ROADMAP.md)'s Phase 2 "Interior↔exterior transitions" bullet.
+
 ## Acceptance criteria
 
 - [x] `XTEL` destination data confirmed against real byte-level door data, not assumed
