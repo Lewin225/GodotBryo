@@ -349,6 +349,67 @@ func populate_collision_children(parent: Node3D, nif: NifReader, model_path: Str
 		col.transform = d["transform"]
 		parent.add_child(col)
 
+## phases/2/09-direct-server-static-geometry.md, step 2: the same mesh/
+## collision data populate_mesh_children()/populate_collision_children()
+## build, but returned as plain data (Array of { "mesh"/"shape": Resource,
+## "transform": Transform3D }) instead of Node children -- for
+## DirectGeometryBatch's RID-based path, which has no Node to attach
+## children to at all. Reuses the exact same _mesh_cache/_get_material()/
+## _build_collision_descriptors() caching as the Node-based path, so this
+## is purely a different way of presenting data already being built today,
+## not new asset/parsing work.
+##
+## Material is baked directly onto the cached ArrayMesh's own surface
+## (surface_set_material()) rather than applied as a per-instance override
+## the way populate_mesh_children() does via MeshInstance3D.material_override
+## -- RenderingServer instances have no per-instance override concept as
+## cheap as a Node property, and since material is already a pure function
+## of (model_path, submesh index) with no placement-specific inputs (the
+## same invariant the existing material cache already relies on), baking it
+## onto the shared cached mesh resource is correct for every placement that
+## reuses it, not just this one. Safe to call repeatedly (idempotent) --
+## deliberately not tracked with an extra "already baked" flag, since
+## surface_set_material() on an already-correct value is a cheap no-op, not
+## worth the bookkeeping to skip.
+func get_direct_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
+	var mesh_entries := []
+	for i in range(nif.get_submesh_count()):
+		var mesh_key := "%s#%d" % [model_path, i]
+		var mesh: ArrayMesh
+		if _mesh_cache.has(mesh_key):
+			mesh_cache_hits += 1
+			mesh = _mesh_cache[mesh_key]
+		else:
+			mesh_cache_misses += 1
+			mesh = build_submesh(nif, i)
+			_mesh_cache[mesh_key] = mesh
+		var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
+				nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
+		if mat != null:
+			mesh.surface_set_material(0, mat)
+		mesh_entries.append({ "mesh": mesh, "transform": nif.get_transform(i) })
+
+	var shape_entries := []
+	var descriptors: Array
+	if _collision_cache.has(model_path):
+		descriptors = _collision_cache[model_path]
+	else:
+		descriptors = _build_collision_descriptors(nif)
+		_collision_cache[model_path] = descriptors
+	for d in descriptors:
+		shape_entries.append({ "shape": d["shape"], "transform": d["transform"] })
+
+	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
+
+## The world transform every placed object resolves to from its raw REFR
+## placement fields -- extracted out of GamebryoObjectRegistry._finalize()
+## so both the Node-based path (which still sets node.transform directly)
+## and DirectGeometryBatch's RID-based path (which needs the same transform
+## as a plain value, not a Node property) share one source, not two copies
+## of the same math.
+static func refr_transform(pos: Vector3, rot: Vector3, scale: float) -> Transform3D:
+	return Transform3D(refr_basis(rot) * Basis().scaled(Vector3.ONE * scale), pos)
+
 func _build_collision_descriptors(nif: NifReader) -> Array:
 	var shapes: Array = nif.get_collision_shapes()
 	if shapes.is_empty():
