@@ -27,7 +27,7 @@ extends Node3D
 ## guess) via CellLoader's xref cache, and falls back to a crude
 ## drop-from-above-the-AABB heuristic only if a cell genuinely has none.
 
-const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
+const DEFAULT_CELL_EDITOR_ID := "GSProspectorSaloonInterior"
 
 # Interact reach: no game-data source for this (it's a pure UX/feel
 # constant in the original engine too, not derived from anything in the
