@@ -63,8 +63,10 @@ var _builder: CellStreamBuilder
 var _active_wrld_form_id: int = -1 # -1 == inactive
 var _generation := 0 # bumped on every activate()/deactivate() -- invalidates stale in-flight tile streams
 var _resident: Dictionary = {} # Vector2i grid coord -> built tile root Node3D
+var _resident_batches: Dictionary = {} # Vector2i grid coord -> that tile's DirectGeometryBatch (2.9) -- kept in lockstep with _resident
 var _pending: Dictionary = {} # Vector2i grid coord -> true, currently streaming in
 var _persistent_root: Node3D = null
+var _persistent_batch: DirectGeometryBatch = null
 var _in_flight_count := 0
 var _check_timer := 0.0
 
@@ -98,11 +100,17 @@ func deactivate() -> void:
 	_generation += 1 # invalidates any in-flight tile/persistent-root streams
 	for coord in _resident:
 		_resident[coord].free()
+		if _resident_batches.has(coord):
+			_resident_batches[coord].free_all() # 2.9 -- RIDs aren't owned by the Node, must be freed explicitly, Node.free() above doesn't touch them
 	_resident.clear()
+	_resident_batches.clear()
 	_pending.clear()
 	if _persistent_root != null:
 		_persistent_root.free()
 		_persistent_root = null
+	if _persistent_batch != null:
+		_persistent_batch.free_all()
+		_persistent_batch = null
 	_in_flight_count = 0
 
 func is_active() -> bool:
@@ -153,6 +161,9 @@ func _check_streaming() -> void:
 		if absi(coord.x - center.x) > RADIUS_UNLOAD or absi(coord.y - center.y) > RADIUS_UNLOAD:
 			_resident[coord].free()
 			_resident.erase(coord)
+			if _resident_batches.has(coord):
+				_resident_batches[coord].free_all() # 2.9 -- explicit, Node.free() above doesn't reach RID-owned geometry
+				_resident_batches.erase(coord)
 
 func _start_tile_load(coord: Vector2i) -> void:
 	var cell: Dictionary = esm.find_exterior_cell(_active_wrld_form_id, coord.x, coord.y)
@@ -188,22 +199,35 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 	# comment on why).
 	var refs: Array = esm.get_cell_references(cell_form_id)
 
+	# phases/2/09-direct-server-static-geometry.md: this tile's own RID batch
+	# for non-interactive placements (registry.build_direct()'s target).
+	# Starts disabled -- the RID equivalent of tile_root.visible=false/
+	# collision-disabled above, so nothing in the batch is visible/collidable
+	# until the whole tile flips on atomically below, same guarantee the
+	# Node-based half is already held to.
+	var batch := DirectGeometryBatch.new()
+	batch.init(self)
+	batch.set_enabled(false)
+
 	var add_child_fn := func(parent: Node, child: Node) -> void:
 		parent.add_child(child)
 		CellStreamBuilder.set_collision_disabled(child, true)
 	var is_cancelled_fn := func() -> bool: return my_generation != _generation
-	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn)
+	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn, batch)
 
 	_pending.erase(coord)
 	_in_flight_count -= 1
 	if not completed or my_generation != _generation:
 		tile_root.free() # superseded/deactivated -- never was resident, safe to free
+		batch.free_all() # RIDs aren't owned by tile_root, must be freed explicitly too
 		_maybe_emit_settled()
 		return
 
 	CellStreamBuilder.set_collision_disabled(tile_root, false)
 	tile_root.visible = true
+	batch.set_enabled(true)
 	_resident[coord] = tile_root
+	_resident_batches[coord] = batch
 	_maybe_emit_settled()
 
 func _stream_persistent_root() -> void:
@@ -220,22 +244,29 @@ func _stream_persistent_root() -> void:
 
 	var refs: Array = esm.get_persistent_refs_for_worldspace(_active_wrld_form_id)
 
+	var batch := DirectGeometryBatch.new()
+	batch.init(self)
+	batch.set_enabled(false)
+
 	_in_flight_count += 1
 	var add_child_fn := func(parent: Node, child: Node) -> void:
 		parent.add_child(child)
 		CellStreamBuilder.set_collision_disabled(child, true)
 	var is_cancelled_fn := func() -> bool: return my_generation != _generation
-	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn)
+	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn, batch)
 
 	_in_flight_count -= 1
 	if not completed or my_generation != _generation:
 		root.free() # deactivated mid-stream -- never was live, safe to free
+		batch.free_all()
 		_maybe_emit_settled()
 		return
 
 	CellStreamBuilder.set_collision_disabled(root, false)
 	root.visible = true
+	batch.set_enabled(true)
 	_persistent_root = root
+	_persistent_batch = batch
 	_maybe_emit_settled()
 
 func _maybe_emit_settled() -> void:
