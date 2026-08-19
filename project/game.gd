@@ -42,6 +42,8 @@ var cell_loader: CellLoader
 var world_streamer: WorldStreamer
 var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
+var _sun: DirectionalLight3D
+var _world_environment: WorldEnvironment
 
 # Set by _try_interact() right before a door-triggered load_cell() call, so
 # _on_load_completed() knows to land the player at the door's own
@@ -57,6 +59,8 @@ func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
 	_cell_label = $DebugHud/CellLabel
+	_sun = $Sun
+	_world_environment = $WorldEnvironment
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
 	await get_tree().process_frame # let CellLoader's own _ready() open the ESM
@@ -77,6 +81,11 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 		_pending_door_spawn = {}
 		return
 
+	# CellLoader is only ever used for interior destinations from this scene
+	# (see the class doc comment -- an exterior destination routes through
+	# WorldStreamer/_do_exterior_transition() instead), so every successful
+	# load_completed here means "the player is now indoors."
+	_set_exterior_environment(false)
 	_update_cell_hud(cell_form_id)
 
 	var spawn := {}
@@ -147,6 +156,7 @@ func _try_interact() -> void:
 ## first streaming check already sees the player's new position.
 func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: Vector3) -> void:
 	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
+	_set_exterior_environment(true)
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
 	reposition_player(spawn["position"], spawn["rotation"])
 	world_streamer.activate(wrld_form_id)
@@ -154,6 +164,43 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	var cell_form_id := world_streamer.get_current_cell_form_id()
 	if cell_form_id != 0:
 		_update_cell_hud(cell_form_id)
+
+## Rendering-issues list #1: interiors don't have a real sky/sun -- Bethesda
+## interior cells are always fully enclosed geometry with their own baked
+## lighting, so a shared exterior skybox/directional light bleeding through
+## walls (or a flat exterior-sky-colored background showing past any
+## unmodeled gap) reads as wrong. Toggles the scene-level Sun/WorldEnvironment
+## rather than each cell owning its own -- `game.tscn` only has one sky/sun
+## setup, shared across every load, since none of CellLoader/WorldStreamer's
+## own per-cell/per-tile roots carry lighting of their own.
+const INTERIOR_BACKGROUND_COLOR := Color(0.02, 0.02, 0.02)
+
+# Bethesda interior cells carry their own baked-light-equivalent fixtures
+# (LightNode -- phases/1/03-light-sources.md) as the real light source, but
+# Environment.ambient_light_source defaults to AMBIENT_SOURCE_BG -- ambient
+# fill derived from the background itself. Left at that default, switching
+# the background to near-black for interiors also killed ambient light
+# entirely (caught directly -- interiors went dark after the sky/background
+# toggle landed). Interiors get their own explicit, background-independent
+# ambient color/energy instead; exteriors go back to deriving ambient from
+# the sky, its natural source.
+const INTERIOR_AMBIENT_COLOR := Color(0.6, 0.6, 0.65)
+const INTERIOR_AMBIENT_ENERGY := 0.8
+
+func _set_exterior_environment(is_exterior: bool) -> void:
+	if _sun != null:
+		_sun.visible = is_exterior
+	if _world_environment != null and _world_environment.environment != null:
+		var env := _world_environment.environment
+		if is_exterior:
+			env.background_mode = Environment.BG_SKY
+			env.ambient_light_source = Environment.AMBIENT_SOURCE_BG
+		else:
+			env.background_mode = Environment.BG_COLOR
+			env.background_color = INTERIOR_BACKGROUND_COLOR
+			env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			env.ambient_light_color = INTERIOR_AMBIENT_COLOR
+			env.ambient_light_energy = INTERIOR_AMBIENT_ENERGY
 
 ## Debug HUD: current cell's own EditorID, plus its worldspace grid
 ## coordinate when it's an exterior cell (get_exterior_cell_grid() returns
