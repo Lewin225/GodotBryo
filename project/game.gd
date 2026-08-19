@@ -45,6 +45,14 @@ var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redun
 var _sun: DirectionalLight3D
 var _world_environment: WorldEnvironment
 
+# Rendering-issues list #2/#5: F3-toggled debug stats overlay (DebugStats.gd)
+# -- engine frame stats plus streaming/resource-cache state, refreshed on a
+# throttled interval (not every frame -- string building isn't free) and
+# only while actually visible.
+var _stats_label: Label
+const STATS_REFRESH_INTERVAL_SEC := 0.25
+var _stats_refresh_timer := 0.0
+
 # Standalone .tres files (not inline .tscn sub-resources) so each is
 # independently editable/previewable in the editor -- WorldEnvironment
 # nodes can't be individually enabled/disabled (tried; Godot has no such
@@ -68,6 +76,7 @@ func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
 	_cell_label = $DebugHud/CellLabel
+	_stats_label = $DebugHud/StatsLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
@@ -117,7 +126,14 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 ## needs this function to change -- it just needs to expose the same
 ## contract (an `activate() -> Dictionary` callable, per DoorNode's own
 ## established pattern in project/gamebryo/door_node.gd).
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if Input.is_action_just_pressed("toggle_stats") and _stats_label != null:
+		_stats_label.visible = not _stats_label.visible
+	if _stats_label != null and _stats_label.visible:
+		_stats_refresh_timer -= delta
+		if _stats_refresh_timer <= 0.0:
+			_stats_refresh_timer = STATS_REFRESH_INTERVAL_SEC
+			_stats_label.text = DebugStats.build_report(cell_loader, world_streamer)
 	if world_streamer != null and world_streamer.is_active():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
