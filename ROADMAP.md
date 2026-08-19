@@ -68,7 +68,11 @@ Goal: move continuously through the game's actual worldspace, not one cell at a 
 - Implement adjacent-cell loading/unloading for exterior worldspace grid cells based
   on player position (Bethesda's cell grid is fixed-size and enumerable from `WRLD`
   data — no discovery heuristics needed).
-- Interior↔exterior transitions via door `REFR`/`DOOR` teleport links.
+- Interior↔exterior transitions via door `REFR`/`DOOR` teleport links. Known gap found
+  during testing: exterior grid cells don't yet load their owning worldspace's
+  "persistent" cell (the CS's always-loaded bucket, holding e.g. every exterior-facing
+  entrance door in the base game) — see
+  [phases/2/07-runtime-cell-loader.md](phases/2/07-runtime-cell-loader.md#known-gap--a-worldspaces-persistent-cell-isnt-loaded-at-all).
 - Distant terrain / object LOD (FNV ships pre-baked LOD meshes and distant land data —
   reuse them rather than generating LOD at runtime, at least initially).
 - Memory budget and streaming radius tuning against the real Mojave worldspace size.
