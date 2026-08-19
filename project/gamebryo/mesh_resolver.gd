@@ -401,14 +401,40 @@ func get_direct_geometry_entries(nif: NifReader, model_path: String) -> Dictiona
 
 	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
 
-## The world transform every placed object resolves to from its raw REFR
-## placement fields -- extracted out of GamebryoObjectRegistry._finalize()
-## so both the Node-based path (which still sets node.transform directly)
-## and DirectGeometryBatch's RID-based path (which needs the same transform
-## as a plain value, not a Node property) share one source, not two copies
-## of the same math.
+## The transform every placed object resolves to from its raw REFR
+## placement fields, relative to its RefrRoot parent -- extracted out of
+## GamebryoObjectRegistry._finalize() so both the Node-based path (which
+## sets node.transform directly, inheriting RefrRoot's own -90 X rotation
+## for free via ordinary Godot parent-child transform composition) and
+## DirectGeometryBatch's RID-based path share one source, not two copies of
+## the same math. NOT a true world transform on its own -- despite the
+## name/doc comment this originally had, which was wrong (caught directly:
+## RenderingServer.instance_create2() places objects in genuine world
+## space with no parent Node to inherit RefrRoot's rotation from, so
+## reusing this value unmodified as a direct-RID world_transform produced
+## objects with Y/Z swapped -- a full missing 90-degree rotation, visible
+## as "cell 0,0 content rotated into one big flat sheet"). Callers with no
+## real RefrRoot parent (the direct-RID path) must additionally compose
+## refr_root_basis() -- see world_transform_no_parent() below, which does
+## exactly that.
 static func refr_transform(pos: Vector3, rot: Vector3, scale: float) -> Transform3D:
 	return Transform3D(refr_basis(rot) * Basis().scaled(Vector3.ONE * scale), pos)
+
+## Every RefrRoot node in this codebase (CellLoader/CellStreamBuilder/
+## WorldStreamer alike) applies this exact fixed rotation
+## (rotation_degrees.x = -90) and nothing else (no translation, no scale) --
+## the real Z-up (Bethesda/NIF) -> Y-up (Godot) axis conversion every
+## Node-based placement gets for free by being parented under one. A
+## caller placing geometry in true world space with no such parent (RID-
+## based, no Node at all) must compose this explicitly instead.
+static func refr_root_basis() -> Basis:
+	return Basis(Vector3.RIGHT, deg_to_rad(-90))
+
+## refr_transform()'s result, but as a genuine world transform -- composes
+## refr_root_basis() on top, for callers with no actual RefrRoot parent
+## Node to inherit it from (DirectGeometryBatch's RID-based objects).
+static func world_transform_no_parent(pos: Vector3, rot: Vector3, scale: float) -> Transform3D:
+	return Transform3D(refr_root_basis(), Vector3.ZERO) * refr_transform(pos, rot, scale)
 
 func _build_collision_descriptors(nif: NifReader) -> Array:
 	var shapes: Array = nif.get_collision_shapes()

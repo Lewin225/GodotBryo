@@ -66,13 +66,27 @@ func build_terrain(cell_form_id: int) -> Node3D:
 ## after every yield; returns false the moment it reports true (caller
 ## should discard whatever was partially built, same as CellLoader's own
 ## generation-counter pattern), true once every ref has been placed.
-func stream_refs(parent: Node3D, refs: Array, add_child_fn: Callable, is_cancelled: Callable) -> bool:
+##
+## `batch` (phases/2/09-direct-server-static-geometry.md, optional, default
+## null): when given, each placement first tries
+## registry.build_direct(p, batch) -- the RID-based path, no Node at all --
+## before falling back to registry.build() (a real Node) if that returns
+## false (an interactive/registered type, a marker, or genuinely nothing to
+## place). null preserves the original all-Node behavior unchanged --
+## CellLoader passes null deliberately (its @tool editor-preview mode stays
+## fully Node-based/Scene-dock-inspectable, per that task's own scope
+## decision), only WorldStreamer passes a real batch.
+func stream_refs(parent: Node3D, refs: Array, add_child_fn: Callable, is_cancelled: Callable, batch: DirectGeometryBatch = null) -> bool:
 	var placed := 0
 	var placed_since_yield := 0
 	for p in refs:
-		var node := registry.build(p)
-		if node != null:
-			add_child_fn.call(parent, node)
+		var built_direct: bool = batch != null and registry.build_direct(p, batch)
+		if not built_direct:
+			var node := registry.build(p)
+			if node != null:
+				add_child_fn.call(parent, node)
+				placed += 1
+		else:
 			placed += 1
 		placed_since_yield += 1
 		if objects_per_frame > 0 and placed_since_yield >= objects_per_frame:

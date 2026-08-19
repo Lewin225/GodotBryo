@@ -79,7 +79,7 @@ func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
-	var world_transform := GamebryoMeshResolver.refr_transform(pos, rot, scale)
+	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
 	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
 	return true
 

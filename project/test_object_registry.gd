@@ -195,6 +195,35 @@ func _ready() -> void:
 		check(scol_count == 3, "found 3 SCOL refs in SLGoldMine01INT (got %d)" % scol_count)
 		await screenshot(scol_root, "registry_scol_test.png")
 
+	print("=== build_direct() world transform matches build()'s (2.9) ===")
+	# Caught directly, not hypothetical: build_direct()'s RID-based objects
+	# have no RefrRoot parent to inherit the Z-up -> Y-up axis conversion
+	# from via ordinary Godot parent-child transform composition the way a
+	# Node-based placement does -- an earlier version of this fix omitted
+	# that conversion entirely, producing a full missing 90-degree rotation
+	# (Y/Z swapped) for every direct-path object, visible in real play as
+	# "the persistent cell's content rotated into one big flat sheet."
+	var direct_target: Dictionary = {}
+	for p in refs:
+		if registry.is_structural_fallback(p):
+			direct_target = p
+			break
+	check(not direct_target.is_empty(), "found a structural-fallback placement to test build_direct() against")
+	if not direct_target.is_empty():
+		var direct_refr_root := Node3D.new()
+		direct_refr_root.rotation_degrees.x = -90
+		add_child(direct_refr_root)
+		var direct_node_ref := registry.build(direct_target)
+		direct_refr_root.add_child(direct_node_ref)
+		var expected_transform: Transform3D = direct_node_ref.global_transform
+
+		var pos: Vector3 = direct_target.get("position", Vector3.ZERO)
+		var rot: Vector3 = direct_target.get("rotation", Vector3.ZERO)
+		var scale: float = direct_target.get("scale", 1.0)
+		var got_transform: Transform3D = GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
+		check(got_transform.is_equal_approx(expected_transform),
+				"build_direct()'s world transform matches build()'s real Node global_transform exactly (got origin %s, expected %s)" % [got_transform.origin, expected_transform.origin])
+
 	print("=======================")
 	if failures == 0:
 		print("ALL CHECKS PASSED")
