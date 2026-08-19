@@ -254,7 +254,7 @@ destination to `CellLoader.load_cell()` and its own transform on `load_completed
 - `load_started`/`load_progress`/`load_completed` signals.
 - A minimal door-trigger stub sufficient to demonstrate an end-to-end transition.
 
-## Known gap — a worldspace's "persistent" cell isn't loaded at all
+## Known gap — a worldspace's "persistent" cell isn't loaded at all — fixed
 
 Found while testing door transitions against `GSProspectorSaloonInterior` (not part of
 this task's original scope, but blocking enough to record here rather than let it sit
@@ -282,16 +282,22 @@ so far exercised either an interior cell or a door *destination* (now fixed to r
 through the real grid cell) — never the population of an exterior grid cell itself
 against a real building's own front door.
 
-Not fixed yet. The real engine always loads a worldspace's persistent cell alongside
-whichever grid cell the player is in — `load_cell()` for an exterior destination needs
-to do the same: resolve the cell's owning `WRLD` (the new `find_cell_containing_ref(...,
-&out_wrld_form_id)` plumbing already exposes this), fetch and place the persistent
-cell's own refs too, not just the grid tile's. Loading all 4,468 persistent refs
-unconditionally on every exterior load is almost certainly overkill for a single town
-visit (most are quest triggers/markers for locations far away) — worth measuring before
-deciding whether unconditional loading is fine or a spatial filter is needed, per this
-project's own habit of confirming before assuming a filter's actually necessary. See
-[ROADMAP.md](../../ROADMAP.md)'s Phase 2 "Interior↔exterior transitions" bullet.
+**Fixed.** `EsmFile::get_cell_worldspace()` resolves a CELL's owning `WRLD` (reusing
+`find_owner_of()`'s `out_wrld_form_id` plumbing against the CELL's own byte offset, the
+same mechanism `resolve_refr_xtel()` already used for a REFR's offset), and
+`get_worldspace_persistent_cell()` returns the first CELL child of that `WRLD` — the
+persistent cell always sorts first, before the Exterior Cell Block/Sub-Block GRUPs
+holding the normal grid tiles (confirmed directly: `WastelandNV`'s first WRLD-child CELL
+is `0x846EA`, the same persistent cell already identified above). `load_cell()` now
+unconditionally appends `get_persistent_refs_for_cell()`'s result to the grid tile's own
+refs for every load ({} for an interior cell, a no-op there).
+
+Verified directly: `NVProspectorSaloonDoor` now appears when loading Goodsprings' real
+grid cell. Loading all 4,468 persistent refs unconditionally (not spatially filtered)
+took ~2.4s for that one cell in a headless timing check, streamed across frames same as
+any other load — not filtered per-object, since measuring first beats guessing whether a
+filter is even needed. Revisit with a spatial filter only if real play surfaces this as
+an actual performance problem, not preemptively.
 
 ## Acceptance criteria
 
