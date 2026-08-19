@@ -8,12 +8,13 @@ distant LOD, memory/streaming-radius tuning against the real Mojave worldspace.
 Exit criterion: walk from Goodsprings to Primm without load screens beyond intended
 interior transitions, at a stable frame rate.
 
-**This README currently only scopes the performance-track tasks below** — surfaced
+**This README originally only scoped the performance-track tasks below** — surfaced
 during a post-1.5 experiment (`project/exterior_viewer.gd`, a `@tool` editor scene that
 loads an *area* of exterior cells rather than one hardcoded default) and a follow-up
 discussion about what "loading things proper" at Fallout's actual prop density
-requires. The rest of Phase 2 (cell grid streaming logic itself, interior/exterior
-door transitions, distant LOD, streaming-radius tuning) still needs its own planning
+requires. Interior/exterior door transitions (2.7) and continuous cell grid streaming
+(2.8) now have their own task files too. Distant LOD and streaming-radius/memory
+tuning still need their own planning
 pass, informed by whatever these performance tasks find, before those get their own
 task files.
 
@@ -28,6 +29,7 @@ task files.
 | 2.4 | Articulated prop transform flattening fix | [04-articulated-prop-transforms.md](04-articulated-prop-transforms.md) |
 | 2.6 | Vertex color + unlit shading fix | [06-vertex-color-transparency.md](06-vertex-color-transparency.md) |
 | 2.7 | Runtime cell loader (door-triggered, interior/exterior unified) | [07-runtime-cell-loader.md](07-runtime-cell-loader.md) |
+| 2.8 | World cell streaming (adjacent-cell load/unload, active-camera-driven) | [08-world-cell-streaming.md](08-world-cell-streaming.md) |
 
 ## Open issues (parked, not yet investigated)
 
