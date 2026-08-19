@@ -3,6 +3,7 @@
 #include "../common/byte_reader.h"
 #include "../common/units.h"
 
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <zlib.h>
@@ -80,7 +81,7 @@ void EsmFile::walk(long start, long end, const std::function<void(const RecordIn
 	}
 }
 
-std::optional<RecordInfo> EsmFile::find_owner_of(long start, long end, long target_header_offset) const {
+std::optional<RecordInfo> EsmFile::find_owner_of(long start, long end, long target_header_offset, uint32_t *out_wrld_form_id) const {
 	long pos = start;
 	bool have_last = false;
 	RecordInfo last_record;
@@ -92,15 +93,18 @@ std::optional<RecordInfo> EsmFile::find_owner_of(long start, long end, long targ
 
 		if (tag == "GRUP") {
 			uint32_t group_size = hr.read_u32();
-			hr.read_u32(); // label
-			hr.read_u32(); // group_type
+			uint32_t label = hr.read_u32();
+			uint32_t group_type = hr.read_u32();
 			hr.read_u32(); // timestamp
 			hr.read_u32(); // unknown/VCS
 
 			long content_start = pos + static_cast<long>(kHeaderSize);
 			long content_end = pos + static_cast<long>(group_size);
 			if (target_header_offset >= content_start && target_header_offset < content_end) {
-				if (auto deeper = find_owner_of(content_start, content_end, target_header_offset)) {
+				if (group_type == 1 && out_wrld_form_id != nullptr) {
+					*out_wrld_form_id = label; // "World Children" — label is the WRLD's own FormID
+				}
+				if (auto deeper = find_owner_of(content_start, content_end, target_header_offset, out_wrld_form_id)) {
 					return deeper;
 				}
 				// target is a direct child of this GRUP — the owner is
@@ -127,12 +131,16 @@ std::optional<RecordInfo> EsmFile::find_owner_of(long start, long end, long targ
 }
 
 std::optional<RecordInfo> EsmFile::find_cell_containing_ref(uint32_t refr_form_id) const {
+	return find_cell_containing_ref(refr_form_id, nullptr);
+}
+
+std::optional<RecordInfo> EsmFile::find_cell_containing_ref(uint32_t refr_form_id, uint32_t *out_wrld_form_id) const {
 	auto target = find_record_by_form_id(refr_form_id);
 	if (!target) {
 		return std::nullopt;
 	}
 	long target_header_offset = target->data_offset - static_cast<long>(kHeaderSize);
-	auto owner = find_owner_of(0, file_size_, target_header_offset);
+	auto owner = find_owner_of(0, file_size_, target_header_offset, out_wrld_form_id);
 	if (owner && owner->type == "CELL") {
 		return owner;
 	}
@@ -154,21 +162,57 @@ std::optional<DoorDestination> EsmFile::resolve_refr_xtel(uint32_t refr_form_id)
 		}
 		util::ByteReader sr(s.data, s.size);
 		uint32_t dest_refr_form_id = sr.read_u32();
+		float dest_position_raw[3]; // raw Gamebryo units — kept for the grid math below
+		dest_position_raw[0] = read_f32(sr);
+		dest_position_raw[1] = read_f32(sr);
+		dest_position_raw[2] = read_f32(sr);
 		float dest_position[3];
-		dest_position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-		dest_position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-		dest_position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+		dest_position[0] = dest_position_raw[0] * units::kGamebryoUnitsToMeters;
+		dest_position[1] = dest_position_raw[1] * units::kGamebryoUnitsToMeters;
+		dest_position[2] = dest_position_raw[2] * units::kGamebryoUnitsToMeters;
 		float dest_rotation[3];
 		dest_rotation[0] = read_f32(sr);
 		dest_rotation[1] = read_f32(sr);
 		dest_rotation[2] = read_f32(sr);
 
-		auto dest_cell = find_cell_containing_ref(dest_refr_form_id);
+		uint32_t dest_wrld_form_id = 0;
+		auto dest_cell = find_cell_containing_ref(dest_refr_form_id, &dest_wrld_form_id);
 		if (!dest_cell) {
 			return std::nullopt;
 		}
+		uint32_t resolved_cell_form_id = dest_cell->form_id;
+
+		// dest_wrld_form_id != 0 means the landing REFR's structural parent
+		// CELL belongs to a worldspace (an exterior destination) rather than
+		// being a plain interior cell. For exterior destinations, that
+		// structurally-found CELL is NOT necessarily the right one to load:
+		// a worldspace has exactly one "persistent" cell (a bookkeeping
+		// bucket outside the normal grid block/sub-block hierarchy, holding
+		// always-loaded refs like quest markers/LOD — not tied to any real
+		// location) that landing markers are commonly filed under instead
+		// of the real geographic tile. Confirmed real, not hypothetical:
+		// WastelandNV's persistent cell holds 4468 refs spanning the whole
+		// map (Black Mountain to Hoover Dam to The Strip) and reports a
+		// nominal XCLC of (0,0) that has nothing to do with where a door
+		// actually leads. The original engine never uses "which CELL
+		// structurally owns this REFR" to pick an exterior load target
+		// anyway — it always derives the grid cell from the landing
+		// position itself, so that's what's done here instead of trusting
+		// structural containment.
+		if (dest_wrld_form_id != 0) {
+			constexpr float kCellSizeRawUnits = 4096.0f;
+			int32_t grid_x = static_cast<int32_t>(std::floor(dest_position_raw[0] / kCellSizeRawUnits));
+			int32_t grid_y = static_cast<int32_t>(std::floor(dest_position_raw[1] / kCellSizeRawUnits));
+			if (auto real_cell = find_exterior_cell(dest_wrld_form_id, grid_x, grid_y)) {
+				resolved_cell_form_id = real_cell->form_id;
+			}
+			// else: no cell at that grid coordinate (e.g. an ungenerated
+			// edge tile) — fall back to the structurally-found cell rather
+			// than failing the whole resolution.
+		}
+
 		DoorDestination dest;
-		dest.dest_cell_form_id = dest_cell->form_id;
+		dest.dest_cell_form_id = resolved_cell_form_id;
 		std::memcpy(dest.dest_position, dest_position, sizeof(dest_position));
 		std::memcpy(dest.dest_rotation, dest_rotation, sizeof(dest_rotation));
 		return dest;

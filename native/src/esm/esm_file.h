@@ -185,7 +185,19 @@ private:
 	// range contains target_header_offset (the target record's own header
 	// start, i.e. RecordInfo::data_offset - kHeaderSize). std::nullopt if
 	// target_header_offset isn't inside any GRUP within this range.
-	std::optional<RecordInfo> find_owner_of(long start, long end, long target_header_offset) const;
+	//
+	// out_wrld_form_id (optional): if the found record's ancestor chain
+	// passes through a GRUP type 1 ("World Children" — standard TES4 GRUP
+	// convention, label = the owning WRLD's own FormID), that FormID is
+	// written here. Left untouched (caller should zero-init) for an
+	// interior cell, which never has a World Children ancestor. Needed by
+	// resolve_refr_xtel()'s persistent-cell handling — see its own comment.
+	std::optional<RecordInfo> find_owner_of(long start, long end, long target_header_offset, uint32_t *out_wrld_form_id = nullptr) const;
+
+	// find_cell_containing_ref() variant that also reports the owning
+	// worldspace's FormID (0 if the cell is interior) — see find_owner_of()'s
+	// out_wrld_form_id.
+	std::optional<RecordInfo> find_cell_containing_ref(uint32_t refr_form_id, uint32_t *out_wrld_form_id) const;
 };
 
 } // namespace esm
