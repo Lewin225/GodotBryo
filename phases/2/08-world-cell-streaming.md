@@ -196,12 +196,14 @@ complexity, matching how `CellLoader`'s existing `_current_refs` already works t
 
 ## Acceptance criteria
 
-- [ ] Walking in a straight line across several real grid tiles in `WastelandNV` never
-      shows missing terrain/objects at any point — verified by an actual visual
-      playtest, not just headless state checks. **Not yet done** — everything below is
-      verified programmatically (`test_world_streamer.gd`, plus a real `game.tscn`
-      integration run through `game.gd`'s actual door-transition wiring), but nobody
-      has watched it render on screen yet.
+- [x] Walking in a straight line across several real grid tiles in `WastelandNV` never
+      shows missing terrain/objects at any point — verified by a real, extended visual
+      playtest (~1hr): walked across the open Mojave, through Freeside, onto the Strip,
+      and reached Primm, crossing multiple worldspace boundaries (Freeside/the Strip are
+      real separate worldspaces in NV, not just distant `WastelandNV` tiles — confirms
+      `activate()`/`deactivate()` correctly re-target across worldspace changes, not
+      just within one) with nothing blocking movement. Various rendering issues noted
+      (expected, separately tracked — not a streaming-mechanism problem).
 - [x] Free-fly/editor camera movement (not the player body) drives streaming
       correctly — verified directly: `test_world_streamer.gd` drives a plain `Camera3D`
       with no player/CharacterBody3D involved at all, not just the FPC addon's own
