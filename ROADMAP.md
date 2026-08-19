@@ -87,6 +87,15 @@ combat, no dialogue yet).
   `Skeleton3D`, including the biped rig used by player/NPC models.
 - KF/animation data parsing (New Vegas anim data is embedded/associated NIF-adjacent
   animation — confirm exact container format) and playback via `AnimationPlayer`.
+  Confirmed directly (not assumed) that this phase should start with the simpler,
+  non-skeletal case: physical (non-teleporting) doors use a dedicated "Animated" model
+  variant (e.g. `NVCraftsmanRmDoorAnimated.NIF`, vs. plain `NVCraftsmanRmDoor.NIF` for a
+  teleporting door at the same base type) carrying real `NiControllerManager`/
+  `NiControllerSequence`/`NiTransformInterpolator`/`NiTransformData` keyframe blocks —
+  rigid single-node transform animation, no `NiSkinInstance`/bone hierarchy, so it
+  doesn't need skeleton/skinning support to land first. Currently a real gameplay
+  blocker: `DoorNode.activate()` only handles the teleport case, so a non-teleporting
+  door does nothing on interact and can gate off map areas.
 - Equipment/armor mesh swapping on the skeleton (the "nif per body part + biped slot"
   model FNV uses).
 - Basic third-person player controller: movement, jump, camera collision — using
