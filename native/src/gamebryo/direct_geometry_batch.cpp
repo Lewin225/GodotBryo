@@ -11,10 +11,12 @@ using namespace godot;
 void DirectGeometryBatch::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("init", "world_node"), &DirectGeometryBatch::init);
 	ClassDB::bind_method(D_METHOD("add_object", "world_transform", "mesh_entries", "shape_entries"), &DirectGeometryBatch::add_object);
+	ClassDB::bind_method(D_METHOD("build"), &DirectGeometryBatch::build);
 	ClassDB::bind_method(D_METHOD("set_enabled", "enabled"), &DirectGeometryBatch::set_enabled);
 	ClassDB::bind_method(D_METHOD("free_all"), &DirectGeometryBatch::free_all);
 	ClassDB::bind_method(D_METHOD("get_instance_count"), &DirectGeometryBatch::get_instance_count);
 	ClassDB::bind_method(D_METHOD("get_body_count"), &DirectGeometryBatch::get_body_count);
+	ClassDB::bind_method(D_METHOD("get_batched_placement_count"), &DirectGeometryBatch::get_batched_placement_count);
 }
 
 DirectGeometryBatch::~DirectGeometryBatch() {
@@ -39,7 +41,6 @@ void DirectGeometryBatch::add_object(const Transform3D &world_transform, const A
 		return; // init() wasn't called -- nothing to attach these to
 	}
 
-	RenderingServer *rs = RenderingServer::get_singleton();
 	for (int i = 0; i < mesh_entries.size(); ++i) {
 		Dictionary entry = mesh_entries[i];
 		Ref<Mesh> mesh = entry.get("mesh", Variant());
@@ -47,10 +48,24 @@ void DirectGeometryBatch::add_object(const Transform3D &world_transform, const A
 			continue;
 		}
 		Transform3D local = entry.get("transform", Transform3D());
-		RID instance = rs->instance_create2(mesh->get_rid(), scenario_);
-		rs->instance_set_transform(instance, world_transform * local);
-		rs->instance_set_visible(instance, enabled_);
-		instances_.push_back(instance);
+		RID mesh_rid = mesh->get_rid();
+		Transform3D instance_transform = world_transform * local;
+		placed_mesh_count_++;
+
+		bool found = false;
+		for (MeshGroup &group : pending_mesh_groups_) {
+			if (group.mesh == mesh_rid) {
+				group.transforms.push_back(instance_transform);
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			MeshGroup group;
+			group.mesh = mesh_rid;
+			group.transforms.push_back(instance_transform);
+			pending_mesh_groups_.push_back(group);
+		}
 	}
 
 	if (shape_entries.size() > 0) {
@@ -72,6 +87,29 @@ void DirectGeometryBatch::add_object(const Transform3D &world_transform, const A
 		}
 		bodies_.push_back(body);
 	}
+}
+
+void DirectGeometryBatch::build() {
+	if (pending_mesh_groups_.empty() || !initialized_) {
+		return;
+	}
+
+	RenderingServer *rs = RenderingServer::get_singleton();
+	for (const MeshGroup &group : pending_mesh_groups_) {
+		RID multimesh = rs->multimesh_create();
+		rs->multimesh_set_mesh(multimesh, group.mesh);
+		rs->multimesh_allocate_data(multimesh, static_cast<int32_t>(group.transforms.size()), RenderingServer::MULTIMESH_TRANSFORM_3D);
+		for (size_t i = 0; i < group.transforms.size(); ++i) {
+			rs->multimesh_instance_set_transform(multimesh, static_cast<int32_t>(i), group.transforms[i]);
+		}
+		multimeshes_.push_back(multimesh);
+
+		RID instance = rs->instance_create2(multimesh, scenario_);
+		rs->instance_set_visible(instance, enabled_);
+		instances_.push_back(instance);
+	}
+
+	pending_mesh_groups_.clear();
 }
 
 void DirectGeometryBatch::set_enabled(bool enabled) {
@@ -99,6 +137,13 @@ void DirectGeometryBatch::free_all() {
 		}
 		instances_.clear();
 	}
+	if (!multimeshes_.empty()) {
+		RenderingServer *rs = RenderingServer::get_singleton();
+		for (const RID &mm : multimeshes_) {
+			rs->free_rid(mm);
+		}
+		multimeshes_.clear();
+	}
 	if (!bodies_.empty()) {
 		PhysicsServer3D *ps = PhysicsServer3D::get_singleton();
 		for (const RID &body : bodies_) {
@@ -106,4 +151,9 @@ void DirectGeometryBatch::free_all() {
 		}
 		bodies_.clear();
 	}
+	pending_mesh_groups_.clear();
+}
+
+int DirectGeometryBatch::get_batched_placement_count() const {
+	return placed_mesh_count_;
 }
