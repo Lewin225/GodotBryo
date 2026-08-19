@@ -34,6 +34,12 @@ func is_registered(type_tag: String) -> bool:
 ##   3. neither -> null; caller logs the skip (the registry doesn't hold
 ##      side-channel logging state, keep it simple)
 func build(placement: Dictionary) -> Node3D:
+	# Checked before base_type dispatch: markers share base_type=STAT with
+	# thousands of legitimate props (see MarkerNode's doc comment), so this
+	# can't be a registered "STAT" factory without hijacking every real STAT
+	# placement too.
+	if MarkerNode.is_marker_model(placement.get("model", "")):
+		return _build_marker(placement)
 	var type_tag: String = placement.get("base_type", "")
 	if _factories.has(type_tag):
 		return _factories[type_tag].call(placement, resolver)
@@ -75,6 +81,16 @@ func _build_door(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> 
 	if node is DoorNode:
 		node.resolve_destination(esm)
 	return node
+
+## MARKER: identity + transform only, deliberately no mesh/collision (see
+## MarkerNode's doc comment) — the inherited StaticBody3D has no shape
+## attached, so it's inert. marker_kind is the model's own basename, the
+## only real distinguishing signal Bethesda left; future dedicated behavior
+## (e.g. an Audio marker -> AudioStreamPlayer3D) keys off it here.
+func _build_marker(placement: Dictionary) -> Node3D:
+	var node := MarkerNode.new()
+	node.marker_kind = MarkerNode.kind_from_model(placement.get("model", ""))
+	return _finalize(node, placement)
 
 ## SCOL bundles multiple STAT placements inside its own record body (not via
 ## child REFRs) — see esm::EsmFile::get_scol_parts(). Each part resolves

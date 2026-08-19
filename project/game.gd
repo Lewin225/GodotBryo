@@ -98,15 +98,31 @@ func _find_fallback_spawn_transform() -> Dictionary:
 ## Moves the player's CharacterBody3D directly (a physics body's transform
 ## can be set outright — this isn't move_and_slide()) and zeroes its
 ## velocity so no leftover momentum carries from wherever it was into the
-## new cell. `rotation` is Euler radians (Y = facing/yaw is what actually
-## matters for a first-person controller; X/Z are normally left at 0).
+## new cell. `rot` is Euler radians (only Y — yaw — is used).
+##
+## Setting the CharacterBody3D's own `rotation` directly does NOT turn the
+## FPC addon's movement direction — confirmed in its own source
+## (addons/fpc/character.gd): _ready() copies the body's initial
+## rotation.y into a separate "HEAD" child node ONCE, then resets the
+## body's own rotation.y to 0, and _handle_movement() computes movement
+## direction purely from HEAD.rotation.y from then on, never the body's.
+## Rotating the body after that (what this function used to do) visually
+## re-faces the camera correctly (it hangs off HEAD, a child of the body,
+## so it inherits the body's world orientation) while leaving the
+## *movement* basis stuck at whatever HEAD.rotation.y was at scene start —
+## a fixed-offset "controls feel rotated" bug (e.g. LEFT moving you
+## forward). Set HEAD's own rotation.y instead, and leave the body's
+## rotation untouched, so both stay in sync.
 func reposition_player(pos: Vector3, rot: Vector3) -> void:
 	var player := _find_character_body(self)
 	if player == null:
 		push_warning("game.gd: no CharacterBody3D found to reposition")
 		return
 	player.global_position = pos
-	player.rotation = rot
+	if "HEAD" in player and player.HEAD != null:
+		player.HEAD.rotation.y = rot.y
+	else:
+		player.rotation = rot # fallback for a non-FPC CharacterBody3D
 	if "velocity" in player:
 		player.velocity = Vector3.ZERO
 
