@@ -46,6 +46,64 @@ driving streaming must be whatever camera is actually rendering
 movement (the camera moves, nothing streams in) — an easy mistake to make and a real
 one to guard against, not a hypothetical.
 
+## Module boundaries
+
+Four pieces, not one monolithic streamer, so the streaming work doesn't tangle into
+`CellLoader`'s existing responsibilities or duplicate them:
+
+- **`CellStreamBuilder`** (new, small, owns no state) — the actual "given `esm`/
+  `resolver`/`registry` instances, a target parent `Node3D`, and a cell FormID, stream
+  its terrain+REFRs into that parent across frames, cancelable" logic, extracted out of
+  `CellLoader.load_cell()`'s inline loop. Dependency-injected, not a singleton — both
+  call sites below construct their own instances of `esm`/`resolver`/`registry` and
+  pass them in, same self-contained pattern `CellLoader` already uses.
+- **`CellLoader`** (existing, mostly unchanged) — still the single-active-cell
+  orchestrator (double-buffer swap, `@tool` editor support, interiors and
+  door-triggered hard swaps), just delegating its inner build loop to
+  `CellStreamBuilder` instead of doing it inline.
+- **`WorldStreamer`** (new) — the multi-tile orchestrator: resident-tile bookkeeping
+  (grid coordinate → built root), the `PersistentRoot` node's lifecycle, active-camera
+  tracking, radius/hysteresis diffing. Owns its own `esm`/`resolver`/`registry`
+  (mirroring `CellLoader`'s self-contained pattern rather than sharing instances — a
+  second resource cache is a minor, measurable-later inefficiency, not a correctness
+  problem, not worth complicating either class's ownership model to avoid pre-emptively).
+  Uses `CellStreamBuilder` per resident tile instead of reimplementing the batching.
+- **`game.gd`'s door-transition code** (existing, grows two more cases) — the only
+  place that knows *why* a transition is happening, matching `CellLoader`'s own
+  established "doesn't know why/how the player is here" decoupling. On a door into an
+  interior: tear down `WorldStreamer` (`deactivate()`), then `CellLoader.load_cell()`
+  as today. On a door out of an interior into an exterior: `WorldStreamer.activate(dest_wrld_form_id)`
+  and step back — no "load cell X,Y" command needed, since once active it reacts purely
+  to wherever the camera already is (see below).
+
+## Purely position-reactive once active — `WorldStreamer` doesn't know why the player moved
+
+`WorldStreamer` doesn't special-case "just teleported here" vs. "walked one step" — its
+per-check diff (desired resident set vs. actual) is the same logic either way, it just
+has more entries to stream in on a big jump (a teleport landing somewhere with nothing
+currently resident) than on an incremental walk step. No transition-specific code path,
+matching the same instinct that keeps `CellLoader` itself ignorant of *why* a cell load
+was requested.
+
+This can't be *fully* context-free, though: raw Godot world position alone doesn't
+safely imply which worldspace to interpret it against — every interior cell is built at
+a fixed local origin regardless of where it conceptually sits in the game world today,
+so two unrelated interiors' coordinate spaces (or an interior's and some real exterior
+grid tile's) can numerically overlap by coincidence. `WorldStreamer` needs exactly one
+piece of explicit state for this: `activate(wrld_form_id)` / `deactivate()`, called once
+by whatever's orchestrating a transition (`game.gd`), not derived from position. While
+inactive it does nothing at all (correctly dormant while the player's indoors); once
+active for a worldspace, everything else — which tiles, hysteresis, the persistent
+cell — falls out of the continuous position check with no further input.
+
+**`streaming_settled` signal**, emitted whenever the in-flight tile-load count returns
+to zero (having been non-zero) — lets a caller know when it's safe to release the
+player/undarken a transition screen without `WorldStreamer` knowing a screen exists.
+Fires repeatedly over a session (every walk-triggered tile load settles too, not just
+a post-teleport catch-up) — a caller wanting "the initial load after this specific
+transition finished" listens for the next occurrence and disconnects, rather than
+`WorldStreamer` tracking "is this the first settle" itself.
+
 ## What's already available to build on
 
 - `EsmReader.find_exterior_cell(wrld_form_id, x, y)` / `get_exterior_cell_grid(cell_form_id)`
@@ -70,11 +128,17 @@ load fully replaces the last), but streaming keeps many grid tiles resident
 simultaneously. Calling that same append per-tile would place the worldspace's entire
 persistent cell (4,468 refs in `WastelandNV` — quest markers, every exterior building's
 own entrance door, ...) once *per currently-loaded tile* — duplicate door/marker nodes
-stacked on top of each other, not just wasted work. The streamer must load a
-worldspace's persistent cell exactly once per active streaming session (tracked
-separately from the set of grid tiles), added when streaming starts in that worldspace
-and torn down only when leaving it (e.g. through a door into an interior, or into a
-different worldspace) — never re-fetched per-tile.
+stacked on top of each other, not just wasted work. Fixed by giving persistent refs
+their own dedicated node — a single `PersistentRoot` (same `rotation_degrees.x = -90`
+axis conversion every tile's own root already applies, position left at zero — exterior
+REFR positions, persistent or not, are already absolute world coordinates per
+`cell_loader.gd`'s own terrain-placement math, so no per-tile offset is needed or
+correct for them anyway), built once via `CellStreamBuilder` when `WorldStreamer`
+activates for a worldspace and freed once on `deactivate()` — never tied to any single
+grid tile's own load/unload lifecycle, so a per-tile unload can never accidentally touch
+it. `find_ref_by_editor_id()`/`find_ref_by_form_id()`-style queries just need to search
+across both the per-tile ref lists and `PersistentRoot`'s own — a flat merge, not real
+complexity, matching how `CellLoader`'s existing `_current_refs` already works today.
 
 ## Steps
 
@@ -106,44 +170,64 @@ different worldspace) — never re-fetched per-tile.
    back-and-forth walk test to confirm, not just reasoning about it — the same "don't
    trust it until it's been driven across the seam" discipline every boundary-adjacent
    fix this phase has needed.
-5. **Persistent-cell-once**, per the section above: resolve the active grid tile's
-   owning worldspace once when streaming (re)starts in it, stream its persistent cell in
-   as its own resident entry (not tied to any one grid tile's load/unload lifecycle),
-   and tear it down only on a worldspace change — verify no duplicate persistent-ref
-   nodes exist with two-plus resident tiles loaded simultaneously, not just checked with
-   one.
-6. **Integration with 2.7's door transitions.** A door into an interior must tear down
-   the *entire* streamed set (every resident exterior tile plus the persistent-cell
-   entry), not just whichever single tile the player happened to be standing in — falls
-   naturally out of the streamer owning its own resident-set bookkeeping rather than
-   `CellLoader`'s existing single `_current`. A door out of an interior into an exterior
-   starts the streamer fresh at the destination grid coordinate.
+5. **Persistent-cell-once via `PersistentRoot`**, per the section above — verify no
+   duplicate persistent-ref nodes exist with two-plus resident tiles loaded
+   simultaneously, not just checked with one.
+6. **`activate(wrld_form_id)` / `deactivate()` + `streaming_settled`.** The only API
+   surface `game.gd`'s door-transition code needs — see "Purely position-reactive once
+   active" above. `deactivate()` tears down every resident tile plus `PersistentRoot` in
+   one go (falls out naturally from `WorldStreamer` owning its own resident-set
+   bookkeeping, unlike `CellLoader`'s single `_current`). `activate()` does not take a
+   position or cell — the very next diff check picks up wherever the camera already is.
 
 ## Deliverables
 
-- A shared per-cell terrain+REFR streaming builder, used by both the door-triggered
-  single-cell path and continuous grid streaming (not duplicated).
-- A world-cell streamer that keeps every grid tile within a radius of the active
-  camera loaded, continuously, with no boundary-cross-triggered gap.
-- Persistent-cell refs loaded exactly once per active worldspace streaming session,
-  verified with multiple resident tiles simultaneously loaded.
-- Correct interop with door transitions: entering an interior tears down the full
-  streamed set; leaving one starts streaming fresh at the destination.
+- `CellStreamBuilder`: the shared per-cell terrain+REFR streaming logic, used by both
+  `CellLoader`'s door-triggered single-cell path and `WorldStreamer`'s continuous
+  multi-tile streaming (not duplicated).
+- `WorldStreamer`: keeps every grid tile within a radius of the active camera loaded,
+  continuously, with no boundary-cross-triggered gap; a dedicated `PersistentRoot` node
+  per active worldspace; `activate(wrld_form_id)`/`deactivate()` as its only
+  transition-facing API; a `streaming_settled` signal for a caller to know when it's
+  safe to release the player.
+- Correct interop with door transitions: entering an interior calls `deactivate()`
+  (tears down every resident tile plus `PersistentRoot` in one go); leaving one calls
+  `activate()` at the destination worldspace with no explicit cell/position argument.
 
 ## Acceptance criteria
 
 - [ ] Walking in a straight line across several real grid tiles in `WastelandNV` never
-      shows missing terrain/objects at any point — verified by an actual walk, not
-      just "the loader was called."
-- [ ] Free-fly/editor camera movement (not the player body) drives streaming
-      correctly — verified directly, not assumed from the player-body case working.
-- [ ] No duplicate persistent-cell-ref nodes exist with 2+ grid tiles resident at once.
-- [ ] A door transition from a streamed exterior into an interior fully tears down
-      every resident tile plus the persistent-cell entry, not just the tile the player
-      stood in.
-- [ ] Sitting still near a streaming-radius boundary doesn't thrash load/unload
-      (hysteresis verified with a real back-and-forth position walk, not reasoning
-      alone).
+      shows missing terrain/objects at any point — verified by an actual visual
+      playtest, not just headless state checks. **Not yet done** — everything below is
+      verified programmatically (`test_world_streamer.gd`, plus a real `game.tscn`
+      integration run through `game.gd`'s actual door-transition wiring), but nobody
+      has watched it render on screen yet.
+- [x] Free-fly/editor camera movement (not the player body) drives streaming
+      correctly — verified directly: `test_world_streamer.gd` drives a plain `Camera3D`
+      with no player/CharacterBody3D involved at all, not just the FPC addon's own
+      camera.
+- [x] A door-triggered teleport into a worldspace with nothing currently resident
+      streams in correctly with no special-casing beyond `activate()` — verified via a
+      real `game.tscn` instantiation, `RamshackleScrapDoor01`'s own `activate()` through
+      `game._do_exterior_transition()`: `CellLoader` torn down, `WorldStreamer` active,
+      9 tiles + `PersistentRoot` streamed in from a cold start.
+- [x] No duplicate persistent-cell-ref nodes exist with 2+ grid tiles resident at once
+      — `test_world_streamer.gd` asserts exactly one `PersistentRoot` exists with 9
+      resident tiles loaded.
+- [x] `deactivate()` fully tears down every resident tile plus `PersistentRoot`, not
+      just whichever tile the player happened to be standing in — verified (resident
+      set, pending set, `PersistentRoot`, and child count all confirmed empty/zero/null
+      after `deactivate()`).
+- [x] `streaming_settled` fires once the post-`activate()` catch-up load actually
+      finishes — verified by a real `await` in `test_world_streamer.gd` (caught one real
+      GDScript closure gotcha along the way: a lambda mutating a captured local `bool`
+      doesn't propagate back to the caller — needed a mutable `Array` container instead).
+- [ ] Sitting still near a streaming-radius boundary doesn't thrash load/unload —
+      **not yet verified**. What *was* tested is a single large jump (far enough to
+      leave the entire old resident set behind), not a real back-and-forth walk
+      hovering right at the `RADIUS_LOAD`/`RADIUS_UNLOAD` seam.
 - [ ] Cancel/restart safety (a generation counter, per 2.2) re-verified against
-      multiple concurrent in-flight tile loads, not just the single-cell case 2.2/2.7
-      already covered.
+      multiple concurrent in-flight tile loads — **not yet explicitly tested**. The
+      generation-bump mechanism mirrors 2.2/2.7's already-proven pattern, but no test
+      here specifically cancels while several tiles are mid-stream (not yet resident)
+      and checks nothing partial leaks through.

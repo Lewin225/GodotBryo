@@ -6,14 +6,17 @@ extends Node3D
 ## default used throughout Phase 1/2) via CellLoader on startup.
 ##
 ## The player controller ("Character", the FPC addon) is a sibling of
-## CellLoader in this scene. CellLoader deliberately has no idea a player
-## exists (phases/2/07-runtime-cell-loader.md) — _process() below owns the
-## interact raycast instead: on a hit against anything exposing
+## CellLoader/WorldStreamer in this scene. Neither of those has any idea a
+## player exists (phases/2/07-runtime-cell-loader.md,
+## phases/2/08-world-cell-streaming.md) — _process() below owns the interact
+## raycast instead: on a hit against anything exposing
 ## activate() -> Dictionary (DoorNode today; any future interactable type
-## needs only that same contract, not a change here), it calls
-## CellLoader.load_cell(dest_cell_form_id) and repositions the player to
-## dest_position/dest_rotation once load_completed fires. See
-## _try_interact()/_on_load_completed() below for that wiring.
+## needs only that same contract, not a change here), it checks whether the
+## destination is interior or exterior (EsmReader.get_cell_worldspace()) and
+## routes to whichever of CellLoader.load_cell() or
+## WorldStreamer.activate() applies — only one of the two is ever "where
+## the player is" at a time, so the other is torn down first. See
+## _try_interact()/_on_load_completed()/_do_exterior_transition() below.
 ##
 ## Player repositioning on load: this scene's own "Character" node (a
 ## CharacterBody3D — the FPC addon's root type) is found and moved directly
@@ -36,7 +39,9 @@ const DEFAULT_CELL_EDITOR_ID := "GSProspectorSaloonInterior"
 const INTERACT_REACH_METERS := 2.5
 
 var cell_loader: CellLoader
+var world_streamer: WorldStreamer
 var _cell_label: Label
+var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 
 # Set by _try_interact() right before a door-triggered load_cell() call, so
 # _on_load_completed() knows to land the player at the door's own
@@ -50,6 +55,7 @@ var _pending_door_spawn: Dictionary = {}
 
 func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
+	world_streamer = $WorldStreamer
 	_cell_label = $DebugHud/CellLabel
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
@@ -93,6 +99,10 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 ## contract (an `activate() -> Dictionary` callable, per DoorNode's own
 ## established pattern in project/gamebryo/door_node.gd).
 func _process(_delta: float) -> void:
+	if world_streamer != null and world_streamer.is_active():
+		var current_cell_form_id := world_streamer.get_current_cell_form_id()
+		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
+			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellLoader's single-load case
 	if cell_loader == null or cell_loader._loading:
 		return # a load is already in flight -- don't stack another
 	if Input.is_action_just_pressed("interact"):
@@ -115,8 +125,35 @@ func _try_interact() -> void:
 	var outcome: Dictionary = collider.activate()
 	if outcome.is_empty():
 		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
-	_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
-	cell_loader.load_cell(int(outcome["dest_cell_form_id"]))
+
+	var dest_cell_form_id := int(outcome["dest_cell_form_id"])
+	var dest_wrld_form_id: int = cell_loader.esm.get_cell_worldspace(dest_cell_form_id)
+	if dest_wrld_form_id == -1:
+		# Interior destination -- CellLoader's existing single-active-cell
+		# path. Tear down any exterior streaming first: only one of
+		# CellLoader/WorldStreamer is ever "where the player is" at a time.
+		world_streamer.deactivate()
+		_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
+		cell_loader.load_cell(dest_cell_form_id)
+	else:
+		_do_exterior_transition(dest_wrld_form_id, outcome["dest_position"], outcome["dest_rotation"])
+
+## phases/2/08-world-cell-streaming.md: a door into an exterior worldspace.
+## Unlike the interior case, WorldStreamer needs no "load this cell" call --
+## reposition the player first (exterior REFR positions are already
+## absolute world coordinates, so this needs only the fixed axis
+## conversion, not any one tile's own RefrRoot -- see
+## _convert_dest_spawn_transform_exterior()), THEN activate() so its very
+## first streaming check already sees the player's new position.
+func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: Vector3) -> void:
+	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
+	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
+	reposition_player(spawn["position"], spawn["rotation"])
+	world_streamer.activate(wrld_form_id)
+	await world_streamer.streaming_settled # lets a future loading-screen UI know when it's safe to release the player -- WorldStreamer itself has no idea a screen exists
+	var cell_form_id := world_streamer.get_current_cell_form_id()
+	if cell_form_id != 0:
+		_update_cell_hud(cell_form_id)
 
 ## Debug HUD: current cell's own EditorID, plus its worldspace grid
 ## coordinate when it's an exterior cell (get_exterior_cell_grid() returns
@@ -125,12 +162,30 @@ func _try_interact() -> void:
 func _update_cell_hud(cell_form_id: int) -> void:
 	if _cell_label == null:
 		return
+	_hud_cell_form_id = cell_form_id
 	var editor_id: String = cell_loader.esm.get_cell_editor_id(cell_form_id)
 	var label: String = editor_id if editor_id != "" else "0x%X" % cell_form_id
 	var grid: Dictionary = cell_loader.esm.get_exterior_cell_grid(cell_form_id)
 	if not grid.is_empty():
 		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
 	_cell_label.text = "cell: " + label
+
+## Converts a raw XTEL destination into Godot world space for an EXTERIOR
+## landing cell -- unlike _convert_dest_spawn_transform() below, there's no
+## single tile RefrRoot to convert through here (WorldStreamer may have
+## several, or none yet, resident). Exterior REFR positions are already
+## absolute world coordinates (confirmed: cell_loader.gd's own terrain
+## placement never applies a per-tile offset to REFR positions, only to the
+## LAND heightmap), so this only needs the same fixed Z-up -> Y-up axis
+## conversion every RefrRoot/tile root already applies at position zero --
+## identical math to what `refr_root.global_transform * local_pos` would
+## produce for a root at the origin, just without needing an actual node.
+func _convert_dest_spawn_transform_exterior(local_pos: Vector3, local_rot: Vector3) -> Dictionary:
+	var axis_basis := Basis(Vector3.RIGHT, deg_to_rad(-90))
+	var world_pos: Vector3 = axis_basis * local_pos
+	var world_basis: Basis = axis_basis * GamebryoMeshResolver.refr_basis(local_rot)
+	var world_rot := Vector3(0, world_basis.get_euler().y, 0)
+	return { "position": world_pos, "rotation": world_rot }
 
 ## Converts a raw XTEL destination (same ESM-local convention as any REFR's
 ## DATA position/rotation) into Godot world space via the newly-loaded
