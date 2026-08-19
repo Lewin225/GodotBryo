@@ -39,12 +39,14 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
+	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
 	ClassDB::bind_method(D_METHOD("get_cell_editor_id", "cell_form_id"), &EsmReader::get_cell_editor_id);
+	ClassDB::bind_method(D_METHOD("get_cell_worldspace", "cell_form_id"), &EsmReader::get_cell_worldspace);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
 	ClassDB::bind_method(D_METHOD("get_cell_child_type_counts", "cell_form_id"), &EsmReader::get_cell_child_type_counts);
 	ClassDB::bind_method(D_METHOD("resolve_refr_xtel", "refr_form_id"), &EsmReader::resolve_refr_xtel);
@@ -225,16 +227,31 @@ Array EsmReader::get_cell_references(int64_t cell_form_id) const {
 // interior cell (no worldspace) or one whose worldspace has no persistent
 // cell at all.
 Array EsmReader::get_persistent_refs_for_cell(int64_t cell_form_id) const {
+	if (!opened_) {
+		return Array();
+	}
+	try {
+		auto wrld_form_id = file_.get_cell_worldspace(static_cast<uint32_t>(cell_form_id));
+		if (!wrld_form_id) {
+			return Array();
+		}
+		return get_persistent_refs_for_worldspace(static_cast<int64_t>(*wrld_form_id));
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return Array();
+	}
+}
+
+// phases/2/08-world-cell-streaming.md: WorldStreamer knows the WRLD FormID
+// directly (from its own activate(wrld_form_id)) rather than any one cell's
+// FormID, so it needs this instead of going by way of get_persistent_refs_for_cell().
+Array EsmReader::get_persistent_refs_for_worldspace(int64_t wrld_form_id) const {
 	Array out;
 	if (!opened_) {
 		return out;
 	}
 	try {
-		auto wrld_form_id = file_.get_cell_worldspace(static_cast<uint32_t>(cell_form_id));
-		if (!wrld_form_id) {
-			return out;
-		}
-		auto persistent_cell = file_.get_worldspace_persistent_cell(*wrld_form_id);
+		auto persistent_cell = file_.get_worldspace_persistent_cell(static_cast<uint32_t>(wrld_form_id));
 		if (!persistent_cell) {
 			return out;
 		}
@@ -317,6 +334,19 @@ Dictionary EsmReader::find_exterior_cell(int64_t wrld_form_id, int32_t x, int32_
 		last_error_ = String(e.what());
 	}
 	return out;
+}
+
+int64_t EsmReader::get_cell_worldspace(int64_t cell_form_id) const {
+	if (!opened_) {
+		return -1;
+	}
+	try {
+		auto wrld_form_id = file_.get_cell_worldspace(static_cast<uint32_t>(cell_form_id));
+		return wrld_form_id ? static_cast<int64_t>(*wrld_form_id) : -1;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return -1;
+	}
 }
 
 String EsmReader::get_cell_editor_id(int64_t cell_form_id) const {

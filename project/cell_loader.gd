@@ -17,9 +17,12 @@ extends Node3D
 ## between — dispatch is entirely internal (see load_cell()'s own comment).
 ##
 ## Deliberately narrower than full continuous world streaming (adjacent
-## cells loading/unloading as the player walks around — the larger,
-## still-unscoped rest of Phase 2's ROADMAP goal). This loads exactly the
-## one cell it's asked for, nothing more.
+## cells loading/unloading as the player walks around —
+## phases/2/08-world-cell-streaming.md's WorldStreamer). This loads exactly
+## the one cell it's asked for, nothing more; WorldStreamer uses the same
+## underlying terrain+REFR streaming logic (CellStreamBuilder, extracted out
+## of this class) but owns its own multi-tile resident-set bookkeeping
+## rather than this class's single LoadingCell/CurrentCell double-buffer.
 ##
 ## Player repositioning is NOT this class's job. It has no idea a player
 ## controller exists. A caller (e.g. a door-interaction handler, which
@@ -50,8 +53,6 @@ signal load_progress(fraction: float)
 signal load_completed(cell_form_id: int, success: bool)
 
 const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-const CELL_SIZE_UNITS := 4096.0
-const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 
 ## How many REFRs to place per frame before yielding — same frame-budget
 ## pattern proven in exterior_viewer.gd (phases/2/02).
@@ -67,6 +68,7 @@ const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
+var _builder: CellStreamBuilder # phases/2/08-world-cell-streaming.md: shared terrain+REFR streaming logic
 
 var _current: Node3D = null # the live "CurrentCell" root, or null before the first load
 var _loading := false
@@ -84,6 +86,8 @@ func _ready() -> void:
 		push_error("CellLoader: could not open FalloutNV.esm")
 	resolver = GamebryoMeshResolver.new()
 	registry = GamebryoObjectRegistry.new(resolver, esm)
+	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
+	_builder.progress.connect(func(f): load_progress.emit(f))
 
 func _editor_load_cell() -> void:
 	if cell_editor_id == "":
@@ -138,6 +142,20 @@ func cancel_load() -> void:
 		_generation += 1
 		_loading = false
 
+## Frees whatever is currently loaded, if anything, without loading a new
+## cell in its place -- phases/2/08-world-cell-streaming.md: used when
+## transitioning away from CellLoader's single-active-cell case entirely
+## (a door out of an interior into WorldStreamer's continuous exterior
+## streaming, which owns its own resident-tile lifecycle instead). Safe to
+## call when nothing is loaded.
+func unload_current() -> void:
+	cancel_load()
+	if _current != null:
+		remove_child(_current)
+		_current.free()
+		_current = null
+	_current_refs = []
+
 ## Loads the given CELL (by FormID) as the new current cell, tearing down
 ## whatever was current before. Interior/exterior dispatch is implicit, not
 ## a caller decision: every cell is checked for LAND data (get_land_data()
@@ -166,29 +184,10 @@ func load_cell(cell_form_id: int) -> void:
 	terrain_root.name = "TerrainRoot"
 	_add_child(loading_root, terrain_root)
 
-	var land: Dictionary = esm.get_land_data(cell_form_id)
-	if not land.is_empty():
-		var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
-		var grid_x := int(grid.get("x", 0))
-		var grid_y := int(grid.get("y", 0))
-		var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
-		var quadrant_textures: Array = []
-		for i in range(quadrant_ltex.size()):
-			var ltex_id := int(quadrant_ltex[i])
-			var tex: Texture2D = null
-			if ltex_id != 0:
-				var tex_path := esm.resolve_ltex_texture_path(ltex_id)
-				if tex_path != "":
-					tex = resolver.load_texture("textures\\" + tex_path)
-			quadrant_textures.append(tex)
-		var terrain := GamebryoTerrainBuilder.build(land, quadrant_textures)
-		if terrain != null:
-			terrain.position = Vector3(
-					grid_x * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS,
-					0.0,
-					-(grid_y * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS))
-			_set_collision_disabled(terrain, true)
-			_add_child(terrain_root, terrain)
+	var terrain := _builder.build_terrain(cell_form_id)
+	if terrain != null:
+		CellStreamBuilder.set_collision_disabled(terrain, true)
+		_add_child(terrain_root, terrain)
 
 	var refs: Array = esm.get_cell_references(cell_form_id)
 	# phases/2/07-runtime-cell-loader.md's "Known gap": an exterior cell's
@@ -200,25 +199,13 @@ func load_cell(cell_form_id: int) -> void:
 	refs.append_array(esm.get_persistent_refs_for_cell(cell_form_id))
 	_current_refs = refs # queryable immediately, before streaming even starts
 
-	var placed := 0
-	var placed_since_yield := 0
-	for p in refs:
-		var node := registry.build(p)
-		if node != null:
-			_set_collision_disabled(node, true)
-			_add_child(refr_root, node)
-			placed += 1
-		placed_since_yield += 1
-		if objects_per_frame > 0 and placed_since_yield >= objects_per_frame:
-			placed_since_yield = 0
-			load_progress.emit(float(placed) / float(max(refs.size(), 1)))
-			await get_tree().process_frame
-			if my_generation != _generation:
-				loading_root.queue_free() # superseded/cancelled -- never was "current", safe to defer-free
-				return
-
-	if my_generation != _generation:
-		loading_root.queue_free()
+	var add_child_fn := func(parent: Node, child: Node) -> void:
+		_add_child(parent, child)
+		CellStreamBuilder.set_collision_disabled(child, true)
+	var is_cancelled_fn := func() -> bool: return my_generation != _generation
+	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn)
+	if not completed:
+		loading_root.queue_free() # superseded/cancelled -- never was "current", safe to defer-free
 		return
 
 	# Swap: enable collision + visibility on the now-fully-built cell, then
@@ -227,7 +214,7 @@ func load_cell(cell_form_id: int) -> void:
 	# removal is exactly the bug already found and fixed once this session
 	# in exterior_viewer.gd (a same-named replacement colliding with the
 	# not-yet-actually-gone old node and getting silently renamed by Godot).
-	_set_collision_disabled(loading_root, false)
+	CellStreamBuilder.set_collision_disabled(loading_root, false)
 	loading_root.visible = true
 
 	# Free the old CurrentCell BEFORE renaming loading_root -- doing it in
@@ -245,9 +232,3 @@ func load_cell(cell_form_id: int) -> void:
 	_loading = false
 	load_progress.emit(1.0)
 	load_completed.emit(cell_form_id, true)
-
-func _set_collision_disabled(node: Node, disabled: bool) -> void:
-	if node is CollisionShape3D:
-		node.disabled = disabled
-	for c in node.get_children():
-		_set_collision_disabled(c, disabled)

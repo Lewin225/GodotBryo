@@ -70,6 +70,11 @@ public:
 	// persistent cell.
 	Array get_persistent_refs_for_cell(int64_t cell_form_id) const;
 
+	// Same as get_persistent_refs_for_cell(), but given the worldspace's own
+	// FormID directly rather than by way of one of its cells — see
+	// phases/2/08-world-cell-streaming.md.
+	Array get_persistent_refs_for_worldspace(int64_t wrld_form_id) const;
+
 	// Same Dictionary shape as get_cell_references(), but resolves a SCOL
 	// (Static Collection) record's bundled parts instead of a cell's REFRs
 	// — see esm::EsmFile::get_scol_parts(). "refr_form_id" is the SCOL's
@@ -99,6 +104,12 @@ public:
 	// Empty string if cell_form_id isn't a CELL or has no EDID — real for
 	// some unnamed exterior cells.
 	String get_cell_editor_id(int64_t cell_form_id) const;
+
+	// A CELL's owning worldspace FormID, or -1 for an interior cell (no
+	// WRLD ancestor) — see phases/2/08-world-cell-streaming.md, needed by a
+	// door-transition caller to turn a destination cell FormID into the
+	// WRLD FormID WorldStreamer.activate() expects.
+	int64_t get_cell_worldspace(int64_t cell_form_id) const;
 
 	// Reads the given cell's LAND child (if any): { "heights":
 	// PackedFloat32Array (33*33, row-major, already decoded and in
