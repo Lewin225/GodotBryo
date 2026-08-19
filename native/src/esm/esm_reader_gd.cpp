@@ -43,6 +43,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
+	ClassDB::bind_method(D_METHOD("get_cell_editor_id", "cell_form_id"), &EsmReader::get_cell_editor_id);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
 	ClassDB::bind_method(D_METHOD("get_cell_child_type_counts", "cell_form_id"), &EsmReader::get_cell_child_type_counts);
 	ClassDB::bind_method(D_METHOD("resolve_refr_xtel", "refr_form_id"), &EsmReader::resolve_refr_xtel);
@@ -286,6 +287,18 @@ Dictionary EsmReader::find_exterior_cell(int64_t wrld_form_id, int32_t x, int32_
 		last_error_ = String(e.what());
 	}
 	return out;
+}
+
+String EsmReader::get_cell_editor_id(int64_t cell_form_id) const {
+	if (!opened_) {
+		return "";
+	}
+	try {
+		return String(file_.get_cell_editor_id(static_cast<uint32_t>(cell_form_id)).c_str());
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return "";
+	}
 }
 
 Dictionary EsmReader::get_exterior_cell_grid(int64_t cell_form_id) const {

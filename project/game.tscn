@@ -42,3 +42,16 @@ controls = {
 &"RIGHT": "right",
 &"SPRINT": "sprint"
 }
+
+[node name="DebugHud" type="CanvasLayer" parent="."]
+
+[node name="CellLabel" type="Label" parent="DebugHud"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 512.0
+offset_bottom = 40.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 16
+text = "cell: —"

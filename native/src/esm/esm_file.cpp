@@ -583,6 +583,21 @@ std::optional<ExteriorCellGrid> EsmFile::get_exterior_cell_grid(uint32_t cell_fo
 	return std::nullopt; // interior cell — no XCLC
 }
 
+std::string EsmFile::get_cell_editor_id(uint32_t cell_form_id) const {
+	auto cell = find_record_by_form_id(cell_form_id);
+	if (!cell || cell->type != "CELL") {
+		return "";
+	}
+	std::vector<uint8_t> data = read_record_data(*cell);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "EDID") {
+			return s.as_string();
+		}
+	}
+	return "";
+}
+
 std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 	if (land.type != "LAND") {
 		return std::nullopt;

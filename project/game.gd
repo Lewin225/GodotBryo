@@ -5,13 +5,15 @@ extends Node3D
 ## the game's actual default starting cell (GSDocMitchellHouse, the same
 ## default used throughout Phase 1/2) via CellLoader on startup.
 ##
-## This is where a player controller belongs. Add it as a sibling of
+## The player controller ("Character", the FPC addon) is a sibling of
 ## CellLoader in this scene. CellLoader deliberately has no idea a player
-## exists (phases/2/07-runtime-cell-loader.md) — your controller's own
-## interaction code calls DoorNode.activate() on a raycast hit, then
-## CellLoader.load_cell(dest_cell_form_id), then repositions itself to
+## exists (phases/2/07-runtime-cell-loader.md) — _process() below owns the
+## interact raycast instead: on a hit against anything exposing
+## activate() -> Dictionary (DoorNode today; any future interactable type
+## needs only that same contract, not a change here), it calls
+## CellLoader.load_cell(dest_cell_form_id) and repositions the player to
 ## dest_position/dest_rotation once load_completed fires. See
-## _on_load_completed() below for where that wiring goes.
+## _try_interact()/_on_load_completed() below for that wiring.
 ##
 ## Player repositioning on load: this scene's own "Character" node (a
 ## CharacterBody3D — the FPC addon's root type) is found and moved directly
@@ -27,10 +29,28 @@ extends Node3D
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
 
+# Interact reach: no game-data source for this (it's a pure UX/feel
+# constant in the original engine too, not derived from anything in the
+# ESM/NIF data) -- picked to comfortably reach a door/lever from just
+# outside its collision, not tuned further.
+const INTERACT_REACH_METERS := 2.5
+
 var cell_loader: CellLoader
+var _cell_label: Label
+
+# Set by _try_interact() right before a door-triggered load_cell() call, so
+# _on_load_completed() knows to land the player at the door's own
+# XTEL-resolved destination instead of the cell's COCMarkerHeading (which is
+# only correct for this scene's own startup load, not a door transition --
+# see the class doc comment). Raw ESM-local position/rotation, same
+# convention as any other REFR's DATA fields -- converted through the
+# newly-loaded cell's own RefrRoot once loading completes, same as
+# _find_coc_spawn_transform() does for the marker case.
+var _pending_door_spawn: Dictionary = {}
 
 func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
+	_cell_label = $DebugHud/CellLabel
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
 	await get_tree().process_frame # let CellLoader's own _ready() open the ESM
@@ -48,17 +68,83 @@ func _on_load_started(cell_form_id: int) -> void:
 func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	print("game.gd: cell 0x%X load complete, success=%s" % [cell_form_id, success])
 	if not success:
+		_pending_door_spawn = {}
 		return
 
-	# Door transitions (not this scene's own startup load) should call
-	# reposition_player() directly with the real XTEL-resolved landing
-	# transform from DoorNode.activate() instead of relying on this
-	# COCMarkerHeading/AABB fallback — see the class doc comment above.
-	var spawn := _find_coc_spawn_transform()
+	_update_cell_hud(cell_form_id)
+
+	var spawn := {}
+	if not _pending_door_spawn.is_empty():
+		spawn = _convert_dest_spawn_transform(_pending_door_spawn["position"], _pending_door_spawn["rotation"])
+		_pending_door_spawn = {}
+	if spawn.is_empty():
+		spawn = _find_coc_spawn_transform()
 	if spawn.is_empty():
 		spawn = _find_fallback_spawn_transform()
 	if not spawn.is_empty():
 		reposition_player(spawn["position"], spawn["rotation"])
+
+## Interact raycast, called each frame -- press-E-to-use, same reach/gesture
+## for every interactable type this grows to cover (doors now; hover
+## prompts and physics-prop dragging are follow-on work sharing this same
+## raycast, not separate systems). Deliberately checks `has_method("activate")`
+## rather than `is DoorNode`, so adding a new interactable type later never
+## needs this function to change -- it just needs to expose the same
+## contract (an `activate() -> Dictionary` callable, per DoorNode's own
+## established pattern in project/gamebryo/door_node.gd).
+func _process(_delta: float) -> void:
+	if cell_loader == null or cell_loader._loading:
+		return # a load is already in flight -- don't stack another
+	if Input.is_action_just_pressed("interact"):
+		_try_interact()
+
+func _try_interact() -> void:
+	var player := _find_character_body(self)
+	if player == null or not ("CAMERA" in player) or player.CAMERA == null:
+		return
+	var camera: Camera3D = player.CAMERA
+	var from: Vector3 = camera.global_position
+	var to: Vector3 = from - camera.global_transform.basis.z * INTERACT_REACH_METERS
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if result.is_empty():
+		return
+	var collider: Object = result.get("collider")
+	if collider == null or not collider.has_method("activate"):
+		return
+	var outcome: Dictionary = collider.activate()
+	if outcome.is_empty():
+		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
+	_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
+	cell_loader.load_cell(int(outcome["dest_cell_form_id"]))
+
+## Debug HUD: current cell's own EditorID, plus its worldspace grid
+## coordinate when it's an exterior cell (get_exterior_cell_grid() returns
+## {} for interior cells -- a real, valid case, not an error, per its own
+## doc comment in esm_reader_gd.h).
+func _update_cell_hud(cell_form_id: int) -> void:
+	if _cell_label == null:
+		return
+	var editor_id: String = cell_loader.esm.get_cell_editor_id(cell_form_id)
+	var label: String = editor_id if editor_id != "" else "0x%X" % cell_form_id
+	var grid: Dictionary = cell_loader.esm.get_exterior_cell_grid(cell_form_id)
+	if not grid.is_empty():
+		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
+	_cell_label.text = "cell: " + label
+
+## Converts a raw XTEL destination (same ESM-local convention as any REFR's
+## DATA position/rotation) into Godot world space via the newly-loaded
+## cell's own real RefrRoot transform -- identical math to
+## _find_coc_spawn_transform() below, just fed a door's destination instead
+## of a marker's.
+func _convert_dest_spawn_transform(local_pos: Vector3, local_rot: Vector3) -> Dictionary:
+	if cell_loader == null or cell_loader._current == null:
+		return {}
+	var refr_root: Node3D = cell_loader._current.get_node("RefrRoot")
+	var world_pos: Vector3 = refr_root.global_transform * local_pos
+	var world_basis: Basis = refr_root.global_transform.basis * GamebryoMeshResolver.refr_basis(local_rot)
+	var world_rot := Vector3(0, world_basis.get_euler().y, 0)
+	return { "position": world_pos, "rotation": world_rot }
 
 ## Bethesda's own "Center On Cell" reference marker — a real, per-cell REFR
 ## (base_editor_id "COCMarkerHeading", model MarkerCOCHeading.nif),
