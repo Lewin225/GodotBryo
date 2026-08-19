@@ -33,7 +33,7 @@ script = ExtResource("1")
 
 [node name="CellLoader" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellloader")
-cell_editor_id = "GSProspectorSaloonInterior"
+cell_editor_id = "GSDocMitchellHouse"
 
 [node name="WorldStreamer" type="Node3D" parent="."]
 script = ExtResource("4_worldstreamer")
