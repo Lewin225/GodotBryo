@@ -45,6 +45,15 @@ var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redun
 var _sun: DirectionalLight3D
 var _world_environment: WorldEnvironment
 
+# Standalone .tres files (not inline .tscn sub-resources) so each is
+# independently editable/previewable in the editor -- WorldEnvironment
+# nodes can't be individually enabled/disabled (tried; Godot has no such
+# toggle), so a single WorldEnvironment node swaps which resource it
+# points to instead. Assign either one directly to the WorldEnvironment
+# node in the editor to preview it there without needing Play mode.
+const INTERIOR_ENVIRONMENT := preload("res://interior_environment.tres")
+const EXTERIOR_ENVIRONMENT := preload("res://exterior_environment.tres")
+
 # Set by _try_interact() right before a door-triggered load_cell() call, so
 # _on_load_completed() knows to land the player at the door's own
 # XTEL-resolved destination instead of the cell's COCMarkerHeading (which is
@@ -61,6 +70,7 @@ func _ready() -> void:
 	_cell_label = $DebugHud/CellLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
+	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
 	await get_tree().process_frame # let CellLoader's own _ready() open the ESM
@@ -169,38 +179,22 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 ## interior cells are always fully enclosed geometry with their own baked
 ## lighting, so a shared exterior skybox/directional light bleeding through
 ## walls (or a flat exterior-sky-colored background showing past any
-## unmodeled gap) reads as wrong. Toggles the scene-level Sun/WorldEnvironment
-## rather than each cell owning its own -- `game.tscn` only has one sky/sun
-## setup, shared across every load, since none of CellLoader/WorldStreamer's
-## own per-cell/per-tile roots carry lighting of their own.
-const INTERIOR_BACKGROUND_COLOR := Color(0.02, 0.02, 0.02)
-
-# Bethesda interior cells carry their own baked-light-equivalent fixtures
-# (LightNode -- phases/1/03-light-sources.md) as the real light source, but
-# Environment.ambient_light_source defaults to AMBIENT_SOURCE_BG -- ambient
-# fill derived from the background itself. Left at that default, switching
-# the background to near-black for interiors also killed ambient light
-# entirely (caught directly -- interiors went dark after the sky/background
-# toggle landed). Interiors get their own explicit, background-independent
-# ambient color/energy instead; exteriors go back to deriving ambient from
-# the sky, its natural source.
-const INTERIOR_AMBIENT_COLOR := Color(0.6, 0.6, 0.65)
-const INTERIOR_AMBIENT_ENERGY := 0.8
-
+## unmodeled gap) reads as wrong.
+##
+## Two standalone .tres Environment resources (INTERIOR_ENVIRONMENT/
+## EXTERIOR_ENVIRONMENT above), each independently editor-tunable, swapped
+## onto the scene's single WorldEnvironment node -- deliberately not one
+## shared Environment with fields mutated by script (the first version of
+## this fix did that: hand-tuning either look in the editor's Inspector
+## needs a real resource to select and preview, not runtime-computed values
+## you can't see or drag a slider on), and not two separate WorldEnvironment
+## nodes either (tried; Godot has no per-node enable/disable for those, so
+## having two simultaneously in the tree was ambiguous about which won).
 func _set_exterior_environment(is_exterior: bool) -> void:
 	if _sun != null:
 		_sun.visible = is_exterior
-	if _world_environment != null and _world_environment.environment != null:
-		var env := _world_environment.environment
-		if is_exterior:
-			env.background_mode = Environment.BG_SKY
-			env.ambient_light_source = Environment.AMBIENT_SOURCE_BG
-		else:
-			env.background_mode = Environment.BG_COLOR
-			env.background_color = INTERIOR_BACKGROUND_COLOR
-			env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-			env.ambient_light_color = INTERIOR_AMBIENT_COLOR
-			env.ambient_light_energy = INTERIOR_AMBIENT_ENERGY
+	if _world_environment != null:
+		_world_environment.environment = EXTERIOR_ENVIRONMENT if is_exterior else INTERIOR_ENVIRONMENT
 
 ## Debug HUD: current cell's own EditorID, plus its worldspace grid
 ## coordinate when it's an exterior cell (get_exterior_cell_grid() returns

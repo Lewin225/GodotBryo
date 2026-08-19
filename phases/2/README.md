@@ -39,6 +39,18 @@ task files.
   fake exterior light/scenery) hasn't been looked at. Parked at the user's request to
   keep interior work unblocked — pick up next once resumed.
 
+- **Per-cell lighting/tint data.** The interior sky/ambient fix (game.gd's
+  `_set_exterior_environment()`) currently uses one flat, hand-picked ambient
+  color/energy for every interior cell. Bethesda CELL records carry their own
+  lighting subrecord (commonly `XCLL` for interior cells — ambient color, directional/
+  "sun" color, fog color/near/far, directional rotation — and FNV additionally has
+  `LGTM` "Lighting Template" records some cells reference instead of authoring their
+  own) that the real game actually varies per cell. Not read or parsed anywhere yet —
+  worth checking what's actually present in real cell data (byte-level, not assumed
+  from documentation alone, per this project's own established discipline) before
+  deciding whether to read it through and drive `_set_exterior_environment()`'s
+  interior branch from real per-cell values instead of the current flat constant.
+
 ## Why these three, and why now
 
 Phase 1 proved *correctness* (one interior cell, one exterior cell, loaded once, no
