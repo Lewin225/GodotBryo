@@ -142,6 +142,14 @@ public:
 	// interior cell — a real, valid case, not an error).
 	std::optional<ExteriorCellGrid> get_exterior_cell_grid(uint32_t cell_form_id) const;
 
+	// A CELL's own EDID — the human-readable identifier used throughout
+	// this codebase (find_cell_by_editor_id()'s own input, e.g.
+	// "GSDocMitchellHouse"), for display purposes (an on-screen "current
+	// cell" readout). Empty string if the FormID isn't a CELL, or is a CELL
+	// with no EDID — real for some exterior cells, which are commonly
+	// unnamed and only identified by their worldspace + grid coordinate.
+	std::string get_cell_editor_id(uint32_t cell_form_id) const;
+
 	// Reads a LAND record's heightmap + per-quadrant base texture. See
 	// LandData's comment in esm_types.h for what is and isn't parsed.
 	std::optional<LandData> get_land_data(const RecordInfo &land) const;

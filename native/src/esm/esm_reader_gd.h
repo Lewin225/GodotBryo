@@ -87,6 +87,11 @@ public:
 	// valid case, not an error).
 	Dictionary get_exterior_cell_grid(int64_t cell_form_id) const;
 
+	// A CELL's own EDID (e.g. "GSDocMitchellHouse"), for display purposes.
+	// Empty string if cell_form_id isn't a CELL or has no EDID — real for
+	// some unnamed exterior cells.
+	String get_cell_editor_id(int64_t cell_form_id) const;
+
 	// Reads the given cell's LAND child (if any): { "heights":
 	// PackedFloat32Array (33*33, row-major, already decoded and in
 	// meters — see esm::LandData's confidence caveat on the decode order),
