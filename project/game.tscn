@@ -3,18 +3,27 @@
 [ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://cc1m2a1obsyn4" path="res://addons/fpc/character.tscn" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
-[ext_resource type="Script" path="res://world_streamer.gd" id="4_worldstreamer"]
+[ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_4h0r7"]
+
+[sub_resource type="Sky" id="Sky_p6biy"]
+sky_material = SubResource("ProceduralSkyMaterial_4h0r7")
 
 [sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
 background_color = Color(0.5, 0.6, 0.75, 1)
+sky = SubResource("Sky_p6biy")
+ambient_light_source = 3
 ambient_light_energy = 0.8
 tonemap_mode = 2
 ssr_enabled = true
 ssao_enabled = true
 ssil_enabled = true
 glow_enabled = true
-volumetric_fog_enabled = true
 volumetric_fog_density = 0.0155
+adjustment_enabled = true
+adjustment_contrast = 1.035
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kp17n"]
 albedo_color = Color(0.909804, 0.596078, 0, 1)
@@ -35,13 +44,13 @@ script = ExtResource("1")
 script = ExtResource("3_cellloader")
 cell_editor_id = "GSDocMitchellHouse"
 
-[node name="WorldStreamer" type="Node3D" parent="."]
+[node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
-light_color = Color(0.9609375, 0.7648507, 0.49172974, 1)
 light_energy = 0.355
+shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = SubResource("Environment_1")
