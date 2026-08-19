@@ -91,6 +91,52 @@ void flatten_transform(const nifly::MatTransform &t, CollisionShape &out) {
 	out.rotation[8] = t.rotation[2].z;
 }
 
+// bhkRigidBodyT (the "T" == has its own Transform variant) carries a real
+// translation + rotation that must be composed on top of the
+// collision-bearing NiAVObject's own transform-to-root — needed when
+// collision is attached directly to the NIF's root block, whose own
+// transform is deliberately never composed in (see flatten_to_root's
+// comment on NVCraftsmanRmEndB.nif's stray root rotation), so the root
+// case has nowhere else for a real offset to live. Confirmed real, not
+// hypothetical: NVCraftsmanFireplace.NIF and NVCraftsmanRmDoor.NIF both
+// have collision on the root block with a real bhkRigidBodyT translation
+// (~1.35m, ~0.9m respectively) with no counterpart anywhere else — their
+// collision was sitting at the NIF's local origin instead of over the
+// render mesh without this.
+//
+// A PLAIN bhkRigidBody (not "T") must NOT have this applied, even though
+// nifly parses the exact same translation/rotation fields for it — those
+// values are Bethesda's own re-expression of the SAME offset the AV's node
+// chain already carries (in Havok's unit scale), not an additional delta.
+// Confirmed directly: Clutter\Fridge\FridgeClosed01.NIF's "FridgeContainer"
+// node carries the real ~1.05m Z-lift documented in
+// phases/2/04-articulated-prop-transforms.md as its own local_translation
+// (73.589 raw units); its plain bhkRigidBody's translation.z is 10.5142
+// Havok units, which times kHavokUnitsToGamebryoUnits is 73.6 -- the same
+// number. Composing it unconditionally (an earlier version of this fix
+// did) double-applies that lift, and produces the same kind of duplicate/
+// stray offset or rotation on other plain-bhkRigidBody props (kit pieces,
+// BookGeneric06b, Globe00, ...) — caught by direct visual report, not
+// derivable from the fireplace/door case alone since those only exercise
+// the root-collision, "T"-variant path.
+nifly::MatTransform rigid_body_transform(const nifly::bhkRigidBody *body) {
+	nifly::MatTransform t;
+	t.Clear();
+	if (!body || !dynamic_cast<const nifly::bhkRigidBodyT *>(body)) {
+		return t;
+	}
+	t.translation = nifly::Vector3(
+			body->translation.x * units::kHavokUnitsToGamebryoUnits,
+			body->translation.y * units::kHavokUnitsToGamebryoUnits,
+			body->translation.z * units::kHavokUnitsToGamebryoUnits);
+	const auto &q = body->rotation; // xyzw
+	t.rotation = nifly::Matrix3(
+			1.0f - 2.0f * (q.y * q.y + q.z * q.z), 2.0f * (q.x * q.y - q.w * q.z), 2.0f * (q.x * q.z + q.w * q.y),
+			2.0f * (q.x * q.y + q.w * q.z), 1.0f - 2.0f * (q.x * q.x + q.z * q.z), 2.0f * (q.y * q.z - q.w * q.x),
+			2.0f * (q.x * q.z - q.w * q.y), 2.0f * (q.y * q.z + q.w * q.x), 1.0f - 2.0f * (q.x * q.x + q.y * q.y));
+	return t;
+}
+
 // Unwraps a bhkMoppBvTreeShape (a Havok-compiled BVH acceleration wrapper —
 // see phases/1/02-collision-extraction.md) to the real shape it wraps. The
 // MOPP data itself is opaque/not decoded, only the underlying shape matters.
@@ -294,7 +340,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			continue; // unhandled shape type (composite/phantom) — not needed for Phase 1
 		}
 		cs.node_name = av->name.get();
-		flatten_transform(flatten_to_root(nif, av), cs);
+		// The rigid body's own translation/rotation is innermost — it maps
+		// the raw collision-shape data into the AV node's local frame,
+		// before the AV's own transform-to-root is applied on top.
+		flatten_transform(flatten_to_root(nif, av).ComposeTransforms(rigid_body_transform(body)), cs);
 		mesh.collision_shapes.push_back(std::move(cs));
 	}
 

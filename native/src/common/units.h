@@ -47,6 +47,14 @@ constexpr float kGamebryoUnitsToMeters = 1.0f / 70.0f;
 // relative multiplier, not a distance — neither needs this conversion.
 constexpr float kHavokToMeters = kGamebryoUnitsToMeters * 7.0f;
 
+// Same Havok-unit-scale factor as kHavokToMeters, but stopping at raw
+// Gamebryo units instead of meters — needed when a Havok-unit value (e.g. a
+// bhkRigidBody's own translation) must be composed with other transforms
+// that are still in raw Gamebryo units, before the whole chain gets
+// converted to meters once at the end (see nif_loader.cpp's
+// flatten_to_root/flatten_transform split).
+constexpr float kHavokUnitsToGamebryoUnits = 7.0f;
+
 } // namespace units
 
 #endif // UNITS_H
