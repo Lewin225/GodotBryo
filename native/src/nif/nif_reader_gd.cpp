@@ -31,6 +31,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
+	ClassDB::bind_method(D_METHOD("has_collision_data"), &NifReader::has_collision_data);
 }
 
 bool NifReader::load(const PackedByteArray &bytes) {

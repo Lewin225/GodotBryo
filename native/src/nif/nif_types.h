@@ -116,6 +116,20 @@ struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
 
+	// True the moment ANY NiAVObject in the NIF has a non-empty collisionRef
+	// — i.e. Havok collision was authored for this object at all — set
+	// before attempting to resolve/parse what it points to. Deliberately
+	// separate from collision_shapes.empty(): a NIF can have real collision
+	// intent (collisionRef present) that this parser still can't extract
+	// (bhkBlendCollisionObject/bhkNPCollisionObject, bhkListShape/
+	// bhkConvexListShape — see nif_loader.cpp), in which case
+	// collision_shapes is empty but has_collision_data is true. Callers need
+	// this distinction to tell "no collision was ever intended" (window-
+	// light volumetrics, markers) from "collision exists but we can't parse
+	// this shape type yet" (a real parser gap, where a fallback collider is
+	// still better than none).
+	bool has_collision_data = false;
+
 	// Human-readable NIF version string (e.g. "20.2.0.7 (FO3/NV)"), useful
 	// for the "confirm which NIF version FNV ships" step without needing a
 	// separate inspection tool.

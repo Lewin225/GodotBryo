@@ -273,6 +273,9 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		if (!av || av->collisionRef.IsEmpty()) {
 			continue;
 		}
+		// Collision was authored here regardless of whether we can parse
+		// what it resolves to — set before any of the below can bail out.
+		mesh.has_collision_data = true;
 		nifly::bhkCollisionObject *co = nif.GetHeader().GetBlock<nifly::bhkCollisionObject>(av->collisionRef);
 		if (!co) {
 			continue; // bhkBlendCollisionObject/bhkNPCollisionObject etc — not handled

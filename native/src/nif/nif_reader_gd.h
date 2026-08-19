@@ -67,6 +67,10 @@ public:
 	// Vector3), "radius" (sphere), "point_a"/"point_b"/"capsule_radius"
 	// (capsule). All distances already in meters.
 	Array get_collision_shapes() const;
+	// True if any NiAVObject in the NIF has Havok collision authored at all
+	// (a non-empty collisionRef), independent of whether get_collision_shapes()
+	// could actually extract it — see nif_types.h's Mesh::has_collision_data.
+	bool has_collision_data() const { return mesh_.has_collision_data; }
 
 private:
 	nif::Mesh mesh_;

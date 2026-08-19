@@ -352,7 +352,18 @@ func populate_collision_children(parent: Node3D, nif: NifReader, model_path: Str
 func _build_collision_descriptors(nif: NifReader) -> Array:
 	var shapes: Array = nif.get_collision_shapes()
 	if shapes.is_empty():
-		return _build_fallback_collision_descriptors(nif)
+		# Only fabricate a bounding-box collider when Havok collision was
+		# actually authored on this NIF but our parser couldn't extract it
+		# (composite bhkListShape/bhkConvexListShape, bhkBlendCollisionObject/
+		# bhkNPCollisionObject — see nif_loader.cpp) -- a real parser gap
+		# where "something walkable" beats nothing. A NIF with NO collision
+		# data at all (has_collision_data == false) means the artist never
+		# intended this to be solid -- window-light volumetrics, markers
+		# (project/gamebryo/marker_node.gd) -- and must stay collision-free,
+		# not get an invented box the original engine never had either.
+		if nif.has_collision_data():
+			return _build_fallback_collision_descriptors(nif)
+		return []
 
 	var out: Array = []
 	for s in shapes:
