@@ -642,6 +642,33 @@ std::string EsmFile::get_cell_editor_id(uint32_t cell_form_id) const {
 	return "";
 }
 
+std::optional<uint32_t> EsmFile::get_cell_worldspace(uint32_t cell_form_id) const {
+	auto cell = find_record_by_form_id(cell_form_id);
+	if (!cell || cell->type != "CELL") {
+		return std::nullopt;
+	}
+	long header_offset = cell->data_offset - static_cast<long>(kHeaderSize);
+	uint32_t wrld_form_id = 0;
+	find_owner_of(0, file_size_, header_offset, &wrld_form_id);
+	if (wrld_form_id == 0) {
+		return std::nullopt; // interior cell — no "World Children" ancestor
+	}
+	return wrld_form_id;
+}
+
+std::optional<RecordInfo> EsmFile::get_worldspace_persistent_cell(uint32_t wrld_form_id) const {
+	auto wrld = find_record_by_form_id(wrld_form_id);
+	if (!wrld || wrld->type != "WRLD") {
+		return std::nullopt;
+	}
+	for (const RecordInfo &c : get_child_records(*wrld)) {
+		if (c.type == "CELL") {
+			return c; // the first CELL child — see this method's own header comment
+		}
+	}
+	return std::nullopt;
+}
+
 std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 	if (land.type != "LAND") {
 		return std::nullopt;

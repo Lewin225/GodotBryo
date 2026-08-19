@@ -62,6 +62,14 @@ public:
 	// reuses this unfiltered).
 	Array get_cell_references(int64_t cell_form_id) const;
 
+	// Same Dictionary shape as get_cell_references(), but the given cell's
+	// owning worldspace's own "persistent" cell instead — the refs a caller
+	// loading cell_form_id also needs to place alongside its own
+	// get_cell_references() (see phases/2/07-runtime-cell-loader.md's
+	// "Known gap"). {} for an interior cell or one whose worldspace has no
+	// persistent cell.
+	Array get_persistent_refs_for_cell(int64_t cell_form_id) const;
+
 	// Same Dictionary shape as get_cell_references(), but resolves a SCOL
 	// (Static Collection) record's bundled parts instead of a cell's REFRs
 	// — see esm::EsmFile::get_scol_parts(). "refr_form_id" is the SCOL's

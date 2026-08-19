@@ -191,6 +191,13 @@ func load_cell(cell_form_id: int) -> void:
 			_add_child(terrain_root, terrain)
 
 	var refs: Array = esm.get_cell_references(cell_form_id)
+	# phases/2/07-runtime-cell-loader.md's "Known gap": an exterior cell's
+	# owning worldspace has its own "persistent" cell (quest markers,
+	# fast-travel triggers, LOD imposters, and every exterior-facing
+	# building entrance door — confirmed directly, not assumed) that the
+	# real engine always loads alongside whichever grid cell is active. {}
+	# for an interior cell (no worldspace) so this is a no-op there.
+	refs.append_array(esm.get_persistent_refs_for_cell(cell_form_id))
 	_current_refs = refs # queryable immediately, before streaming even starts
 
 	var placed := 0

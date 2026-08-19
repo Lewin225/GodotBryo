@@ -150,6 +150,25 @@ public:
 	// unnamed and only identified by their worldspace + grid coordinate.
 	std::string get_cell_editor_id(uint32_t cell_form_id) const;
 
+	// phases/2/07-runtime-cell-loader.md's "Known gap" section: a CELL's
+	// owning WRLD FormID, or std::nullopt for an interior cell (which has
+	// no "World Children" GRUP ancestor). Reuses find_owner_of()'s
+	// out_wrld_form_id plumbing against the CELL's own byte offset, same as
+	// resolve_refr_xtel() already does for a REFR's offset.
+	std::optional<uint32_t> get_cell_worldspace(uint32_t cell_form_id) const;
+
+	// A worldspace's own "persistent" cell — the Construction Set's bucket
+	// for always-loaded references (quest markers, fast-travel triggers, LOD
+	// imposters, and — confirmed directly — every exterior-facing building
+	// entrance door) that aren't tied to any real grid location. Structurally
+	// the first CELL child of the WRLD's own "World Children" GRUP, filed
+	// before the Exterior Cell Block/Sub-Block GRUPs that hold the normal
+	// grid tiles — confirmed against real data (WastelandNV: the first CELL
+	// returned by get_child_records(wrld) is 0x846EA, the same persistent
+	// cell found independently via its 4468-reference/no-LAND signature).
+	// std::nullopt if the FormID isn't a WRLD or has no CELL children at all.
+	std::optional<RecordInfo> get_worldspace_persistent_cell(uint32_t wrld_form_id) const;
+
 	// Reads a LAND record's heightmap + per-quadrant base texture. See
 	// LandData's comment in esm_types.h for what is and isn't parsed.
 	std::optional<LandData> get_land_data(const RecordInfo &land) const;
