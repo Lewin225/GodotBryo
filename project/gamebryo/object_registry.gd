@@ -47,6 +47,42 @@ func build(placement: Dictionary) -> Node3D:
 		return _instantiate_visual(GamebryoVisual, placement, resolver)
 	return null
 
+## phases/2/09-direct-server-static-geometry.md: true for exactly the
+## placements build()'s own third tier handles -- no registered factory for
+## its base_type, not a marker, but has a resolvable model. Exposed
+## separately (not just inlined into build_direct() below) so a caller can
+## check "does this placement even need the RID path" without also paying
+## for NIF loading if it turns out not to.
+func is_structural_fallback(placement: Dictionary) -> bool:
+	if MarkerNode.is_marker_model(placement.get("model", "")):
+		return false
+	if _factories.has(String(placement.get("base_type", ""))):
+		return false
+	return String(placement.get("model", "")) != ""
+
+## The RID-based equivalent of build() for exactly the structural-fallback
+## tier (is_structural_fallback() above) -- everything else (interactive
+## registered types, markers) still goes through build() as a real Node;
+## this is deliberately narrower, not a general replacement. Returns false
+## if the placement isn't a structural-fallback candidate at all, or its
+## model fails to resolve/has no submeshes (mirrors _instantiate_visual()'s
+## own null-return case) -- either way, the caller should treat that as
+## "nothing to place", the same meaning build() returning null already has.
+func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
+	if not is_structural_fallback(placement):
+		return false
+	var model: String = placement.get("model", "")
+	var nif := resolver.load_nif(model)
+	if nif == null or nif.get_submesh_count() == 0:
+		return false
+	var geometry: Dictionary = resolver.get_direct_geometry_entries(nif, model)
+	var pos: Vector3 = placement.get("position", Vector3.ZERO)
+	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
+	var scale: float = placement.get("scale", 1.0)
+	var world_transform := GamebryoMeshResolver.refr_transform(pos, rot, scale)
+	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
+	return true
+
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))
 	register("CONT", func(p, r): return _instantiate_visual(ContainerNode, p, r))
@@ -191,7 +227,7 @@ func _finalize(node: Node3D, placement: Dictionary) -> Node3D:
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
-	node.transform = Transform3D(GamebryoMeshResolver.refr_basis(rot) * Basis().scaled(Vector3.ONE * scale), pos)
+	node.transform = GamebryoMeshResolver.refr_transform(pos, rot, scale)
 	if node is GamebryoReference:
 		node.form_id = int(placement.get("refr_form_id", 0))
 		node.base_form_id = int(placement.get("base_form_id", 0))
