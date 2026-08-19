@@ -30,6 +30,7 @@ task files.
 | 2.6 | Vertex color + unlit shading fix | [06-vertex-color-transparency.md](06-vertex-color-transparency.md) |
 | 2.7 | Runtime cell loader (door-triggered, interior/exterior unified) | [07-runtime-cell-loader.md](07-runtime-cell-loader.md) |
 | 2.8 | World cell streaming (adjacent-cell load/unload, active-camera-driven) | [08-world-cell-streaming.md](08-world-cell-streaming.md) |
+| 2.9 | Direct RenderingServer/PhysicsServer3D geometry (kill per-node overhead for non-interactive placements) | [09-direct-server-static-geometry.md](09-direct-server-static-geometry.md) |
 
 ## Open issues (parked, not yet investigated)
 
