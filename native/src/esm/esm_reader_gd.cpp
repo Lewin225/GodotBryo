@@ -38,6 +38,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
+	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
@@ -209,6 +210,35 @@ Array EsmReader::get_cell_references(int64_t cell_form_id) const {
 			return out;
 		}
 		for (const auto &pl : file_.get_cell_references(*cell)) {
+			out.push_back(placement_to_dict(pl));
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+// phases/2/07-runtime-cell-loader.md's "Known gap": the refs a caller loading
+// `cell_form_id` also needs to place alongside the cell's own
+// get_cell_references() — its owning worldspace's persistent cell (see
+// EsmFile::get_worldspace_persistent_cell()'s doc comment), or {} for an
+// interior cell (no worldspace) or one whose worldspace has no persistent
+// cell at all.
+Array EsmReader::get_persistent_refs_for_cell(int64_t cell_form_id) const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto wrld_form_id = file_.get_cell_worldspace(static_cast<uint32_t>(cell_form_id));
+		if (!wrld_form_id) {
+			return out;
+		}
+		auto persistent_cell = file_.get_worldspace_persistent_cell(*wrld_form_id);
+		if (!persistent_cell) {
+			return out;
+		}
+		for (const auto &pl : file_.get_cell_references(*persistent_cell)) {
 			out.push_back(placement_to_dict(pl));
 		}
 	} catch (const std::exception &e) {
