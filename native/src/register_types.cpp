@@ -2,6 +2,7 @@
 
 #include "bsa/bsa_reader_gd.h"
 #include "esm/esm_reader_gd.h"
+#include "gamebryo/direct_geometry_batch.h"
 #include "nif/nif_reader_gd.h"
 #include "ping.h"
 
@@ -19,6 +20,7 @@ void initialize_nv_engine_module(ModuleInitializationLevel p_level) {
 	ClassDB::register_class<BsaReader>();
 	ClassDB::register_class<EsmReader>();
 	ClassDB::register_class<NifReader>();
+	ClassDB::register_class<DirectGeometryBatch>();
 }
 
 void uninitialize_nv_engine_module(ModuleInitializationLevel p_level) {

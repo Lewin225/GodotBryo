@@ -14,6 +14,7 @@ sources += Glob("src/bsa/*.cpp")
 sources += Glob("src/esm/*.cpp")
 sources += Glob("src/nif/*.cpp")
 sources += Glob("src/dds/*.cpp")
+sources += Glob("src/gamebryo/*.cpp")
 
 # nifly (vendored, native/nifly/ — see native/README.md): clean-room NIF
 # mesh library, used as-is rather than reimplementing the format. Its own
