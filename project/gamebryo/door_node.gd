@@ -27,3 +27,32 @@ func resolve_destination(esm: EsmReader) -> void:
 		dest_cell_form_id = int(dest["dest_cell_form_id"])
 		dest_position = dest["dest_position"]
 		dest_rotation = dest["dest_rotation"]
+
+## Step 4 of phases/2/07-runtime-cell-loader.md: the interaction entry
+## point. DoorNode is already a real StaticBody3D (via GamebryoReference)
+## with real collision shapes (populate_collision_children(), called during
+## _build_door()) -- a normal Godot 3D raycast against it (e.g.
+## PhysicsDirectSpaceState3D.intersect_ray()) already returns this node as
+## `collider` with zero extra plumbing. Call activate() once a caller's own
+## raycast/interaction code has confirmed the hit collider `is DoorNode`.
+##
+## Returns { "dest_cell_form_id": int, "dest_position": Vector3,
+## "dest_rotation": Vector3 } or {} if this door doesn't teleport (a plain
+## swinging door -- a real, valid case, not an error the caller needs to
+## handle specially beyond "nothing happens").
+##
+## Deliberately a plain function returning data, not a signal, and does NOT
+## call CellLoader.load_cell() itself -- DoorNode has no idea a CellLoader
+## or a player exists (same reasoning as resolve_destination() being called
+## by the registry rather than DoorNode reaching for EsmReader itself). The
+## caller decides what to do with the result: typically
+## CellLoader.load_cell(result.dest_cell_form_id), then reposition the
+## player to dest_position/dest_rotation once load_completed fires.
+func activate() -> Dictionary:
+	if not has_destination:
+		return {}
+	return {
+		"dest_cell_form_id": dest_cell_form_id,
+		"dest_position": dest_position,
+		"dest_rotation": dest_rotation,
+	}

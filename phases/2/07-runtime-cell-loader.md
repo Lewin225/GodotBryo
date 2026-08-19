@@ -118,6 +118,84 @@ they exist today, not reimplementing cell-building logic a third time.
   transition needs," continuous adjacent-cell streaming is its own later task per this
   README's "Why these three, and why now" framing.
 
+### Step 2 — done
+
+Built as `project/cell_loader.gd` (`class_name CellLoader`), a real runtime class rather
+than another `@tool` inspection scene — `load_cell(cell_form_id: int)`. Dispatch between
+interior/exterior turned out not to need an explicit branch at all: every cell is
+checked via `get_land_data()`, which already returns `{}` gracefully for an interior
+cell (or an exterior cell that genuinely has none, same as Phase 1's own scope note) —
+terrain is only built when it returns real data. `get_cell_references()` is identical
+either way. Confirmed one real gap along the way and fixed it: there was no way to
+recover an exterior cell's own `XCLC` grid coordinate from just its FormID (only the
+reverse direction existed) — needed to position terrain correctly when loading by
+FormID alone rather than iterating a known grid range like `exterior_viewer.gd` does.
+Added `EsmFile::get_exterior_cell_grid()` / `EsmReader.get_exterior_cell_grid()`,
+verified against real data in both directions (Goodsprings' grid cell round-trips to
+`(-17, 0)`; an interior cell correctly returns empty).
+
+**Double-buffered swap**, per discussion: a hidden, physically-inert `LoadingCell` is
+built and streamed in (same frame-budgeted batching as `exterior_viewer.gd`) while
+`CurrentCell` stays fully live and solid the whole time — collision is disabled
+(`CollisionShape3D.disabled = true`) on every node as it's added to `LoadingCell`, then
+flipped back on in one pass at swap time, so nothing the player could clip into is ever
+live before the swap. The old `CurrentCell` is freed and only *then* is `LoadingCell`
+renamed — hit the exact node-name-collision bug already fixed once this session in
+`exterior_viewer.gd`, but in the opposite order this time (renaming before freeing the
+old same-named node, so Godot silently renamed the new one instead) — caught by a real
+test (`get_node("CurrentCell")` resolving to something other than the just-loaded
+root), not by inspection.
+
+**No retention pool** (per discussion — 2.0's caching already makes a cold rebuild of a
+recently-visited cell cheap; a small LRU pool of recently-left cells is a legitimate
+later optimization if real measurements say backtracking still isn't fast enough, not
+built in now).
+
+**Player repositioning is deliberately not this class's job** — it has no notion of a
+player node at all. A caller (the eventual door-interaction handler) already holds the
+landing transform from `DoorNode.dest_position`/`dest_rotation` before ever calling
+`load_cell()`, and repositions its own player node on `load_completed` — keeps this
+class decoupled from a player controller that doesn't exist in this codebase yet (being
+built separately).
+
+**Verified**: `test_cell_loader.gd` — interior load, swap to exterior (confirming the
+old root is actually freed, not just hidden, and terrain/objects build correctly),
+swap to a second interior, and a mid-load cancellation (confirming the previous
+`CurrentCell` is completely untouched and `load_completed` never fires for a cancelled
+load). A separate physics test confirms collision is genuinely re-enabled after swap,
+not just visually correct — a ball dropped onto post-swap terrain settles at the
+expected height. Full existing test suite re-run and passing.
+
+### Revised after real use: `CellLoader` is now `@tool`, a real scene node, and caches xrefs
+
+While actually wiring this into a real gameplay scene (`game.tscn`, with a real
+character controller dropped in), three gaps surfaced:
+
+1. **`CellLoader` was being spawned via `CellLoader.new()` in code** rather than
+   existing as a real node authored in the `.tscn`. Fixed: `game.tscn` now declares
+   `CellLoader` directly (`$CellLoader`), the same way `Sun`/`WorldEnvironment` already
+   are — no code-side instantiation.
+2. **No way to inspect/use it without pressing Play.** Fixed: `CellLoader` is now
+   `@tool`, with an exported `cell_editor_id` and a "Load Cell" inspector button —
+   the same interactive pattern `interior_viewer.gd`/`exterior_viewer.gd` already
+   established, but on the one class real gameplay also uses, not a third parallel
+   tool. Editor-built nodes get proper ownership (`_own_recursive()`, same as those two
+   scripts) so they show up correctly in the Scene dock; a no-op at runtime.
+3. **No way to query what's actually in the cell being loaded.** The REFR placement
+   data was being consumed once (to build nodes) and thrown away. Fixed: `CellLoader`
+   now caches the current/loading cell's full REFR list as soon as it's fetched — 
+   queryable via `get_current_refs()`/`find_ref_by_editor_id()`/`find_ref_by_form_id()`
+   — available as soon as `load_started` fires, not only after `load_completed`. Lets a
+   caller (e.g. a spawn-point lookup) find a specific marker REFR directly instead of
+   re-deriving the same data from `EsmReader` itself.
+
+Verified: the existing `test_cell_loader.gd` (code-instantiated) still passes unchanged
+— `@tool` didn't break runtime use. `game.tscn`'s scene-declared `CellLoader` loads
+correctly end-to-end. The editor-load path (`cell_editor_id` + `_editor_load_cell()`)
+and xref queries (`get_current_refs().size()`, `find_ref_by_editor_id()`) verified
+directly — 434 refs cached for `GSDocMitchellHouse`, `GSDocMitchellDoor` found and
+correctly typed. Full test suite re-run and passing.
+
 ## Step 3: Signals
 
 - `load_started(cell_form_id: int)`
@@ -141,6 +219,33 @@ they exist today, not reimplementing cell-building logic a third time.
   is enough to prove the loader end-to-end without building the real interaction
   system prematurely. Confirm this scope with the user before over-building it.
 
+### Step 4 — door trigger done; player repositioning deliberately deferred (player controller being built separately)
+
+`DoorNode.activate() -> Dictionary` — a plain callable function, not a signal, matching
+the same decoupling `resolve_destination()` already established (`DoorNode` has no idea
+`CellLoader` or a player exists). Returns
+`{ "dest_cell_form_id", "dest_position", "dest_rotation" }`, or `{}` for a
+non-teleporting door (a real, valid case — confirmed with `NVCraftsmanHomeDoor`, not a
+contrived one).
+
+**"Pickup-able by a raycast" needed zero extra plumbing** — confirmed with a real
+`PhysicsDirectSpaceState3D.intersect_ray()` test, not assumed: `DoorNode` is already a
+real `StaticBody3D` (via `GamebryoReference`) with real collision shapes
+(`populate_collision_children()`, already called during `_build_door()`), so a normal
+world-space raycast toward a cell-loader-built door's own position already returns that
+exact `DoorNode` instance as `collider` — Godot's default collision layer/mask (1/1)
+just works, nothing was disabled or needed adjusting. A caller's own interaction code
+just needs `if hit.collider is DoorNode: var dest = hit.collider.activate()`.
+
+Verified end-to-end with `test_door_activate.gd` against a real, loader-built
+`GSDocMitchellDoor`: raycast hit identity, `activate()`'s returned data matches the
+door's own resolved fields, and the non-teleporting-door empty-result case. Full
+existing test suite re-run and passing.
+
+Player repositioning itself is out of this task's scope, per direction — a player
+controller is being built separately and will own connecting `activate()`'s returned
+destination to `CellLoader.load_cell()` and its own transform on `load_completed`.
+
 ## Deliverables
 
 - `XTEL` parsing in `EsmFile`/`EsmReader`, verified against real door data.
@@ -155,12 +260,20 @@ they exist today, not reimplementing cell-building logic a third time.
       from documentation alone.
 - [x] Given a door's REFR FormID, the loader resolves the correct destination cell and
       landing transform.
-- [ ] Triggering a door transition tears down the previous cell and loads the new one,
-      interior or exterior, through the same call.
-- [ ] Repeated/rapid triggering doesn't race two loads against each other.
-- [ ] `load_completed(success=true)` only fires once the destination cell's collision
-      is actually in place.
-- [ ] A real interactive test: trigger a door transition (e.g. Doc Mitchell's house
-      exit door → Goodsprings exterior, or the reverse) and confirm the player lands
-      correctly, doesn't fall through the floor, and the previous cell's nodes are
-      actually gone (not just hidden).
+- [x] Loading a new cell tears down the previous cell and loads the new one, interior
+      or exterior, through the same call (`CellLoader.load_cell()`) — verified
+      interior→exterior→interior, old root confirmed actually freed each time, not
+      just hidden.
+- [x] Repeated/rapid triggering doesn't race two loads against each other —
+      `cancel_load()` verified mid-stream, previous `CurrentCell` completely untouched.
+- [x] `load_completed(success=true)` only fires once the destination cell's collision
+      is actually in place — verified with a real physics drop test after a swap, not
+      just visual inspection.
+- [x] A door is pickup-able by a raycast and callable by function, with zero extra
+      collision-layer plumbing needed — `DoorNode.activate()`, verified end-to-end
+      against a real loader-built door.
+- [ ] A real interactive test with an actual player controller: trigger a door
+      transition and confirm the player lands correctly, doesn't fall through the
+      floor, and the previous cell's nodes are actually gone. Needs a player controller,
+      being built separately — this task's own scope (loader + door trigger) is
+      otherwise complete.

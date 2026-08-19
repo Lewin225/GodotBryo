@@ -93,6 +93,17 @@ struct ReferencePlacement {
 	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
 };
 
+// phases/2/07-runtime-cell-loader.md: an exterior CELL's own XCLC grid
+// coordinate, read directly from the CELL's FormID (the reverse direction
+// from find_exterior_cell(), which goes coordinate -> CELL). Needed so a
+// loader given only a cell_form_id (not a known grid range, unlike
+// exterior_viewer.gd which iterates a caller-specified range) can still
+// position that cell's terrain correctly.
+struct ExteriorCellGrid {
+	int32_t x = 0;
+	int32_t y = 0;
+};
+
 // phases/2/07-runtime-cell-loader.md: a door REFR's resolved teleport
 // destination — the CELL it leads to (not just the destination REFR's
 // FormID) plus the landing transform.

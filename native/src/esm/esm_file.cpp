@@ -564,6 +564,25 @@ std::optional<RecordInfo> EsmFile::find_exterior_cell(uint32_t wrld_form_id, int
 	return std::nullopt;
 }
 
+std::optional<ExteriorCellGrid> EsmFile::get_exterior_cell_grid(uint32_t cell_form_id) const {
+	auto cell = find_record_by_form_id(cell_form_id);
+	if (!cell || cell->type != "CELL") {
+		return std::nullopt;
+	}
+	std::vector<uint8_t> data = read_record_data(*cell);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "XCLC" && s.size >= 8) {
+			util::ByteReader sr(s.data, s.size);
+			ExteriorCellGrid grid;
+			grid.x = static_cast<int32_t>(sr.read_u32());
+			grid.y = static_cast<int32_t>(sr.read_u32());
+			return grid;
+		}
+	}
+	return std::nullopt; // interior cell — no XCLC
+}
+
 std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 	if (land.type != "LAND") {
 		return std::nullopt;

@@ -82,6 +82,11 @@ public:
 	// { "form_id": int } or {} if not found.
 	Dictionary find_exterior_cell(int64_t wrld_form_id, int32_t x, int32_t y) const;
 
+	// phases/2/07-runtime-cell-loader.md: { "x": int, "y": int }, or {} if
+	// cell_form_id isn't a CELL or has no XCLC (an interior cell — a real,
+	// valid case, not an error).
+	Dictionary get_exterior_cell_grid(int64_t cell_form_id) const;
+
 	// Reads the given cell's LAND child (if any): { "heights":
 	// PackedFloat32Array (33*33, row-major, already decoded and in
 	// meters — see esm::LandData's confidence caveat on the decode order),
