@@ -206,12 +206,19 @@ tier (per the RID-based path description above).
    is 62% cheaper. `refcount_per_tile` was unchanged (avg 37.38 either way) — that
    instrumentation counts resolved results per tile, not gated by this step, so an
    unchanged value there is expected, not a discrepancy.
-10. **Verify in real play**: walk toward a known VWD-flagged large object (e.g. a real
-    Barracks placement) from beyond the configured crossover distance, confirm the LOD
-    mesh shows first and swaps to full detail at the right distance, no popping/z-fighting
-    at the boundary, and that a non-VWD-flagged object with a `_lod.nif` companion
-    (e.g. a QuonsetHut) correctly stays full-detail-or-nothing (matching the real game's
-    own eligibility gate) rather than ever showing its LOD variant.
+10. **DONE.** Verified in real play by the user directly (not just the resolve/construct-
+    level regression tests) — confirmed good, no further issues reported. This same
+    real-play pass also surfaced and led to fixing two real streaming-stutter bugs outside
+    this step's original scope but directly relevant to it (both real, not hypothetical,
+    both caught via user-provided in-play perf reports, not assumed fixed from theory):
+    the per-tile construct step was synchronous and un-throttled (fixed: spread across
+    frames, progressive per-object reveal for the Node-based tier — see
+    `world_streamer.gd`'s `_construct_results()`), and `_check_streaming()`'s own new-
+    tile-load starts were un-throttled too, letting a whole ring "edge" (up to
+    `2*RADIUS_LOAD_DISTANT+1` tiles) pay their synchronous `build_terrain()` cost in one
+    frame (fixed: a real load queue, `tiles_per_frame`-throttled — the first version of
+    this fix had a coroutine re-entrancy bug that silently didn't throttle at all, also
+    caught by a follow-up perf report, not assumed working from the code alone).
 
 ## Deliverables
 
@@ -230,14 +237,15 @@ tier (per the RID-based path description above).
 - [x] VWD flag correctly read for real placements already spot-checked in
       `enginedocs/lod.md` (Barracks true, QuonsetHut/CraneStatic false) — a permanent
       regression test, not just a one-off confirmation. (`test_visible_when_distant.gd`)
-- [ ] A VWD-flagged placement with a resolvable `_lod.nif` shows the LOD mesh beyond the
+- [x] A VWD-flagged placement with a resolvable `_lod.nif` shows the LOD mesh beyond the
       configured distance and the full mesh within it, in real play, with no visible
-      pop/gap at the crossover (hysteresis margin doing its job). Step 10, not done yet.
-- [ ] A placement with a `_lod.nif` companion but no VWD flag never shows the LOD
-      variant — confirmed directly, not assumed from the eligibility check alone. Step 10
-      real-play part not done yet (the resolve/construct-level version of this IS
-      confirmed — `test_lod_raw_geometry.gd`/`test_lod_construct_node.gd`/
-      `test_lod_direct_batch.gd` all verify QuonsetHut01 never gets an LOD tier).
+      pop/gap at the crossover (hysteresis margin doing its job). Confirmed by the user
+      directly in real play (step 10).
+- [x] A placement with a `_lod.nif` companion but no VWD flag never shows the LOD
+      variant — confirmed directly, not assumed from the eligibility check alone. Both the
+      resolve/construct-level version (`test_lod_raw_geometry.gd`/
+      `test_lod_construct_node.gd`/`test_lod_direct_batch.gd`, QuonsetHut01) and the
+      real-play version (step 10) are now confirmed.
 - [x] The overwhelming majority of placements (no VWD flag, or no `_lod.nif` companion)
       are completely unaffected — no visibility range set, no behavior change, confirmed
       via the existing regression suite passing unmodified.

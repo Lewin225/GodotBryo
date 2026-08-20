@@ -11,9 +11,14 @@ interior transitions, at a stable frame rate.
 **Exit criterion validated in real play** (2026-08-20, after 2.9/2.10/2.11 landed):
 Goodsprings → Primm, Goodsprings → Lucky 38, and Goodsprings → Hoover Dam all walked
 successfully, no load screens beyond intended interior transitions, vsync-capped frame
-rate throughout — most of the exterior map explored. Distant LOD and streaming-radius/
-memory tuning (below) are still open, but the core streaming mechanism itself is proven
-at real scale, not just in headless benchmarks.
+rate throughout — most of the exterior map explored. Distant LOD (2.12) has since
+landed and been verified in real play too, including two real streaming-stutter fixes
+(synchronous per-tile construct, and un-throttled new-tile-load starts causing a whole
+ring "edge" to pay its terrain-build cost in one frame) caught via user-provided in-play
+perf reports during that same verification pass — flying across the map now costs a
+frame-rate dip, not a stutter. Streaming-radius/memory tuning against the real Mojave
+worldspace is still open (the current radii are real, working values from this same
+session, not yet a dedicated tuning pass).
 
 **This README originally only scoped the performance-track tasks below** — surfaced
 during a post-1.5 experiment (`project/exterior_viewer.gd`, a `@tool` editor scene that
