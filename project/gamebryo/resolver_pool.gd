@@ -4,14 +4,19 @@ extends RefCounted
 ## phases/2/10-threaded-streaming-workers.md, step 2: a small pool of
 ## independently-constructed GamebryoResolveContexts, one per concurrent
 ## tile-resolve task a caller wants in flight at once. Each pool member owns
-## its own private BSA readers, NIF/mesh/texture/material/collision caches,
-## AND its own private EsmReader (see GamebryoResolveContext's own doc
-## comment for why the EsmReader had to join this pool too, discovered while
-## building step 3's resolve_placement() -- DOOR/SCOL/LIGH resolution reads
-## the ESM directly, and EsmFile is exactly as not-thread-safe as BsaArchive)
-## -- exactly the per-task-private state 2.10's design needs so no two
-## WorkerThreadPool tasks ever touch the same reader concurrently, without
-## needing a Mutex anywhere.
+## its own private BSA readers + NIF/decoded-Image caches (the RAW-resolve
+## half of GamebryoMeshResolver -- see that class's own top-of-file doc
+## comment for the raw/final split), AND its own private EsmReader (see
+## GamebryoResolveContext's own doc comment for why the EsmReader had to
+## join this pool too, discovered while building step 3's
+## resolve_placement() -- DOOR/SCOL/LIGH resolution reads the ESM directly,
+## and EsmFile is exactly as not-thread-safe as BsaArchive) -- exactly the
+## per-task-private state 2.10's design needs so no two WorkerThreadPool
+## tasks ever touch the same reader concurrently, without needing a Mutex
+## anywhere. Each context's final-build caches (ArrayMesh/ImageTexture/
+## StandardMaterial3D/Shape3D) are never populated at all -- construction of
+## those only ever happens on GamebryoObjectRegistry's own single, non-
+## pooled `resolver` instance, on the main thread.
 ##
 ## checkout()/checkin() are NOT thread-safe themselves and must only be
 ## called from the main thread -- by design, not by accident: a tile task
@@ -25,19 +30,23 @@ extends RefCounted
 ## added, not silently rely on the current caller discipline.
 ##
 ## Step 4 addition: a `_shared_resolver` this pool also owns, kept
-## eventually consistent with every context's own cache via
+## eventually consistent with every context's own RAW cache via
 ## GamebryoMeshResolver.merge_from() at both ends of a checkout -- on
-## checkin(), the just-finished context's freshly-learned cache entries get
-## folded INTO _shared_resolver; on checkout(), _shared_resolver's current
-## knowledge gets folded INTO the context about to be handed out, so it
-## starts warm with everything any other context has learned so far.
-## Without this, a common base object (a rock, a fence post -- exactly what
-## phases/2/00-resource-caching-instancing.md's caching exists to
-## deduplicate) could get independently re-parsed once per pool slot that
-## happens to touch a tile containing it, instead of once total. Both merge
-## calls happen here, inside checkout()/checkin(), so they inherit this
-## class's own main-thread-only guarantee for free -- no cache dictionary
-## is ever touched from more than one thread.
+## checkin(), the just-finished context's freshly-parsed NIFs/decoded
+## textures get folded INTO _shared_resolver; on checkout(), _shared_
+## resolver's current knowledge gets folded INTO the context about to be
+## handed out, so it starts warm with everything any other context has
+## already parsed/decoded. Without this, a common base object (a rock, a
+## fence post) could get independently re-parsed/re-decoded once per pool
+## slot that happens to touch a tile containing it, instead of once total --
+## note this is now purely about avoiding redundant BSA/NIF/DDS work, not
+## about deduplicating the actual ArrayMesh/Texture/Material/Shape3D
+## Resources themselves, which are automatically deduplicated for free by
+## always being built on that one single main-thread `resolver` instance
+## regardless of which pool context resolved the raw data. Both merge calls
+## happen here, inside checkout()/checkin(), so they inherit this class's
+## own main-thread-only guarantee for free -- no cache dictionary is ever
+## touched from more than one thread.
 
 var _available: Array[GamebryoResolveContext] = []
 var _checked_out_count := 0

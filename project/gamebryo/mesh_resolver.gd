@@ -22,6 +22,34 @@ extends RefCounted
 ## (they're scene-graph position/parenting, not shareable), but the
 ## Resources they reference (Mesh, Shape3D, Texture2D, Material) are shared
 ## across every instance of the same base object.
+##
+## phases/2/10-threaded-streaming-workers.md's real fix: this class now has
+## two strictly separate halves that must never be called from the wrong
+## thread. Confirmed directly (a real, repeatable crash — RID-table
+## corruption, "Attempting to initialize the wrong RID"/"Initializing
+## already initialized RID") that ArrayMesh/ImageTexture/StandardMaterial3D/
+## Shape3D construction all issue real RenderingServer/PhysicsServer3D calls
+## under the hood despite looking like plain Resource construction — Godot's
+## own RID_Owner<T> template compiles its locking out entirely
+## (`if constexpr (THREAD_SAFE)`) unless the Separate rendering thread model
+## is enabled, which the project decided against (its own docs warn it still
+## stalls on exactly this pattern — creating textures off the main thread).
+##   - "Raw resolve" methods (resolve_bytes/load_nif/_load_image/
+##     resolve_raw_geometry) touch only NifReader/BsaReader/Image — none of
+##     which are RenderingServer/PhysicsServer3D-backed — and are safe to
+##     call from a WorkerThreadPool task, via a GamebryoResolveContext's own
+##     private instance (see that class + GamebryoResolverPool).
+##   - "Final build" methods (build_geometry_entries and everything it
+##     calls) construct the actual ArrayMesh/ImageTexture/StandardMaterial3D/
+##     Shape3D Resources and MUST only ever be called from the main thread,
+##     via GamebryoObjectRegistry's own single, non-pooled `resolver`
+##     instance -- never a pool context's.
+## Both halves happen to live on the same class (populate_mesh_children()/
+## populate_collision_children() and the old build() path use both in
+## sequence, always on the main thread, which is safe) rather than two
+## separate classes, since splitting them would touch many more call sites
+## for no safety benefit -- the discipline is which INSTANCE's methods get
+## called from which thread, not the class boundary itself.
 
 const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
@@ -33,29 +61,27 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 ## (positions, transforms) is already in meters by the time it reaches
 ## GDScript. Do not re-apply a scale on top of it.
 
+# --- Raw-resolve state (worker-safe; per-context, private, merged via
+# GamebryoResolverPool -- see merge_from()) ---
 var _bsa_readers := {}
 var _bsa_order: Array[String] = []
-
 var _nif_cache := {} # model_path -> NifReader or null (null cached too, so a
 		# missing/unparseable NIF isn't re-attempted on every repeat placement)
+var _image_cache := {} # tex_path -> Image or null (decoded pixels only, no RID)
+
+# --- Final-build state (main-thread-only; lives solely on
+# GamebryoObjectRegistry's own single, non-pooled `resolver` instance) ---
 var _mesh_cache := {} # "model_path#submesh_index" -> ArrayMesh
 var _texture_cache := {} # tex_path -> ImageTexture or null
-var _material_cache := {} # tex_path -> StandardMaterial3D
-var _collision_cache := {} # model_path -> Array of collision descriptor Dictionaries
-		# ({ "kind": "shape"/"fallback_bbox", "shape": Resource, "transform": Transform3D, "name": String })
+var _material_cache := {} # material key -> StandardMaterial3D
+var _collision_cache := {} # model_path -> Array of { "shape": Shape3D, "transform": Transform3D, "name": String }
 
 ## Cache hit/miss counters — phases/2/00-resource-caching-instancing.md asks
-## for a measured before/after, not just an assumed improvement. Cheap
-## enough to always track; call reset_cache_stats() to zero between
-## measurement runs.
+## for a measured before/after, not just an assumed improvement.
 var mesh_cache_hits := 0
 var mesh_cache_misses := 0
 var texture_cache_hits := 0
 var texture_cache_misses := 0
-## Material cache is checked BEFORE texture cache in _get_material() (a
-## material-cache hit never calls load_texture() at all) — track it
-## separately, since texture_cache_hits alone would misleadingly read ~0
-## even though repeats are genuinely being caught, one layer up.
 var material_cache_hits := 0
 var material_cache_misses := 0
 
@@ -79,32 +105,26 @@ func get_cache_stats() -> Dictionary:
 		"unique_textures_loaded": _texture_cache.size(),
 	}
 
-## phases/2/10-threaded-streaming-workers.md, step 4: copies every cache
+## phases/2/10-threaded-streaming-workers.md: copies every RAW-resolve cache
 ## entry `other` has that `self` doesn't into `self` -- used by
-## GamebryoResolverPool to keep a canonical shared resolver's caches
-## eventually consistent with every per-task-private context that's
-## completed a resolve, and to warm a freshly-checked-out context with
-## everything already learned by others, WITHOUT ever letting two
-## concurrently-running WorkerThreadPool tasks touch the same cache
-## dictionary at once -- both checkout() and checkin() (where this gets
-## called) are main-thread-only by that class's own design, so this method
-## itself never needs to be thread-safe.
+## GamebryoResolverPool to keep worker contexts warm with everything
+## already parsed/decoded by any other context. Deliberately does NOT merge
+## the final-build caches (_mesh_cache/_texture_cache/_material_cache/
+## _collision_cache) -- those never get populated on a worker-context
+## instance at all anymore (build_geometry_entries() is main-thread-only,
+## called only on GamebryoObjectRegistry's own single resolver instance),
+## so merging them would just be copying empty dictionaries around.
 ##
-## Deliberately does NOT merge _bsa_readers/_bsa_order -- those hold live
-## file handles (BsaArchive, documented not-thread-safe at its own source),
-## and sharing one between two contexts that could later be checked out to
-## different concurrent tasks would reintroduce exactly the hazard per-
-## context readers exist to avoid. Only the pure-data caches (parsed NIFs,
-## built meshes, decoded textures, materials, collision descriptors) are
-## safe to share once fully built -- see resolve_geometry_entries()'s own
-## doc comment for why mesh entries specifically needed a cache-miss-only
-## material bake before this was safe to do at all.
+## Also deliberately does NOT merge _bsa_readers/_bsa_order -- those hold
+## live file handles (BsaArchive, documented not-thread-safe at its own
+## source), and sharing one between two contexts that could later be
+## checked out to different concurrent tasks would reintroduce exactly the
+## hazard per-context readers exist to avoid. NifReader (fully parsed,
+## read-only getters, confirmed via its own header) and Image (plain pixel
+## data, no RID) are both safe to share once built.
 func merge_from(other: GamebryoMeshResolver) -> void:
 	_merge_dict(_nif_cache, other._nif_cache)
-	_merge_dict(_mesh_cache, other._mesh_cache)
-	_merge_dict(_texture_cache, other._texture_cache)
-	_merge_dict(_material_cache, other._material_cache)
-	_merge_dict(_collision_cache, other._collision_cache)
+	_merge_dict(_image_cache, other._image_cache)
 
 static func _merge_dict(target: Dictionary, source: Dictionary) -> void:
 	for key in source:
@@ -160,7 +180,8 @@ func _get_reader(bsa_name: String) -> BsaReader:
 	return r
 
 ## Returns { "bsa": String, "data": PackedByteArray } or {} if not found in
-## any archive.
+## any archive. Worker-safe -- BsaReader I/O only, no RenderingServer/
+## PhysicsServer3D involvement.
 func resolve_bytes(rel_path: String) -> Dictionary:
 	for bsa_name in _bsa_order:
 		var r := _get_reader(bsa_name)
@@ -176,7 +197,7 @@ func resolve_bytes(rel_path: String) -> Dictionary:
 ## phases/1/00-interior-cell-loader.md's MODL-path finding). Returns null if
 ## not found or unparseable. Cached by model_path — repeat placements of the
 ## same base object (the common case) skip the BSA extract + NIF parse
-## entirely after the first resolution.
+## entirely after the first resolution. Worker-safe.
 func load_nif(model_path: String) -> NifReader:
 	if _nif_cache.has(model_path):
 		return _nif_cache[model_path]
@@ -189,112 +210,179 @@ func load_nif(model_path: String) -> NifReader:
 	_nif_cache[model_path] = nif
 	return nif
 
-## Loads a texture from its Data/-relative path (as stored in a NIF's
-## texture slot, already including "textures\"). Returns null if not found
-## or undecodable. Cached by tex_path.
-func load_texture(tex_path: String) -> ImageTexture:
+## Decodes a texture's raw pixel data from its Data/-relative path (as
+## stored in a NIF's texture slot, already including "textures\"). Returns
+## an Image (plain pixel buffer, no RID -- confirmed safe to construct off
+## the main thread) or null if not found/undecodable. Cached by tex_path.
+## Worker-safe. Deliberately stops at Image, NOT ImageTexture -- see this
+## class's own doc comment for why the GPU-upload step has to wait for the
+## main thread.
+func _load_image(tex_path: String) -> Image:
 	if tex_path == "":
 		return null
-	if _texture_cache.has(tex_path):
-		texture_cache_hits += 1
-		return _texture_cache[tex_path]
-	texture_cache_misses += 1
-	var tex: ImageTexture = null
+	if _image_cache.has(tex_path):
+		return _image_cache[tex_path]
+	var img: Image = null
 	var found := resolve_bytes(tex_path)
 	if not found.is_empty():
-		var img := Image.new()
-		if img.load_dds_from_buffer(found["data"]) == OK:
-			tex = ImageTexture.create_from_image(img)
-	_texture_cache[tex_path] = tex
-	return tex
+		var candidate := Image.new()
+		if candidate.load_dds_from_buffer(found["data"]) == OK:
+			img = candidate
+	_image_cache[tex_path] = img
+	return img
 
-## Same texture set + alpha mode, same StandardMaterial3D — shared across
-## every submesh that uses it, not just the decoded textures. Godot
-## Materials are Resources like any other; many MeshInstance3D nodes
-## referencing one Material is the normal, supported pattern (this is what
-## an imported glTF scene with repeated materials does too).
+## Main-thread-only convenience: decode + GPU-upload a texture in one call.
+## Terrain building (CellStreamBuilder.build_terrain(), its own quadrant
+## textures) is the real caller -- it was never part of the threaded
+## resolve/construct split (terrain stays synchronous, main-thread, see
+## phases/2/10's own scope notes) and just wants a usable ImageTexture
+## directly, the same way this method worked before that split existed.
+## NOT safe to call from a worker thread (see _get_texture_from_image()).
+func load_texture(tex_path: String) -> ImageTexture:
+	return _get_texture_from_image(tex_path, _load_image(tex_path))
+
+## phases/2/10-threaded-streaming-workers.md: the resolve-only counterpart
+## to build_geometry_entries() below -- pulls every piece of data a
+## placement's mesh/collision needs (vertex arrays, texture paths, decoded
+## Images, raw collision geometry) WITHOUT constructing a single
+## RenderingServer/PhysicsServer3D-backed Resource. This is what makes it
+## safe to call from a WorkerThreadPool task via a GamebryoResolveContext's
+## own private resolver instance.
 ##
-## phases/2/01-material-pipeline.md: normal map (slot 1) and glow/emissive
-## (slot 2) wired in alongside diffuse, plus NiAlphaProperty's blend/test
-## mode — confirmed against real FO3/NV data before trusting the slot
-## convention (see that task's write-up). Bethesda's normal maps are
-## DirectX-convention (green channel down); Godot's StandardMaterial3D
-## expects OpenGL-convention (green channel up) like glTF. Not corrected
-## here — needs a visual check against a known normal-mapped object before
-## deciding whether a channel flip is actually needed, not assumed either
-## way. Slots 3+ (height/parallax, environment map/mask) are not extracted
-## at all yet (core-layer gap, not just unwired here — see nif_types.h).
+## Returns { "model_path": String, "mesh_entries": Array of { "cache_key",
+## "positions"/"normals"/"uvs"/"indices" (PackedFloat32Array/PackedInt32Array,
+## same flat layout NifReader's own getters use), "colors" (PackedColorArray),
+## "transform", "texture_path"/"normal_texture_path"/"glow_texture_path",
+## "alpha_info", "has_vertex_colors", "is_unlit", "diffuse_image"/
+## "normal_image"/"glow_image" (Image or null) }, "shape_entries": Array of
+## raw kind-tagged collision descriptors (NifReader.get_collision_shapes()'s
+## own shape, or the fallback-bbox AABB case -- see _resolve_raw_collision())
+## }. Hand this whole Dictionary to build_geometry_entries() (main thread
+## only) to get the final { "mesh_entries": [{mesh,transform}],
+## "shape_entries": [{shape,transform,name}] } shape every caller actually
+## consumes.
+func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
+	var mesh_entries := []
+	for i in range(nif.get_submesh_count()):
+		var tex_path := nif.get_texture_path(i)
+		var normal_path := nif.get_normal_texture_path(i)
+		var glow_path := nif.get_glow_texture_path(i)
+		mesh_entries.append({
+			"cache_key": "%s#%d" % [model_path, i],
+			"positions": nif.get_positions(i),
+			"normals": nif.get_normals(i),
+			"uvs": nif.get_uvs(i),
+			"indices": nif.get_indices(i),
+			"colors": nif.get_colors(i),
+			"transform": nif.get_transform(i),
+			"texture_path": tex_path,
+			"normal_texture_path": normal_path,
+			"glow_texture_path": glow_path,
+			"alpha_info": nif.get_alpha_info(i),
+			"has_vertex_colors": nif.get_colors(i).size() > 0,
+			"is_unlit": nif.is_unlit(i),
+			"diffuse_image": _load_image(tex_path),
+			"normal_image": _load_image(normal_path),
+			"glow_image": _load_image(glow_path),
+		})
+	return {
+		"model_path": model_path,
+		"mesh_entries": mesh_entries,
+		"shape_entries": _resolve_raw_collision(nif),
+	}
+
+## phases/2/10-threaded-streaming-workers.md: the main-thread-only "commit"
+## half of resolve_raw_geometry() -- builds the actual ArrayMesh/
+## ImageTexture/StandardMaterial3D/Shape3D Resources from raw data, using
+## this instance's own final-build caches. Must only ever be called on
+## GamebryoObjectRegistry's own single, non-pooled `resolver` -- see this
+## class's own top-of-file doc comment for why.
 ##
-## phases/2/06-vertex-color-transparency.md: `has_vertex_colors` is part of
-## the cache key (not just the texture/alpha inputs) because it changes
-## which pixels this material actually is, not just how it looks — a
-## texture-less shape with real per-vertex alpha (Bethesda's soft shadow/AO
-## "blob" decals under furniture) has nothing else to blend against, and
-## rendered as a solid opaque white blob before this was wired in.
+## `raw` empty (no geometry resolved at all, e.g. a meshless light) returns
+## empty mesh/shape_entries, not an error.
+func build_geometry_entries(raw: Dictionary) -> Dictionary:
+	if raw.is_empty():
+		return { "mesh_entries": [], "shape_entries": [] }
+
+	var mesh_entries := []
+	for e in raw["mesh_entries"]:
+		var mesh_key: String = e["cache_key"]
+		var mesh: ArrayMesh
+		if _mesh_cache.has(mesh_key):
+			mesh_cache_hits += 1
+			mesh = _mesh_cache[mesh_key]
+		else:
+			mesh_cache_misses += 1
+			mesh = _build_mesh_from_raw(e)
+			var mat := _build_material_from_raw(e)
+			if mat != null:
+				mesh.surface_set_material(0, mat)
+			_mesh_cache[mesh_key] = mesh
+		mesh_entries.append({ "mesh": mesh, "transform": e["transform"] })
+
+	var shape_entries := []
+	var model_path: String = raw["model_path"]
+	var descriptors: Array
+	if _collision_cache.has(model_path):
+		descriptors = _collision_cache[model_path]
+	else:
+		descriptors = _build_collision_shapes(raw["shape_entries"])
+		_collision_cache[model_path] = descriptors
+	for d in descriptors:
+		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
+
+	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
+
+## Builds every MeshInstance3D child (one per NIF submesh, with resolved
+## texture) under `parent`. Shared by every GamebryoVisual-shaped factory.
+## `model_path` is the same string passed to load_nif() for this `nif` —
+## required (not derived from `nif` itself) so the per-submesh ArrayMesh can
+## be cached the same way load_nif() caches the parsed NIF.
 ##
-## `is_unlit` mirrors the shape's own NIF shader: BSShaderNoLightingProperty
-## instead of the normal BSShaderPPLightingProperty — Bethesda's own signal
-## that scene lighting shouldn't affect this shape, confirmed against real
-## data rather than inferred from "no texture" alone (a shadow/AO blob's
-## intended dark-to-transparent gradient washes out to lit gray under normal
-## ambient/directional shading, which is what NoLighting exists to prevent).
-func _get_material(tex_path: String, normal_path: String, glow_path: String, alpha: Dictionary, has_vertex_colors: bool, is_unlit: bool) -> StandardMaterial3D:
-	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
-		return null
-	var key := "%s|%s|%s|%s|%s|%.4f|%s|%s" % [tex_path, normal_path, glow_path,
-			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
-			float(alpha.get("threshold", 0.5)), has_vertex_colors, is_unlit]
-	if _material_cache.has(key):
-		material_cache_hits += 1
-		return _material_cache[key]
-	material_cache_misses += 1
+## `geometry` (optional): an already-built (FINAL, not raw) result from
+## build_geometry_entries() for this exact (nif, model_path) — pass it when
+## the caller already resolved it, so resolution doesn't happen twice.
+## Resolves-then-builds itself (both steps, always safe here since this
+## whole call is main-thread-only) when omitted.
+func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+	if geometry.is_empty():
+		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
+	var i := 0
+	for entry in geometry["mesh_entries"]:
+		var mi := MeshInstance3D.new()
+		mi.name = "sub%d" % i
+		mi.mesh = entry["mesh"]
+		mi.transform = entry["transform"]
+		parent.add_child(mi)
+		i += 1
 
-	var mat := StandardMaterial3D.new()
-	var have_content := false
+## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
+## collision-extraction.md), or one bounding-box fallback collider (from the
+## render mesh's own AABB) if the NIF has no collision data at all — per
+## the phase doc's explicit requirement that meshless-collision objects
+## still get *something* walkable rather than no collision. The underlying
+## Shape3D Resources (and the fallback box's size/position) are cached per
+## model_path — only the CollisionShape3D *nodes* are built fresh per
+## placement, same reasoning as populate_mesh_children().
+##
+## `geometry` (optional): see populate_mesh_children()'s own doc comment —
+## same pre-built-data-sharing purpose.
+func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+	if geometry.is_empty():
+		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
+	for entry in geometry["shape_entries"]:
+		var col := CollisionShape3D.new()
+		col.name = String(entry.get("name", "collision"))
+		col.shape = entry["shape"]
+		col.transform = entry["transform"]
+		parent.add_child(col)
 
-	if is_unlit:
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		have_content = true
-
-	if has_vertex_colors:
-		mat.vertex_color_use_as_albedo = true
-		have_content = true
-
-	var albedo := load_texture(tex_path)
-	if albedo != null:
-		mat.albedo_texture = albedo
-		have_content = true
-
-	var normal_tex := load_texture(normal_path)
-	if normal_tex != null:
-		mat.normal_enabled = true
-		mat.normal_texture = normal_tex
-		have_content = true
-
-	var glow_tex := load_texture(glow_path)
-	if glow_tex != null:
-		mat.emission_enabled = true
-		mat.emission_texture = glow_tex
-		have_content = true
-
-	if bool(alpha.get("blend_enabled", false)):
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		have_content = true
-	elif bool(alpha.get("test_enabled", false)):
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		mat.alpha_scissor_threshold = float(alpha.get("threshold", 0.5))
-		have_content = true
-
-	var result := mat if have_content else null
-	_material_cache[key] = result
-	return result
-
-func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
-	var pos_flat := nif.get_positions(index)
-	var norm_flat := nif.get_normals(index)
-	var uv_flat := nif.get_uvs(index)
-	var idx_flat := nif.get_indices(index)
-	var colors := nif.get_colors(index)
+func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
+	var pos_flat: PackedFloat32Array = e["positions"]
+	var norm_flat: PackedFloat32Array = e["normals"]
+	var uv_flat: PackedFloat32Array = e["uvs"]
+	var idx_flat: PackedInt32Array = e["indices"]
+	var colors: PackedColorArray = e["colors"]
 
 	var verts := PackedVector3Array()
 	verts.resize(pos_flat.size() / 3)
@@ -333,125 +421,111 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
-## Builds every MeshInstance3D child (one per NIF submesh, with resolved
-## texture) under `parent`. Shared by every GamebryoVisual-shaped factory.
-## `model_path` is the same string passed to load_nif() for this `nif` —
-## required (not derived from `nif` itself) so the per-submesh ArrayMesh can
-## be cached the same way load_nif() caches the parsed NIF.
+## Same texture set + alpha mode, same StandardMaterial3D — shared across
+## every submesh that uses it, not just the decoded textures. Godot
+## Materials are Resources like any other; many MeshInstance3D nodes
+## referencing one Material is the normal, supported pattern (this is what
+## an imported glTF scene with repeated materials does too).
 ##
-## `geometry` (2.10 step 1, optional): a pre-resolved result from
-## resolve_geometry_entries() for this exact (nif, model_path) — pass it when
-## the caller already resolved it (e.g. also needs populate_collision_children()
-## for the same placement, or a future threaded resolve task handed back
-## already-resolved data), so resolution doesn't happen twice. Resolves it
-## itself (the original all-in-one behavior) when omitted.
-func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
-	if geometry.is_empty():
-		geometry = resolve_geometry_entries(nif, model_path)
-	var i := 0
-	for entry in geometry["mesh_entries"]:
-		var mi := MeshInstance3D.new()
-		mi.name = "sub%d" % i
-		mi.mesh = entry["mesh"]
-		mi.transform = entry["transform"]
-		parent.add_child(mi)
-		i += 1
+## phases/2/01-material-pipeline.md: normal map (slot 1) and glow/emissive
+## (slot 2) wired in alongside diffuse, plus NiAlphaProperty's blend/test
+## mode — confirmed against real FO3/NV data before trusting the slot
+## convention (see that task's write-up). Bethesda's normal maps are
+## DirectX-convention (green channel down); Godot's StandardMaterial3D
+## expects OpenGL-convention (green channel up) like glTF. Not corrected
+## here — needs a visual check against a known normal-mapped object before
+## deciding whether a channel flip is actually needed, not assumed either
+## way. Slots 3+ (height/parallax, environment map/mask) are not extracted
+## at all yet (core-layer gap, not just unwired here — see nif_types.h).
+##
+## phases/2/06-vertex-color-transparency.md: `has_vertex_colors` is part of
+## the cache key (not just the texture/alpha inputs) because it changes
+## which pixels this material actually is, not just how it looks — a
+## texture-less shape with real per-vertex alpha (Bethesda's soft shadow/AO
+## "blob" decals under furniture) has nothing else to blend against, and
+## rendered as a solid opaque white blob before this was wired in.
+##
+## `is_unlit` mirrors the shape's own NIF shader: BSShaderNoLightingProperty
+## instead of the normal BSShaderPPLightingProperty — Bethesda's own signal
+## that scene lighting shouldn't affect this shape, confirmed against real
+## data rather than inferred from "no texture" alone (a shadow/AO blob's
+## intended dark-to-transparent gradient washes out to lit gray under normal
+## ambient/directional shading, which is what NoLighting exists to prevent).
+func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
+	var tex_path: String = e["texture_path"]
+	var normal_path: String = e["normal_texture_path"]
+	var glow_path: String = e["glow_texture_path"]
+	var alpha: Dictionary = e["alpha_info"]
+	var has_vertex_colors: bool = e["has_vertex_colors"]
+	var is_unlit: bool = e["is_unlit"]
 
-## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
-## collision-extraction.md), or one bounding-box fallback collider (from the
-## render mesh's own AABB) if the NIF has no collision data at all — per
-## the phase doc's explicit requirement that meshless-collision objects
-## still get *something* walkable rather than no collision. The underlying
-## Shape3D Resources (and the fallback box's size/position) are cached per
-## model_path — only the CollisionShape3D *nodes* are built fresh per
-## placement, same reasoning as populate_mesh_children().
-##
-## `geometry` (2.10 step 1, optional): see populate_mesh_children()'s own doc
-## comment — same pre-resolved-data-sharing purpose.
-func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
-	if geometry.is_empty():
-		geometry = resolve_geometry_entries(nif, model_path)
-	for entry in geometry["shape_entries"]:
-		var col := CollisionShape3D.new()
-		col.name = String(entry.get("name", "collision"))
-		col.shape = entry["shape"]
-		col.transform = entry["transform"]
-		parent.add_child(col)
+	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
+		return null
+	var key := "%s|%s|%s|%s|%s|%.4f|%s|%s" % [tex_path, normal_path, glow_path,
+			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
+			float(alpha.get("threshold", 0.5)), has_vertex_colors, is_unlit]
+	if _material_cache.has(key):
+		material_cache_hits += 1
+		return _material_cache[key]
+	material_cache_misses += 1
 
-## The single resolve step every geometry-bearing factory builds from --
-## introduced in phases/2/09-direct-server-static-geometry.md (step 2) as
-## get_direct_geometry_entries(), for DirectGeometryBatch's RID-based path
-## (no Node to attach children to at all); generalized in phases/2/10-
-## threaded-streaming-workers.md (step 1) to be the ONE place resolve work
-## happens at all -- populate_mesh_children()/populate_collision_children()
-## (the Node-based path) now build their children from this same data
-## instead of duplicating the cache/material/collision-descriptor logic
-## inline. Matters beyond just not-repeating-yourself: 2.10's threaded tile
-## resolve needs a resolve step with zero Node/RenderingServer/
-## PhysicsServer3D involvement at all so it's safe to run on a worker
-## thread -- this already was exactly that shape for the RID path, it just
-## wasn't yet the Node path's own source of truth too.
-##
-## Returns plain data only: { "mesh_entries": Array of { "mesh": ArrayMesh,
-## "transform": Transform3D }, "shape_entries": Array of { "shape": Shape3D,
-## "transform": Transform3D, "name": String } }. Reuses the exact same
-## _mesh_cache/_get_material()/_build_collision_descriptors() caching
-## regardless of caller, so this is purely a different way of presenting
-## data already being built today, not new asset/parsing work.
-##
-## Material is baked directly onto the cached ArrayMesh's own surface
-## (surface_set_material()) rather than applied as a per-instance override
-## the way populate_mesh_children() used to via MeshInstance3D.
-## material_override -- RenderingServer instances have no per-instance
-## override concept as cheap as a Node property, and since material is
-## already a pure function of (model_path, submesh index) with no
-## placement-specific inputs (the same invariant the existing material
-## cache already relies on), baking it onto the shared cached mesh resource
-## is correct for every placement that reuses it, Node-based or RID-based
-## alike.
-##
-## Only baked on an actual cache MISS (first build), not on every repeat
-## resolve -- this used to be unconditional ("safe to call repeatedly,
-## idempotent"), which was true for a single-threaded caller but stopped
-## being safe once phases/2/10-threaded-streaming-workers.md started
-## sharing already-built ArrayMesh resources across resolver instances via
-## merge_from() below: two different WorkerThreadPool tasks could then both
-## hold a reference to the SAME cached mesh and, without this guard, both
-## call surface_set_material() on it concurrently on a cache hit -- Godot's
-## own docs are explicit that concurrent Resource modification from
-## multiple threads is unsafe, same-value writes or not. Gating on cache
-## miss means the only thread that ever calls surface_set_material() on a
-## given mesh is whichever one built it in the first place, before it's
-## ever merged/shared anywhere.
-func resolve_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
-	var mesh_entries := []
-	for i in range(nif.get_submesh_count()):
-		var mesh_key := "%s#%d" % [model_path, i]
-		var mesh: ArrayMesh
-		if _mesh_cache.has(mesh_key):
-			mesh_cache_hits += 1
-			mesh = _mesh_cache[mesh_key]
-		else:
-			mesh_cache_misses += 1
-			mesh = build_submesh(nif, i)
-			var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
-					nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
-			if mat != null:
-				mesh.surface_set_material(0, mat)
-			_mesh_cache[mesh_key] = mesh
-		mesh_entries.append({ "mesh": mesh, "transform": nif.get_transform(i) })
+	var mat := StandardMaterial3D.new()
+	var have_content := false
 
-	var shape_entries := []
-	var descriptors: Array
-	if _collision_cache.has(model_path):
-		descriptors = _collision_cache[model_path]
-	else:
-		descriptors = _build_collision_descriptors(nif)
-		_collision_cache[model_path] = descriptors
-	for d in descriptors:
-		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
+	if is_unlit:
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		have_content = true
 
-	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
+	if has_vertex_colors:
+		mat.vertex_color_use_as_albedo = true
+		have_content = true
+
+	var albedo := _get_texture_from_image(tex_path, e.get("diffuse_image"))
+	if albedo != null:
+		mat.albedo_texture = albedo
+		have_content = true
+
+	var normal_tex := _get_texture_from_image(normal_path, e.get("normal_image"))
+	if normal_tex != null:
+		mat.normal_enabled = true
+		mat.normal_texture = normal_tex
+		have_content = true
+
+	var glow_tex := _get_texture_from_image(glow_path, e.get("glow_image"))
+	if glow_tex != null:
+		mat.emission_enabled = true
+		mat.emission_texture = glow_tex
+		have_content = true
+
+	if bool(alpha.get("blend_enabled", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		have_content = true
+	elif bool(alpha.get("test_enabled", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		mat.alpha_scissor_threshold = float(alpha.get("threshold", 0.5))
+		have_content = true
+
+	var result := mat if have_content else null
+	_material_cache[key] = result
+	return result
+
+## The GPU-upload step (ImageTexture.create_from_image()) -- main-thread-
+## only, see this class's own top-of-file doc comment. `image` is the
+## already-decoded pixel data resolve_raw_geometry() attached to the raw
+## mesh entry; no BSA/DDS work happens here at all, just the RS upload +
+## cache lookup.
+func _get_texture_from_image(tex_path: String, image: Image) -> ImageTexture:
+	if tex_path == "":
+		return null
+	if _texture_cache.has(tex_path):
+		texture_cache_hits += 1
+		return _texture_cache[tex_path]
+	texture_cache_misses += 1
+	var tex: ImageTexture = null
+	if image != null:
+		tex = ImageTexture.create_from_image(image)
+	_texture_cache[tex_path] = tex
+	return tex
 
 ## The transform every placed object resolves to from its raw REFR
 ## placement fields, relative to its RefrRoot parent -- extracted out of
@@ -488,24 +562,51 @@ static func refr_root_basis() -> Basis:
 static func world_transform_no_parent(pos: Vector3, rot: Vector3, scale: float) -> Transform3D:
 	return Transform3D(refr_root_basis(), Vector3.ZERO) * refr_transform(pos, rot, scale)
 
-func _build_collision_descriptors(nif: NifReader) -> Array:
+## Worker-safe: returns raw, kind-tagged collision geometry (NifReader's own
+## bhk*-derived descriptors, or a computed fallback-bbox AABB) -- no Shape3D
+## constructed here at all. See _build_collision_shapes() for the main-
+## thread-only counterpart that actually builds Shape3D Resources from this.
+func _resolve_raw_collision(nif: NifReader) -> Array:
 	var shapes: Array = nif.get_collision_shapes()
-	if shapes.is_empty():
-		# Only fabricate a bounding-box collider when Havok collision was
-		# actually authored on this NIF but our parser couldn't extract it
-		# (composite bhkListShape/bhkConvexListShape, bhkBlendCollisionObject/
-		# bhkNPCollisionObject — see nif_loader.cpp) -- a real parser gap
-		# where "something walkable" beats nothing. A NIF with NO collision
-		# data at all (has_collision_data == false) means the artist never
-		# intended this to be solid -- window-light volumetrics, markers
-		# (project/gamebryo/marker_node.gd) -- and must stay collision-free,
-		# not get an invented box the original engine never had either.
-		if nif.has_collision_data():
-			return _build_fallback_collision_descriptors(nif)
+	if not shapes.is_empty():
+		return shapes
+	# Only fabricate a bounding-box collider when Havok collision was
+	# actually authored on this NIF but our parser couldn't extract it
+	# (composite bhkListShape/bhkConvexListShape, bhkBlendCollisionObject/
+	# bhkNPCollisionObject — see nif_loader.cpp) -- a real parser gap
+	# where "something walkable" beats nothing. A NIF with NO collision
+	# data at all (has_collision_data == false) means the artist never
+	# intended this to be solid -- window-light volumetrics, markers
+	# (project/gamebryo/marker_node.gd) -- and must stay collision-free,
+	# not get an invented box the original engine never had either.
+	if not nif.has_collision_data():
 		return []
+	return _resolve_raw_fallback_bbox(nif)
 
+func _resolve_raw_fallback_bbox(nif: NifReader) -> Array:
+	var combined := AABB()
+	var have := false
+	for i in range(nif.get_submesh_count()):
+		var pos_flat := nif.get_positions(i)
+		if pos_flat.size() < 3:
+			continue
+		var local_aabb := AABB()
+		local_aabb.position = Vector3(pos_flat[0], pos_flat[1], pos_flat[2])
+		for v in range(pos_flat.size() / 3):
+			local_aabb = local_aabb.expand(Vector3(pos_flat[v * 3], pos_flat[v * 3 + 1], pos_flat[v * 3 + 2]))
+		var world_aabb: AABB = nif.get_transform(i) * local_aabb
+		combined = world_aabb if not have else combined.merge(world_aabb)
+		have = true
+	if not have:
+		return []
+	return [{ "kind": "fallback_bbox", "center": combined.get_center(), "size": combined.size }]
+
+## Main-thread-only: constructs the actual Shape3D Resources from
+## _resolve_raw_collision()'s plain kind-tagged descriptors -- the part of
+## the old _build_collision_descriptors() that touched PhysicsServer3D.
+func _build_collision_shapes(raw_shapes: Array) -> Array:
 	var out: Array = []
-	for s in shapes:
+	for s in raw_shapes:
 		var kind: String = s.get("kind", "")
 		var shape: Resource = null
 		var transform: Transform3D = s.get("transform", Transform3D.IDENTITY)
@@ -552,9 +653,15 @@ func _build_collision_descriptors(nif: NifReader) -> Array:
 				var cap_basis := _basis_aligned_to_y(dir) if dir.length() > 0.0001 else Basis.IDENTITY
 				transform = transform * Transform3D(cap_basis, mid)
 				shape = cap
+			"fallback_bbox":
+				var fbox := BoxShape3D.new()
+				var size: Vector3 = s.get("size", Vector3.ONE)
+				fbox.size = size.max(Vector3.ONE * 0.05) # avoid a degenerate zero-thickness box
+				transform = Transform3D(Basis.IDENTITY, s.get("center", Vector3.ZERO))
+				shape = fbox
 			_:
 				continue
-		out.append({ "kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", "")) })
+		out.append({ "kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", kind)) })
 	return out
 
 func _expand_triangles(positions: PackedFloat32Array, indices: PackedInt32Array) -> PackedVector3Array:
@@ -578,27 +685,6 @@ func _basis_aligned_to_y(dir: Vector3) -> Basis:
 	var x := reference.cross(y).normalized()
 	var z := x.cross(y).normalized()
 	return Basis(x, y, z)
-
-func _build_fallback_collision_descriptors(nif: NifReader) -> Array:
-	var combined := AABB()
-	var have := false
-	for i in range(nif.get_submesh_count()):
-		var pos_flat := nif.get_positions(i)
-		if pos_flat.size() < 3:
-			continue
-		var local_aabb := AABB()
-		local_aabb.position = Vector3(pos_flat[0], pos_flat[1], pos_flat[2])
-		for v in range(pos_flat.size() / 3):
-			local_aabb = local_aabb.expand(Vector3(pos_flat[v * 3], pos_flat[v * 3 + 1], pos_flat[v * 3 + 2]))
-		var world_aabb: AABB = nif.get_transform(i) * local_aabb
-		combined = world_aabb if not have else combined.merge(world_aabb)
-		have = true
-	if not have:
-		return []
-
-	var box := BoxShape3D.new()
-	box.size = combined.size.max(Vector3.ONE * 0.05) # avoid a degenerate zero-thickness box
-	return [{ "kind": "fallback_bbox", "shape": box, "transform": Transform3D(Basis.IDENTITY, combined.get_center()), "name": "collision_fallback_bbox" }]
 
 ## Bethesda REFR.DATA rotation: X/Y/Z Euler radians, angles NEGATED before
 ## building each per-axis rotation — see phases/1/00-interior-cell-loader.md
