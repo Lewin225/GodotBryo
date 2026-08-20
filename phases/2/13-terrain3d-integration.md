@@ -1,14 +1,18 @@
-# 2.13 — Terrain3D Integration (design doc, not yet implemented)
+# 2.13 — Terrain3D Integration (design doc; implementation in progress)
 
 Parent: [Phase 2](README.md)
 
 ## Status
 
-**Design/research only.** Nothing in this doc is implemented yet. Written per explicit
-request, ahead of "the final bit of major terrain work," to work through compatibility
-and architecture questions before writing code. Several sections below list concrete
-open questions that need real-data answers (not assumptions) before implementation
-starts — see "Open questions requiring real-data research."
+Started as design/research only; implementation sequence now underway. Steps 1–2 of
+the "Proposed implementation sequence" below are done and real-data-verified
+(addon vendored and loading, real-cell heightmap import round-trips bit-exact). Steps
+3 onward (the real-data census work informing texture/grass design) were also
+completed out of order, before formal implementation began — see "Real-data
+findings." Remaining steps (control-map painting, collision, `WorldStreamer`
+integration, grass) are not yet started. Several sections below still list open
+questions that needed (and got) real-data answers before their part of
+implementation could start — see "Open questions requiring real-data research."
 
 **Update:** all three of those open questions (ATXT/VTXT layer counts, the LTEX/TXST
 texture budget, and whether FNV encodes grass data anywhere) have since been resolved
@@ -426,13 +430,37 @@ decode-order bugs, both only found by comparing against real REFR/physics data):
 Small, independently testable steps, matching this phase's established task-file
 granularity rather than one large change:
 
-1. Add the Terrain3D addon/GDExtension to the project; confirm it builds/loads
-   alongside the existing native module on Godot 4.7.1 (answers open question 4).
-2. Spike: import one real cell's (Goodsprings, `(-17, 0)`, the existing test target)
-   `VHGT` heightmap into a single Terrain3D region at `vertex_spacing = 128/70`;
-   visually and numerically compare against the current `GamebryoTerrainBuilder`
-   output for the same cell (reuse `test_terrain_collision.gd`'s settle-point
-   methodology for a numeric height comparison, not just eyeballing).
+1. ~~Add the Terrain3D addon/GDExtension to the project; confirm it builds/loads
+   alongside the existing native module on Godot 4.7.1.~~ **Done** — vendored as
+   `native/terrain3d` (submodule, pinned to `v1.0.2-stable`), built, copied into
+   `project/addons/terrain_3d/`, enabled via `project.godot`, confirmed loading
+   cleanly alongside `nv_engine` via a real headless editor pass. **Answers open
+   question 4**: yes, it's compatible — Terrain3D's own nested `godot-cpp` was left
+   at its own older pin rather than forced to match our newer one (forcing it broke
+   compilation; GDExtension's ABI is stable across engine minor versions regardless).
+   See `native/README.md`'s Dependencies section for the full story.
+2. ~~Spike: import one real cell's (Goodsprings, `(-17, 0)`) `VHGT` heightmap into a
+   single Terrain3D region at `vertex_spacing = 128/70`; visually and numerically
+   compare against the current `GamebryoTerrainBuilder` output.~~ **Done** —
+   `project/tests/test_terrain3d_spike.gd`/`.tscn`. Built a `FORMAT_RF` height
+   `Image` directly from `get_land_data()`'s real heights, imported via
+   `Terrain3DData.import_images()` at `vertex_spacing = 128/70`, `region_size = 64`
+   (the value settled on in "Real-data findings" below). **Numeric result: bit-exact
+   round-trip** — 9 sample points (all 4 corners, center, and 4 interior points)
+   read back via `Terrain3DData.get_height()` with **0.000000m error** against the
+   source `LandData.heights` array (Terrain3D snaps exactly-on-vertex queries to the
+   stored pixel rather than interpolating, confirmed by reading
+   `terrain_3d_data.cpp`'s `get_height()` — no float noise from bilinear blending).
+   **Visual result**: a real, non-flat, gently undulating ridge across the imported
+   patch (screenshot at `/tmp/nv_test_screenshots/terrain3d_spike_goodsprings.png`,
+   not committed) — the surrounding checkered plane and sharp cliff at the patch's
+   edges are Terrain3D's default "no data here" flat plane at height 0, an expected
+   artifact of importing one isolated cell with nothing painted around it, not a bug
+   (the numeric check already proves the data itself is correct). Coordinate
+   convention note: this test uses Terrain3D's own native image-column→+X,
+   image-row→+Z mapping (confirmed by reading `Terrain3DData::get_pixel()`) rather
+   than inheriting `GamebryoTerrainBuilder`'s reflected-Z convention — no reason to
+   carry that convention forward into a new placement scheme.
 3. ~~Extend `get_land_data()` to actually decode `ATXT`/`VTXT`; write a standalone
    census tool to answer open questions 1 and 2 across the full worldspace before any
    texture-painting code is written.~~ **Done** — `native/tools/terrain_census.cpp`,
