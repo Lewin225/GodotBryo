@@ -21,7 +21,16 @@ var dest_rotation: Vector3 = Vector3.ZERO
 ## own form_id (GamebryoReference.form_id, this door's own REFR) is set —
 ## see object_registry.gd.
 func resolve_destination(esm: EsmReader) -> void:
-	var dest: Dictionary = esm.get_door_destination(form_id)
+	apply_destination(esm.get_door_destination(form_id))
+
+## The same effect as resolve_destination(), but from an already-resolved
+## destination Dictionary instead of an EsmReader -- phases/2/10-threaded-
+## streaming-workers.md's threaded resolve path looks the destination up
+## itself (on a WorkerThreadPool task, via its own private EsmReader) and
+## hands the result to the main-thread construct step, which calls this
+## instead of resolve_destination() so DoorNode never touches an EsmReader
+## directly regardless of which path built it.
+func apply_destination(dest: Dictionary) -> void:
 	has_destination = not dest.is_empty()
 	if has_destination:
 		dest_cell_form_id = int(dest["dest_cell_form_id"])

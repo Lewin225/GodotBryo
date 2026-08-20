@@ -192,6 +192,107 @@ func _resolve_light(placement: Dictionary, ctx: GamebryoResolveContext) -> Dicti
 		return { "kind": "skip", "placement": placement }
 	return { "kind": "light", "geometry": geometry, "light_data": light_data, "placement": placement }
 
+## phases/2/10-threaded-streaming-workers.md, step 4: the main-thread-only
+## "commit" half of the resolve/commit split -- builds the real Node
+## subtree (or feeds `batch`, a DirectGeometryBatch, for the structural-
+## fallback case) from a resolve_placement()/resolve_tile() result. No I/O,
+## no BSA/NIF/ESM access anywhere in this call chain -- every geometry/
+## metadata input was already produced during resolve, main thread or a
+## worker task, doesn't matter which by this point.
+##
+## Returns null both for "kind": "skip" (nothing to place, same meaning
+## build() returning null already has) AND for a structural-fallback
+## placement routed into `batch` (placed via RID, no Node at all) -- the
+## caller doesn't need to tell those two apart, both mean "nothing to
+## add_child()". `batch` is optional: pass null to always build a Node
+## (GamebryoVisual) for the structural-fallback case too, for a caller with
+## no DirectGeometryBatch at all.
+func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = null) -> Node3D:
+	match result["kind"]:
+		"marker":
+			return _construct_marker(result)
+		"door":
+			return _construct_door(result)
+		"light":
+			return _construct_light(result)
+		"scol":
+			return _construct_scol(result)
+		"visual":
+			var type_tag: String = result.get("type_tag", "")
+			match type_tag:
+				"CONT":
+					return _construct_visual(ContainerNode, result)
+				"ACTI":
+					return _construct_visual(ActivatorNode, result)
+				"FURN":
+					return _construct_visual(FurnitureNode, result)
+				_: # structural fallback
+					if batch != null:
+						_construct_direct(result, batch)
+						return null
+					return _construct_visual(GamebryoVisual, result)
+		_: # "skip"
+			return null
+
+func _construct_visual(cls, result: Dictionary) -> Node3D:
+	var node = cls.new()
+	# nif/model_path are only consulted by populate_mesh_children()/
+	# populate_collision_children() when `geometry` is empty (their own
+	# resolve-it-yourself fallback) -- result["geometry"] is always already
+	# resolved by this point, so that branch never runs and these dummy
+	# args are never touched.
+	var geometry: Dictionary = result.get("geometry", {})
+	resolver.populate_mesh_children(node, null, "", geometry)
+	resolver.populate_collision_children(node, null, "", geometry)
+	return _finalize(node, result["placement"])
+
+func _construct_door(result: Dictionary) -> Node3D:
+	var node := _construct_visual(DoorNode, result)
+	if node is DoorNode:
+		node.apply_destination(result.get("destination", {}))
+	return node
+
+func _construct_marker(result: Dictionary) -> Node3D:
+	var node := MarkerNode.new()
+	node.marker_kind = result.get("marker_kind", "")
+	return _finalize(node, result["placement"])
+
+func _construct_light(result: Dictionary) -> Node3D:
+	var node := LightNode.new()
+	var geometry: Dictionary = result.get("geometry", {})
+	if not (geometry.get("mesh_entries", []) as Array).is_empty():
+		resolver.populate_mesh_children(node, null, "", geometry)
+		resolver.populate_collision_children(node, null, "", geometry)
+	_apply_light_data(node, result.get("light_data", {}))
+	if node.get_child_count() == 0:
+		return null
+	return _finalize(node, result["placement"])
+
+## SCOL parts always become real Node children, never routed through a
+## DirectGeometryBatch -- matches _build_scol()'s existing behavior (which
+## recurses through build(), never build_direct()), not a new restriction
+## introduced here.
+func _construct_scol(result: Dictionary) -> Node3D:
+	var anchor := Node3D.new()
+	for part_result in result.get("parts", []):
+		var child := construct_from_resolved(part_result, null)
+		if child != null:
+			anchor.add_child(child)
+	return _finalize(anchor, result["placement"])
+
+## The RID-based construct path for a structural-fallback placement --
+## mirrors build_direct()'s own body exactly, just working from an
+## already-resolved `result` instead of doing the resolve work itself
+## (no load_nif()/resolve_geometry_entries() call here at all).
+func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
+	var placement: Dictionary = result["placement"]
+	var geometry: Dictionary = result.get("geometry", {})
+	var pos: Vector3 = placement.get("position", Vector3.ZERO)
+	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
+	var scale: float = placement.get("scale", 1.0)
+	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
+	batch.add_object(world_transform, geometry.get("mesh_entries", []), geometry.get("shape_entries", []))
+
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))
 	register("CONT", func(p, r): return _instantiate_visual(ContainerNode, p, r))
@@ -269,37 +370,47 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 			mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 			mesh_resolver.populate_collision_children(node, nif, model, geometry)
 
-	var light_data: Dictionary = esm.get_light_data(int(placement.get("base_form_id", 0)))
-	if not light_data.is_empty():
-		var radius: float = max(float(light_data.get("radius", 5.0)), 0.1)
-		var color: Color = light_data.get("color", Color.WHITE)
-		var is_spot: bool = light_data.get("is_spot", false)
-
-		var light: Light3D
-		if is_spot:
-			var spot := SpotLight3D.new()
-			# Bethesda FOV is degrees; unclear whether it's already a
-			# half-angle or a full cone angle. Godot's spot_angle is a
-			# half-angle. Treating it as a full angle (halving) since that
-			# matches "field of view" naming convention more commonly —
-			# approximate, not byte-verified; benchmark is a plausible cone,
-			# not an exact match.
-			spot.spot_angle = clamp(float(light_data.get("fov_degrees", 90.0)) * 0.5, 1.0, 89.0)
-			spot.spot_range = radius
-			light = spot
-		else:
-			light = OmniLight3D.new()
-			light.omni_range = radius
-
-		light.name = "Light"
-		light.light_color = color
-		light.light_energy = 3.0 # approximate — see phases/1/03-light-sources.md
-		light.visible = not bool(light_data.get("off_by_default", false))
-		node.add_child(light)
+	_apply_light_data(node, esm.get_light_data(int(placement.get("base_form_id", 0))))
 
 	if node.get_child_count() == 0:
 		return null # no mesh and no light data resolved — nothing to place
 	return _finalize(node, placement)
+
+## The actual Light3D-child construction, extracted out of _build_light() so
+## phases/2/10-threaded-streaming-workers.md's _construct_light() (the
+## threaded path's equivalent, working from an already-resolved light_data
+## Dictionary instead of a fresh esm.get_light_data() call) shares it
+## instead of duplicating this block. A no-op if `light_data` is empty (a
+## mesh-only light fixture with no LIGH data resolved, or — normally —
+## simply not called in that case).
+func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
+	if light_data.is_empty():
+		return
+	var radius: float = max(float(light_data.get("radius", 5.0)), 0.1)
+	var color: Color = light_data.get("color", Color.WHITE)
+	var is_spot: bool = light_data.get("is_spot", false)
+
+	var light: Light3D
+	if is_spot:
+		var spot := SpotLight3D.new()
+		# Bethesda FOV is degrees; unclear whether it's already a
+		# half-angle or a full cone angle. Godot's spot_angle is a
+		# half-angle. Treating it as a full angle (halving) since that
+		# matches "field of view" naming convention more commonly —
+		# approximate, not byte-verified; benchmark is a plausible cone,
+		# not an exact match.
+		spot.spot_angle = clamp(float(light_data.get("fov_degrees", 90.0)) * 0.5, 1.0, 89.0)
+		spot.spot_range = radius
+		light = spot
+	else:
+		light = OmniLight3D.new()
+		light.omni_range = radius
+
+	light.name = "Light"
+	light.light_color = color
+	light.light_energy = 3.0 # approximate — see phases/1/03-light-sources.md
+	light.visible = not bool(light_data.get("off_by_default", false))
+	node.add_child(light)
 
 ## Node name + editor description, for every placed object regardless of
 ## whether it got a dedicated typed class (DoorNode, ...) or fell through to

@@ -90,6 +90,31 @@ func _ready() -> void:
 	var door_cell: Dictionary = a.esm.find_cell_by_editor_id("GSDocMitchellHouse")
 	check(not door_cell.is_empty(), "instance A's own EsmReader independently resolves real ESM data")
 
+	print("=== cross-context cache merge (checkin -> shared -> checkout) ===")
+	# x resolves a model and is checked back in (folding its cache into the
+	# pool's shared resolver); y -- a DIFFERENT context that never itself
+	# resolved anything -- should come back from a later checkout() already
+	# warm with that same model, without ever touching x's cache directly.
+	if model_path != "":
+		var merge_pool := GamebryoResolverPool.new(2)
+		var x := merge_pool.checkout()
+		var y := merge_pool.checkout()
+		var nif_x := x.resolver.load_nif(model_path)
+		check(nif_x != null, "x resolved the model")
+		check(y.resolver.get_cache_stats()["unique_nifs_loaded"] == 0, "y hasn't resolved anything yet")
+
+		merge_pool.checkin(x) # folds x's cache into the pool's shared resolver
+		merge_pool.checkin(y) # y itself has nothing new to contribute
+		check(merge_pool.get_shared_cache_stats()["unique_nifs_loaded"] >= 1,
+				"the pool's shared resolver picked up x's resolved NIF on checkin")
+
+		var z := merge_pool.checkout() # LIFO -- returns y (checked in last)
+		check(z == y, "sanity: this checkout returns y, the context that never itself resolved the model")
+		check(z.resolver.get_cache_stats()["unique_nifs_loaded"] == 1,
+				"y comes back from checkout() already warm with x's resolved model, despite never resolving it itself")
+		check(z.resolver.load_nif(model_path) == nif_x,
+				"y's load_nif() returns the SAME cached NifReader object x built -- no re-parse, no duplicate object")
+
 	print("=======================")
 	if failures == 0:
 		print("ALL CHECKS PASSED")
