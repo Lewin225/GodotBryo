@@ -420,6 +420,21 @@ Dictionary EsmReader::get_land_data(int64_t cell_form_id) const {
 			ltex[i] = static_cast<int64_t>(land->quadrant_base_ltex[i]);
 		}
 		out["quadrant_base_ltex"] = ltex;
+		Array alpha_layers;
+		for (const auto &layer : land->alpha_layers) {
+			Dictionary layer_dict;
+			layer_dict["ltex_form_id"] = static_cast<int64_t>(layer.ltex_form_id);
+			layer_dict["quadrant"] = static_cast<int>(layer.quadrant);
+			layer_dict["layer_index"] = static_cast<int>(layer.layer_index);
+			PackedFloat32Array opacity;
+			opacity.resize(static_cast<int>(layer.opacity.size()));
+			for (size_t i = 0; i < layer.opacity.size(); ++i) {
+				opacity[static_cast<int>(i)] = layer.opacity[i];
+			}
+			layer_dict["opacity"] = opacity;
+			alpha_layers.push_back(layer_dict);
+		}
+		out["alpha_layers"] = alpha_layers;
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
