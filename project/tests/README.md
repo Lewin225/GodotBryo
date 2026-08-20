@@ -123,5 +123,6 @@ anything.
 | `test_lod_construct_node` | 2.12 step 6: Node-based construct path (`MeshInstance3D` + `visibility_range`) | headless |
 | `test_lod_direct_batch` | 2.12 step 7: RID-based construct path (`DirectGeometryBatch` LOD tier) | headless |
 | `test_lod_crossover_config` | 2.12 step 8: real configurable crossover distance/margin plumbing | headless |
+| `test_terrain3d_spike` | 2.13 step 2: real-cell `VHGT` heightmap import into Terrain3D, bit-exact numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
 
 Phase/task numbers refer to `phases/`'s own task docs (e.g. "2.12" = `phases/2/12-distant-object-lod.md`).
