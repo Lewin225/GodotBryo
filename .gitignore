@@ -13,6 +13,7 @@ project/bin/*.framework
 .sconsign.dblite
 native/tools/dump_object
 native/tools/dump_object_output/
+native/tools/terrain_census
 
 # Godot editor artifacts
 .godot/
