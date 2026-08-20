@@ -8,8 +8,25 @@ extends RefCounted
 ## game.gd's own periodic refresh without this class needing to know
 ## anything about *when* or *how often* to run.
 
-static func build_report(cell_loader: CellLoader, world_streamer: WorldStreamer) -> String:
+## `player`: optional (CharacterBody3D or any Node3D with a real
+## global_position, e.g. the FPC addon's own body) -- when given, prints the
+## player's world position and, if a worldspace is active, its own grid
+## tile coordinate. Added so a real-play bug report ("there's a leftover CK
+## editor object here") can include an exact position/cell to go find in
+## the ESM, not just a description -- see phases/2's own rendering-issues
+## punch-list item #4.
+static func build_report(cell_loader: CellLoader, world_streamer: WorldStreamer, player: Node3D = null) -> String:
 	var lines := PackedStringArray()
+
+	if player != null:
+		var pos: Vector3 = player.global_position
+		lines.append("player pos: (%.2f, %.2f, %.2f) m" % [pos.x, pos.y, pos.z])
+		if world_streamer != null and world_streamer.is_active():
+			var cell_size_m: float = CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
+			var gx := int(floor(pos.x / cell_size_m))
+			var gy := int(floor(-pos.z / cell_size_m))
+			lines.append("player tile: (%d, %d)" % [gx, gy])
+		lines.append("")
 
 	lines.append("FPS: %d  (frame: %.2f ms)" % [
 		Engine.get_frames_per_second(),

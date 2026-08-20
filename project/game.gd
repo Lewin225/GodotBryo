@@ -133,7 +133,7 @@ func _process(delta: float) -> void:
 		_stats_refresh_timer -= delta
 		if _stats_refresh_timer <= 0.0:
 			_stats_refresh_timer = STATS_REFRESH_INTERVAL_SEC
-			_stats_label.text = DebugStats.build_report(cell_loader, world_streamer)
+			_stats_label.text = DebugStats.build_report(cell_loader, world_streamer, _find_character_body(self))
 	if world_streamer != null and world_streamer.is_active():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
