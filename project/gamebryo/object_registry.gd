@@ -124,7 +124,7 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	var nif := ctx.resolver.load_nif(model)
 	if nif == null or nif.get_submesh_count() == 0:
 		return { "kind": "skip", "placement": placement }
-	var geometry := ctx.resolver.resolve_geometry_entries(nif, model)
+	var geometry := ctx.resolver.resolve_raw_geometry(nif, model) # RAW -- construct_from_resolved() builds the actual Resources, main-thread-only
 	return { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
 
 func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
@@ -149,7 +149,7 @@ func _resolve_light(placement: Dictionary, ctx: GamebryoResolveContext) -> Dicti
 	if model != "":
 		var nif := ctx.resolver.load_nif(model)
 		if nif != null and nif.get_submesh_count() > 0:
-			geometry = ctx.resolver.resolve_geometry_entries(nif, model)
+			geometry = ctx.resolver.resolve_raw_geometry(nif, model) # RAW, same reasoning as _resolve_visual()
 	var light_data: Dictionary = ctx.esm.get_light_data(int(placement.get("base_form_id", 0)))
 	if geometry.is_empty() and light_data.is_empty():
 		return { "kind": "skip", "placement": placement }
@@ -199,12 +199,13 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 
 func _construct_visual(cls, result: Dictionary) -> Node3D:
 	var node = cls.new()
-	# nif/model_path are only consulted by populate_mesh_children()/
-	# populate_collision_children() when `geometry` is empty (their own
-	# resolve-it-yourself fallback) -- result["geometry"] is always already
-	# resolved by this point, so that branch never runs and these dummy
-	# args are never touched.
-	var geometry: Dictionary = result.get("geometry", {})
+	# result["geometry"] is RAW (built by a worker task, or by this same
+	# thread's own _resolve_visual()) -- build_geometry_entries() is the
+	# main-thread-only step that actually constructs the ArrayMesh/
+	# ImageTexture/StandardMaterial3D/Shape3D Resources. Safe here: this
+	# whole construct_from_resolved() call chain is main-thread-only by
+	# design (see world_streamer.gd's own commit-step doc comment).
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}))
 	resolver.populate_mesh_children(node, null, "", geometry)
 	resolver.populate_collision_children(node, null, "", geometry)
 	return _finalize(node, result["placement"])
@@ -222,8 +223,9 @@ func _construct_marker(result: Dictionary) -> Node3D:
 
 func _construct_light(result: Dictionary) -> Node3D:
 	var node := LightNode.new()
-	var geometry: Dictionary = result.get("geometry", {})
-	if not (geometry.get("mesh_entries", []) as Array).is_empty():
+	var raw_geometry: Dictionary = result.get("geometry", {})
+	if not raw_geometry.is_empty():
+		var geometry := resolver.build_geometry_entries(raw_geometry)
 		resolver.populate_mesh_children(node, null, "", geometry)
 		resolver.populate_collision_children(node, null, "", geometry)
 	_apply_light_data(node, result.get("light_data", {}))
@@ -244,18 +246,21 @@ func _construct_scol(result: Dictionary) -> Node3D:
 	return _finalize(anchor, result["placement"])
 
 ## The RID-based construct path for a structural-fallback placement --
-## resolves the placement's own world transform and feeds `batch` directly,
-## working entirely from an already-resolved `result` (no load_nif()/
-## resolve_geometry_entries() call here at all -- that already happened
-## during resolve_placement()).
+## resolves the placement's own world transform and feeds `batch` directly.
+## `result["geometry"]` is RAW (resolve_placement() already did the BSA/NIF
+## work); build_geometry_entries() here is the main-thread-only step that
+## actually constructs the ArrayMesh/Shape3D Resources batch.add_object()
+## needs -- DirectGeometryBatch's own RenderingServer/PhysicsServer3D calls
+## were always main-thread-only, this just makes sure the Resources it's
+## handed were too.
 func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	var placement: Dictionary = result["placement"]
-	var geometry: Dictionary = result.get("geometry", {})
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}))
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
 	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
-	batch.add_object(world_transform, geometry.get("mesh_entries", []), geometry.get("shape_entries", []))
+	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
 
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))
@@ -279,7 +284,7 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	if nif == null or nif.get_submesh_count() == 0:
 		return null
 	var node = cls.new()
-	var geometry := mesh_resolver.resolve_geometry_entries(nif, model)
+	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
@@ -330,7 +335,7 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 	if model != "":
 		var nif := mesh_resolver.load_nif(model)
 		if nif != null and nif.get_submesh_count() > 0:
-			var geometry := mesh_resolver.resolve_geometry_entries(nif, model)
+			var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
 			mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 			mesh_resolver.populate_collision_children(node, nif, model, geometry)
 
