@@ -413,18 +413,70 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 ## build_geometry_entries() for this exact (nif, model_path) — pass it when
 ## the caller already resolved it, so resolution doesn't happen twice.
 ## Resolves-then-builds itself (both steps, always safe here since this
-## whole call is main-thread-only) when omitted.
+## whole call is main-thread-only) when omitted. NOTE: the omitted-geometry
+## path calls resolve_raw_geometry()/build_geometry_entries() with no
+## lod_raw, so it never attaches an LOD tier — a caller wanting one must
+## build+pass `geometry` itself (see GamebryoObjectRegistry._resolve_lod_geometry()
+## + this class's own build_geometry_entries(), step 5).
+##
+## phases/2/12-distant-object-lod.md, step 6: when `geometry["lod_mesh_entries"]`
+## is non-empty (the small minority — a VWD-flagged placement with a
+## resolvable _lod.nif companion, see step 4), a second MeshInstance3D is
+## built per LOD submesh alongside the full-detail ones, and BOTH tiers get
+## their visibility_range set (_apply_lod_visibility_range()) so Godot's own
+## per-frame distance check — not this function, not WorldStreamer — decides
+## which one actually renders. The overwhelming common case (no LOD tier)
+## is completely unaffected: no visibility range touched at all, same as
+## before this step.
 func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
 	if geometry.is_empty():
 		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
+	var lod_entries: Array = geometry.get("lod_mesh_entries", [])
 	var i := 0
 	for entry in geometry["mesh_entries"]:
 		var mi := MeshInstance3D.new()
 		mi.name = "sub%d" % i
 		mi.mesh = entry["mesh"]
 		mi.transform = entry["transform"]
+		if not lod_entries.is_empty():
+			_apply_lod_visibility_range(mi, true)
 		parent.add_child(mi)
 		i += 1
+	i = 0
+	for entry in lod_entries:
+		var mi := MeshInstance3D.new()
+		mi.name = "lod%d" % i
+		mi.mesh = entry["mesh"]
+		mi.transform = entry["transform"]
+		_apply_lod_visibility_range(mi, false)
+		parent.add_child(mi)
+		i += 1
+
+## phases/2/12-distant-object-lod.md step 6 (placeholder ahead of step 8's
+## real configurable/plumbed value): the flat global crossover distance and
+## hysteresis margin used above. One number, not the real per-category/
+## size-proportional system enginedocs/lod.md's own [LOD] ini excerpt
+## describes — per that task doc's explicit scoping, a starting value to
+## get the mechanism correct, not a tuned one.
+const LOD_CROSSOVER_DISTANCE_M := 100.0
+const LOD_CROSSOVER_MARGIN_M := 5.0
+
+## Sets one MeshInstance3D's crossover visibility range: `is_full_detail`
+## true -> visible only within LOD_CROSSOVER_DISTANCE_M
+## (visibility_range_end, Godot's own "hide beyond this distance" field);
+## false -> visible only beyond it (visibility_range_begin, "hide closer
+## than this distance"). VISIBILITY_RANGE_FADE_DISABLED — hard cutover +
+## margin-based hysteresis — per this task doc's own Design section: Godot's
+## docs call this the cheapest manual-LOD approach; revisit FADE_SELF
+## crossfading later (step 10) only if the hard cut looks bad in real play.
+static func _apply_lod_visibility_range(mi: MeshInstance3D, is_full_detail: bool) -> void:
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+	if is_full_detail:
+		mi.visibility_range_end = LOD_CROSSOVER_DISTANCE_M
+		mi.visibility_range_end_margin = LOD_CROSSOVER_MARGIN_M
+	else:
+		mi.visibility_range_begin = LOD_CROSSOVER_DISTANCE_M
+		mi.visibility_range_begin_margin = LOD_CROSSOVER_MARGIN_M
 
 ## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
 ## collision-extraction.md), or one bounding-box fallback collider (from the
