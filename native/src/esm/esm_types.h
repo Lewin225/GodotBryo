@@ -155,14 +155,35 @@ struct LightData {
 // scaling. BTXT gives each of the 4 quadrants' base LTEX FormID (0 if a
 // quadrant has none, which shouldn't happen in practice but isn't assumed).
 //
-// Scope note: ATXT/VTXT (additional per-vertex-blended texture layers on
-// top of the base) are NOT parsed — this task only resolves each
-// quadrant's single base texture, not full multi-layer alpha blending. A
-// real, sourced format detail (BTXT/ATXT/VTXT all confirmed present and
-// counted in real Goodsprings terrain data), just deliberately not fully
-// consumed yet. See phases/1/04-exterior-cell-terrain.md for the reasoning.
+// ATXT/VTXT (additional per-vertex-blended texture layers on top of the
+// base) ARE now parsed — see LandAlphaLayer below and
+// phases/2/13-terrain3d-integration.md's real-data census (real worst case:
+// 6 additional layers stacked in a single quadrant, 85% of quadrants have
+// none at all). Phase 1's GamebryoTerrainBuilder still only consumes BTXT
+// (a real, acknowledged scope cut documented in
+// phases/1/04-exterior-cell-terrain.md, unchanged by this) — this data is
+// for the Terrain3D control-map painting path instead.
 constexpr int kLandGridSize = 33; // per axis; 33*33 = 1089 vertices total
 constexpr int kLandQuadrantCount = 4; // fopdoc order: 0=BL, 1=BR, 2=TL, 3=TR
+constexpr int kLandQuadrantVertsPerSide = 17; // (kLandGridSize+1)/2
+constexpr int kLandQuadrantVertCount = kLandQuadrantVertsPerSide * kLandQuadrantVertsPerSide; // 289
+
+// One ATXT+VTXT pair: an additional ground texture layer painted on top of a
+// quadrant's BTXT base, with per-vertex opacity over that quadrant's own
+// 17x17 sub-grid. VTXT's own "Position" field is a sparse index into that
+// 17x17 grid (only vertices with nonzero opacity are present in the file) —
+// decoded here as row-major (position = row*17 + col), matching this
+// codebase's own convention for the main heightmap grid; this specific
+// indexing order is best-available-confidence (consistent with fopdoc's
+// field description, not independently byte-verified against a reference
+// tool in this environment — same caveat LandData::heights below already
+// carries for VHGT's decode order).
+struct LandAlphaLayer {
+	uint32_t ltex_form_id = 0;
+	uint8_t quadrant = 0; // fopdoc order: 0=BL, 1=BR, 2=TL, 3=TR
+	int16_t layer_index = 0; // ATXT's own stacking-order field, as authored
+	std::vector<float> opacity; // size kLandQuadrantVertCount, row-major, 0 where unpainted
+};
 
 struct LandData {
 	// Decoded, accumulated, and scaled to meters already (units.h) — NOT
@@ -181,6 +202,7 @@ struct LandData {
 	// get_land_data().
 	std::vector<float> heights; // size kLandGridSize*kLandGridSize, row-major, meters
 	uint32_t quadrant_base_ltex[kLandQuadrantCount] = { 0, 0, 0, 0 };
+	std::vector<LandAlphaLayer> alpha_layers; // ATXT/VTXT-derived, empty if the cell has none
 };
 
 } // namespace esm

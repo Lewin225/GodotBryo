@@ -480,11 +480,29 @@ granularity rather than one large change:
    confirmed exact for all 4 quadrants. Real (non-headless) screenshot shows two
    correctly-textured ground materials meeting cleanly at the real quadrant
    boundary, sitting on the real heightmap from step 2 — not placeholders.
-   **Not yet done**: extending `get_land_data()`/`LandData` to carry real
-   `ATXT`/`VTXT` data and the opacity-priority 7→2 layer reduction for the ~15% of
-   quadrants that need it; the `region_size = 64` + 31-slot LRU pool +
-   pink-fallback-slot texture-budget design (this single-cell test only ever needed
-   2 slots, nowhere near exercising the budget problem).
+   **`ATXT`/`VTXT` → control map: also done, real-data-verified.** Extended
+   `LandData` (`native/src/esm/esm_types.h`) with a new `LandAlphaLayer` type (LTEX
+   FormID, quadrant, `ATXT`'s own layer-stacking index, and a real per-vertex
+   opacity array decoded from `VTXT`'s sparse position+opacity entries) and
+   `get_land_data()` (`esm_file.cpp`) to actually populate it — real output against
+   Goodsprings: 24 alpha layers (6 per quadrant, matching the earlier census's
+   per-quadrant max exactly), with plausible nonzero-opacity counts (8–194 of 289
+   vertices per layer, not garbage). Exposed through `EsmReader.get_land_data()`'s
+   Dictionary as `alpha_layers`. `project/tests/test_terrain3d_multilayer_paint.gd`/
+   `.tscn` implements the opacity-priority reduction: per quadrant, `BTXT` is always
+   the base, and the single `ATXT` layer with the highest **total** opacity mass
+   across that quadrant becomes the overlay (real per-vertex opacity as the blend
+   weight) — everything else in that quadrant is a documented, acknowledged lossy
+   drop, same category of scope cut as `BTXT`-only was for 1.4. All 4 of
+   Goodsprings' quadrants got a real, distinct overlay layer selected; numeric
+   round-trip via `get_control_overlay_id()`/`get_control_blend()` exact on a real
+   painted vertex; screenshot shows genuine organic-shaped blended patches (a darker
+   rocky texture blended over the base), not a placeholder or a hard geometric
+   boundary. **Not yet done**: the `region_size = 64` + 31-slot LRU pool +
+   pink-fallback-slot texture-budget design (every single-cell test so far has only
+   ever needed 2–4 slots, nowhere near exercising the budget problem — that needs
+   multiple concurrently-loaded cells/regions to actually trigger, i.e. step 6's
+   `WorldStreamer` integration).
 5. Physics drop test against `Terrain3DCollision` (answers open question 5); fall back
    to keeping our own `ConcavePolygonShape3D` collision layered on top of Terrain3D's
    render-only output if it fails, rather than blocking the whole integration on it.

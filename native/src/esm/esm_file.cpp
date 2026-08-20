@@ -874,9 +874,34 @@ std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 			if (quadrant < kLandQuadrantCount) {
 				out.quadrant_base_ltex[quadrant] = ltex_id;
 			}
+		} else if (s.type == "ATXT" && s.size >= 8) {
+			// fopdoc ATXT: FormID texture(4) + quadrant(1) + unused(1) + layer int16(2).
+			util::ByteReader sr(s.data, s.size);
+			LandAlphaLayer layer;
+			layer.ltex_form_id = sr.read_u32();
+			layer.quadrant = sr.read_u8();
+			sr.read_u8(); // unused
+			layer.layer_index = static_cast<int16_t>(sr.read_u16());
+			layer.opacity.assign(kLandQuadrantVertCount, 0.0f);
+			out.alpha_layers.push_back(std::move(layer));
+		} else if (s.type == "VTXT" && !out.alpha_layers.empty()) {
+			// fopdoc VTXT: array of {position uint16(2), unused byte[2], opacity float32(4)}
+			// = 8 bytes/entry, sparse (only nonzero-opacity vertices present).
+			// Always immediately follows its own ATXT per fopdoc's LAND field
+			// order, so it fills in the layer just pushed above.
+			LandAlphaLayer &layer = out.alpha_layers.back();
+			util::ByteReader sr(s.data, s.size);
+			size_t entry_count = s.size / 8;
+			for (size_t i = 0; i < entry_count; ++i) {
+				uint16_t position = sr.read_u16();
+				sr.read_u8();
+				sr.read_u8(); // unused
+				float opacity = read_f32(sr);
+				if (position < kLandQuadrantVertCount) {
+					layer.opacity[position] = opacity;
+				}
+			}
 		}
-		// ATXT/VTXT (additional blended layers) deliberately not parsed —
-		// see LandData's comment in esm_types.h.
 	}
 	if (!have_vhgt) {
 		return std::nullopt;
