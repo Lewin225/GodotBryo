@@ -144,7 +144,7 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 		return { "kind": "skip", "placement": placement }
 	var geometry := ctx.resolver.resolve_raw_geometry(nif, model) # RAW -- construct_from_resolved() builds the actual Resources, main-thread-only
 	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
-	var lod_geometry := _resolve_lod_geometry(placement, model, ctx)
+	var lod_geometry := _resolve_lod_geometry(placement, model, ctx.resolver)
 	if not lod_geometry.is_empty():
 		result["lod_geometry"] = lod_geometry
 	return result
@@ -159,19 +159,25 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 ## purely Godot's own per-frame visibility_range check (steps 6/7), not
 ## something decided here or by WorldStreamer. Returns {} (not attached at
 ## all) for the overwhelming common case -- not VWD-flagged, no `_lod.nif`
-## companion, or the companion NIF itself has no real geometry. Worker-safe,
-## same reasoning as resolve_raw_geometry() itself -- only touches
-## NifReader/BsaReader via `ctx`.
-func _resolve_lod_geometry(placement: Dictionary, model: String, ctx: GamebryoResolveContext) -> Dictionary:
+## companion, or the companion NIF itself has no real geometry.
+##
+## Takes a bare `mesh_resolver` (not a full GamebryoResolveContext) -- the
+## only thing this ever touches is resolver-side methods, and step 6 needs
+## the exact same logic from `_instantiate_visual()` (CellLoader's
+## editor-preview `build()` path), which only has a GamebryoMeshResolver on
+## hand, not a ctx. Worker-safe when called with a per-context resolver (the
+## threaded path, via `ctx.resolver`), same reasoning as
+## resolve_raw_geometry() itself -- only touches NifReader/BsaReader.
+func _resolve_lod_geometry(placement: Dictionary, model: String, mesh_resolver: GamebryoMeshResolver) -> Dictionary:
 	if not bool(placement.get("visible_when_distant", false)):
 		return {}
-	var lod_path := ctx.resolver.lod_companion_path(model)
+	var lod_path := mesh_resolver.lod_companion_path(model)
 	if lod_path == "":
 		return {}
-	var lod_nif := ctx.resolver.load_nif(lod_path)
+	var lod_nif := mesh_resolver.load_nif(lod_path)
 	if lod_nif == null or lod_nif.get_submesh_count() == 0:
 		return {}
-	return ctx.resolver.resolve_raw_geometry(lod_nif, lod_path)
+	return mesh_resolver.resolve_raw_geometry(lod_nif, lod_path)
 
 func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
 	var visual := _resolve_visual(placement, ctx, "DOOR")
@@ -259,7 +265,12 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	# ImageTexture/StandardMaterial3D/Shape3D Resources. Safe here: this
 	# whole construct_from_resolved() call chain is main-thread-only by
 	# design (see world_streamer.gd's own commit-step doc comment).
-	var geometry := resolver.build_geometry_entries(result.get("geometry", {}))
+	# result["lod_geometry"] (phases/2/12-distant-object-lod.md, step 4/6) is
+	# RAW too, absent for the overwhelming majority of placements -- {}
+	# default means build_geometry_entries()'s own lod_raw stays {} and
+	# populate_mesh_children() attaches no LOD tier at all, no behavior
+	# change from before step 6.
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	resolver.populate_mesh_children(node, null, "", geometry)
 	resolver.populate_collision_children(node, null, "", geometry)
 	return _finalize(node, result["placement"])
@@ -330,6 +341,12 @@ func _register_defaults() -> void:
 	# through to build()'s structural fallback tier. This exercises that
 	# fallback with real, common data instead of only via a contrived test.
 
+## phases/2/12-distant-object-lod.md, step 6: also resolves+attaches the
+## same optional LOD tier _resolve_visual() does for the threaded path --
+## this is the shared factory build() itself dispatches to (DOOR/CONT/ACTI/
+## FURN/structural-fallback alike), and CellLoader's own @tool editor-preview
+## build() routes through it, so this is what makes the Node-based LOD path
+## visible in editor preview too, not just at runtime via WorldStreamer.
 func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
 	var model: String = placement.get("model", "")
 	if model == "":
@@ -338,7 +355,8 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	if nif == null or nif.get_submesh_count() == 0:
 		return null
 	var node = cls.new()
-	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
+	var lod_raw := _resolve_lod_geometry(placement, model, mesh_resolver)
+	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model), lod_raw)
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
