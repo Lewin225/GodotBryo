@@ -140,6 +140,61 @@ func _ready() -> void:
 					break
 	check(not mismatch, "per-placement geometry (mesh transforms) from the threaded run exactly matches the synchronous baseline, index for index")
 
+	print("=== construct_from_resolved(): Node output matches build()'s own known counts ===")
+	# Same cell, same known-good counts as test_object_registry.gd's own
+	# registry.build() checks -- construct_from_resolved() must produce the
+	# same Node shape build() does, just arriving there via resolve then
+	# construct instead of doing both in one call.
+	var construct_root := Node3D.new()
+	construct_root.rotation_degrees.x = -90
+	add_child(construct_root)
+	var construct_by_class := {}
+	var construct_built := 0
+	for r in results:
+		var node := registry.construct_from_resolved(r) # no batch -- every kind becomes a real Node here, including structural fallback
+		if node == null:
+			continue
+		construct_root.add_child(node)
+		construct_built += 1
+		var cls: String = String(node.get_script().get_global_name()) if node.get_script() else node.get_class()
+		construct_by_class[cls] = construct_by_class.get(cls, 0) + 1
+
+	check(construct_built == 428, "428 non-skip placements became real Nodes (434 refs - 6 skip) (got %d)" % construct_built)
+	check(construct_by_class.get("DoorNode", 0) == 2, "both doors became DoorNode (got %d)" % construct_by_class.get("DoorNode", 0))
+	check(construct_by_class.get("ContainerNode", 0) == 11, "all 11 containers became ContainerNode (got %d)" % construct_by_class.get("ContainerNode", 0))
+	check(construct_by_class.get("ActivatorNode", 0) == 7, "7 activators became ActivatorNode (got %d)" % construct_by_class.get("ActivatorNode", 0))
+	check(construct_by_class.get("FurnitureNode", 0) == 14, "all 14 furniture became FurnitureNode (got %d)" % construct_by_class.get("FurnitureNode", 0))
+	check(construct_by_class.get("LightNode", 0) == 25, "all 25 lights became LightNode (got %d)" % construct_by_class.get("LightNode", 0))
+	check(construct_by_class.get("MarkerNode", 0) == 9, "all 9 markers became MarkerNode (got %d)" % construct_by_class.get("MarkerNode", 0))
+	check(construct_by_class.get("GamebryoVisual", 0) == 360, "all 360 structural-fallback placements became GamebryoVisual (got %d)" % construct_by_class.get("GamebryoVisual", 0))
+
+	for r in results:
+		if r["kind"] == "door":
+			var node := registry.construct_from_resolved(r)
+			check(node is DoorNode, "constructing a door result again produces a DoorNode")
+			check(node.has_destination == (not r["destination"].is_empty()),
+					"constructed DoorNode's has_destination matches the resolved destination's emptiness")
+
+	print("=== construct_from_resolved() with a batch: structural fallback routes to DirectGeometryBatch, not a Node ===")
+	var batch := DirectGeometryBatch.new()
+	batch.init(self)
+	var routed_to_batch := 0
+	var routed_to_node := 0
+	for r in results:
+		if r["kind"] == "visual" and r.get("type_tag", "") == "":
+			var node := registry.construct_from_resolved(r, batch)
+			if node == null:
+				routed_to_batch += 1
+			else:
+				routed_to_node += 1
+	check(routed_to_batch == 360, "all 360 structural-fallback placements routed to the batch (no Node) when one is given (got %d)" % routed_to_batch)
+	check(routed_to_node == 0, "none of them fell back to a Node once a batch was supplied (got %d)" % routed_to_node)
+	# get_batched_placement_count() counts mesh ENTRIES (one placement can
+	# have several submeshes), not placements -- just confirm it's nonzero
+	# and at least the placement count, not an exact 360.
+	check(batch.get_batched_placement_count() >= 360, "the batch recorded at least one mesh entry per routed placement (got %d for 360 placements)" % batch.get_batched_placement_count())
+	batch.free_all()
+
 	print("=======================")
 	if failures == 0:
 		print("ALL CHECKS PASSED")

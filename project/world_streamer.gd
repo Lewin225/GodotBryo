@@ -59,6 +59,7 @@ var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
 var _builder: CellStreamBuilder
+var _pool: GamebryoResolverPool # phases/2/10-threaded-streaming-workers.md, step 4
 
 var _active_wrld_form_id: int = -1 # -1 == inactive
 var _generation := 0 # bumped on every activate()/deactivate() -- invalidates stale in-flight tile streams
@@ -78,6 +79,7 @@ func _ready() -> void:
 	resolver = GamebryoMeshResolver.new()
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
+	_pool = GamebryoResolverPool.new() # sized from OS.get_processor_count() -- see that class's own doc comment
 
 ## Starts (or retargets) continuous streaming for the given worldspace.
 ## Takes no position/cell -- the next check reacts to wherever the active
@@ -203,28 +205,25 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 	var refs: Array = esm.get_cell_references(cell_form_id)
 
 	# phases/2/09-direct-server-static-geometry.md: this tile's own RID batch
-	# for non-interactive placements (registry.build_direct()'s target).
-	# Starts disabled -- the RID equivalent of tile_root.visible=false/
-	# collision-disabled above, so nothing in the batch is visible/collidable
-	# until the whole tile flips on atomically below, same guarantee the
-	# Node-based half is already held to.
+	# for non-interactive placements. Starts disabled -- the RID equivalent
+	# of tile_root.visible=false/collision-disabled above, so nothing in the
+	# batch is visible/collidable until the whole tile flips on atomically
+	# below, same guarantee the Node-based half is already held to.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
 	batch.set_enabled(false)
 
-	var add_child_fn := func(parent: Node, child: Node) -> void:
-		parent.add_child(child)
-		CellStreamBuilder.set_collision_disabled(child, true)
-	var is_cancelled_fn := func() -> bool: return my_generation != _generation
-	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn, batch)
+	var results = await _resolve_refs_threaded(refs, my_generation)
 
 	_pending.erase(coord)
 	_in_flight_count -= 1
-	if not completed or my_generation != _generation:
+	if results == null or my_generation != _generation:
 		tile_root.free() # superseded/deactivated -- never was resident, safe to free
 		batch.free_all() # RIDs aren't owned by tile_root, must be freed explicitly too
 		_maybe_emit_settled()
 		return
+
+	_construct_results(refr_root, results, batch)
 
 	CellStreamBuilder.set_collision_disabled(tile_root, false)
 	tile_root.visible = true
@@ -253,18 +252,16 @@ func _stream_persistent_root() -> void:
 	batch.set_enabled(false)
 
 	_in_flight_count += 1
-	var add_child_fn := func(parent: Node, child: Node) -> void:
-		parent.add_child(child)
-		CellStreamBuilder.set_collision_disabled(child, true)
-	var is_cancelled_fn := func() -> bool: return my_generation != _generation
-	var completed: bool = await _builder.stream_refs(refr_root, refs, add_child_fn, is_cancelled_fn, batch)
+	var results = await _resolve_refs_threaded(refs, my_generation)
 
 	_in_flight_count -= 1
-	if not completed or my_generation != _generation:
+	if results == null or my_generation != _generation:
 		root.free() # deactivated mid-stream -- never was live, safe to free
 		batch.free_all()
 		_maybe_emit_settled()
 		return
+
+	_construct_results(refr_root, results, batch)
 
 	CellStreamBuilder.set_collision_disabled(root, false)
 	root.visible = true
@@ -273,6 +270,53 @@ func _stream_persistent_root() -> void:
 	_persistent_root = root
 	_persistent_batch = batch
 	_maybe_emit_settled()
+
+## phases/2/10-threaded-streaming-workers.md, step 4: checks out a pool
+## context, dispatches `refs`' resolve work (GamebryoObjectRegistry.
+## resolve_tile(), see that class's own doc comment -- pure data in, pure
+## data out, no Node/RenderingServer/PhysicsServer3D touched) to a
+## WorkerThreadPool task, and polls once per frame until it completes --
+## shared by _stream_tile() and _stream_persistent_root() so the checkout/
+## dispatch/poll/checkin dance exists in exactly one place.
+##
+## Returns the resolved results Array, or null if `my_generation` went
+## stale before a task ever got dispatched (still waiting on a free pool
+## slot -- the caller never started real work, nothing to wait for). A task
+## that HAS been dispatched is always waited on to completion regardless of
+## cancellation -- WorkerThreadPool requires every task be waited for so it
+## can release its own internal resources, and there's no way to kill a
+## running task -- its result is simply discarded by the caller (checked via
+## the SAME my_generation comparison after this returns) if it's gone stale
+## by the time it finishes.
+func _resolve_refs_threaded(refs: Array, my_generation: int) -> Variant:
+	var ctx: GamebryoResolveContext = _pool.checkout()
+	while ctx == null:
+		if my_generation != _generation:
+			return null # never dispatched -- nothing to wait for
+		await get_tree().process_frame
+		ctx = _pool.checkout()
+
+	var holder := [null]
+	var task_id: int = WorkerThreadPool.add_task(func(): holder[0] = registry.resolve_tile(refs, ctx))
+	while not WorkerThreadPool.is_task_completed(task_id):
+		await get_tree().process_frame
+	WorkerThreadPool.wait_for_task_completion(task_id) # mandatory even for a discarded result -- releases the task's internal resources
+	_pool.checkin(ctx)
+
+	if my_generation != _generation:
+		return null
+	return holder[0]
+
+## The main-thread-only "commit" step: builds a real Node (or feeds `batch`
+## for the structural-fallback case) from each already-resolved result and
+## adds it under `parent`. No I/O left by this point -- see
+## GamebryoObjectRegistry.construct_from_resolved()'s own doc comment.
+func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBatch) -> void:
+	for r in results:
+		var node := registry.construct_from_resolved(r, batch)
+		if node != null:
+			parent.add_child(node)
+			CellStreamBuilder.set_collision_disabled(node, true)
 
 func _maybe_emit_settled() -> void:
 	if _in_flight_count == 0:

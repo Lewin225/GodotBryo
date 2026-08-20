@@ -23,10 +23,26 @@ extends RefCounted
 ## if that assumption ever stops holding (a future caller wants to check
 ## out from a worker thread), this class would need real synchronization
 ## added, not silently rely on the current caller discipline.
+##
+## Step 4 addition: a `_shared_resolver` this pool also owns, kept
+## eventually consistent with every context's own cache via
+## GamebryoMeshResolver.merge_from() at both ends of a checkout -- on
+## checkin(), the just-finished context's freshly-learned cache entries get
+## folded INTO _shared_resolver; on checkout(), _shared_resolver's current
+## knowledge gets folded INTO the context about to be handed out, so it
+## starts warm with everything any other context has learned so far.
+## Without this, a common base object (a rock, a fence post -- exactly what
+## phases/2/00-resource-caching-instancing.md's caching exists to
+## deduplicate) could get independently re-parsed once per pool slot that
+## happens to touch a tile containing it, instead of once total. Both merge
+## calls happen here, inside checkout()/checkin(), so they inherit this
+## class's own main-thread-only guarantee for free -- no cache dictionary
+## is ever touched from more than one thread.
 
 var _available: Array[GamebryoResolveContext] = []
 var _checked_out_count := 0
 var _size := 0
+var _shared_resolver := GamebryoMeshResolver.new()
 
 ## `size`, if given, overrides the automatic sizing below -- mainly for
 ## tests that want a small, deterministic pool. Automatic sizing is
@@ -55,7 +71,9 @@ func checkout() -> GamebryoResolveContext:
 	if _available.is_empty():
 		return null
 	_checked_out_count += 1
-	return _available.pop_back()
+	var context: GamebryoResolveContext = _available.pop_back()
+	context.resolver.merge_from(_shared_resolver)
+	return context
 
 ## Returns a previously checked-out context to the pool. `context` must have
 ## come from this same pool's checkout() -- no ownership tracking is done to
@@ -64,8 +82,15 @@ func checkout() -> GamebryoResolveContext:
 func checkin(context: GamebryoResolveContext) -> void:
 	if context == null:
 		return
+	_shared_resolver.merge_from(context.resolver)
 	_checked_out_count -= 1
 	_available.append(context)
+
+## The shared resolver's own cache stats -- a rough proxy for how much
+## cross-context sharing is actually happening (rising unique_nifs_loaded
+## alongside a real playtest's tile count, not one-per-tile-per-slot).
+func get_shared_cache_stats() -> Dictionary:
+	return _shared_resolver.get_cache_stats()
 
 func get_size() -> int:
 	return _size

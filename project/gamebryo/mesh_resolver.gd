@@ -79,6 +79,38 @@ func get_cache_stats() -> Dictionary:
 		"unique_textures_loaded": _texture_cache.size(),
 	}
 
+## phases/2/10-threaded-streaming-workers.md, step 4: copies every cache
+## entry `other` has that `self` doesn't into `self` -- used by
+## GamebryoResolverPool to keep a canonical shared resolver's caches
+## eventually consistent with every per-task-private context that's
+## completed a resolve, and to warm a freshly-checked-out context with
+## everything already learned by others, WITHOUT ever letting two
+## concurrently-running WorkerThreadPool tasks touch the same cache
+## dictionary at once -- both checkout() and checkin() (where this gets
+## called) are main-thread-only by that class's own design, so this method
+## itself never needs to be thread-safe.
+##
+## Deliberately does NOT merge _bsa_readers/_bsa_order -- those hold live
+## file handles (BsaArchive, documented not-thread-safe at its own source),
+## and sharing one between two contexts that could later be checked out to
+## different concurrent tasks would reintroduce exactly the hazard per-
+## context readers exist to avoid. Only the pure-data caches (parsed NIFs,
+## built meshes, decoded textures, materials, collision descriptors) are
+## safe to share once fully built -- see resolve_geometry_entries()'s own
+## doc comment for why mesh entries specifically needed a cache-miss-only
+## material bake before this was safe to do at all.
+func merge_from(other: GamebryoMeshResolver) -> void:
+	_merge_dict(_nif_cache, other._nif_cache)
+	_merge_dict(_mesh_cache, other._mesh_cache)
+	_merge_dict(_texture_cache, other._texture_cache)
+	_merge_dict(_material_cache, other._material_cache)
+	_merge_dict(_collision_cache, other._collision_cache)
+
+static func _merge_dict(target: Dictionary, source: Dictionary) -> void:
+	for key in source:
+		if not target.has(key):
+			target[key] = source[key]
+
 func _init() -> void:
 	_build_bsa_order()
 
@@ -376,9 +408,21 @@ func populate_collision_children(parent: Node3D, nif: NifReader, model_path: Str
 ## placement-specific inputs (the same invariant the existing material
 ## cache already relies on), baking it onto the shared cached mesh resource
 ## is correct for every placement that reuses it, Node-based or RID-based
-## alike. Safe to call repeatedly (idempotent) -- deliberately not tracked
-## with an extra "already baked" flag, since surface_set_material() on an
-## already-correct value is a cheap no-op, not worth the bookkeeping to skip.
+## alike.
+##
+## Only baked on an actual cache MISS (first build), not on every repeat
+## resolve -- this used to be unconditional ("safe to call repeatedly,
+## idempotent"), which was true for a single-threaded caller but stopped
+## being safe once phases/2/10-threaded-streaming-workers.md started
+## sharing already-built ArrayMesh resources across resolver instances via
+## merge_from() below: two different WorkerThreadPool tasks could then both
+## hold a reference to the SAME cached mesh and, without this guard, both
+## call surface_set_material() on it concurrently on a cache hit -- Godot's
+## own docs are explicit that concurrent Resource modification from
+## multiple threads is unsafe, same-value writes or not. Gating on cache
+## miss means the only thread that ever calls surface_set_material() on a
+## given mesh is whichever one built it in the first place, before it's
+## ever merged/shared anywhere.
 func resolve_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
 	var mesh_entries := []
 	for i in range(nif.get_submesh_count()):
@@ -390,11 +434,11 @@ func resolve_geometry_entries(nif: NifReader, model_path: String) -> Dictionary:
 		else:
 			mesh_cache_misses += 1
 			mesh = build_submesh(nif, i)
+			var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
+					nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
+			if mat != null:
+				mesh.surface_set_material(0, mat)
 			_mesh_cache[mesh_key] = mesh
-		var mat := _get_material(nif.get_texture_path(i), nif.get_normal_texture_path(i),
-				nif.get_glow_texture_path(i), nif.get_alpha_info(i), nif.get_colors(i).size() > 0, nif.is_unlit(i))
-		if mat != null:
-			mesh.surface_set_material(0, mat)
 		mesh_entries.append({ "mesh": mesh, "transform": nif.get_transform(i) })
 
 	var shape_entries := []
