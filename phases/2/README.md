@@ -46,6 +46,7 @@ task files.
 | 2.10 | Threaded tile resolve (WorkerThreadPool) — 2.2's threading investigation, informed by a real measured frame-time budget | [10-threaded-streaming-workers.md](10-threaded-streaming-workers.md) |
 | 2.11 | Exterior cell lookup index — fix `find_exterior_cell()`'s real O(worldspace) scan cost using the ESM's own block/sub-block structure (found to be 81% of tile-streaming settle time) | [11-exterior-cell-lookup-index.md](11-exterior-cell-lookup-index.md) |
 | 2.12 | Distant object LOD — Bethesda's own `_lod.nif` paired-mesh convention, gated by the real "Visible When Distant" REFR flag, via Godot's `visibility_range_begin/end` | [12-distant-object-lod.md](12-distant-object-lod.md) |
+| 2.13 | Terrain3D integration — design doc only, replacing the per-cell `GamebryoTerrainBuilder` with region-based clipmap terrain + real multi-layer texture painting | [13-terrain3d-integration.md](13-terrain3d-integration.md) |
 
 ## Open issues (parked, not yet investigated)
 
