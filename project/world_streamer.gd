@@ -44,8 +44,18 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 ## -- these are starting values to get the mechanism correct, not measured
 ## ones (though `RADIUS_LOAD_DISTANT`'s own real content density at this
 ## specific value IS measured, see phases/2/12's own survey).
-const RADIUS_LOAD_FULL := 4
+const RADIUS_LOAD_FULL := 1
 const RADIUS_LOAD_DISTANT := 10
+
+## Hysteresis for the full/distant boundary, same reasoning as RADIUS_UNLOAD
+## below but one tier in: a full-detail tile isn't downgraded back to
+## distant-only until it's past this larger radius, not RADIUS_LOAD_FULL
+## itself, so a camera sitting almost exactly on the full-detail boundary
+## doesn't thrash upgrade/downgrade every check. Must stay strictly between
+## RADIUS_LOAD_FULL and RADIUS_LOAD_DISTANT -- a full-detail tile that's
+## fallen out of the full band still needs to become the distant-only
+## variant, not skip straight past RADIUS_LOAD_DISTANT's own band entirely.
+const RADIUS_UNLOAD_FULL := RADIUS_LOAD_FULL + 3
 
 ## Hysteresis: a resident tile isn't unloaded until it's past this larger
 ## radius, not the same threshold load uses -- otherwise a camera sitting
@@ -186,12 +196,7 @@ func _check_streaming() -> void:
 				# phases/2/12-distant-object-lod.md, step 3: the camera moved
 				# close enough that a tile streamed distant-only now needs
 				# full detail -- re-stream it rather than leaving it stuck
-				# showing only its VWD-flagged placements. Deliberately
-				# one-directional: a full-detail tile is never downgraded
-				# back to distant-only just because the camera moved away
-				# again -- it stays fully resolved until RADIUS_UNLOAD evicts
-				# it entirely, same hysteresis reasoning RADIUS_UNLOAD itself
-				# already exists for (avoid thrashing near a boundary).
+				# showing only its VWD-flagged placements.
 				_resident[coord].free()
 				_resident.erase(coord)
 				if _resident_batches.has(coord):
@@ -199,6 +204,27 @@ func _check_streaming() -> void:
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
 				_start_tile_load(coord, true)
+			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and (absi(dx) > RADIUS_UNLOAD_FULL or absi(dy) > RADIUS_UNLOAD_FULL):
+				# The reverse case -- a full-detail tile the camera has since
+				# moved away from, past RADIUS_UNLOAD_FULL but still within
+				# RADIUS_LOAD_DISTANT (so still resident, just no longer near
+				# enough to warrant every placement). RADIUS_UNLOAD itself is a
+				# much wider hysteresis margin than RADIUS_LOAD_FULL (13 vs 1),
+				# so without this a tile the camera had merely passed through
+				# would stay fully resolved -- every placement, not just
+				# VWD-flagged ones -- for as long as it remained resident at
+				# all, not just while the camera was actually near it. Gated on
+				# RADIUS_UNLOAD_FULL rather than RADIUS_LOAD_FULL itself for the
+				# same thrash-avoidance reason the upgrade case above and
+				# RADIUS_UNLOAD below each already use their own hysteresis
+				# margin for.
+				_resident[coord].free()
+				_resident.erase(coord)
+				if _resident_batches.has(coord):
+					_resident_batches[coord].free_all()
+					_resident_batches.erase(coord)
+				_resident_full_detail.erase(coord)
+				_start_tile_load(coord, false)
 
 	for coord in _resident.keys().duplicate():
 		if absi(coord.x - center.x) > RADIUS_UNLOAD or absi(coord.y - center.y) > RADIUS_UNLOAD:
