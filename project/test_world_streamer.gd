@@ -114,7 +114,14 @@ func _ready() -> void:
 	# completed correctly (caught directly -- an earlier version of this
 	# test did exactly that).
 	var listen2 := _begin_settle_listen(streamer)
-	var move_cells := WorldStreamer.RADIUS_UNLOAD + 4 # margin beyond RADIUS_UNLOAD (also tunable) -- far enough that every originally-resident tile falls outside the unload radius regardless of its current value
+	# Must clear RADIUS_LOAD + RADIUS_UNLOAD, not RADIUS_UNLOAD alone -- the
+	# closest edge of the OLD resident ring is RADIUS_LOAD cells from the old
+	# center, so the camera has to move that far again just to bring that
+	# edge back to the old center's own position, before the unload radius
+	# even starts counting from the NEW center. Caught directly: a
+	# RADIUS_UNLOAD-only margin left a stale band of the old ring resident
+	# (504 tiles instead of 441) when RADIUS_LOAD=10/RADIUS_UNLOAD=13.
+	var move_cells := WorldStreamer.RADIUS_LOAD + WorldStreamer.RADIUS_UNLOAD + 4
 	cam.position.x += float(move_cells) * cell_size_m
 	settled = await _wait_settled(streamer, listen2)
 	check(settled, "streaming_settled fired again after the move")

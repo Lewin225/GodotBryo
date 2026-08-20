@@ -131,9 +131,11 @@ public:
 	std::optional<RecordInfo> find_worldspace_by_editor_id(const std::string &editor_id) const;
 
 	// Finds the exterior CELL at grid coordinate (x, y) within a worldspace.
-	// Full-scan of the worldspace's children, same rationale as 1.0's
-	// interior lookup — block/sub-block coordinate hashing is a Phase 2
-	// streaming optimization, not needed for one hardcoded cell.
+	// phases/2/11-exterior-cell-lookup-index.md: navigates directly through
+	// the worldspace's own Exterior Cell Block/Sub-Block GRUP structure
+	// (Bethesda's own spatial index for this exact lookup) instead of
+	// scanning every CELL — see that task doc for the verified label
+	// encoding this relies on.
 	std::optional<RecordInfo> find_exterior_cell(uint32_t wrld_form_id, int32_t x, int32_t y) const;
 
 	// phases/2/07-runtime-cell-loader.md: the reverse of find_exterior_cell()

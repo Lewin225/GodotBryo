@@ -125,44 +125,54 @@ memory/bookkeeping.
   that would make disk caching a real correctness risk, not just an unnecessary
   optimization.
 
-## Step-by-step implementation TODO (direct navigation, not yet started)
+## Step-by-step implementation TODO — DONE
 
-1. Add block/sub-block label decode helpers to `esm_file.cpp` (floor division for
-   negative coordinates — a plain `a / b` will NOT do; the standard `((a % b) + b) % b`-
-   style correction, or equivalent, is needed and should be unit-verified against a
-   negative real coordinate directly, not assumed correct).
-2. Rewrite `find_exterior_cell()`'s body: locate the World Children GRUP (skip the
-   leading persistent CELL record and its own child GRUP — they aren't a Block/Sub-Block
-   GRUP), find the one Exterior Cell Block GRUP (`group_type == 4`) whose label decodes
-   to the target block coordinate, descend to the one Exterior Cell Sub-Block GRUP
-   (`group_type == 5`) whose label decodes to the target sub-block coordinate, then scan
-   only the CELL records directly in that sub-block (skipping over each CELL's own
-   trailing child GRUP whole, without descending into it) for an exact `XCLC` match.
-3. Update the function's own doc comment (currently says "Full-scan... not needed for
-   one hardcoded cell" — no longer true).
-4. Verify correctness directly: every real cell already used as a fixture elsewhere in
-   this codebase's tests (Goodsprings `(-17, 0)`, the 6 cells confirmed above, at least
-   one more from a different block to be sure the block-level match isn't accidentally
-   only exercised for block `(0,0)`) must resolve to the exact same `form_id` the OLD
-   linear-scan implementation returns — run both implementations side by side against a
-   real worldspace before deleting the old one, don't just trust the new one in
-   isolation.
-5. Re-run the same headless benchmark methodology (2.2/2.10's own) to get a real
-   before/after number for `find_exterior_cell()`'s own cost and for total settle time —
-   the 81%-of-settle-time number above is the one this step should visibly move.
-6. Decide (separately, per the parked section above) whether to add caching on top, once
-   direct-navigation's own real cost is measured.
+1. ✅ Block/sub-block label decode + real floor-division helpers added to `esm_file.cpp`
+   (`floor_div()`, `decode_grup_label()`, `kSubBlockCells`/`kBlockCells`).
+2. ✅ `find_exterior_cell()` rewritten to navigate World Children → Block (`group_type
+   4`) → Sub-Block (`group_type 5`) → exact-`XCLC`-match CELL, skipping the persistent
+   cell and every non-matching branch by its own declared byte size.
+3. ✅ Doc comment updated (both `esm_file.h` and a fuller note directly above the
+   implementation in `esm_file.cpp`).
+4. ✅ Verified directly, and it caught two real bugs before landing, not zero:
+   - **A genuine x/y-axis swap** in the label decode: the GRUP label's low-16 half
+     tracks our own `grid.y`, not `grid.x` as first assumed. Hidden by the initial hand-
+     picked test set (block `(0,0)`'s own cells are all `x==y`, symmetric, so the swap
+     was invisible) — caught only once a *different*, asymmetric block was cross-
+     checked. Fixed by swapping which parameter feeds `target_block_x/y`/
+     `target_sub_x/y`.
+   - **A real pre-existing bug in the OLD implementation**, not a regression: the
+     worldspace's persistent cell record carries a placeholder `XCLC` of `(0,0)`, and
+     the old linear scan (file order) returned it instead of the real grid tile also at
+     `(0,0)` — silently, for as long as this function has existed. The new
+     implementation excludes the persistent cell by construction (never part of the
+     Block/Sub-Block structure) and returns the genuine tile. Confirmed via a dedicated
+     new test (`test_exterior_cell_lookup.gd`) checking the resolved `(0,0)` cell has
+     real terrain (`LAND` data), which the persistent cell never has.
+   - Final verification: 729/729 exhaustive coordinate sweep matches (old vs. new,
+     step ±3 over `[-40, 40]²`) plus a dedicated hand-picked set covering multiple
+     blocks, negative coordinates, and a worldspace-edge miss — all exact matches
+     except the explained `(0,0)` case.
+5. ✅ Re-measured with the same headless methodology already established this phase, on
+   the exact scenario the 81%/15,114ms number came from (`RADIUS_LOAD=10`, 441 tiles):
+   **total settle time 18,654ms → 3,116ms (6x)**; `find_exterior_cell()`'s own total
+   **15,114ms → 15ms (~1000x)**, matching a standalone timing comparison's measured
+   **1179x** per-call speedup (~31.1ms → ~0.026ms) almost exactly.
+6. Caching/indexing decision: still parked, per the section above — not revisited as
+   part of this pass. Direct navigation alone was enough to make the bottleneck
+   disappear; no immediate need established for anything on top.
 
 ## Acceptance criteria
 
-- [ ] `find_exterior_cell()` returns identical results to the old linear-scan
+- [x] `find_exterior_cell()` returns identical results to the old linear-scan
       implementation for every real cell checked, including at least one negative-
-      coordinate case and one block boundary case, not just Goodsprings.
-- [ ] Real measured per-call cost drops from ~34ms to sub-millisecond, confirmed
-      directly (not assumed from the design), same headless benchmark methodology
-      already established this phase.
-- [ ] The 15,114ms / 81%-of-settle-time cost measured in this task's own investigation
-      is re-measured after the fix and shown to have dropped correspondingly.
-- [ ] The caching/indexing question stays explicitly parked (this doc) unless a
-      follow-up task is opened for it — not silently implemented as a drive-by
-      addition to this task.
+      coordinate case and one block boundary case, not just Goodsprings — confirmed via
+      a 729-point exhaustive sweep, with the one real discrepancy (`(0,0)`) traced to a
+      genuine pre-existing bug in the old implementation, not a flaw in the new one.
+- [x] Real measured per-call cost drops from ~34ms to sub-millisecond, confirmed
+      directly: ~31.1ms → ~0.026ms (1179x), same standalone timing harness used for both.
+- [x] The 15,114ms / 81%-of-settle-time cost measured in this task's own investigation
+      is re-measured after the fix and shown to have dropped correspondingly: 15,114ms →
+      15ms, total settle time 18,654ms → 3,116ms.
+- [x] The caching/indexing question stays explicitly parked (this doc) — not
+      implemented as part of this pass.
