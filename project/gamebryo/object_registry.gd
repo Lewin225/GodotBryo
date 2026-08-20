@@ -83,6 +83,115 @@ func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
 	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
 	return true
 
+## phases/2/10-threaded-streaming-workers.md, step 3: the resolve-only
+## counterpart to build() -- same three-tier dispatch (marker / registered
+## interactive type / structural fallback) and the same set of base_types
+## _register_defaults() below wires up, but returns plain data instead of a
+## Node, and reads ONLY `ctx` (never self.esm/self.resolver) so this is safe
+## to call from a WorkerThreadPool task -- including calling it concurrently
+## from multiple threads on the SAME GamebryoObjectRegistry instance, since
+## nothing here touches this object's own mutable state (_factories is
+## deliberately not consulted; the dispatch below is its own fixed list, not
+## routed through the Callable registry, precisely so a caller can't swap in
+## a non-thread-safe custom factory via register() and have it silently run
+## on a worker thread).
+##
+## The base_type -> shape mapping is intentionally duplicated here rather
+## than driven by _factories (already listed once in _register_defaults(),
+## and implicitly a second time in is_structural_fallback()'s own "not
+## registered" check) -- a third, bounded occurrence of a 6-case list that's
+## been stable since Phase 1, not a maintenance burden worth a shared-Callable
+## redesign that would also have to solve "how does a caller know a given
+## Callable is safe to run off-thread."
+##
+## Returns a Dictionary tagged "kind" (step 4, WorldStreamer's commit step,
+## switches on this to build the right Node type or feed DirectGeometryBatch
+## without re-touching the ESM):
+##   "marker" -- { placement, marker_kind } (MarkerNode.kind_from_model()'s
+##               result, precomputed here since it's a pure string function)
+##   "door"   -- { placement, type_tag: "DOOR", geometry, destination }
+##               (destination is {} for a plain non-teleporting door, same
+##               "real, valid case" DoorNode.resolve_destination() already
+##               treats it as)
+##   "scol"   -- { placement, parts: Array of recursively-resolved results }
+##               (SCOL bundles STAT placements inside its own record body,
+##               same recursion build()'s own _build_scol() already does)
+##   "light"  -- { placement, geometry (may be {} -- a meshless light rig,
+##               the common case per phases/1/03), light_data }
+##   "visual" -- { placement, type_tag (one of CONT/ACTI/FURN, or "" for the
+##               structural-fallback/GamebryoVisual case), geometry }
+##   "skip"   -- { placement } only -- mirrors build() returning null (no
+##               model, unparseable NIF, or a LIGH with neither mesh nor
+##               light data resolved)
+func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	if MarkerNode.is_marker_model(placement.get("model", "")):
+		return { "kind": "marker", "placement": placement,
+				"marker_kind": MarkerNode.kind_from_model(placement.get("model", "")) }
+
+	var type_tag: String = placement.get("base_type", "")
+	match type_tag:
+		"DOOR":
+			return _resolve_door(placement, ctx)
+		"SCOL":
+			return _resolve_scol(placement, ctx)
+		"LIGH":
+			return _resolve_light(placement, ctx)
+		"CONT", "ACTI", "FURN":
+			return _resolve_visual(placement, ctx, type_tag)
+		_:
+			if String(placement.get("model", "")) != "":
+				return _resolve_visual(placement, ctx, "") # structural fallback
+			return { "kind": "skip", "placement": placement }
+
+## One WorkerThreadPool task's worth of work: resolve every placement in
+## `refs` (a tile's, or the persistent root's, own ref list) through `ctx`.
+## Plain data in, plain data out -- no Node/RenderingServer/PhysicsServer3D
+## touched anywhere in the call chain from here down, which is what makes
+## wrapping a call to this in WorkerThreadPool.add_task() safe at all.
+func resolve_tile(refs: Array, ctx: GamebryoResolveContext) -> Array:
+	var out: Array = []
+	for p in refs:
+		out.append(resolve_placement(p, ctx))
+	return out
+
+func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_tag: String) -> Dictionary:
+	var model: String = placement.get("model", "")
+	if model == "":
+		return { "kind": "skip", "placement": placement }
+	var nif := ctx.resolver.load_nif(model)
+	if nif == null or nif.get_submesh_count() == 0:
+		return { "kind": "skip", "placement": placement }
+	var geometry := ctx.resolver.resolve_geometry_entries(nif, model)
+	return { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
+
+func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	var visual := _resolve_visual(placement, ctx, "DOOR")
+	if visual["kind"] == "skip":
+		return visual
+	var refr_form_id := int(placement.get("refr_form_id", 0))
+	visual["kind"] = "door"
+	visual["destination"] = ctx.esm.get_door_destination(refr_form_id)
+	return visual
+
+func _resolve_scol(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	var parts: Array = ctx.esm.get_scol_parts(int(placement.get("base_form_id", 0)))
+	var resolved_parts: Array = []
+	for part in parts:
+		resolved_parts.append(resolve_placement(part, ctx))
+	return { "kind": "scol", "placement": placement, "parts": resolved_parts }
+
+func _resolve_light(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	var geometry: Dictionary = {}
+	var model: String = placement.get("model", "")
+	if model != "":
+		var nif := ctx.resolver.load_nif(model)
+		if nif != null and nif.get_submesh_count() > 0:
+			geometry = ctx.resolver.resolve_geometry_entries(nif, model)
+	var light_data: Dictionary = ctx.esm.get_light_data(int(placement.get("base_form_id", 0)))
+	if geometry.is_empty() and light_data.is_empty():
+		return { "kind": "skip", "placement": placement }
+	return { "kind": "light", "geometry": geometry, "light_data": light_data, "placement": placement }
+
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))
 	register("CONT", func(p, r): return _instantiate_visual(ContainerNode, p, r))
