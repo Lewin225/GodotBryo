@@ -452,31 +452,40 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		parent.add_child(mi)
 		i += 1
 
-## phases/2/12-distant-object-lod.md step 6 (placeholder ahead of step 8's
-## real configurable/plumbed value): the flat global crossover distance and
-## hysteresis margin used above. One number, not the real per-category/
+## phases/2/12-distant-object-lod.md, step 8: the real (single-sourced, not
+## duplicated across GDScript/C++) configurable crossover distance and
+## hysteresis margin, defaulting to the same placeholder values step 6/7
+## shipped with. One flat global number, not the real per-category/
 ## size-proportional system enginedocs/lod.md's own [LOD] ini excerpt
 ## describes — per that task doc's explicit scoping, a starting value to
-## get the mechanism correct, not a tuned one.
-const LOD_CROSSOVER_DISTANCE_M := 100.0
-const LOD_CROSSOVER_MARGIN_M := 5.0
+## get the mechanism correct, not a tuned one. Set via set_lod_crossover()
+## (a caller with a real @export, e.g. WorldStreamer/CellLoader, threads its
+## own inspector-tunable value in) rather than editing these fields
+## directly, mirroring DirectGeometryBatch's own identically-named method on
+## the RID-based side.
+var lod_crossover_distance_m := 100.0
+var lod_crossover_margin_m := 5.0
+
+func set_lod_crossover(distance_m: float, margin_m: float) -> void:
+	lod_crossover_distance_m = distance_m
+	lod_crossover_margin_m = margin_m
 
 ## Sets one MeshInstance3D's crossover visibility range: `is_full_detail`
-## true -> visible only within LOD_CROSSOVER_DISTANCE_M
+## true -> visible only within lod_crossover_distance_m
 ## (visibility_range_end, Godot's own "hide beyond this distance" field);
 ## false -> visible only beyond it (visibility_range_begin, "hide closer
 ## than this distance"). VISIBILITY_RANGE_FADE_DISABLED — hard cutover +
 ## margin-based hysteresis — per this task doc's own Design section: Godot's
 ## docs call this the cheapest manual-LOD approach; revisit FADE_SELF
 ## crossfading later (step 10) only if the hard cut looks bad in real play.
-static func _apply_lod_visibility_range(mi: MeshInstance3D, is_full_detail: bool) -> void:
+func _apply_lod_visibility_range(mi: MeshInstance3D, is_full_detail: bool) -> void:
 	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	if is_full_detail:
-		mi.visibility_range_end = LOD_CROSSOVER_DISTANCE_M
-		mi.visibility_range_end_margin = LOD_CROSSOVER_MARGIN_M
+		mi.visibility_range_end = lod_crossover_distance_m
+		mi.visibility_range_end_margin = lod_crossover_margin_m
 	else:
-		mi.visibility_range_begin = LOD_CROSSOVER_DISTANCE_M
-		mi.visibility_range_begin_margin = LOD_CROSSOVER_MARGIN_M
+		mi.visibility_range_begin = lod_crossover_distance_m
+		mi.visibility_range_begin_margin = lod_crossover_margin_m
 
 ## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
 ## collision-extraction.md), or one bounding-box fallback collider (from the

@@ -74,11 +74,11 @@ func _ready() -> void:
 			check(not subs.is_empty(), "Barracks01 node has full-detail sub* children")
 			check(not lods.is_empty(), "Barracks01 node has lod* children (VWD + real _lod.nif companion)")
 			for mi in subs:
-				check(mi.visibility_range_end == GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M,
+				check(mi.visibility_range_end == resolver.lod_crossover_distance_m,
 						"full-detail %s has visibility_range_end == LOD_CROSSOVER_DISTANCE_M (got %s)" % [mi.name, mi.visibility_range_end])
 				check(mi.visibility_range_fade_mode == GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED, "%s uses FADE_DISABLED" % mi.name)
 			for mi in lods:
-				check(mi.visibility_range_begin == GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M,
+				check(mi.visibility_range_begin == resolver.lod_crossover_distance_m,
 						"%s has visibility_range_begin == LOD_CROSSOVER_DISTANCE_M (got %s)" % [mi.name, mi.visibility_range_begin])
 			node.free()
 

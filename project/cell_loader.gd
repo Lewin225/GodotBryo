@@ -65,6 +65,15 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 @export var cell_editor_id: String = ""
 @export_tool_button("Load Cell") var load_button: Callable = _editor_load_cell
 
+## phases/2/12-distant-object-lod.md, step 8: same inspector-tunable
+## crossover distance/margin WorldStreamer exposes, threaded into this
+## class's own `resolver` in _ready() -- keeps editor-preview LOD tuning
+## (this class's Node-based build() path) independently adjustable from
+## the runtime value, since it's a genuinely separate GamebryoMeshResolver
+## instance, not shared with WorldStreamer's.
+@export var lod_crossover_distance_m: float = 100.0
+@export var lod_crossover_margin_m: float = 5.0
+
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
@@ -85,6 +94,7 @@ func _ready() -> void:
 	if not esm.open(DATA_DIR + "FalloutNV.esm"):
 		push_error("CellLoader: could not open FalloutNV.esm")
 	resolver = GamebryoMeshResolver.new()
+	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m)
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
 	_builder.progress.connect(func(f): load_progress.emit(f))
