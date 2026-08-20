@@ -57,6 +57,35 @@ listed there).
   Built directly into the extension (its `src/*.cpp` globbed alongside ours) rather
   than as a separate static library — it has no dependencies beyond its own bundled
   headers. Requires C++17, already the default in godot-cpp's build flags.
+- **Terrain3D** — third-party terrain GDExtension addon (see
+  [phases/2/13-terrain3d-integration.md](../phases/2/13-terrain3d-integration.md)),
+  vendored as a git submodule at `native/terrain3d/`, pinned to the `v1.0.2-stable`
+  release tag (not `main` — main is 671+ commits past the last stable tag). It's a
+  **separate GDExtension from our own `nv_engine`**, built independently:
+
+  ```
+  cd native/terrain3d
+  scons platform=linux target=template_debug -j$(nproc)
+  ```
+
+  No `api_version=4.7` here, deliberately — Terrain3D's own bundled `godot-cpp`
+  submodule (a much older pin than ours, matching what its source was actually
+  written against) is checked out as-is rather than repointed at our own
+  `native/godot-cpp` commit. Forcing our newer pin onto Terrain3D 1.0.2's source
+  fails to compile (`Math_PI`/`std::hash` no longer implicitly available — a real
+  header-surface change between the two `godot-cpp` versions). This isn't a problem:
+  GDExtension's whole design point is ABI stability across minor engine versions, so
+  a `.so` built against an older `godot-cpp`/API snapshot loads fine into the newer
+  4.7.1 binary both extensions actually run in — confirmed via a real headless
+  editor pass (`terrain.gdextension`'s own `compatibility_minimum = 4.4` states this
+  explicitly). Output: `project/addons/terrain_3d/bin/libterrain.linux.debug.x86_64.so`
+  (gitignored, same never-commit-compiled-binaries convention as `project/bin/`,
+  rebuild after any fresh checkout). The GDScript-side addon files themselves (not
+  the compiled binary) are copied — not symlinked — into `project/addons/terrain_3d/`
+  from `native/terrain3d/project/addons/terrain_3d/`, matching how the upstream
+  project's own installation instructions describe adding it to an existing project;
+  re-copy after updating the submodule to a newer tag. Enabled via
+  `project/project.godot`'s `[editor_plugins]` section.
 
 ## Verifying the extension loads
 
@@ -90,6 +119,8 @@ matters for verification.
 native/
   godot-cpp/    — vendored as a git submodule (master branch, includes 4.7 API json)
   nifly/        — vendored as a git submodule, NIF mesh library used by task 0.3
+  terrain3d/    — vendored as a git submodule (v1.0.2-stable), separate GDExtension
+                  addon — own nested godot-cpp submodule, own SConstruct, see above
   src/
     common/     — shared byte-reader/endian helpers (little-endian throughout)
     bsa/        — task 0.1
@@ -100,6 +131,8 @@ native/
   SConstruct
 project/
   bin/                    — build output + nv_engine.gdextension manifest
+  addons/terrain_3d/      — Terrain3D addon files (copied from terrain3d/project/,
+                             bin/ gitignored — see Dependencies above)
   test_scene.tscn/.gd     — the ping smoke test
 tools/
   Godot_v4.7.1-stable_linux.x86_64  — native Godot binary (gitignored, see above)
