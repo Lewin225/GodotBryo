@@ -292,7 +292,25 @@ func _enqueue_tile_load(coord: Vector2i, full_detail: bool) -> void:
 ## build_terrain() calls happen in any one frame, regardless of how many
 ## coords _check_streaming() enqueues at once (up to a whole ring edge, see
 ## tiles_per_frame's own doc comment).
+##
+## The leading `await` here is load-bearing, not decorative -- caught
+## directly via a real perf report showing the throttle doing nothing at
+## all (55 calls each to _enqueue_tile_load/_process_load_queue/
+## _start_tile_load, all equal, all in one frame). _check_streaming()'s own
+## loop calls _enqueue_tile_load() once per coord, synchronously, with no
+## await of its own -- so without this, the very first enqueued coord would
+## immediately spin up a runner that finds exactly one item in the queue
+## (the rest of the ring hasn't been enqueued yet), drains it, finds the
+## queue empty again, and exits -- resetting _load_queue_running to false
+## before _check_streaming()'s loop even reaches its next iteration. Every
+## subsequent enqueue then sees "not running" and repeats the same
+## immediate single-item drain, never actually queueing anything.
+## Yielding one frame before ever touching _load_queue guarantees
+## _check_streaming()'s entire synchronous loop (it has no awaits of its
+## own) has already finished enqueueing everything for this tick by the
+## time this coroutine looks at the queue for real.
 func _process_load_queue() -> void:
+	await get_tree().process_frame
 	while not _load_queue.is_empty():
 		if _active_wrld_form_id == -1:
 			break # deactivated mid-drain -- deactivate() already cleared _load_queue/_queued itself
