@@ -8,6 +8,13 @@ distant LOD, memory/streaming-radius tuning against the real Mojave worldspace.
 Exit criterion: walk from Goodsprings to Primm without load screens beyond intended
 interior transitions, at a stable frame rate.
 
+**Exit criterion validated in real play** (2026-08-20, after 2.9/2.10/2.11 landed):
+Goodsprings → Primm, Goodsprings → Lucky 38, and Goodsprings → Hoover Dam all walked
+successfully, no load screens beyond intended interior transitions, vsync-capped frame
+rate throughout — most of the exterior map explored. Distant LOD and streaming-radius/
+memory tuning (below) are still open, but the core streaming mechanism itself is proven
+at real scale, not just in headless benchmarks.
+
 **This README originally only scoped the performance-track tasks below** — surfaced
 during a post-1.5 experiment (`project/exterior_viewer.gd`, a `@tool` editor scene that
 loads an *area* of exterior cells rather than one hardcoded default) and a follow-up
