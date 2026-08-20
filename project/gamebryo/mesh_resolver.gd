@@ -346,12 +346,48 @@ static func _is_editor_marker_submesh(submesh_name: String) -> bool:
 ##
 ## `raw` empty (no geometry resolved at all, e.g. a meshless light) returns
 ## empty mesh/shape_entries, not an error.
-func build_geometry_entries(raw: Dictionary) -> Dictionary:
+##
+## `lod_raw` (optional, phases/2/12-distant-object-lod.md step 5): a
+## placement's own optional "lod_geometry" raw block (see
+## GamebryoObjectRegistry._resolve_lod_geometry(), step 4) -- when present,
+## its mesh Resources are built into `lod_mesh_entries` the same way `raw`'s
+## own are, sharing the same `_mesh_cache` (an LOD mesh built for one
+## placement is reused by every other placement of the same base object,
+## same as any other cached mesh). Deliberately mesh-only, no matching
+## "lod_shape_entries" -- collision always comes from the full-detail mesh
+## (`raw`'s own shape_entries); the LOD variant is a visual-only distance
+## substitute, never separately collidable, and the object's own full-detail
+## geometry is always resolved alongside it regardless of streaming band
+## (see step 4's own doc comment). Empty (the common case -- most placements
+## have no LOD companion at all) returns an empty `lod_mesh_entries`.
+func build_geometry_entries(raw: Dictionary, lod_raw: Dictionary = {}) -> Dictionary:
 	if raw.is_empty():
-		return { "mesh_entries": [], "shape_entries": [] }
+		return { "mesh_entries": [], "shape_entries": [], "lod_mesh_entries": [] }
 
+	var mesh_entries := _build_mesh_entries(raw["mesh_entries"])
+
+	var shape_entries := []
+	var model_path: String = raw["model_path"]
+	var descriptors: Array
+	if _collision_cache.has(model_path):
+		descriptors = _collision_cache[model_path]
+	else:
+		descriptors = _build_collision_shapes(raw["shape_entries"])
+		_collision_cache[model_path] = descriptors
+	for d in descriptors:
+		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
+
+	var lod_mesh_entries := _build_mesh_entries(lod_raw["mesh_entries"]) if not lod_raw.is_empty() else []
+
+	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries, "lod_mesh_entries": lod_mesh_entries }
+
+## The shared per-submesh mesh-Resource-building loop -- same cache-by-key
+## (`_mesh_cache`) discipline used for both the full-detail tier and the
+## optional LOD tier (step 5), so an LOD mesh is exactly as cheap to reuse
+## across repeat placements as a full-detail one already is.
+func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 	var mesh_entries := []
-	for e in raw["mesh_entries"]:
+	for e in mesh_entries_raw:
 		var mesh_key: String = e["cache_key"]
 		var mesh: ArrayMesh
 		if _mesh_cache.has(mesh_key):
@@ -365,19 +401,7 @@ func build_geometry_entries(raw: Dictionary) -> Dictionary:
 				mesh.surface_set_material(0, mat)
 			_mesh_cache[mesh_key] = mesh
 		mesh_entries.append({ "mesh": mesh, "transform": e["transform"] })
-
-	var shape_entries := []
-	var model_path: String = raw["model_path"]
-	var descriptors: Array
-	if _collision_cache.has(model_path):
-		descriptors = _collision_cache[model_path]
-	else:
-		descriptors = _build_collision_shapes(raw["shape_entries"])
-		_collision_cache[model_path] = descriptors
-	for d in descriptors:
-		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
-
-	return { "mesh_entries": mesh_entries, "shape_entries": shape_entries }
+	return mesh_entries
 
 ## Builds every MeshInstance3D child (one per NIF submesh, with resolved
 ## texture) under `parent`. Shared by every GamebryoVisual-shaped factory.
