@@ -69,15 +69,26 @@ func _ready() -> void:
 	check(model_path != "", "found a real placement with a model to test cache isolation against")
 
 	if model_path != "":
-		var nif_a := a.load_nif(model_path)
+		var nif_a := a.resolver.load_nif(model_path)
 		check(nif_a != null, "instance A resolved the model")
-		check(a.get_cache_stats()["unique_nifs_loaded"] == 1, "instance A's own cache shows 1 unique NIF loaded")
-		check(b.get_cache_stats()["unique_nifs_loaded"] == 0, "instance B's cache is untouched by A's load (private caches, not shared)")
+		check(a.resolver.get_cache_stats()["unique_nifs_loaded"] == 1, "instance A's own cache shows 1 unique NIF loaded")
+		check(b.resolver.get_cache_stats()["unique_nifs_loaded"] == 0, "instance B's cache is untouched by A's load (private caches, not shared)")
 
-		var nif_b := b.load_nif(model_path)
+		var nif_b := b.resolver.load_nif(model_path)
 		check(nif_b != null, "instance B independently resolved the same model")
-		check(b.get_cache_stats()["unique_nifs_loaded"] == 1, "instance B's own cache now shows 1 unique NIF loaded, independent of A")
+		check(b.resolver.get_cache_stats()["unique_nifs_loaded"] == 1, "instance B's own cache now shows 1 unique NIF loaded, independent of A")
 		check(nif_a != nif_b, "each instance parsed its own NifReader -- not sharing a cached object across instances")
+
+	print("=== per-context EsmReader isolation ===")
+	# GamebryoResolveContext bundles a private EsmReader alongside the
+	# resolver (discovered necessary in step 3: DOOR/SCOL/LIGH resolution
+	# reads the ESM directly, and EsmFile is exactly as not-thread-safe as
+	# BsaArchive) -- confirm each context's esm is independently open and
+	# not the same shared instance.
+	check(a.esm != b.esm, "instance A and B each have their own EsmReader, not a shared one")
+	check(a.esm != esm and b.esm != esm, "pool contexts never reuse this test's own EsmReader")
+	var door_cell: Dictionary = a.esm.find_cell_by_editor_id("GSDocMitchellHouse")
+	check(not door_cell.is_empty(), "instance A's own EsmReader independently resolves real ESM data")
 
 	print("=======================")
 	if failures == 0:
