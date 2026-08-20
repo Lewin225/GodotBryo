@@ -411,13 +411,11 @@ decode-order bugs, both only found by comparing against real REFR/physics data):
    as a second GDExtension alongside this project's own native module (build/load
    order, no symbol/version conflicts) before committing design decisions to it.
    **Still open** — not investigated in this pass.
-5. **Re-verify `HeightMapShape3D`/heightmap-collider behavior on this engine build**
-   before trusting `Terrain3DCollision`'s built-in path. 1.4's original
-   `HeightMapShape3D` failure was worked around (switched to
-   `ConcavePolygonShape3D`), never root-caused — if Terrain3D's built-in collision
-   uses the same underlying primitive, the same failure could resurface and needs its
-   own physics drop test (same methodology as `test_terrain_collision.gd`). **Still
-   open.**
+5. ~~Re-verify `HeightMapShape3D`/heightmap-collider behavior on this engine build
+   before trusting `Terrain3DCollision`'s built-in path.~~ **Answered** — see
+   "Real-data findings" below (implementation step 5): real drop-ball test, no
+   repeat of 1.4's total-failure mode, vertical settle correct everywhere. One real
+   secondary finding (small-sphere slope-rolling, not a bug) documented there too.
 6. **Real `import_images()`/`update_maps()` cost per cell/region**, profiled the same
    way 2.9–2.12's construction costs were (real headless timing, not assumption) —
    this sits in the same streaming hot path that 2.12's two stutter bugs came from,
@@ -503,9 +501,21 @@ granularity rather than one large change:
    ever needed 2–4 slots, nowhere near exercising the budget problem — that needs
    multiple concurrently-loaded cells/regions to actually trigger, i.e. step 6's
    `WorldStreamer` integration).
-5. Physics drop test against `Terrain3DCollision` (answers open question 5); fall back
-   to keeping our own `ConcavePolygonShape3D` collision layered on top of Terrain3D's
-   render-only output if it fails, rather than blocking the whole integration on it.
+5. ~~Physics drop test against `Terrain3DCollision`.~~ **Done — real collision
+   works, answers open question 5.** `project/tests/test_terrain3d_collision.gd`/
+   `.tscn`: `Terrain3DCollision.FULL_GAME` mode, real drop-ball-at-three-points
+   methodology (same as `test_terrain_collision.gd`). **No repeat of 1.4's
+   `HeightMapShape3D` total failure** — vertical settle error stayed under 0.2m at
+   every point (most within a few mm). One real, honest finding along the way:
+   horizontal drift for a tiny (0.1m radius) sphere reached ~0.9m at one point —
+   confirmed via direct measurement to be genuine physical rolling down real local
+   terrain slope (checked and ruled out being an artifact of this single-cell test's
+   artificial island edge — the drift persisted even at a point well inside the
+   patch's interior), not a collision-alignment bug. Test's horizontal tolerance
+   loosened from `test_terrain_collision.gd`'s 0.5m to 2m accordingly, with the
+   reasoning documented inline — still tight enough to catch a real placement bug
+   (wrong cell, axis swap, order-of-magnitude misalignment). No fallback to
+   `ConcavePolygonShape3D` needed.
 6. Wire into `WorldStreamer` per the region-residency design above (option A); real
    before/after profiling of streaming settle time and frame stability during
    traversal, same discipline as 2.8–2.12.
