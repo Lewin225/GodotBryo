@@ -40,6 +40,7 @@ task files.
 | 2.9 | Direct RenderingServer/PhysicsServer3D geometry (kill per-node overhead for non-interactive placements) | [09-direct-server-static-geometry.md](09-direct-server-static-geometry.md) |
 | 2.10 | Threaded tile resolve (WorkerThreadPool) — 2.2's threading investigation, informed by a real measured frame-time budget | [10-threaded-streaming-workers.md](10-threaded-streaming-workers.md) |
 | 2.11 | Exterior cell lookup index — fix `find_exterior_cell()`'s real O(worldspace) scan cost using the ESM's own block/sub-block structure (found to be 81% of tile-streaming settle time) | [11-exterior-cell-lookup-index.md](11-exterior-cell-lookup-index.md) |
+| 2.12 | Distant object LOD — Bethesda's own `_lod.nif` paired-mesh convention, gated by the real "Visible When Distant" REFR flag, via Godot's `visibility_range_begin/end` | [12-distant-object-lod.md](12-distant-object-lod.md) |
 
 ## Open issues (parked, not yet investigated)
 
