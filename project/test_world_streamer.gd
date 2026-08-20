@@ -83,7 +83,10 @@ func _ready() -> void:
 	check(streamer.is_active(), "is_active() true immediately after activate()")
 	var settled: bool = await _wait_settled(streamer, listen)
 	check(settled, "streaming_settled fired within the timeout")
-	check(streamer._resident.size() == 9, "3x3 ring resident after settling (got %d)" % streamer._resident.size())
+	var expected_ring_size := (2 * WorldStreamer.RADIUS_LOAD + 1) * (2 * WorldStreamer.RADIUS_LOAD + 1) # not hardcoded to 3x3=9 -- WorldStreamer.RADIUS_LOAD is tunable (phases/2/08's own explicitly-deferred radius-tuning follow-on), this test should hold at any value
+	check(streamer._resident.size() == expected_ring_size,
+			"%dx%d ring resident after settling (got %d, expected %d)" %
+			[2 * WorldStreamer.RADIUS_LOAD + 1, 2 * WorldStreamer.RADIUS_LOAD + 1, streamer._resident.size(), expected_ring_size])
 	check(streamer._resident.has(Vector2i(-17, 0)), "the camera's own tile is resident")
 	check(streamer._persistent_root != null, "PersistentRoot was built")
 
@@ -111,11 +114,14 @@ func _ready() -> void:
 	# completed correctly (caught directly -- an earlier version of this
 	# test did exactly that).
 	var listen2 := _begin_settle_listen(streamer)
-	cam.position.x += 6.0 * cell_size_m # far enough that every originally-resident tile falls outside the unload radius
+	var move_cells := WorldStreamer.RADIUS_UNLOAD + 4 # margin beyond RADIUS_UNLOAD (also tunable) -- far enough that every originally-resident tile falls outside the unload radius regardless of its current value
+	cam.position.x += float(move_cells) * cell_size_m
 	settled = await _wait_settled(streamer, listen2)
 	check(settled, "streaming_settled fired again after the move")
 	check(not streamer._resident.has(Vector2i(-17, 0)), "the old tile is no longer resident after moving far away")
-	check(streamer._resident.size() == 9, "a full new 3x3 ring is resident after the move (got %d)" % streamer._resident.size())
+	check(streamer._resident.size() == expected_ring_size,
+			"a full new %dx%d ring is resident after the move (got %d, expected %d)" %
+			[2 * WorldStreamer.RADIUS_LOAD + 1, 2 * WorldStreamer.RADIUS_LOAD + 1, streamer._resident.size(), expected_ring_size])
 
 	print("=== deactivate() teardown ===")
 	streamer.deactivate()

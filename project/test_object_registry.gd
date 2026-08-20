@@ -195,20 +195,27 @@ func _ready() -> void:
 		check(scol_count == 3, "found 3 SCOL refs in SLGoldMine01INT (got %d)" % scol_count)
 		await screenshot(scol_root, "registry_scol_test.png")
 
-	print("=== build_direct() world transform matches build()'s (2.9) ===")
-	# Caught directly, not hypothetical: build_direct()'s RID-based objects
-	# have no RefrRoot parent to inherit the Z-up -> Y-up axis conversion
-	# from via ordinary Godot parent-child transform composition the way a
-	# Node-based placement does -- an earlier version of this fix omitted
-	# that conversion entirely, producing a full missing 90-degree rotation
-	# (Y/Z swapped) for every direct-path object, visible in real play as
-	# "the persistent cell's content rotated into one big flat sheet."
+	print("=== world_transform_no_parent() matches build()'s real Node global_transform (2.9/2.10) ===")
+	# Caught directly, not hypothetical: RID-based objects (2.9's
+	# DirectGeometryBatch, 2.10's threaded resolve/construct path) have no
+	# RefrRoot parent to inherit the Z-up -> Y-up axis conversion from via
+	# ordinary Godot parent-child transform composition the way a Node-based
+	# placement does -- an earlier version of this fix omitted that
+	# conversion entirely, producing a full missing 90-degree rotation (Y/Z
+	# swapped) for every direct-path object, visible in real play as "the
+	# persistent cell's content rotated into one big flat sheet." Still load-
+	# bearing after build_direct() itself was retired (2.10 step 4 replaced
+	# it with GamebryoObjectRegistry._construct_direct(), same transform
+	# math) -- this checks the transform math directly, not the
+	# now-removed function.
 	var direct_target: Dictionary = {}
 	for p in refs:
-		if registry.is_structural_fallback(p):
+		# Same predicate build_direct()'s own is_structural_fallback() used --
+		# no registered factory for base_type, not a marker, has a model.
+		if not MarkerNode.is_marker_model(p.get("model", "")) and not registry.is_registered(String(p.get("base_type", ""))) and String(p.get("model", "")) != "":
 			direct_target = p
 			break
-	check(not direct_target.is_empty(), "found a structural-fallback placement to test build_direct() against")
+	check(not direct_target.is_empty(), "found a structural-fallback placement to test the direct-path transform against")
 	if not direct_target.is_empty():
 		var direct_refr_root := Node3D.new()
 		direct_refr_root.rotation_degrees.x = -90
@@ -222,7 +229,7 @@ func _ready() -> void:
 		var scale: float = direct_target.get("scale", 1.0)
 		var got_transform: Transform3D = GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
 		check(got_transform.is_equal_approx(expected_transform),
-				"build_direct()'s world transform matches build()'s real Node global_transform exactly (got origin %s, expected %s)" % [got_transform.origin, expected_transform.origin])
+				"world_transform_no_parent() matches build()'s real Node global_transform exactly (got origin %s, expected %s)" % [got_transform.origin, expected_transform.origin])
 
 	print("=======================")
 	if failures == 0:
