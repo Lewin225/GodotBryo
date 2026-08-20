@@ -43,6 +43,34 @@ Summarized from `enginedocs/lod.md`, with the specific implications for this tas
   the real tuning data stays recorded in `enginedocs/lod.md` for whenever that's worth
   building.
 
+## Real content density (measured, not guessed)
+
+Surveyed a real 101×101-cell grid centered on Goodsprings (10,201 real cells, 141,138
+total placements) with a standalone tool bypassing the GDScript layer entirely, checking
+each `REFR`'s actual record flags and `_lod.nif` availability directly:
+
+- **15,313 placements (10.85% of everything) are VWD-flagged with a resolvable
+  `_lod.nif`** — not sparse, corrects an earlier assumption in this task's own
+  discussion. Every VWD-flagged placement checked had a resolvable `_lod.nif` (though
+  the reverse isn't true — see `enginedocs/lod.md`'s QuonsetHut/CraneStatic finding).
+- **But only 356 unique base models** among those 15,313 placements. The top of the
+  list is dominated by repeated natural scenery, not buildings: `NVN_CliffCanyonL01`
+  (1,463 placements), four Joshua tree variants (~3,766 placements combined),
+  `NVN_RockCanyon07` (786), several more cliff/rock/road models in the hundreds each.
+- **This matters directly for cost**: resolve cost is bounded by the 356 unique models
+  (cached, same as any other model — see Design below), not the 15,313 placement count.
+  The placement count only turns into cheap `MultiMesh` transform entries once the
+  underlying mesh is built.
+- Ring-by-ring (Chebyshev distance from Goodsprings), summed for a radius-4-to-10 band
+  (the specific split under discussion — full detail out to ring 4, LOD out to ring 10):
+  **~11,084 total placements, of which ~878 are VWD+LOD-eligible** in that added band —
+  a small, bounded addition, not a runaway volume.
+- Still unverified: real end-to-end wall-clock cost of actually streaming a widened
+  radius through the real pipeline (this survey was a standalone tool, not the real
+  `WorldStreamer` path), and combined `MultiMesh` instance-count behavior at
+  normal-streaming-plus-LOD scale together. Not assumed fine — acceptance criteria below
+  call for measuring it for real.
+
 ## Confirmed Godot API surface (checked against real docs, not assumed)
 
 - `GeometryInstance3D.visibility_range_begin`/`_end` (+ `_begin_margin`/`_end_margin`,
@@ -88,6 +116,32 @@ finding) AND (b) have a resolvable `_lod.nif` companion get the second mesh/Mult
 tier at all. Everything else (the overwhelming majority of placements) is completely
 unaffected — no visibility range set, same as today.
 
+### One widened streaming radius, not a second streaming system
+
+Originally considered a separate, coarser "VWD-only wide-radius pass" alongside the
+existing full-detail streaming. Rejected in favor of something simpler once the
+`visibility_range_begin`/`end` mechanism is understood properly: Godot checks that
+property every frame on its own, on its own timeline — `WorldStreamer` never needs to
+dynamically swap anything as the player moves, it only needs the relevant geometry to
+already exist, with the right static visibility-range values set once at construction.
+
+So the actual shape is: **`WorldStreamer`'s existing resident-tile radius (`RADIUS_LOAD`)
+gets pushed out to cover the LOD distance**, and every tile — near or far — goes through
+exactly the same `resolve_placement()`/`construct_from_resolved()` path already built.
+The only new behavior is a cheap early-exit inside `resolve_placement()`: check a
+placement's VWD flag *before* touching NIF/BSA at all, and for a tile past the
+full-detail sub-radius, a non-VWD placement resolves straight to `"kind": "skip"` without
+ever loading its model. This is exactly why the 356-unique-model/15,313-placement survey
+above matters — most of what a far tile scans gets discarded at that cheap check, so
+widening the radius doesn't multiply real resolve work anywhere near as much as widening
+it for full-detail streaming would.
+
+Concretely: two radius constants instead of one (`RADIUS_LOAD_FULL` ~4,
+`RADIUS_LOAD_DISTANT` ~10, both still tunable pre-runtime, no hardcoded assumption about
+final values), no second cache layer, no second worker-task type, no second
+`DirectGeometryBatch`-equivalent class — the existing one just grows a second `MeshGroup`
+tier (per the RID-based path description above).
+
 ## Step-by-step implementation TODO
 
 1. **Expose `REFR` record flags to GDScript.** Add a `flags` (or a pre-decoded
@@ -101,42 +155,55 @@ unaffected — no visibility range set, same as today.
    before `.nif`, case-insensitive per this codebase's existing BSA-lookup convention)
    and confirm resolvability via the existing `resolve_bytes()`/BSA-priority search —
    most placements won't have one, that's the common, valid case, not an error.
-3. **Extend the raw-resolve step** (`GamebryoObjectRegistry.resolve_placement()`/
+3. **Widen `WorldStreamer`'s own resident radius** into two tunable constants
+   (`RADIUS_LOAD_FULL`, `RADIUS_LOAD_DISTANT` > `RADIUS_LOAD_FULL`) and thread which
+   band a given tile falls in down to its own `resolve_tile()` call, so
+   `resolve_placement()` knows whether to attempt full-detail resolve at all for a given
+   placement or go straight to the VWD-gated early-exit described in Design above.
+4. **Extend the raw-resolve step** (`GamebryoObjectRegistry.resolve_placement()`/
    `_resolve_visual()` and friends, `GamebryoMeshResolver.resolve_raw_geometry()`) so a
    VWD-flagged, LOD-resolvable placement's result carries a second, optional raw
-   geometry block for the LOD mesh alongside the existing full-detail one. Stays within
+   geometry block for the LOD mesh alongside the existing full-detail one (full-detail
+   itself only attempted inside the `RADIUS_LOAD_FULL` band, per step 3). Stays within
    phases/2/10's own worker-safe/main-thread-only split — LOD raw-resolve is exactly as
    worker-safe as full-detail raw-resolve, no new thread-safety surface.
-4. **Extend `build_geometry_entries()`** (main-thread-only, per 2.10) to build the LOD
+5. **Extend `build_geometry_entries()`** (main-thread-only, per 2.10) to build the LOD
    mesh's actual `ArrayMesh`/material the same way it already does for full-detail,
    when present, using the same cache-by-key discipline already established.
-5. **Node-based construct path**: `populate_mesh_children()` (or a sibling) builds the
+6. **Node-based construct path**: `populate_mesh_children()` (or a sibling) builds the
    second `MeshInstance3D` and sets both instances' visibility range properties when a
    built LOD entry is present.
-6. **RID-based construct path**: extend `DirectGeometryBatch` with a second internal
+7. **RID-based construct path**: extend `DirectGeometryBatch` with a second internal
    `MeshGroup` tier for LOD meshes (mirroring the existing full-detail grouping in
    `add_object()`/`build()`), and call `instance_geometry_set_visibility_range()` on
    each tier's own instance RID once built. `_construct_direct()`
    (`GamebryoObjectRegistry`) passes the LOD geometry through when present.
-7. **The configurable crossover distance itself**: one exported/constant value,
-   plumbed to wherever step 5/6 need it (`WorldStreamer` and/or `CellLoader`) — explicit
+8. **The configurable crossover distance itself**: one exported/constant value,
+   plumbed to wherever step 6/7 need it (`WorldStreamer` and/or `CellLoader`) — explicit
    about being a placeholder for the real per-category/size-proportional system
    `enginedocs/lod.md` describes, not a final tuned value.
-8. **Verify in real play**: walk toward a known VWD-flagged large object (e.g. a real
-   Barracks placement) from beyond the configured crossover distance, confirm the LOD
-   mesh shows first and swaps to full detail at the right distance, no popping/z-fighting
-   at the boundary, and that a non-VWD-flagged object with a `_lod.nif` companion
-   (e.g. a QuonsetHut) correctly stays full-detail-or-nothing (matching the real game's
-   own eligibility gate) rather than ever showing its LOD variant.
+9. **Measure the widened radius for real** — same headless benchmark methodology
+   already established this phase (2.2/2.10/2.11's own), at real `RADIUS_LOAD_DISTANT`
+   values, confirming the VWD early-exit actually keeps the added band cheap in practice
+   (not just in the standalone survey above) before trusting it in real play.
+10. **Verify in real play**: walk toward a known VWD-flagged large object (e.g. a real
+    Barracks placement) from beyond the configured crossover distance, confirm the LOD
+    mesh shows first and swaps to full detail at the right distance, no popping/z-fighting
+    at the boundary, and that a non-VWD-flagged object with a `_lod.nif` companion
+    (e.g. a QuonsetHut) correctly stays full-detail-or-nothing (matching the real game's
+    own eligibility gate) rather than ever showing its LOD variant.
 
 ## Deliverables
 
 - `ReferencePlacement`/`get_cell_references()` exposing VWD eligibility to GDScript.
+- `WorldStreamer` streaming one widened radius (`RADIUS_LOAD_FULL`/`RADIUS_LOAD_DISTANT`),
+  not a second parallel streaming system, with a cheap VWD-gated early-exit for the
+  outer band.
 - LOD-companion resolution folded into the existing raw-resolve/final-build split
-  (2.10), no new thread-safety surface.
+  (2.10), no new thread-safety surface, no new cache layer.
 - Both the Node-based and RID-based (`DirectGeometryBatch`) construct paths supporting
   a second, distance-gated mesh tier.
-- One configurable global crossover distance.
+- One configurable global crossover distance (plus the two configurable radii above).
 
 ## Acceptance criteria
 
@@ -153,5 +220,10 @@ unaffected — no visibility range set, same as today.
       via the existing regression suite passing unmodified.
 - [ ] Both the Node-based (`CellLoader` editor-preview) and RID-based (`WorldStreamer`/
       `DirectGeometryBatch`) paths verified — not just one.
+- [ ] Real measured settle-time/frame-cost impact of widening the radius to
+      `RADIUS_LOAD_DISTANT`, using the same headless benchmark methodology already
+      established this phase — the standalone survey's "cheap because of the VWD
+      early-exit" claim is confirmed through the real pipeline, not just argued from the
+      survey numbers alone.
 - [ ] Terrain LOD stays explicitly out of scope — no attempt to build a terrain-LOD
       mechanism as part of this task.
