@@ -30,30 +30,41 @@ signal streaming_settled
 
 const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
-## Radius (in grid cells, each axis independently) kept loaded around the
-## active camera's own tile -- a (2*RADIUS_LOAD+1)^2 square. Real
-## shape/size tuning against the actual Mojave worldspace is
-## phases/2/08-world-cell-streaming.md's own explicitly-deferred follow-on,
-## not this task's job -- this is a starting value to get the mechanism
-## correct, not a measured one.
-const RADIUS_LOAD := 1
+## phases/2/12-distant-object-lod.md, step 3: two radii instead of one --
+## every tile out to RADIUS_LOAD_DISTANT gets streamed in, but only tiles
+## within RADIUS_LOAD_FULL resolve every placement; tiles in the wider band
+## between the two only resolve VWD-flagged placements (the real per-REFR
+## eligibility gate, see GamebryoObjectRegistry.resolve_placement()'s own
+## doc comment), everything else skipped before it ever touches NIF/BSA.
+## One streaming system, not two -- see that task doc's own "One widened
+## streaming radius, not a second streaming system" section for why this
+## shape was chosen over a separate wide/coarse pass. Real shape/size
+## tuning against the actual Mojave worldspace is still
+## phases/2/08-world-cell-streaming.md's own explicitly-deferred follow-on
+## -- these are starting values to get the mechanism correct, not measured
+## ones (though `RADIUS_LOAD_DISTANT`'s own real content density at this
+## specific value IS measured, see phases/2/12's own survey).
+const RADIUS_LOAD_FULL := 4
+const RADIUS_LOAD_DISTANT := 10
 
 ## Hysteresis: a resident tile isn't unloaded until it's past this larger
 ## radius, not the same threshold load uses -- otherwise a camera sitting
 ## almost exactly on the load boundary would thrash load/unload every
-## check. Must stay > RADIUS_LOAD.
-const RADIUS_UNLOAD := 2
+## check. Must stay > RADIUS_LOAD_DISTANT (the outer, not the full-detail,
+## radius -- a distant-band tile still counts as resident and needs the
+## same hysteresis margin a full-detail one does).
+const RADIUS_UNLOAD := 13
 
 ## How often (seconds) to re-check the resident set against the camera's
 ## current position -- continuous, not boundary-cross-triggered, but a
 ## real-time interval rather than literally every single frame (streaming
 ## doesn't need sub-frame precision on when a check happens, only that gaps
 ## never open up before a tile has time to load in with margin).
-const CHECK_INTERVAL_SEC := 0.5
+const CHECK_INTERVAL_SEC := 0.1
 
 ## How many REFRs to place per frame before yielding, same meaning as
 ## CellLoader's own -- see CellStreamBuilder.
-@export var objects_per_frame: int = 20
+@export var objects_per_frame: int = 1
 
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
@@ -61,10 +72,18 @@ var registry: GamebryoObjectRegistry
 var _builder: CellStreamBuilder
 var _pool: GamebryoResolverPool # phases/2/10-threaded-streaming-workers.md, step 4
 
+var diagnostic_construct_ms: Array = [] # TEMP DIAGNOSTIC -- stutter investigation
+var diagnostic_batch_build_ms: Array = [] # TEMP DIAGNOSTIC
+var diagnostic_refcounts: Array = [] # TEMP DIAGNOSTIC
+var diagnostic_terrain_ms: Array = [] # TEMP DIAGNOSTIC
+var diagnostic_resolve_wall_ms: Array = [] # TEMP DIAGNOSTIC -- includes checkout-wait + task-poll wall time, not just the task's own CPU time
+var diagnostic_find_exterior_cell_us := 0 # TEMP DIAGNOSTIC -- _start_tile_load()'s own find_exterior_cell() cost, main-thread, unthreaded
+
 var _active_wrld_form_id: int = -1 # -1 == inactive
 var _generation := 0 # bumped on every activate()/deactivate() -- invalidates stale in-flight tile streams
 var _resident: Dictionary = {} # Vector2i grid coord -> built tile root Node3D
 var _resident_batches: Dictionary = {} # Vector2i grid coord -> that tile's DirectGeometryBatch (2.9) -- kept in lockstep with _resident
+var _resident_full_detail: Dictionary = {} # Vector2i grid coord -> bool, whether that resident tile was streamed with full_detail=true -- phases/2/12-distant-object-lod.md, step 3
 var _pending: Dictionary = {} # Vector2i grid coord -> true, currently streaming in
 var _persistent_root: Node3D = null
 var _persistent_batch: DirectGeometryBatch = null
@@ -108,6 +127,7 @@ func deactivate() -> void:
 			_resident_batches[coord].free_all() # 2.9 -- RIDs aren't owned by the Node, must be freed explicitly, Node.free() above doesn't touch them
 	_resident.clear()
 	_resident_batches.clear()
+	_resident_full_detail.clear()
 	_pending.clear()
 	if _persistent_root != null:
 		_persistent_root.free()
@@ -156,11 +176,29 @@ func _check_streaming() -> void:
 		return
 	_current_cell_form_id_cache = _tile_cell_form_id(center) # cached here, on this already-throttled cycle, instead of get_current_cell_form_id() re-deriving it from a fresh find_exterior_cell() scan on every single call -- caught directly: that scan alone costs ~41ms (a full linear walk over WastelandNV's 185,720 child records), and game.gd's own _process() was calling get_current_cell_form_id() completely unthrottled, every frame, while active. Real, severe, unrelated to rendering at all -- explained the entire flat ~30fps ceiling this whole investigation was chasing.
 
-	for dx in range(-RADIUS_LOAD, RADIUS_LOAD + 1):
-		for dy in range(-RADIUS_LOAD, RADIUS_LOAD + 1):
+	for dx in range(-RADIUS_LOAD_DISTANT, RADIUS_LOAD_DISTANT + 1):
+		for dy in range(-RADIUS_LOAD_DISTANT, RADIUS_LOAD_DISTANT + 1):
 			var coord := Vector2i(center.x + dx, center.y + dy)
+			var desired_full: bool = absi(dx) <= RADIUS_LOAD_FULL and absi(dy) <= RADIUS_LOAD_FULL
 			if not _resident.has(coord) and not _pending.has(coord):
-				_start_tile_load(coord)
+				_start_tile_load(coord, desired_full)
+			elif _resident.has(coord) and desired_full and not _resident_full_detail.get(coord, false):
+				# phases/2/12-distant-object-lod.md, step 3: the camera moved
+				# close enough that a tile streamed distant-only now needs
+				# full detail -- re-stream it rather than leaving it stuck
+				# showing only its VWD-flagged placements. Deliberately
+				# one-directional: a full-detail tile is never downgraded
+				# back to distant-only just because the camera moved away
+				# again -- it stays fully resolved until RADIUS_UNLOAD evicts
+				# it entirely, same hysteresis reasoning RADIUS_UNLOAD itself
+				# already exists for (avoid thrashing near a boundary).
+				_resident[coord].free()
+				_resident.erase(coord)
+				if _resident_batches.has(coord):
+					_resident_batches[coord].free_all()
+					_resident_batches.erase(coord)
+				_resident_full_detail.erase(coord)
+				_start_tile_load(coord, true)
 
 	for coord in _resident.keys().duplicate():
 		if absi(coord.x - center.x) > RADIUS_UNLOAD or absi(coord.y - center.y) > RADIUS_UNLOAD:
@@ -169,16 +207,19 @@ func _check_streaming() -> void:
 			if _resident_batches.has(coord):
 				_resident_batches[coord].free_all() # 2.9 -- explicit, Node.free() above doesn't reach RID-owned geometry
 				_resident_batches.erase(coord)
+			_resident_full_detail.erase(coord)
 
-func _start_tile_load(coord: Vector2i) -> void:
+func _start_tile_load(coord: Vector2i, full_detail: bool = true) -> void:
+	var _d0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
 	var cell: Dictionary = esm.find_exterior_cell(_active_wrld_form_id, coord.x, coord.y)
+	diagnostic_find_exterior_cell_us += Time.get_ticks_usec() - _d0 # TEMP DIAGNOSTIC
 	if cell.is_empty():
 		return # no cell at this grid coordinate -- a real case at a worldspace's edge, not an error
 	_pending[coord] = true
 	_in_flight_count += 1
-	_stream_tile(int(cell["form_id"]), coord, _generation)
+	_stream_tile(int(cell["form_id"]), coord, _generation, full_detail)
 
-func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> void:
+func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_detail: bool) -> void:
 	var tile_root := Node3D.new()
 	tile_root.name = "Tile_%d_%d" % [coord.x, coord.y]
 	tile_root.visible = false # hidden and physically inert until fully streamed in
@@ -193,7 +234,9 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 	terrain_root.name = "TerrainRoot"
 	tile_root.add_child(terrain_root)
 
+	var _tt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
 	var terrain := _builder.build_terrain(cell_form_id)
+	diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
 	if terrain != null:
 		CellStreamBuilder.set_collision_disabled(terrain, true)
 		terrain_root.add_child(terrain)
@@ -213,7 +256,9 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 	batch.init(self)
 	batch.set_enabled(false)
 
-	var results = await _resolve_refs_threaded(refs, my_generation)
+	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
+	var results = await _resolve_refs_threaded(refs, my_generation, full_detail)
+	diagnostic_resolve_wall_ms.append((Time.get_ticks_usec() - _rt0) / 1000.0) # TEMP DIAGNOSTIC
 
 	_pending.erase(coord)
 	_in_flight_count -= 1
@@ -223,14 +268,21 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int) -> voi
 		_maybe_emit_settled()
 		return
 
+	var _t0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC -- construct-step timing
 	_construct_results(refr_root, results, batch)
+	var _t1 := Time.get_ticks_usec()
 
 	CellStreamBuilder.set_collision_disabled(tile_root, false)
 	tile_root.visible = true
 	batch.build() # creates the actual (batched, one-per-distinct-mesh) RenderingServer instances -- must happen before set_enabled() has anything to enable
 	batch.set_enabled(true)
+	var _t2 := Time.get_ticks_usec()
+	diagnostic_construct_ms.append((_t1 - _t0) / 1000.0) # TEMP DIAGNOSTIC
+	diagnostic_batch_build_ms.append((_t2 - _t1) / 1000.0) # TEMP DIAGNOSTIC
+	diagnostic_refcounts.append(results.size()) # TEMP DIAGNOSTIC
 	_resident[coord] = tile_root
 	_resident_batches[coord] = batch
+	_resident_full_detail[coord] = full_detail
 	_maybe_emit_settled()
 
 func _stream_persistent_root() -> void:
@@ -288,7 +340,7 @@ func _stream_persistent_root() -> void:
 ## running task -- its result is simply discarded by the caller (checked via
 ## the SAME my_generation comparison after this returns) if it's gone stale
 ## by the time it finishes.
-func _resolve_refs_threaded(refs: Array, my_generation: int) -> Variant:
+func _resolve_refs_threaded(refs: Array, my_generation: int, full_detail: bool = true) -> Variant:
 	var ctx: GamebryoResolveContext = _pool.checkout()
 	while ctx == null:
 		if my_generation != _generation:
@@ -297,7 +349,7 @@ func _resolve_refs_threaded(refs: Array, my_generation: int) -> Variant:
 		ctx = _pool.checkout()
 
 	var holder := [null]
-	var task_id: int = WorkerThreadPool.add_task(func(): holder[0] = registry.resolve_tile(refs, ctx))
+	var task_id: int = WorkerThreadPool.add_task(func(): holder[0] = registry.resolve_tile(refs, ctx, full_detail))
 	while not WorkerThreadPool.is_task_completed(task_id):
 		await get_tree().process_frame
 	WorkerThreadPool.wait_for_task_completion(task_id) # mandatory even for a discarded result -- releases the task's internal resources
