@@ -71,7 +71,21 @@ public:
 	// as one body with multiple shapes, not one body per shape -- physics
 	// has no batching equivalent to MultiMesh, so this part of add_object()
 	// is unchanged from before). Either array may be empty.
-	void add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries);
+	//
+	// `lod_mesh_entries` (phases/2/12-distant-object-lod.md, step 7):
+	// same Dictionary shape as `mesh_entries`, but for this placement's
+	// optional LOD variant (GamebryoMeshResolver.build_geometry_entries()'s
+	// own "lod_mesh_entries", present only for the small minority of
+	// placements that are VWD-flagged with a resolvable `_lod.nif`
+	// companion, see step 4) -- accumulated into a SEPARATE set of MeshGroups
+	// keyed by the LOD mesh's own RID, not merged into `mesh_entries`'s
+	// groups. Non-empty `lod_mesh_entries` also marks every full-detail
+	// MeshGroup this same call touches as `has_lod` (see build()) -- eligibility
+	// is tracked per MESH GROUP, not per placement, matching this task doc's
+	// own "one crossover distance per distinct mesh, not per placement"
+	// design (a MultiMesh instance can't have two different visibility
+	// ranges within itself). Empty for the overwhelming majority of calls.
+	void add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries, const Array &lod_mesh_entries = Array());
 
 	// Creates the actual RenderingServer MultiMesh instances from every
 	// mesh entry accumulated by add_object() calls so far -- one instance
@@ -95,12 +109,35 @@ public:
 	// persistent root actually unloads, not rely on GC timing.
 	void free_all();
 
-	int get_instance_count() const { return static_cast<int>(instances_.size()); } // distinct-mesh MultiMesh instances, not placement count
+	int get_instance_count() const { return static_cast<int>(instances_.size()); } // distinct-mesh MultiMesh instances, not placement count -- BOTH tiers combined (full-detail + LOD, phases/2/12 step 7)
 	int get_body_count() const { return static_cast<int>(bodies_.size()); }
 	int get_batched_placement_count() const; // total placements folded into those instances, for the debug overlay
+	int get_lod_instance_count() const { return lod_instance_count_; } // phases/2/12-distant-object-lod.md, step 7: the LOD-tier subset of get_instance_count() specifically -- 0 for the overwhelming majority of batches (no VWD-eligible content), test-facing since RenderingServer has no getter for an instance's own visibility_range to verify against directly
+
+	// phases/2/12-distant-object-lod.md, step 7: called once per batch
+	// (WorldStreamer, right after init()) to set the crossover distance/
+	// margin used for every LOD-eligible MeshGroup this batch's build()
+	// creates. Defaults to the same placeholder values
+	// GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M/_MARGIN_M use for the
+	// Node-based path, so a caller that never calls this (e.g. a test
+	// constructing a batch directly) still gets a sane, real distance rather
+	// than an all-zero/always-hidden range -- not the same thing as step 8's
+	// own real single-source-of-truth plumbing, which still needs to happen.
+	void set_lod_crossover(float distance_m, float margin_m);
 
 private:
 	struct MeshGroup {
+		RID mesh;
+		std::vector<Transform3D> transforms;
+		bool has_lod = false; // phases/2/12-distant-object-lod.md, step 7 -- true if ANY add_object() call contributing to this group also had a non-empty lod_mesh_entries; see add_object()'s own doc comment for why this is tracked per-group, not per-transform
+	};
+
+	// A distinct-LOD-mesh counterpart to MeshGroup -- same accumulate-by-
+	// Resource-identity shape, kept as a fully separate vector/RID set
+	// rather than folded into pending_mesh_groups_, since an LOD mesh is a
+	// different Resource (and gets the opposite visibility range) from the
+	// full-detail mesh it's paired with.
+	struct LodMeshGroup {
 		RID mesh;
 		std::vector<Transform3D> transforms;
 	};
@@ -109,12 +146,16 @@ private:
 	RID space_;
 	bool initialized_ = false;
 	bool enabled_ = true;
+	float lod_crossover_distance_m_ = 100.0f; // must match GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M until step 8 unifies them
+	float lod_crossover_margin_m_ = 5.0f; // must match GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M until step 8 unifies them
 
 	std::vector<MeshGroup> pending_mesh_groups_; // accumulated by add_object(), consumed and cleared by build()
-	std::vector<RID> multimeshes_; // MultiMesh resource RIDs (separate from the instance RIDs that reference them -- both need freeing)
-	std::vector<RID> instances_; // RenderingServer instance RIDs (one per distinct mesh, post-build())
+	std::vector<LodMeshGroup> pending_lod_mesh_groups_; // accumulated by add_object()'s own lod_mesh_entries, consumed and cleared by build()
+	std::vector<RID> multimeshes_; // MultiMesh resource RIDs (separate from the instance RIDs that reference them -- both need freeing) -- holds both full-detail and LOD-tier multimeshes
+	std::vector<RID> instances_; // RenderingServer instance RIDs (one per distinct mesh, post-build()) -- holds both full-detail and LOD-tier instances
 	std::vector<RID> bodies_; // PhysicsServer3D body RIDs (one per placement, unchanged)
-	int placed_mesh_count_ = 0; // total mesh entries ever added, independent of pending_mesh_groups_ being cleared by build() -- what get_batched_placement_count() actually reports
+	int placed_mesh_count_ = 0; // total FULL-DETAIL mesh entries ever added (LOD entries deliberately not counted here -- this is what the debug overlay's "placed objects" figure means, unchanged by this step), independent of pending_mesh_groups_ being cleared by build() -- what get_batched_placement_count() actually reports
+	int lod_instance_count_ = 0; // phases/2/12-distant-object-lod.md, step 7 -- see get_lod_instance_count()
 };
 
 } // namespace godot
