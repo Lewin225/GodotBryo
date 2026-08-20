@@ -128,6 +128,20 @@ func _ready() -> void:
 	check(streamer._resident_full_detail.get(distant_coord, false),
 			"...and was upgraded to full-detail in place, not left stuck distant-only")
 
+	print("=== downgrade-in-place: a full-detail tile becomes distant-only again once the camera moves far enough away, without being evicted ===")
+	# distant_coord is now the resident, full-detail center tile (the camera
+	# sits on it after the move above). Move far enough past
+	# RADIUS_UNLOAD_FULL that it should downgrade back to distant-only, but
+	# nowhere near RADIUS_UNLOAD (13) -- it must stay resident throughout.
+	var listen_downgrade := _begin_settle_listen(streamer)
+	var downgrade_move_cells := WorldStreamer.RADIUS_UNLOAD_FULL + 2
+	cam.position.x += float(downgrade_move_cells) * cell_size_m
+	var settled_downgrade: bool = await _wait_settled(streamer, listen_downgrade)
+	check(settled_downgrade, "streaming_settled fired again after the further move")
+	check(streamer._resident.has(distant_coord), "the tile is still resident after the further move (not evicted)")
+	check(not streamer._resident_full_detail.get(distant_coord, true),
+			"...but was downgraded back to distant-only, not left stuck full-detail (got %s)" % streamer._resident_full_detail.get(distant_coord, true))
+
 	print("=== movement-driven load/unload ===")
 	# Connect BEFORE moving the camera, not after -- _wait_settled()'s own
 	# poll loop already spans past CHECK_INTERVAL_SEC's next tick, so no
