@@ -320,12 +320,18 @@ func _construct_scol(result: Dictionary) -> Node3D:
 ## handed were too.
 func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	var placement: Dictionary = result["placement"]
-	var geometry := resolver.build_geometry_entries(result.get("geometry", {}))
+	# result["lod_geometry"] (phases/2/12-distant-object-lod.md, step 4/7):
+	# this IS the primary real-world path for VWD content -- structural-
+	# fallback placements (most STAT natural scenery/architecture, the
+	# overwhelming majority of what's actually VWD-flagged, per that task
+	# doc's own survey) always route through here at runtime, not
+	# _construct_visual()'s Node-based path.
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	var pos: Vector3 = placement.get("position", Vector3.ZERO)
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
 	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
-	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
+	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"], geometry.get("lod_mesh_entries", []))
 
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))

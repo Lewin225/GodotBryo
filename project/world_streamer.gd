@@ -280,6 +280,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# below, same guarantee the Node-based half is already held to.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
+	batch.set_lod_crossover(GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M, GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M) # phases/2/12-distant-object-lod.md, step 7 -- same placeholder values the Node-based path uses, until step 8 unifies them properly
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -327,6 +328,7 @@ func _stream_persistent_root() -> void:
 
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
+	batch.set_lod_crossover(GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M, GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M) # phases/2/12-distant-object-lod.md, step 7 -- same placeholder values the Node-based path uses, until step 8 unifies them properly
 	batch.set_enabled(false)
 
 	_in_flight_count += 1
