@@ -126,5 +126,6 @@ anything.
 | `test_terrain3d_spike` | 2.13 step 2: real-cell `VHGT` heightmap import into Terrain3D, bit-exact numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
 | `test_terrain3d_texture_paint` | 2.13 step 4 (base-texture half): real `BTXT`→`LTEX`→`TXST` quadrant texture painting via Terrain3D's control map, numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
 | `test_terrain3d_multilayer_paint` | 2.13 step 4 (`ATXT`/`VTXT` half): real multi-layer opacity-priority reduction to Terrain3D's base+overlay+blend control map, numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
+| `test_terrain3d_collision` | 2.13 step 5: real physics drop test against `Terrain3DCollision.FULL_GAME`, confirms no repeat of 1.4's `HeightMapShape3D` failure | headless |
 
 Phase/task numbers refer to `phases/`'s own task docs (e.g. "2.12" = `phases/2/12-distant-object-lod.md`).
