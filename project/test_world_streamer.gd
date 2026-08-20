@@ -83,10 +83,10 @@ func _ready() -> void:
 	check(streamer.is_active(), "is_active() true immediately after activate()")
 	var settled: bool = await _wait_settled(streamer, listen)
 	check(settled, "streaming_settled fired within the timeout")
-	var expected_ring_size := (2 * WorldStreamer.RADIUS_LOAD + 1) * (2 * WorldStreamer.RADIUS_LOAD + 1) # not hardcoded to 3x3=9 -- WorldStreamer.RADIUS_LOAD is tunable (phases/2/08's own explicitly-deferred radius-tuning follow-on), this test should hold at any value
+	var expected_ring_size := (2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1) * (2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1) # not hardcoded to 3x3=9 -- WorldStreamer.RADIUS_LOAD_DISTANT is tunable (phases/2/08's own explicitly-deferred radius-tuning follow-on), this test should hold at any value
 	check(streamer._resident.size() == expected_ring_size,
 			"%dx%d ring resident after settling (got %d, expected %d)" %
-			[2 * WorldStreamer.RADIUS_LOAD + 1, 2 * WorldStreamer.RADIUS_LOAD + 1, streamer._resident.size(), expected_ring_size])
+			[2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, 2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, streamer._resident.size(), expected_ring_size])
 	check(streamer._resident.has(Vector2i(-17, 0)), "the camera's own tile is resident")
 	check(streamer._persistent_root != null, "PersistentRoot was built")
 
@@ -103,6 +103,30 @@ func _ready() -> void:
 			if c.name == "PersistentRoot":
 				duplicate_persistent_roots += 1
 		check(duplicate_persistent_roots == 1, "exactly one PersistentRoot exists (got %d)" % duplicate_persistent_roots)
+
+	print("=== phases/2/12-distant-object-lod.md, step 3: full-detail vs distant-only band ===")
+	# Center tile (-17,0) is well within RADIUS_LOAD_FULL -- should be
+	# streamed full-detail. A tile at Chebyshev distance 5 (beyond
+	# RADIUS_LOAD_FULL=4, within RADIUS_LOAD_DISTANT=10) should be resident
+	# but distant-only.
+	check(streamer._resident_full_detail.get(Vector2i(-17, 0), false),
+			"the camera's own tile was streamed full-detail")
+	var distant_coord := Vector2i(-17 - WorldStreamer.RADIUS_LOAD_FULL - 1, 0)
+	check(streamer._resident.has(distant_coord), "a tile beyond RADIUS_LOAD_FULL but within RADIUS_LOAD_DISTANT is still resident")
+	check(not streamer._resident_full_detail.get(distant_coord, true),
+			"...but was streamed distant-only, not full-detail (got %s)" % streamer._resident_full_detail.get(distant_coord, true))
+
+	print("=== upgrade-in-place: a distant-only tile becomes full-detail once the camera gets close enough ===")
+	var listen_upgrade := _begin_settle_listen(streamer)
+	# A small move -- nowhere near RADIUS_UNLOAD -- just enough that
+	# distant_coord (Chebyshev distance RADIUS_LOAD_FULL+1 from the original
+	# center) falls within RADIUS_LOAD_FULL of the NEW center.
+	cam.position.x -= float(WorldStreamer.RADIUS_LOAD_FULL + 1) * cell_size_m
+	var settled_upgrade: bool = await _wait_settled(streamer, listen_upgrade)
+	check(settled_upgrade, "streaming_settled fired again after the small move")
+	check(streamer._resident.has(distant_coord), "the tile is still resident after the small move (never evicted)")
+	check(streamer._resident_full_detail.get(distant_coord, false),
+			"...and was upgraded to full-detail in place, not left stuck distant-only")
 
 	print("=== movement-driven load/unload ===")
 	# Connect BEFORE moving the camera, not after -- _wait_settled()'s own
@@ -121,14 +145,14 @@ func _ready() -> void:
 	# even starts counting from the NEW center. Caught directly: a
 	# RADIUS_UNLOAD-only margin left a stale band of the old ring resident
 	# (504 tiles instead of 441) when RADIUS_LOAD=10/RADIUS_UNLOAD=13.
-	var move_cells := WorldStreamer.RADIUS_LOAD + WorldStreamer.RADIUS_UNLOAD + 4
+	var move_cells := WorldStreamer.RADIUS_LOAD_DISTANT + WorldStreamer.RADIUS_UNLOAD + 4
 	cam.position.x += float(move_cells) * cell_size_m
 	settled = await _wait_settled(streamer, listen2)
 	check(settled, "streaming_settled fired again after the move")
 	check(not streamer._resident.has(Vector2i(-17, 0)), "the old tile is no longer resident after moving far away")
 	check(streamer._resident.size() == expected_ring_size,
 			"a full new %dx%d ring is resident after the move (got %d, expected %d)" %
-			[2 * WorldStreamer.RADIUS_LOAD + 1, 2 * WorldStreamer.RADIUS_LOAD + 1, streamer._resident.size(), expected_ring_size])
+			[2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, 2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, streamer._resident.size(), expected_ring_size])
 
 	print("=== deactivate() teardown ===")
 	streamer.deactivate()

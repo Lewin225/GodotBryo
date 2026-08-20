@@ -86,7 +86,21 @@ func build(placement: Dictionary) -> Node3D:
 ##   "skip"   -- { placement } only -- mirrors build() returning null (no
 ##               model, unparseable NIF, or a LIGH with neither mesh nor
 ##               light data resolved)
-func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+## phases/2/12-distant-object-lod.md, step 3: `full_detail` -- true for a
+## tile within `RADIUS_LOAD_FULL` (resolve everything, as before); false for
+## a tile out in `WorldStreamer`'s wider `RADIUS_LOAD_DISTANT`-only band, in
+## which case ONLY a VWD-flagged placement (`visible_when_distant` -- the
+## real per-REFR eligibility gate confirmed in enginedocs/lod.md) is worth
+## resolving at all; everything else skips straight to `"kind": "skip"`
+## before ever touching NIF/BSA, which is what keeps the wider band cheap --
+## see that task doc's own real content-density survey (only ~10.85% of
+## placements are VWD-flagged). Checked first, before the marker check or
+## any base_type dispatch, since it's a free Dictionary read, cheaper than
+## either.
+func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_detail: bool = true) -> Dictionary:
+	if not full_detail and not bool(placement.get("visible_when_distant", false)):
+		return { "kind": "skip", "placement": placement }
+
 	if MarkerNode.is_marker_model(placement.get("model", "")):
 		return { "kind": "marker", "placement": placement,
 				"marker_kind": MarkerNode.kind_from_model(placement.get("model", "")) }
@@ -111,10 +125,10 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext) -> Di
 ## Plain data in, plain data out -- no Node/RenderingServer/PhysicsServer3D
 ## touched anywhere in the call chain from here down, which is what makes
 ## wrapping a call to this in WorkerThreadPool.add_task() safe at all.
-func resolve_tile(refs: Array, ctx: GamebryoResolveContext) -> Array:
+func resolve_tile(refs: Array, ctx: GamebryoResolveContext, full_detail: bool = true) -> Array:
 	var out: Array = []
 	for p in refs:
-		out.append(resolve_placement(p, ctx))
+		out.append(resolve_placement(p, ctx, full_detail))
 	return out
 
 func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_tag: String) -> Dictionary:
@@ -136,11 +150,19 @@ func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictio
 	visual["destination"] = ctx.esm.get_door_destination(refr_form_id)
 	return visual
 
+## Parts always resolve as if full_detail=true, regardless of the SCOL
+## placement's own band -- by the time this runs, resolve_placement()'s own
+## early-exit already confirmed the SCOL itself is in scope (either the
+## full-detail band, or VWD-flagged in the distant band). SCOL parts have
+## no REFR/visible_when_distant flag of their own (get_scol_parts() always
+## defaults it to false, since they're not independent records -- see step
+## 1's own doc comment), so re-applying the full_detail gate to them would
+## incorrectly skip every part of an already-eligible SCOL.
 func _resolve_scol(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
 	var parts: Array = ctx.esm.get_scol_parts(int(placement.get("base_form_id", 0)))
 	var resolved_parts: Array = []
 	for part in parts:
-		resolved_parts.append(resolve_placement(part, ctx))
+		resolved_parts.append(resolve_placement(part, ctx, true))
 	return { "kind": "scol", "placement": placement, "parts": resolved_parts }
 
 func _resolve_light(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
