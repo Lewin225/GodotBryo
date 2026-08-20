@@ -468,13 +468,23 @@ granularity rather than one large change:
    the census tool decodes `ATXT`/`VTXT` independently, read-only, without changing
    that shared code path yet — extending `get_land_data()`/`LandData` for real is
    still step 4's work, informed by these numbers rather than done blind.
-4. Implement control-map painting for the base-texture-only case first (parity with
-   current scope, ~85% of quadrants need nothing more than this), then extend
-   `get_land_data()`/`LandData` to carry real `ATXT`/`VTXT` data and implement the
-   opacity-priority 7→2 layer reduction for the remaining ~15%, using the real
-   distribution measured above. Implement texture-slot assignment as the chosen
-   `region_size = 64` + 31-slot LRU pool + pink-fallback-slot design from
-   "`LTEX`/`TXST` texture budget" above.
+4. **Base-texture-only control-map painting: done, real-data-verified.**
+   `project/tests/test_terrain3d_texture_paint.gd`/`.tscn` — resolves each of
+   Goodsprings' 4 quadrants' real `BTXT`→`LTEX`→`TXST`→`.dds` texture (same
+   resolution path `test_terrain.gd` already exercised), builds one
+   `Terrain3DTextureAsset` per *distinct* resolved texture (2 distinct textures
+   found across this one cell's 4 quadrants — a real, small-scale preview of the
+   path-dedup finding above), and paints `Terrain3DData.set_control_base_id()`
+   across each quadrant's real 17×17 vertex range (same ranges
+   `GamebryoTerrainBuilder` uses). Numeric round-trip via `get_control_base_id()`
+   confirmed exact for all 4 quadrants. Real (non-headless) screenshot shows two
+   correctly-textured ground materials meeting cleanly at the real quadrant
+   boundary, sitting on the real heightmap from step 2 — not placeholders.
+   **Not yet done**: extending `get_land_data()`/`LandData` to carry real
+   `ATXT`/`VTXT` data and the opacity-priority 7→2 layer reduction for the ~15% of
+   quadrants that need it; the `region_size = 64` + 31-slot LRU pool +
+   pink-fallback-slot texture-budget design (this single-cell test only ever needed
+   2 slots, nowhere near exercising the budget problem).
 5. Physics drop test against `Terrain3DCollision` (answers open question 5); fall back
    to keeping our own `ConcavePolygonShape3D` collision layered on top of Terrain3D's
    render-only output if it fails, rather than blocking the whole integration on it.
