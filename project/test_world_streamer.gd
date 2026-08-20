@@ -37,6 +37,19 @@ func _begin_settle_listen(streamer: WorldStreamer) -> Array:
 	streamer.streaming_settled.connect(conn)
 	return [settled, conn]
 
+## Real (circular) tile count within `radius` -- WorldStreamer._within_radius()'s
+## own definition, reused directly rather than re-derived (e.g. via a
+## continuous-circle area formula like pi*r*r, which wouldn't exactly match
+## the discrete integer-lattice count WorldStreamer itself produces).
+func _count_within_radius(radius: float) -> int:
+	var count := 0
+	var bound := ceili(radius)
+	for dx in range(-bound, bound + 1):
+		for dy in range(-bound, bound + 1):
+			if WorldStreamer._within_radius(dx, dy, radius):
+				count += 1
+	return count
+
 func _wait_settled(streamer: WorldStreamer, listen: Array) -> bool:
 	var settled: Array = listen[0]
 	var conn: Callable = listen[1]
@@ -83,10 +96,17 @@ func _ready() -> void:
 	check(streamer.is_active(), "is_active() true immediately after activate()")
 	var settled: bool = await _wait_settled(streamer, listen)
 	check(settled, "streaming_settled fired within the timeout")
-	var expected_ring_size := (2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1) * (2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1) # not hardcoded to 3x3=9 -- WorldStreamer.RADIUS_LOAD_DISTANT is tunable (phases/2/08's own explicitly-deferred radius-tuning follow-on), this test should hold at any value
+	# Not hardcoded -- WorldStreamer.RADIUS_LOAD_DISTANT is tunable (phases/2/08's
+	# own explicitly-deferred radius-tuning follow-on), this test should hold
+	# at any value. Circular, not a square ring, since WorldStreamer's own
+	# radius checks are circular (real distance, not Chebyshev) as of this
+	# follow-on -- replicated here via the exact same shared helper
+	# WorldStreamer itself uses, not a separately-derived area formula, so
+	# this can't silently drift from the real implementation.
+	var expected_ring_size := _count_within_radius(WorldStreamer.RADIUS_LOAD_DISTANT)
 	check(streamer._resident.size() == expected_ring_size,
-			"%dx%d ring resident after settling (got %d, expected %d)" %
-			[2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, 2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, streamer._resident.size(), expected_ring_size])
+			"circular ring (radius %s) resident after settling (got %d, expected %d)" %
+			[WorldStreamer.RADIUS_LOAD_DISTANT, streamer._resident.size(), expected_ring_size])
 	check(streamer._resident.has(Vector2i(-17, 0)), "the camera's own tile is resident")
 	check(streamer._persistent_root != null, "PersistentRoot was built")
 
@@ -106,12 +126,14 @@ func _ready() -> void:
 
 	print("=== phases/2/12-distant-object-lod.md, step 3: full-detail vs distant-only band ===")
 	# Center tile (-17,0) is well within RADIUS_LOAD_FULL -- should be
-	# streamed full-detail. A tile at Chebyshev distance 5 (beyond
-	# RADIUS_LOAD_FULL=4, within RADIUS_LOAD_DISTANT=10) should be resident
-	# but distant-only.
+	# streamed full-detail. A tile RADIUS_LOAD_FULL+1 away along a single
+	# axis (Chebyshev and real/circular distance are identical for a
+	# pure-axis offset -- dy=0 -- so this holds under either metric) is
+	# beyond RADIUS_LOAD_FULL but within RADIUS_LOAD_DISTANT, so should be
+	# resident but distant-only.
 	check(streamer._resident_full_detail.get(Vector2i(-17, 0), false),
 			"the camera's own tile was streamed full-detail")
-	var distant_coord := Vector2i(-17 - WorldStreamer.RADIUS_LOAD_FULL - 1, 0)
+	var distant_coord := Vector2i(int(-17 - WorldStreamer.RADIUS_LOAD_FULL - 1), 0)
 	check(streamer._resident.has(distant_coord), "a tile beyond RADIUS_LOAD_FULL but within RADIUS_LOAD_DISTANT is still resident")
 	check(not streamer._resident_full_detail.get(distant_coord, true),
 			"...but was streamed distant-only, not full-detail (got %s)" % streamer._resident_full_detail.get(distant_coord, true))
@@ -119,8 +141,8 @@ func _ready() -> void:
 	print("=== upgrade-in-place: a distant-only tile becomes full-detail once the camera gets close enough ===")
 	var listen_upgrade := _begin_settle_listen(streamer)
 	# A small move -- nowhere near RADIUS_UNLOAD -- just enough that
-	# distant_coord (Chebyshev distance RADIUS_LOAD_FULL+1 from the original
-	# center) falls within RADIUS_LOAD_FULL of the NEW center.
+	# distant_coord (distance RADIUS_LOAD_FULL+1 from the original center)
+	# falls within RADIUS_LOAD_FULL of the NEW center.
 	cam.position.x -= float(WorldStreamer.RADIUS_LOAD_FULL + 1) * cell_size_m
 	var settled_upgrade: bool = await _wait_settled(streamer, listen_upgrade)
 	check(settled_upgrade, "streaming_settled fired again after the small move")
@@ -165,8 +187,8 @@ func _ready() -> void:
 	check(settled, "streaming_settled fired again after the move")
 	check(not streamer._resident.has(Vector2i(-17, 0)), "the old tile is no longer resident after moving far away")
 	check(streamer._resident.size() == expected_ring_size,
-			"a full new %dx%d ring is resident after the move (got %d, expected %d)" %
-			[2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, 2 * WorldStreamer.RADIUS_LOAD_DISTANT + 1, streamer._resident.size(), expected_ring_size])
+			"a full new circular ring (radius %s) is resident after the move (got %d, expected %d)" %
+			[WorldStreamer.RADIUS_LOAD_DISTANT, streamer._resident.size(), expected_ring_size])
 
 	print("=== deactivate() teardown ===")
 	streamer.deactivate()
