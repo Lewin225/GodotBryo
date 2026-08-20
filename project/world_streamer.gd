@@ -83,6 +83,21 @@ const CHECK_INTERVAL_SEC := 0.1
 ## placements) would take several seconds to finish visibly populating.
 @export var objects_per_frame: int = 20
 
+## How many NEW tile loads to actually START per frame -- see
+## _process_load_queue(). Confirmed necessary via a real perf report, not
+## hypothetical: _start_tile_load()'s own synchronous prefix
+## (CellStreamBuilder.build_terrain(), ~75% of which is
+## GamebryoTerrainBuilder's own collision generation) runs entirely before
+## _stream_tile()'s first await point, so calling it many times back-to-back
+## in the same _check_streaming() tick pays every one of those synchronous
+## costs in one frame. That's exactly what happens when a whole new ring
+## "edge" becomes needed at once -- crossing one grid line in a single axis
+## brings in an entire new column/row, up to 2*RADIUS_LOAD_DISTANT+1 tiles,
+## inherent to a square ring's own geometry (not a distance-calculation
+## bug) -- the real report showed 57 tiles starting in one tick, 209ms of
+## frame time, almost entirely build_terrain().
+@export var tiles_per_frame: int = 3
+
 ## phases/2/12-distant-object-lod.md, step 8: the real, inspector-tunable
 ## crossover distance/margin -- threaded into both the Node-based path
 ## (resolver.set_lod_crossover(), step 6) and the RID-based path
@@ -113,7 +128,10 @@ var _generation := 0 # bumped on every activate()/deactivate() -- invalidates st
 var _resident: Dictionary = {} # Vector2i grid coord -> built tile root Node3D
 var _resident_batches: Dictionary = {} # Vector2i grid coord -> that tile's DirectGeometryBatch (2.9) -- kept in lockstep with _resident
 var _resident_full_detail: Dictionary = {} # Vector2i grid coord -> bool, whether that resident tile was streamed with full_detail=true -- phases/2/12-distant-object-lod.md, step 3
-var _pending: Dictionary = {} # Vector2i grid coord -> true, currently streaming in
+var _pending: Dictionary = {} # Vector2i grid coord -> true, a _stream_tile() coroutine is actually running for it
+var _queued: Dictionary = {} # Vector2i grid coord -> true, waiting in _load_queue for its turn to actually start -- see tiles_per_frame's own doc comment. A coord's lifecycle: queued -> pending -> resident
+var _load_queue: Array = [] # Array of { "coord": Vector2i, "full_detail": bool }, FIFO, consumed by _process_load_queue()
+var _load_queue_running := false # true while a _process_load_queue() coroutine is actively draining _load_queue -- avoids starting a second overlapping one
 var _persistent_root: Node3D = null
 var _persistent_batch: DirectGeometryBatch = null
 var _in_flight_count := 0
@@ -159,6 +177,8 @@ func deactivate() -> void:
 	_resident_batches.clear()
 	_resident_full_detail.clear()
 	_pending.clear()
+	_queued.clear()
+	_load_queue.clear() # _load_queue_running's own coroutine (if any) checks _active_wrld_form_id and exits on its next iteration -- not force-cancelled here, same as any other in-flight await
 	if _persistent_root != null:
 		_persistent_root.free()
 		_persistent_root = null
@@ -210,8 +230,8 @@ func _check_streaming() -> void:
 		for dy in range(-RADIUS_LOAD_DISTANT, RADIUS_LOAD_DISTANT + 1):
 			var coord := Vector2i(center.x + dx, center.y + dy)
 			var desired_full: bool = absi(dx) <= RADIUS_LOAD_FULL and absi(dy) <= RADIUS_LOAD_FULL
-			if not _resident.has(coord) and not _pending.has(coord):
-				_start_tile_load(coord, desired_full)
+			if not _resident.has(coord) and not _pending.has(coord) and not _queued.has(coord):
+				_enqueue_tile_load(coord, desired_full)
 			elif _resident.has(coord) and desired_full and not _resident_full_detail.get(coord, false):
 				# phases/2/12-distant-object-lod.md, step 3: the camera moved
 				# close enough that a tile streamed distant-only now needs
@@ -223,7 +243,7 @@ func _check_streaming() -> void:
 					_resident_batches[coord].free_all()
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
-				_start_tile_load(coord, true)
+				_enqueue_tile_load(coord, true)
 			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and (absi(dx) > RADIUS_UNLOAD_FULL or absi(dy) > RADIUS_UNLOAD_FULL):
 				# The reverse case -- a full-detail tile the camera has since
 				# moved away from, past RADIUS_UNLOAD_FULL but still within
@@ -244,7 +264,7 @@ func _check_streaming() -> void:
 					_resident_batches[coord].free_all()
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
-				_start_tile_load(coord, false)
+				_enqueue_tile_load(coord, false)
 
 	for coord in _resident.keys().duplicate():
 		if absi(coord.x - center.x) > RADIUS_UNLOAD or absi(coord.y - center.y) > RADIUS_UNLOAD:
@@ -254,6 +274,44 @@ func _check_streaming() -> void:
 				_resident_batches[coord].free_all() # 2.9 -- explicit, Node.free() above doesn't reach RID-owned geometry
 				_resident_batches.erase(coord)
 			_resident_full_detail.erase(coord)
+
+## Queues `coord` for a throttled start instead of calling _start_tile_load()
+## immediately -- see tiles_per_frame's own doc comment for why. Marks
+## `coord` as spoken-for (_queued) right away so repeated _check_streaming()
+## ticks (every CHECK_INTERVAL_SEC, likely several before this coord's turn
+## comes up) don't enqueue it again.
+func _enqueue_tile_load(coord: Vector2i, full_detail: bool) -> void:
+	_queued[coord] = true
+	_load_queue.append({ "coord": coord, "full_detail": full_detail })
+	if not _load_queue_running:
+		_load_queue_running = true
+		_process_load_queue()
+
+## Drains _load_queue, starting up to tiles_per_frame tiles before yielding
+## a frame -- this is what actually bounds how many synchronous
+## build_terrain() calls happen in any one frame, regardless of how many
+## coords _check_streaming() enqueues at once (up to a whole ring edge, see
+## tiles_per_frame's own doc comment).
+func _process_load_queue() -> void:
+	while not _load_queue.is_empty():
+		if _active_wrld_form_id == -1:
+			break # deactivated mid-drain -- deactivate() already cleared _load_queue/_queued itself
+		var started := 0
+		while started < tiles_per_frame and not _load_queue.is_empty():
+			var entry: Dictionary = _load_queue.pop_front()
+			var coord: Vector2i = entry["coord"]
+			_queued.erase(coord)
+			# Re-check before starting, not just trust the queue snapshot --
+			# a queued coord can still have become resident/pending by the
+			# time its turn comes up (e.g. the SAME _check_streaming() tick
+			# that enqueued it also evicted-and-re-enqueued it again via the
+			# upgrade/downgrade branches before this coroutine ever ran).
+			if not _resident.has(coord) and not _pending.has(coord):
+				_start_tile_load(coord, entry["full_detail"])
+			started += 1
+		if not _load_queue.is_empty():
+			await get_tree().process_frame
+	_load_queue_running = false
 
 func _start_tile_load(coord: Vector2i, full_detail: bool = true) -> void:
 	var _d0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -479,8 +537,16 @@ func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBat
 	active_us += Time.get_ticks_usec() - seg_start
 	return { "ok": true, "active_ms": active_us / 1000.0 }
 
+## Also checks _load_queue/_load_queue_running, not just _in_flight_count --
+## a real race otherwise: _in_flight_count only counts tiles that have
+## actually STARTED (_start_tile_load()), so every currently-in-flight tile
+## could finish (hitting _in_flight_count == 0) in the gap between two
+## _process_load_queue() drain batches, while tiles are still sitting
+## queued waiting their turn under tiles_per_frame's own throttle -- caught
+## by reasoning through the coroutine interleaving, not observed as an
+## actual test failure, but real enough not to leave unguarded.
 func _maybe_emit_settled() -> void:
-	if _in_flight_count == 0:
+	if _in_flight_count == 0 and _load_queue.is_empty() and not _load_queue_running:
 		streaming_settled.emit()
 
 ## Combined REFR placement data for every currently resident tile plus the
