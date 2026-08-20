@@ -82,7 +82,11 @@ func build(placement: Dictionary) -> Node3D:
 ##   "light"  -- { placement, geometry (may be {} -- a meshless light rig,
 ##               the common case per phases/1/03), light_data }
 ##   "visual" -- { placement, type_tag (one of CONT/ACTI/FURN, or "" for the
-##               structural-fallback/GamebryoVisual case), geometry }
+##               structural-fallback/GamebryoVisual case), geometry,
+##               lod_geometry (optional, phases/2/12-distant-object-lod.md
+##               step 4 -- only present for a VWD-flagged placement with a
+##               resolvable _lod.nif companion, the small minority; absent,
+##               not {}-valued, otherwise) }
 ##   "skip"   -- { placement } only -- mirrors build() returning null (no
 ##               model, unparseable NIF, or a LIGH with neither mesh nor
 ##               light data resolved)
@@ -139,7 +143,35 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	if nif == null or nif.get_submesh_count() == 0:
 		return { "kind": "skip", "placement": placement }
 	var geometry := ctx.resolver.resolve_raw_geometry(nif, model) # RAW -- construct_from_resolved() builds the actual Resources, main-thread-only
-	return { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
+	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
+	var lod_geometry := _resolve_lod_geometry(placement, model, ctx)
+	if not lod_geometry.is_empty():
+		result["lod_geometry"] = lod_geometry
+	return result
+
+## phases/2/12-distant-object-lod.md, step 4: a second, optional RAW geometry
+## block for `placement`'s own `_lod.nif` companion -- attached alongside the
+## full-detail geometry whenever `placement` is actually eligible (VWD-
+## flagged AND a companion resolves), which is a small minority of
+## placements (see that task doc's own real content-density survey). Both
+## variants are attached regardless of which streaming band resolved this
+## tile (`full_detail` true or false) -- WHICH mesh actually renders is
+## purely Godot's own per-frame visibility_range check (steps 6/7), not
+## something decided here or by WorldStreamer. Returns {} (not attached at
+## all) for the overwhelming common case -- not VWD-flagged, no `_lod.nif`
+## companion, or the companion NIF itself has no real geometry. Worker-safe,
+## same reasoning as resolve_raw_geometry() itself -- only touches
+## NifReader/BsaReader via `ctx`.
+func _resolve_lod_geometry(placement: Dictionary, model: String, ctx: GamebryoResolveContext) -> Dictionary:
+	if not bool(placement.get("visible_when_distant", false)):
+		return {}
+	var lod_path := ctx.resolver.lod_companion_path(model)
+	if lod_path == "":
+		return {}
+	var lod_nif := ctx.resolver.load_nif(lod_path)
+	if lod_nif == null or lod_nif.get_submesh_count() == 0:
+		return {}
+	return ctx.resolver.resolve_raw_geometry(lod_nif, lod_path)
 
 func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
 	var visual := _resolve_visual(placement, ctx, "DOOR")
