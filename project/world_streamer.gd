@@ -44,8 +44,22 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 ## -- these are starting values to get the mechanism correct, not measured
 ## ones (though `RADIUS_LOAD_DISTANT`'s own real content density at this
 ## specific value IS measured, see phases/2/12's own survey).
-const RADIUS_LOAD_FULL := 3
-const RADIUS_LOAD_DISTANT := 20
+##
+## All four radii below are `float`, and every boundary check against them
+## uses real (circular) distance via _within_radius(), not Chebyshev
+## (square) distance -- caught directly from a real user-visible symptom
+## ("multiple lines of cells appearing on one frame") while chasing a
+## separate streaming-stutter fix: a Chebyshev check means crossing a
+## single grid line brings an entire ring EDGE into range simultaneously
+## (every dx/dy along that line, regardless of how far the corner of that
+## edge actually is from the camera), not just the cells genuinely within
+## range. `float` here isn't a precision fix (GDScript's `float` is already
+## 64-bit, and grid deltas at these magnitudes are nowhere near where
+## precision would matter) -- it's so a radius can be tuned to a real
+## fractional distance instead of only whole grid steps, now that the
+## check is a genuine distance comparison rather than a per-axis one.
+const RADIUS_LOAD_FULL := 3.0
+const RADIUS_LOAD_DISTANT := 20.0
 
 ## Hysteresis for the full/distant boundary, same reasoning as RADIUS_UNLOAD
 ## below but one tier in: a full-detail tile isn't downgraded back to
@@ -55,7 +69,7 @@ const RADIUS_LOAD_DISTANT := 20
 ## RADIUS_LOAD_FULL and RADIUS_LOAD_DISTANT -- a full-detail tile that's
 ## fallen out of the full band still needs to become the distant-only
 ## variant, not skip straight past RADIUS_LOAD_DISTANT's own band entirely.
-const RADIUS_UNLOAD_FULL := RADIUS_LOAD_FULL + 3
+const RADIUS_UNLOAD_FULL := RADIUS_LOAD_FULL + 3.0
 
 ## Hysteresis: a resident tile isn't unloaded until it's past this larger
 ## radius, not the same threshold load uses -- otherwise a camera sitting
@@ -63,7 +77,7 @@ const RADIUS_UNLOAD_FULL := RADIUS_LOAD_FULL + 3
 ## check. Must stay > RADIUS_LOAD_DISTANT (the outer, not the full-detail,
 ## radius -- a distant-band tile still counts as resident and needs the
 ## same hysteresis margin a full-detail one does).
-const RADIUS_UNLOAD := 23
+const RADIUS_UNLOAD := 23.0
 
 ## How often (seconds) to re-check the resident set against the camera's
 ## current position -- continuous, not boundary-cross-triggered, but a
@@ -220,16 +234,44 @@ func _current_grid_coord() -> Variant:
 	var gy := int(floor(-pos.z / cell_size_m))
 	return Vector2i(gx, gy)
 
+## True if integer grid-coordinate delta (dx, dy) lies within `radius` of
+## the origin, using real (circular) distance -- not Chebyshev/square
+## distance (`absi(dx) <= radius and absi(dy) <= radius`), which is what
+## every radius check here used before this. Compares squared distances
+## (dx*dx + dy*dy vs radius*radius) rather than calling sqrt() -- cheaper,
+## and there's no floating-point precision question to avoid in the first
+## place at these magnitudes (grid deltas here max out in the tens, squared
+## distances in the low thousands).
+##
+## The square-vs-circle distinction is the actual fix this exists for, not
+## the float radius type: a Chebyshev check means crossing a single grid
+## line brings an entire ring EDGE into range at once (every dx/dy along
+## that line, regardless of how far the edge's own corner actually is from
+## the camera) -- confirmed directly from a real user-visible symptom
+## ("multiple lines of cells appearing on one frame") while chasing a
+## separate streaming-stutter fix. Circular distance means only the cells
+## genuinely within `radius` cross the boundary as the camera moves.
+static func _within_radius(dx: int, dy: int, radius: float) -> bool:
+	return dx * dx + dy * dy <= radius * radius
+
 func _check_streaming() -> void:
 	var center: Variant = _current_grid_coord()
 	if center == null:
 		return
 	_current_cell_form_id_cache = _tile_cell_form_id(center) # cached here, on this already-throttled cycle, instead of get_current_cell_form_id() re-deriving it from a fresh find_exterior_cell() scan on every single call -- caught directly: that scan alone costs ~41ms (a full linear walk over WastelandNV's 185,720 child records), and game.gd's own _process() was calling get_current_cell_form_id() completely unthrottled, every frame, while active. Real, severe, unrelated to rendering at all -- explained the entire flat ~30fps ceiling this whole investigation was chasing.
 
-	for dx in range(-RADIUS_LOAD_DISTANT, RADIUS_LOAD_DISTANT + 1):
-		for dy in range(-RADIUS_LOAD_DISTANT, RADIUS_LOAD_DISTANT + 1):
+	# The dx/dy loop bounds are still a square -- a cheap-to-enumerate
+	# SUPERSET of the circular RADIUS_LOAD_DISTANT area, not the area itself
+	# (there's no equivalently cheap way to enumerate a circle's integer
+	# lattice points directly). ceili() so a fractional radius still gets a
+	# bound that covers it.
+	var bound := ceili(RADIUS_LOAD_DISTANT)
+	for dx in range(-bound, bound + 1):
+		for dy in range(-bound, bound + 1):
+			if not _within_radius(dx, dy, RADIUS_LOAD_DISTANT):
+				continue # inside the square bound but outside the real circular radius
 			var coord := Vector2i(center.x + dx, center.y + dy)
-			var desired_full: bool = absi(dx) <= RADIUS_LOAD_FULL and absi(dy) <= RADIUS_LOAD_FULL
+			var desired_full: bool = _within_radius(dx, dy, RADIUS_LOAD_FULL)
 			if not _resident.has(coord) and not _pending.has(coord) and not _queued.has(coord):
 				_enqueue_tile_load(coord, desired_full)
 			elif _resident.has(coord) and desired_full and not _resident_full_detail.get(coord, false):
@@ -244,7 +286,7 @@ func _check_streaming() -> void:
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
 				_enqueue_tile_load(coord, true)
-			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and (absi(dx) > RADIUS_UNLOAD_FULL or absi(dy) > RADIUS_UNLOAD_FULL):
+			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and not _within_radius(dx, dy, RADIUS_UNLOAD_FULL):
 				# The reverse case -- a full-detail tile the camera has since
 				# moved away from, past RADIUS_UNLOAD_FULL but still within
 				# RADIUS_LOAD_DISTANT (so still resident, just no longer near
@@ -267,7 +309,7 @@ func _check_streaming() -> void:
 				_enqueue_tile_load(coord, false)
 
 	for coord in _resident.keys().duplicate():
-		if absi(coord.x - center.x) > RADIUS_UNLOAD or absi(coord.y - center.y) > RADIUS_UNLOAD:
+		if not _within_radius(coord.x - center.x, coord.y - center.y, RADIUS_UNLOAD):
 			_resident[coord].free()
 			_resident.erase(coord)
 			if _resident_batches.has(coord):
