@@ -25,6 +25,38 @@ float read_f32(util::ByteReader &r) {
 	return f;
 }
 
+// phases/2/11-exterior-cell-lookup-index.md: Exterior Cell Block/Sub-Block
+// GRUP sizing, confirmed against UESP's Mod File Format docs -- a block is
+// 32x32 cells (4x4 sub-blocks of 8x8 cells each).
+constexpr int32_t kSubBlockCells = 8;
+constexpr int32_t kBlockCells = 32;
+
+// True floor division, not C++'s truncating `/` -- block/sub-block
+// coordinates are commonly negative (Goodsprings' own block decodes to
+// x=-1), the same lesson CellStreamBuilder's own grid math already
+// accounts for.
+int32_t floor_div(int32_t a, int32_t b) {
+	int32_t q = a / b;
+	if ((a % b != 0) && ((a < 0) != (b < 0))) {
+		q -= 1;
+	}
+	return q;
+}
+
+// A GRUP's label field, for group_type 4 (Exterior Cell Block) and 5
+// (Exterior Cell Sub-Block), packs the block/sub-block's own (x, y)
+// coordinate as two signed 16-bit halves -- confirmed against 6 real
+// WastelandNV cells (see phases/2/11-exterior-cell-lookup-index.md): the
+// label's low 16 bits are x, the high 16 bits are y.
+struct GrupGridCoord {
+	int16_t x;
+	int16_t y;
+};
+
+GrupGridCoord decode_grup_label(uint32_t label) {
+	return { static_cast<int16_t>(label & 0xFFFF), static_cast<int16_t>((label >> 16) & 0xFFFF) };
+}
+
 } // namespace
 
 EsmFile::~EsmFile() {
@@ -582,30 +614,150 @@ std::optional<RecordInfo> EsmFile::find_worldspace_by_editor_id(const std::strin
 	return found;
 }
 
+// phases/2/11-exterior-cell-lookup-index.md: navigates directly through
+// Bethesda's own Exterior Cell Block/Sub-Block GRUP structure instead of
+// scanning every CELL in the worldspace -- confirmed against real
+// WastelandNV data (see that task doc for the verified label encoding and
+// block/sub-block sizing). Reads only 24-byte GRUP/record headers down one
+// branch of the tree, decompressing/subrecord-parsing only the (usually
+// very few, at most 64) CELL records actually inside the target sub-block.
+//
+// The worldspace's own persistent cell (structurally the first CELL under
+// World Children, before any Block GRUP) is deliberately never considered
+// a candidate here, even though it can carry its own placeholder XCLC —
+// confirmed directly against real data: WastelandNV's persistent cell
+// (form_id 0x846EA) has an XCLC of (0,0), which coincides with a genuine
+// grid tile also at (0,0) (form_id 0xDDF5B, with real terrain). The old
+// linear-scan implementation hit the persistent cell first (file order)
+// and silently returned it instead of the real tile for every (0,0)
+// lookup -- a real correctness bug, not just a performance one, fixed as
+// a side effect of this rewrite by construction (the persistent cell was
+// never part of the Block/Sub-Block structure to begin with).
 std::optional<RecordInfo> EsmFile::find_exterior_cell(uint32_t wrld_form_id, int32_t x, int32_t y) const {
 	auto wrld = find_record_by_form_id(wrld_form_id);
 	if (!wrld || wrld->type != "WRLD") {
 		return std::nullopt;
 	}
-	for (const RecordInfo &c : get_child_records(*wrld)) {
-		if (c.type != "CELL") {
+
+	// The World Children GRUP is `wrld`'s own immediately-following child
+	// GRUP (kHeaderSize is defined at file scope above, reused here).
+	long wc_header_start = wrld->data_offset + static_cast<long>(wrld->data_size);
+	std::vector<uint8_t> wc_hdr = read_at(wc_header_start, kHeaderSize);
+	util::ByteReader wc_hr(wc_hdr.data(), wc_hdr.size());
+	std::string wc_tag(reinterpret_cast<const char *>(wc_hr.read_bytes(4).data()), 4);
+	if (wc_tag != "GRUP") {
+		return std::nullopt; // no exterior cells in this worldspace at all -- real, valid case
+	}
+	uint32_t wc_size = wc_hr.read_u32();
+	wc_hr.read_u32(); // label -- the WRLD's own form_id for group_type 1, already known
+	wc_hr.read_u32(); // group_type -- already known to be 1 (World Children)
+	long wc_start = wc_header_start + static_cast<long>(kHeaderSize);
+	long wc_end = wc_header_start + static_cast<long>(wc_size);
+
+	// Confirmed by direct cross-reference against multiple real blocks
+	// (phases/2/11-exterior-cell-lookup-index.md) -- the GRUP label's own
+	// (x, y) halves are swapped relative to our own ExteriorCellGrid's (x,
+	// y) fields: the label's low-16 half tracks `y`, the high-16 half
+	// tracks `x`. Caught directly by real data (block (0,0)'s own cells
+	// are all x==y, symmetric, which hid this until a different block was
+	// checked) -- not assumed from UESP's own ambiguous "note the reverse
+	// order" wording.
+	int32_t target_block_x = floor_div(y, kBlockCells);
+	int32_t target_block_y = floor_div(x, kBlockCells);
+	int32_t target_sub_x = floor_div(y, kSubBlockCells);
+	int32_t target_sub_y = floor_div(x, kSubBlockCells);
+
+	// Level 1: the Exterior Cell Block GRUP (group_type 4) matching the
+	// target block coordinate. Non-GRUP tokens at this level (the
+	// persistent CELL) and non-matching/non-Block GRUPs (the persistent
+	// CELL's own type-6 Cell Children GRUP, or a Block for a different
+	// coordinate) are skipped by their own declared byte size -- never
+	// descended into.
+	long pos = wc_start;
+	while (pos < wc_end) {
+		std::vector<uint8_t> h = read_at(pos, kHeaderSize);
+		util::ByteReader r(h.data(), h.size());
+		std::string t(reinterpret_cast<const char *>(r.read_bytes(4).data()), 4);
+		if (t != "GRUP") {
+			uint32_t dsize = r.read_u32();
+			pos += static_cast<long>(kHeaderSize) + static_cast<long>(dsize);
 			continue;
 		}
-		std::vector<uint8_t> data = read_record_data(c);
-		std::vector<Subrecord> subs = parse_subrecords(data);
-		for (const auto &s : subs) {
-			if (s.type == "XCLC" && s.size >= 8) {
-				util::ByteReader sr(s.data, s.size);
-				int32_t cx = static_cast<int32_t>(sr.read_u32());
-				int32_t cy = static_cast<int32_t>(sr.read_u32());
-				if (cx == x && cy == y) {
-					return c;
-				}
-				break;
-			}
+		uint32_t gsize = r.read_u32();
+		uint32_t label = r.read_u32();
+		uint32_t gtype = r.read_u32();
+		long cstart = pos + static_cast<long>(kHeaderSize);
+		long cend = pos + static_cast<long>(gsize);
+		if (gtype != 4) {
+			pos = cend;
+			continue;
 		}
+		GrupGridCoord block = decode_grup_label(label);
+		if (block.x != target_block_x || block.y != target_block_y) {
+			pos = cend;
+			continue;
+		}
+
+		// Level 2: the Exterior Cell Sub-Block GRUP (group_type 5) within
+		// this block matching the target sub-block coordinate.
+		long p2 = cstart;
+		while (p2 < cend) {
+			std::vector<uint8_t> h2 = read_at(p2, kHeaderSize);
+			util::ByteReader r2(h2.data(), h2.size());
+			std::string t2(reinterpret_cast<const char *>(r2.read_bytes(4).data()), 4);
+			if (t2 != "GRUP") {
+				uint32_t dsize2 = r2.read_u32();
+				p2 += static_cast<long>(kHeaderSize) + static_cast<long>(dsize2);
+				continue;
+			}
+			uint32_t gsize2 = r2.read_u32();
+			uint32_t label2 = r2.read_u32();
+			uint32_t gtype2 = r2.read_u32();
+			long c2s = p2 + static_cast<long>(kHeaderSize);
+			long c2e = p2 + static_cast<long>(gsize2);
+			if (gtype2 != 5) {
+				p2 = c2e;
+				continue;
+			}
+			GrupGridCoord sub = decode_grup_label(label2);
+			if (sub.x != target_sub_x || sub.y != target_sub_y) {
+				p2 = c2e;
+				continue;
+			}
+
+			// Level 3: scan the (at most 64) CELL records directly in this
+			// sub-block for an exact XCLC match. Each CELL's own trailing
+			// Cell Children GRUP (its REFRs etc) is skipped whole by its
+			// declared size, never descended into.
+			long p3 = c2s;
+			while (p3 < c2e) {
+				std::vector<uint8_t> h3 = read_at(p3, kHeaderSize);
+				util::ByteReader r3(h3.data(), h3.size());
+				std::string t3(reinterpret_cast<const char *>(r3.read_bytes(4).data()), 4);
+				if (t3 == "GRUP") {
+					uint32_t gsize3 = r3.read_u32();
+					p3 += static_cast<long>(gsize3);
+					continue;
+				}
+				RecordInfo info;
+				info.type = t3;
+				info.data_size = r3.read_u32();
+				info.flags = r3.read_u32();
+				info.form_id = r3.read_u32();
+				info.data_offset = p3 + static_cast<long>(kHeaderSize);
+				if (info.type == "CELL") {
+					auto grid = get_exterior_cell_grid(info.form_id);
+					if (grid && grid->x == x && grid->y == y) {
+						return info;
+					}
+				}
+				p3 = info.data_offset + static_cast<long>(info.data_size);
+			}
+			return std::nullopt; // sub-block found, no exact match inside it -- a real, valid case
+		}
+		return std::nullopt; // block found, no matching sub-block -- a real, valid case (sparse worldspace)
 	}
-	return std::nullopt;
+	return std::nullopt; // no matching block at all -- a real worldspace-edge case
 }
 
 std::optional<ExteriorCellGrid> EsmFile::get_exterior_cell_grid(uint32_t cell_form_id) const {
