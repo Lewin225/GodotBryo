@@ -261,9 +261,25 @@ func load_texture(tex_path: String) -> ImageTexture:
 ## only) to get the final { "mesh_entries": [{mesh,transform}],
 ## "shape_entries": [{shape,transform,name}] } shape every caller actually
 ## consumes.
+##
+## Rendering-issues punch-list item #4 ("leftover CK editor objects"):
+## submeshes named "EditorMarker*" (confirmed, not guessed, across many real
+## effect NIFs -- Effects\Ambient\FXDustMeshSky01.NIF etc. -- a CK-wide
+## authoring convention, not one file's quirk) are Bethesda's own artist-
+## only visualization gizmos, never rendered by the real game. Skipped here
+## unless Engine.is_editor_hint() is true (CellLoader's own @tool editor-
+## preview path, where seeing them is useful) -- filtering at this single
+## source, rather than toggling Node.visible after the fact, is what makes
+## it apply uniformly to BOTH the Node-based path and DirectGeometryBatch's
+## RID-based structural-fallback path (which has no Node/visible property
+## at all -- confirmed directly: MSTT, the base_type every one of these
+## effect placements uses, is unregistered and always routes through the
+## RID path at runtime).
 func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 	var mesh_entries := []
 	for i in range(nif.get_submesh_count()):
+		if _is_editor_marker_submesh(nif.get_submesh_name(i)) and not Engine.is_editor_hint():
+			continue
 		var tex_path := nif.get_texture_path(i)
 		var normal_path := nif.get_normal_texture_path(i)
 		var glow_path := nif.get_glow_texture_path(i)
@@ -290,6 +306,11 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 		"mesh_entries": mesh_entries,
 		"shape_entries": _resolve_raw_collision(nif),
 	}
+
+## Prefix match, not exact -- real names seen include "EditorMarker:0" (a
+## NifSkope/3ds Max-style ":<index>" suffix for repeated node names).
+static func _is_editor_marker_submesh(submesh_name: String) -> bool:
+	return submesh_name.to_lower().begins_with("editormarker")
 
 ## phases/2/10-threaded-streaming-workers.md: the main-thread-only "commit"
 ## half of resolve_raw_geometry() -- builds the actual ArrayMesh/
