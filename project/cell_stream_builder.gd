@@ -67,26 +67,21 @@ func build_terrain(cell_form_id: int) -> Node3D:
 ## should discard whatever was partially built, same as CellLoader's own
 ## generation-counter pattern), true once every ref has been placed.
 ##
-## `batch` (phases/2/09-direct-server-static-geometry.md, optional, default
-## null): when given, each placement first tries
-## registry.build_direct(p, batch) -- the RID-based path, no Node at all --
-## before falling back to registry.build() (a real Node) if that returns
-## false (an interactive/registered type, a marker, or genuinely nothing to
-## place). null preserves the original all-Node behavior unchanged --
-## CellLoader passes null deliberately (its @tool editor-preview mode stays
-## fully Node-based/Scene-dock-inspectable, per that task's own scope
-## decision), only WorldStreamer passes a real batch.
-func stream_refs(parent: Node3D, refs: Array, add_child_fn: Callable, is_cancelled: Callable, batch: DirectGeometryBatch = null) -> bool:
+## Only caller left is CellLoader's own single-active-cell/editor-preview
+## path (its @tool mode stays fully Node-based/Scene-dock-inspectable, per
+## phases/2/09's own scope decision) -- WorldStreamer's continuous
+## multi-tile streaming moved to phases/2/10-threaded-streaming-workers.md's
+## resolve_tile()/construct_from_resolved() split instead (checked out a
+## resolver context, resolved on a WorkerThreadPool task, committed on the
+## main thread), which is also why this no longer takes a DirectGeometryBatch
+## parameter -- WorldStreamer was the only caller that ever passed one.
+func stream_refs(parent: Node3D, refs: Array, add_child_fn: Callable, is_cancelled: Callable) -> bool:
 	var placed := 0
 	var placed_since_yield := 0
 	for p in refs:
-		var built_direct: bool = batch != null and registry.build_direct(p, batch)
-		if not built_direct:
-			var node := registry.build(p)
-			if node != null:
-				add_child_fn.call(parent, node)
-				placed += 1
-		else:
+		var node := registry.build(p)
+		if node != null:
+			add_child_fn.call(parent, node)
 			placed += 1
 		placed_since_yield += 1
 		if objects_per_frame > 0 and placed_since_yield >= objects_per_frame:

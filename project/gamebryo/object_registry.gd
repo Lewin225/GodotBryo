@@ -47,42 +47,6 @@ func build(placement: Dictionary) -> Node3D:
 		return _instantiate_visual(GamebryoVisual, placement, resolver)
 	return null
 
-## phases/2/09-direct-server-static-geometry.md: true for exactly the
-## placements build()'s own third tier handles -- no registered factory for
-## its base_type, not a marker, but has a resolvable model. Exposed
-## separately (not just inlined into build_direct() below) so a caller can
-## check "does this placement even need the RID path" without also paying
-## for NIF loading if it turns out not to.
-func is_structural_fallback(placement: Dictionary) -> bool:
-	if MarkerNode.is_marker_model(placement.get("model", "")):
-		return false
-	if _factories.has(String(placement.get("base_type", ""))):
-		return false
-	return String(placement.get("model", "")) != ""
-
-## The RID-based equivalent of build() for exactly the structural-fallback
-## tier (is_structural_fallback() above) -- everything else (interactive
-## registered types, markers) still goes through build() as a real Node;
-## this is deliberately narrower, not a general replacement. Returns false
-## if the placement isn't a structural-fallback candidate at all, or its
-## model fails to resolve/has no submeshes (mirrors _instantiate_visual()'s
-## own null-return case) -- either way, the caller should treat that as
-## "nothing to place", the same meaning build() returning null already has.
-func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
-	if not is_structural_fallback(placement):
-		return false
-	var model: String = placement.get("model", "")
-	var nif := resolver.load_nif(model)
-	if nif == null or nif.get_submesh_count() == 0:
-		return false
-	var geometry: Dictionary = resolver.resolve_geometry_entries(nif, model)
-	var pos: Vector3 = placement.get("position", Vector3.ZERO)
-	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
-	var scale: float = placement.get("scale", 1.0)
-	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
-	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"])
-	return true
-
 ## phases/2/10-threaded-streaming-workers.md, step 3: the resolve-only
 ## counterpart to build() -- same three-tier dispatch (marker / registered
 ## interactive type / structural fallback) and the same set of base_types
@@ -97,10 +61,9 @@ func build_direct(placement: Dictionary, batch: DirectGeometryBatch) -> bool:
 ## on a worker thread).
 ##
 ## The base_type -> shape mapping is intentionally duplicated here rather
-## than driven by _factories (already listed once in _register_defaults(),
-## and implicitly a second time in is_structural_fallback()'s own "not
-## registered" check) -- a third, bounded occurrence of a 6-case list that's
-## been stable since Phase 1, not a maintenance burden worth a shared-Callable
+## than driven by _factories (already listed once in _register_defaults())
+## -- a second, bounded occurrence of a 6-case list that's been stable since
+## Phase 1, not a maintenance burden worth a shared-Callable
 ## redesign that would also have to solve "how does a caller know a given
 ## Callable is safe to run off-thread."
 ##
@@ -270,7 +233,7 @@ func _construct_light(result: Dictionary) -> Node3D:
 
 ## SCOL parts always become real Node children, never routed through a
 ## DirectGeometryBatch -- matches _build_scol()'s existing behavior (which
-## recurses through build(), never build_direct()), not a new restriction
+## recurses through build(), always a Node), not a new restriction
 ## introduced here.
 func _construct_scol(result: Dictionary) -> Node3D:
 	var anchor := Node3D.new()
@@ -281,9 +244,10 @@ func _construct_scol(result: Dictionary) -> Node3D:
 	return _finalize(anchor, result["placement"])
 
 ## The RID-based construct path for a structural-fallback placement --
-## mirrors build_direct()'s own body exactly, just working from an
-## already-resolved `result` instead of doing the resolve work itself
-## (no load_nif()/resolve_geometry_entries() call here at all).
+## resolves the placement's own world transform and feeds `batch` directly,
+## working entirely from an already-resolved `result` (no load_nif()/
+## resolve_geometry_entries() call here at all -- that already happened
+## during resolve_placement()).
 func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	var placement: Dictionary = result["placement"]
 	var geometry: Dictionary = result.get("geometry", {})
