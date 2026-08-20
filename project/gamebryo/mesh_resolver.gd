@@ -68,6 +68,7 @@ var _bsa_order: Array[String] = []
 var _nif_cache := {} # model_path -> NifReader or null (null cached too, so a
 		# missing/unparseable NIF isn't re-attempted on every repeat placement)
 var _image_cache := {} # tex_path -> Image or null (decoded pixels only, no RID)
+var _lod_path_cache := {} # model_path -> lod companion path (String) or "" if none -- see lod_companion_path()
 
 # --- Final-build state (main-thread-only; lives solely on
 # GamebryoObjectRegistry's own single, non-pooled `resolver` instance) ---
@@ -125,6 +126,7 @@ func get_cache_stats() -> Dictionary:
 func merge_from(other: GamebryoMeshResolver) -> void:
 	_merge_dict(_nif_cache, other._nif_cache)
 	_merge_dict(_image_cache, other._image_cache)
+	_merge_dict(_lod_path_cache, other._lod_path_cache)
 
 static func _merge_dict(target: Dictionary, source: Dictionary) -> void:
 	for key in source:
@@ -209,6 +211,29 @@ func load_nif(model_path: String) -> NifReader:
 			nif = candidate
 	_nif_cache[model_path] = nif
 	return nif
+
+## phases/2/12-distant-object-lod.md, step 2: derives `model_path`'s own
+## `_lod.nif` companion path -- Bethesda's real paired-mesh convention
+## (confirmed against real data, see enginedocs/lod.md: e.g.
+## "architecture\barracks\barracks01.nif" has a real companion at
+## "architecture\barracks\barracks01_lod.nif", both present in the same
+## BSA), NOT a lookup table. Returns "" if `model_path` doesn't end in
+## ".nif" at all, or no companion actually resolves via the same BSA-
+## priority search everything else uses -- most models have no LOD
+## companion, that's the common, valid case, not an error. Cached by
+## model_path (worker-safe, same reasoning as _nif_cache/_image_cache --
+## only touches resolve_bytes(), no RS/PS3D).
+func lod_companion_path(model_path: String) -> String:
+	if _lod_path_cache.has(model_path):
+		return _lod_path_cache[model_path]
+	var result := ""
+	var lower := model_path.to_lower()
+	if lower.ends_with(".nif"):
+		var candidate := model_path.substr(0, model_path.length() - 4) + "_lod.nif"
+		if not resolve_bytes("meshes\\" + candidate).is_empty():
+			result = candidate
+	_lod_path_cache[model_path] = result
+	return result
 
 ## Decodes a texture's raw pixel data from its Data/-relative path (as
 ## stored in a NIF's texture slot, already including "textures\"). Returns
