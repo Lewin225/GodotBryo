@@ -32,6 +32,7 @@ task files.
 | 2.8 | World cell streaming (adjacent-cell load/unload, active-camera-driven) | [08-world-cell-streaming.md](08-world-cell-streaming.md) |
 | 2.9 | Direct RenderingServer/PhysicsServer3D geometry (kill per-node overhead for non-interactive placements) | [09-direct-server-static-geometry.md](09-direct-server-static-geometry.md) |
 | 2.10 | Threaded tile resolve (WorkerThreadPool) — 2.2's threading investigation, informed by a real measured frame-time budget | [10-threaded-streaming-workers.md](10-threaded-streaming-workers.md) |
+| 2.11 | Exterior cell lookup index — fix `find_exterior_cell()`'s real O(worldspace) scan cost using the ESM's own block/sub-block structure (found to be 81% of tile-streaming settle time) | [11-exterior-cell-lookup-index.md](11-exterior-cell-lookup-index.md) |
 
 ## Open issues (parked, not yet investigated)
 
