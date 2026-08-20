@@ -18,6 +18,11 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["position"] = Vector3(pl.position[0], pl.position[1], pl.position[2]);
 	d["rotation"] = Vector3(pl.rotation[0], pl.rotation[1], pl.rotation[2]);
 	d["scale"] = pl.scale;
+	// phases/2/12-distant-object-lod.md: real per-REFR gate for whether the
+	// game renders a distant-LOD variant of this placement at all -- always
+	// false for SCOL parts (get_scol_parts()), which have no REFR record of
+	// their own to carry the flag.
+	d["visible_when_distant"] = pl.visible_when_distant;
 	d["has_xtel"] = pl.has_xtel;
 	if (pl.has_xtel) {
 		d["dest_refr_form_id"] = static_cast<int64_t>(pl.dest_refr_form_id);
