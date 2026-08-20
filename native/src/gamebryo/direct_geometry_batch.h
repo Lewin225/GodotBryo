@@ -95,11 +95,16 @@ public:
 	void build();
 
 	// Rendering visibility + physics space attach/detach for the whole
-	// batch at once -- the RID equivalent of the Node-based streaming
-	// pattern's "hidden + collision-disabled until fully built, then
-	// flipped on atomically" (CellStreamBuilder.set_collision_disabled()).
-	// Only affects instances/bodies that already exist (i.e. call build()
-	// first for meshes to have any effect).
+	// batch at once -- hidden + collision-disabled until this batch is
+	// fully built, then flipped on atomically. phases/2/12-distant-object-
+	// lod.md's construct-step change made the Node-based streaming path
+	// reveal progressively (one object at a time, as it's add_child()'d)
+	// instead of also waiting for an atomic flip -- this batch deliberately
+	// still stays atomic, since a MultiMesh instance can't grow
+	// incrementally the way a Node tree can (see WorldStreamer's own
+	// _construct_results() doc comment for the full reasoning). Only
+	// affects instances/bodies that already exist (i.e. call build() first
+	// for meshes to have any effect).
 	void set_enabled(bool enabled);
 
 	// Explicit RID release -- nothing frees these automatically the way
