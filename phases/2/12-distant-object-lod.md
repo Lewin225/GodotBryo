@@ -178,14 +178,34 @@ tier (per the RID-based path description above).
    `add_object()`/`build()`), and call `instance_geometry_set_visibility_range()` on
    each tier's own instance RID once built. `_construct_direct()`
    (`GamebryoObjectRegistry`) passes the LOD geometry through when present.
-8. **The configurable crossover distance itself**: one exported/constant value,
-   plumbed to wherever step 6/7 need it (`WorldStreamer` and/or `CellLoader`) — explicit
-   about being a placeholder for the real per-category/size-proportional system
-   `enginedocs/lod.md` describes, not a final tuned value.
-9. **Measure the widened radius for real** — same headless benchmark methodology
-   already established this phase (2.2/2.10/2.11's own), at real `RADIUS_LOAD_DISTANT`
-   values, confirming the VWD early-exit actually keeps the added band cheap in practice
-   (not just in the standalone survey above) before trusting it in real play.
+8. **DONE.** The configurable crossover distance itself: `GamebryoMeshResolver` gained
+   real `lod_crossover_distance_m`/`_margin_m` instance fields (default 100.0/5.0,
+   matching steps 6/7's placeholder constants) plus a `set_lod_crossover()` setter
+   (mirrored on `DirectGeometryBatch` for the RID side); `WorldStreamer` and `CellLoader`
+   each gained matching `@export` values and call the setter once in `_ready()`, so
+   there's exactly one real, inspector-tunable number reaching both the Node-based and
+   RID-based paths, not two matching constants in two languages. Still a flat global
+   placeholder, not the real per-category/size-proportional system `enginedocs/lod.md`
+   describes.
+9. **DONE.** Measured the widened radius for real, same headless benchmark methodology
+   as 2.10/2.11 (`_diag_construct_cost.gd`), at `RADIUS_LOAD_FULL=1`/`RADIUS_LOAD_DISTANT=10`
+   (this task's own current tuning) — compared directly against the same radius with
+   `RADIUS_LOAD_FULL` temporarily forced to 10 (i.e. every tile fully resolved, the
+   pre-2.12-equivalent cost of streaming this same radius with no VWD gating at all),
+   then reverted:
+
+   | | VWD-gated (real config) | forced full-detail (pre-2.12-equivalent) |
+   |---|---|---|
+   | total settle wall time | 2534ms | 3020ms |
+   | main-thread construct SUM | 174ms | 461ms |
+   | resolve_wall SUM (pooled, parallel) | 572,182ms | 652,511ms |
+
+   Confirms the standalone survey's "cheap because of the VWD early-exit" claim through
+   the real pipeline: 16% faster to settle overall, and the main-thread construct step
+   (the part that actually risks a frame stutter, since it's not pooled across workers)
+   is 62% cheaper. `refcount_per_tile` was unchanged (avg 37.38 either way) — that
+   instrumentation counts resolved results per tile, not gated by this step, so an
+   unchanged value there is expected, not a discrepancy.
 10. **Verify in real play**: walk toward a known VWD-flagged large object (e.g. a real
     Barracks placement) from beyond the configured crossover distance, confirm the LOD
     mesh shows first and swaps to full detail at the right distance, no popping/z-fighting
@@ -195,35 +215,40 @@ tier (per the RID-based path description above).
 
 ## Deliverables
 
-- `ReferencePlacement`/`get_cell_references()` exposing VWD eligibility to GDScript.
+- `ReferencePlacement`/`get_cell_references()` exposing VWD eligibility to GDScript. DONE.
 - `WorldStreamer` streaming one widened radius (`RADIUS_LOAD_FULL`/`RADIUS_LOAD_DISTANT`),
   not a second parallel streaming system, with a cheap VWD-gated early-exit for the
-  outer band.
+  outer band. DONE.
 - LOD-companion resolution folded into the existing raw-resolve/final-build split
-  (2.10), no new thread-safety surface, no new cache layer.
+  (2.10), no new thread-safety surface, no new cache layer. DONE.
 - Both the Node-based and RID-based (`DirectGeometryBatch`) construct paths supporting
-  a second, distance-gated mesh tier.
-- One configurable global crossover distance (plus the two configurable radii above).
+  a second, distance-gated mesh tier. DONE.
+- One configurable global crossover distance (plus the two configurable radii above). DONE.
 
 ## Acceptance criteria
 
-- [ ] VWD flag correctly read for real placements already spot-checked in
+- [x] VWD flag correctly read for real placements already spot-checked in
       `enginedocs/lod.md` (Barracks true, QuonsetHut/CraneStatic false) — a permanent
-      regression test, not just a one-off confirmation.
+      regression test, not just a one-off confirmation. (`test_visible_when_distant.gd`)
 - [ ] A VWD-flagged placement with a resolvable `_lod.nif` shows the LOD mesh beyond the
       configured distance and the full mesh within it, in real play, with no visible
-      pop/gap at the crossover (hysteresis margin doing its job).
+      pop/gap at the crossover (hysteresis margin doing its job). Step 10, not done yet.
 - [ ] A placement with a `_lod.nif` companion but no VWD flag never shows the LOD
-      variant — confirmed directly, not assumed from the eligibility check alone.
-- [ ] The overwhelming majority of placements (no VWD flag, or no `_lod.nif` companion)
+      variant — confirmed directly, not assumed from the eligibility check alone. Step 10
+      real-play part not done yet (the resolve/construct-level version of this IS
+      confirmed — `test_lod_raw_geometry.gd`/`test_lod_construct_node.gd`/
+      `test_lod_direct_batch.gd` all verify QuonsetHut01 never gets an LOD tier).
+- [x] The overwhelming majority of placements (no VWD flag, or no `_lod.nif` companion)
       are completely unaffected — no visibility range set, no behavior change, confirmed
       via the existing regression suite passing unmodified.
-- [ ] Both the Node-based (`CellLoader` editor-preview) and RID-based (`WorldStreamer`/
-      `DirectGeometryBatch`) paths verified — not just one.
-- [ ] Real measured settle-time/frame-cost impact of widening the radius to
+- [x] Both the Node-based (`CellLoader` editor-preview) and RID-based (`WorldStreamer`/
+      `DirectGeometryBatch`) paths verified — not just one. (`test_lod_construct_node.gd`,
+      `test_lod_direct_batch.gd`)
+- [x] Real measured settle-time/frame-cost impact of widening the radius to
       `RADIUS_LOAD_DISTANT`, using the same headless benchmark methodology already
       established this phase — the standalone survey's "cheap because of the VWD
       early-exit" claim is confirmed through the real pipeline, not just argued from the
-      survey numbers alone.
-- [ ] Terrain LOD stays explicitly out of scope — no attempt to build a terrain-LOD
+      survey numbers alone. See step 9 above (2534ms vs 3020ms settle time, 174ms vs
+      461ms main-thread construct SUM).
+- [x] Terrain LOD stays explicitly out of scope — no attempt to build a terrain-LOD
       mechanism as part of this task.

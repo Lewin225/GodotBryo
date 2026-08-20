@@ -76,6 +76,18 @@ const CHECK_INTERVAL_SEC := 0.1
 ## CellLoader's own -- see CellStreamBuilder.
 @export var objects_per_frame: int = 1
 
+## phases/2/12-distant-object-lod.md, step 8: the real, inspector-tunable
+## crossover distance/margin -- threaded into both the Node-based path
+## (resolver.set_lod_crossover(), step 6) and the RID-based path
+## (batch.set_lod_crossover(), step 7) in _ready()/_stream_tile()/
+## _stream_persistent_root() below, so there's exactly one place that
+## actually decides this value at runtime, not two matching constants in
+## two languages. Still a flat global placeholder, not the real
+## per-category/size-proportional system enginedocs/lod.md describes -- see
+## that task doc's own explicit scoping.
+@export var lod_crossover_distance_m: float = 100.0
+@export var lod_crossover_margin_m: float = 5.0
+
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
@@ -106,6 +118,7 @@ func _ready() -> void:
 	if not esm.open(DATA_DIR + "FalloutNV.esm"):
 		push_error("WorldStreamer: could not open FalloutNV.esm")
 	resolver = GamebryoMeshResolver.new()
+	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
 	_pool = GamebryoResolverPool.new() # sized from OS.get_processor_count() -- see that class's own doc comment
@@ -280,7 +293,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# below, same guarantee the Node-based half is already held to.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M, GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M) # phases/2/12-distant-object-lod.md, step 7 -- same placeholder values the Node-based path uses, until step 8 unifies them properly
+	batch.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the real, single-sourced exported value (was a duplicated GDScript/C++ constant pair in step 7)
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -328,7 +341,7 @@ func _stream_persistent_root() -> void:
 
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M, GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M) # phases/2/12-distant-object-lod.md, step 7 -- same placeholder values the Node-based path uses, until step 8 unifies them properly
+	batch.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the real, single-sourced exported value (was a duplicated GDScript/C++ constant pair in step 7)
 	batch.set_enabled(false)
 
 	_in_flight_count += 1

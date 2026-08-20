@@ -114,15 +114,16 @@ public:
 	int get_batched_placement_count() const; // total placements folded into those instances, for the debug overlay
 	int get_lod_instance_count() const { return lod_instance_count_; } // phases/2/12-distant-object-lod.md, step 7: the LOD-tier subset of get_instance_count() specifically -- 0 for the overwhelming majority of batches (no VWD-eligible content), test-facing since RenderingServer has no getter for an instance's own visibility_range to verify against directly
 
-	// phases/2/12-distant-object-lod.md, step 7: called once per batch
-	// (WorldStreamer, right after init()) to set the crossover distance/
-	// margin used for every LOD-eligible MeshGroup this batch's build()
-	// creates. Defaults to the same placeholder values
-	// GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M/_MARGIN_M use for the
-	// Node-based path, so a caller that never calls this (e.g. a test
-	// constructing a batch directly) still gets a sane, real distance rather
-	// than an all-zero/always-hidden range -- not the same thing as step 8's
-	// own real single-source-of-truth plumbing, which still needs to happen.
+	// phases/2/12-distant-object-lod.md, step 7 (values now real per step 8):
+	// called once per batch (WorldStreamer, right after init()) to set the
+	// crossover distance/margin used for every LOD-eligible MeshGroup this
+	// batch's build() creates. Sourced from WorldStreamer's own
+	// @export lod_crossover_distance_m/_margin_m -- the same single real
+	// value GamebryoMeshResolver.set_lod_crossover() (the Node-based path's
+	// equivalent) is also sourced from, not two independently-tuned numbers.
+	// Defaults to a sane, real distance (matching GamebryoMeshResolver's own
+	// default) if never called at all, e.g. a test constructing a batch
+	// directly.
 	void set_lod_crossover(float distance_m, float margin_m);
 
 private:
@@ -146,8 +147,8 @@ private:
 	RID space_;
 	bool initialized_ = false;
 	bool enabled_ = true;
-	float lod_crossover_distance_m_ = 100.0f; // must match GamebryoMeshResolver.LOD_CROSSOVER_DISTANCE_M until step 8 unifies them
-	float lod_crossover_margin_m_ = 5.0f; // must match GamebryoMeshResolver.LOD_CROSSOVER_MARGIN_M until step 8 unifies them
+	float lod_crossover_distance_m_ = 100.0f; // matches GamebryoMeshResolver's own default (step 8) -- only relevant if a caller never calls set_lod_crossover(); WorldStreamer/CellLoader always do, sourced from their own single real @export value
+	float lod_crossover_margin_m_ = 5.0f; // see lod_crossover_distance_m_ above
 
 	std::vector<MeshGroup> pending_mesh_groups_; // accumulated by add_object(), consumed and cleared by build()
 	std::vector<LodMeshGroup> pending_lod_mesh_groups_; // accumulated by add_object()'s own lod_mesh_entries, consumed and cleared by build()
