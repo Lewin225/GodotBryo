@@ -14,6 +14,16 @@ namespace esm {
 // compressed, prefixed with a 4-byte little-endian uncompressed size".
 constexpr uint32_t kRecordFlagCompressed = 0x00040000;
 
+// REFR record flag ("Visible When Distant" in the CK) -- confirmed against
+// real WastelandNV data, not just modding-community documentation
+// (phases/2/12-distant-object-lod.md / enginedocs/lod.md): some real
+// placements (Barracks01/02) have this bit set, others whose base model
+// has an equally real _lod.nif companion (NVNellisQuonsetHut01/02,
+// CraneStatic01) do not -- the actual per-placement gate for whether the
+// game renders a distant-LOD variant of it at all, independent of whether
+// one happens to exist on disk.
+constexpr uint32_t kRecordFlagVisibleWhenDistant = 0x00008000;
+
 // Subrecord size field is 16-bit; a size of 0xFFFF means the real size is
 // carried in a preceding 4-byte "XXXX" subrecord instead (for subrecords
 // larger than 65535 bytes, e.g. some big VMAD/large model lists).
@@ -80,6 +90,13 @@ struct ReferencePlacement {
 	float position[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;
+
+	// phases/2/12-distant-object-lod.md: this REFR's own "Visible When
+	// Distant" flag (kRecordFlagVisibleWhenDistant), decoded here rather
+	// than exposing the raw flags word -- this is the only bit any current
+	// caller needs, and a decoded bool matches this struct's own existing
+	// style (has_xtel below) better than a raw bitmask would.
+	bool visible_when_distant = false;
 
 	// XTEL, present on teleporting doors (phases/2/07-runtime-cell-loader.md).
 	// Confirmed against real data: 32 bytes — dest REFR FormID (4), dest

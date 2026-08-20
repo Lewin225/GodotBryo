@@ -494,6 +494,7 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		std::memcpy(pl.position, position, sizeof(position));
 		std::memcpy(pl.rotation, rotation, sizeof(rotation));
 		pl.scale = scale;
+		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
 		pl.has_xtel = has_xtel;
 		pl.dest_refr_form_id = dest_refr_form_id;
 		std::memcpy(pl.dest_position, dest_position, sizeof(dest_position));
