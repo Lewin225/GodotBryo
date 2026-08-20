@@ -44,8 +44,8 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 ## -- these are starting values to get the mechanism correct, not measured
 ## ones (though `RADIUS_LOAD_DISTANT`'s own real content density at this
 ## specific value IS measured, see phases/2/12's own survey).
-const RADIUS_LOAD_FULL := 1
-const RADIUS_LOAD_DISTANT := 10
+const RADIUS_LOAD_FULL := 3
+const RADIUS_LOAD_DISTANT := 20
 
 ## Hysteresis for the full/distant boundary, same reasoning as RADIUS_UNLOAD
 ## below but one tier in: a full-detail tile isn't downgraded back to
@@ -63,7 +63,7 @@ const RADIUS_UNLOAD_FULL := RADIUS_LOAD_FULL + 3
 ## check. Must stay > RADIUS_LOAD_DISTANT (the outer, not the full-detail,
 ## radius -- a distant-band tile still counts as resident and needs the
 ## same hysteresis margin a full-detail one does).
-const RADIUS_UNLOAD := 13
+const RADIUS_UNLOAD := 23
 
 ## How often (seconds) to re-check the resident set against the camera's
 ## current position -- continuous, not boundary-cross-triggered, but a
@@ -72,9 +72,16 @@ const RADIUS_UNLOAD := 13
 ## never open up before a tile has time to load in with margin).
 const CHECK_INTERVAL_SEC := 0.1
 
-## How many REFRs to place per frame before yielding, same meaning as
-## CellLoader's own -- see CellStreamBuilder.
-@export var objects_per_frame: int = 1
+## How many REFRs to construct (build Resources for + add_child()/
+## batch.add_object()) per frame before yielding -- see _construct_results().
+## Previously plumbed only to `_builder` (which WorldStreamer only ever
+## calls build_terrain() on, never stream_refs()), so this field had no
+## real effect on WorldStreamer's own behavior until this step actually
+## used it for the construct loop. Default raised from 1 (a leftover from
+## when this field did nothing here) to 20, matching CellLoader's own
+## default -- at 1, a dense tile (real measured tiles run up to ~450
+## placements) would take several seconds to finish visibly populating.
+@export var objects_per_frame: int = 20
 
 ## phases/2/12-distant-object-lod.md, step 8: the real, inspector-tunable
 ## crossover distance/margin -- threaded into both the Node-based path
@@ -261,7 +268,6 @@ func _start_tile_load(coord: Vector2i, full_detail: bool = true) -> void:
 func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_detail: bool) -> void:
 	var tile_root := Node3D.new()
 	tile_root.name = "Tile_%d_%d" % [coord.x, coord.y]
-	tile_root.visible = false # hidden and physically inert until fully streamed in
 	add_child(tile_root)
 
 	var refr_root := Node3D.new()
@@ -277,7 +283,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	var terrain := _builder.build_terrain(cell_form_id)
 	diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
 	if terrain != null:
-		CellStreamBuilder.set_collision_disabled(terrain, true)
+		CellStreamBuilder.set_collision_disabled(terrain, false) # visible+collidable immediately -- see _construct_results()'s own doc comment on progressive reveal
 		terrain_root.add_child(terrain)
 
 	# Deliberately NOT get_persistent_refs_for_cell() here -- persistent
@@ -287,10 +293,13 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	var refs: Array = esm.get_cell_references(cell_form_id)
 
 	# phases/2/09-direct-server-static-geometry.md: this tile's own RID batch
-	# for non-interactive placements. Starts disabled -- the RID equivalent
-	# of tile_root.visible=false/collision-disabled above, so nothing in the
-	# batch is visible/collidable until the whole tile flips on atomically
-	# below, same guarantee the Node-based half is already held to.
+	# for non-interactive placements. Starts disabled -- deliberately still
+	# atomic (unlike the Node-based tier below, phases/2/12's own progressive-
+	# reveal change) since DirectGeometryBatch groups MultiMesh instances by
+	# mesh identity and allocates each one once at a known final size; the
+	# expensive per-object work (mesh/material Resource construction) still
+	# happens spread across frames inside the construct loop below, only the
+	# final reveal (confirmed cheap, diagnostic_batch_build_ms) stays bundled.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
 	batch.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the real, single-sourced exported value (was a duplicated GDScript/C++ constant pair in step 7)
@@ -300,26 +309,38 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	var results = await _resolve_refs_threaded(refs, my_generation, full_detail)
 	diagnostic_resolve_wall_ms.append((Time.get_ticks_usec() - _rt0) / 1000.0) # TEMP DIAGNOSTIC
 
-	_pending.erase(coord)
-	_in_flight_count -= 1
 	if results == null or my_generation != _generation:
+		_pending.erase(coord)
+		_in_flight_count -= 1
 		tile_root.free() # superseded/deactivated -- never was resident, safe to free
 		batch.free_all() # RIDs aren't owned by tile_root, must be freed explicitly too
 		_maybe_emit_settled()
 		return
 
-	var _t0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC -- construct-step timing
-	_construct_results(refr_root, results, batch)
-	var _t1 := Time.get_ticks_usec()
+	# `coord` deliberately stays in _pending through the whole (possibly
+	# multi-frame) construct phase below, not just the resolve phase above --
+	# _check_streaming() only skips starting a new load for a coord that's
+	# resident OR pending; erasing it early (as this used to, right after
+	# resolve) would open a window where a coord is in neither dict and a
+	# duplicate load could start for the same tile.
+	var construct_result := await _construct_results(refr_root, results, batch, my_generation)
+	diagnostic_construct_ms.append(construct_result["active_ms"]) # TEMP DIAGNOSTIC -- active construct time only, excludes the awaited frame gaps between batches
 
-	CellStreamBuilder.set_collision_disabled(tile_root, false)
-	tile_root.visible = true
+	if not construct_result["ok"]:
+		_pending.erase(coord)
+		_in_flight_count -= 1
+		tile_root.free() # frees every partially-added child too
+		batch.free_all() # covers whatever add_object() calls already ran (see DirectGeometryBatch::free_all())
+		_maybe_emit_settled()
+		return
+
+	var _t2 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
 	batch.build() # creates the actual (batched, one-per-distinct-mesh) RenderingServer instances -- must happen before set_enabled() has anything to enable
 	batch.set_enabled(true)
-	var _t2 := Time.get_ticks_usec()
-	diagnostic_construct_ms.append((_t1 - _t0) / 1000.0) # TEMP DIAGNOSTIC
-	diagnostic_batch_build_ms.append((_t2 - _t1) / 1000.0) # TEMP DIAGNOSTIC
+	diagnostic_batch_build_ms.append((Time.get_ticks_usec() - _t2) / 1000.0) # TEMP DIAGNOSTIC
 	diagnostic_refcounts.append(results.size()) # TEMP DIAGNOSTIC
+	_pending.erase(coord)
+	_in_flight_count -= 1
 	_resident[coord] = tile_root
 	_resident_batches[coord] = batch
 	_resident_full_detail[coord] = full_detail
@@ -329,7 +350,6 @@ func _stream_persistent_root() -> void:
 	var my_generation := _generation
 	var root := Node3D.new()
 	root.name = "PersistentRoot"
-	root.visible = false
 	add_child(root)
 
 	var refr_root := Node3D.new()
@@ -347,19 +367,24 @@ func _stream_persistent_root() -> void:
 	_in_flight_count += 1
 	var results = await _resolve_refs_threaded(refs, my_generation)
 
-	_in_flight_count -= 1
 	if results == null or my_generation != _generation:
+		_in_flight_count -= 1
 		root.free() # deactivated mid-stream -- never was live, safe to free
 		batch.free_all()
 		_maybe_emit_settled()
 		return
 
-	_construct_results(refr_root, results, batch)
+	var construct_result := await _construct_results(refr_root, results, batch, my_generation)
+	if not construct_result["ok"]:
+		_in_flight_count -= 1
+		root.free()
+		batch.free_all()
+		_maybe_emit_settled()
+		return
 
-	CellStreamBuilder.set_collision_disabled(root, false)
-	root.visible = true
 	batch.build()
 	batch.set_enabled(true)
+	_in_flight_count -= 1
 	_persistent_root = root
 	_persistent_batch = batch
 	_maybe_emit_settled()
@@ -404,12 +429,55 @@ func _resolve_refs_threaded(refs: Array, my_generation: int, full_detail: bool =
 ## for the structural-fallback case) from each already-resolved result and
 ## adds it under `parent`. No I/O left by this point -- see
 ## GamebryoObjectRegistry.construct_from_resolved()'s own doc comment.
-func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBatch) -> void:
+##
+## Spread across multiple frames (`objects_per_frame` results per frame
+## before yielding), not built synchronously in one frame -- the mesh/
+## collision Resource construction inside construct_from_resolved() is the
+## real expensive per-object work (confirmed via diagnostic_construct_ms's
+## own real outliers, up to ~18ms for one dense tile before this change),
+## and yielding periodically divides that cost across frames instead of
+## paying it all at once in a single frame. Node-based results become
+## visible (and collidable) immediately as they're add_child()'d -- no more
+## hidden-until-the-whole-tile-is-done -- per explicit user direction:
+## meshes appearing one by one reads as less jarring than an entire tile
+## popping in at once. `batch`'s own RID-batched results are NOT revealed
+## progressively -- the caller still only flips them visible via
+## batch.build()/set_enabled(true) once this whole function returns
+## successfully; DirectGeometryBatch groups MultiMesh instances by mesh
+## identity and allocates each once at a known final size, so it can't grow
+## incrementally the way a Node tree can. The expensive part (mesh/material
+## building, inside construct_from_resolved()) still happens spread across
+## frames either way; only the cheap final RenderingServer reveal itself
+## (confirmed ~0.01-0.03ms average, diagnostic_batch_build_ms) stays bundled.
+##
+## Returns { "ok": bool, "active_ms": float }: `ok` is false if
+## `my_generation` went stale partway through (checked once per yield, not
+## per object -- checking more often than a real yield boundary can't
+## change the answer) -- the caller must discard/free everything already
+## added, same as an equivalent pre-construct cancellation. `active_ms` is
+## the real active construct time only, excluding the awaited frame gaps
+## between batches -- what diagnostic_construct_ms actually wants to know,
+## not this function's own wall-clock span (which would include however
+## many real frames it happened to take).
+func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBatch, my_generation: int) -> Dictionary:
+	var per_frame: int = max(objects_per_frame, 1)
+	var active_us := 0
+	var seg_start := Time.get_ticks_usec()
+	var i := 0
 	for r in results:
 		var node := registry.construct_from_resolved(r, batch)
 		if node != null:
 			parent.add_child(node)
-			CellStreamBuilder.set_collision_disabled(node, true)
+			CellStreamBuilder.set_collision_disabled(node, false)
+		i += 1
+		if i % per_frame == 0:
+			active_us += Time.get_ticks_usec() - seg_start
+			await get_tree().process_frame
+			if my_generation != _generation:
+				return { "ok": false, "active_ms": active_us / 1000.0 }
+			seg_start = Time.get_ticks_usec()
+	active_us += Time.get_ticks_usec() - seg_start
+	return { "ok": true, "active_ms": active_us / 1000.0 }
 
 func _maybe_emit_settled() -> void:
 	if _in_flight_count == 0:
