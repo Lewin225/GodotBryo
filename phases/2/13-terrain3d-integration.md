@@ -4,29 +4,36 @@ Parent: [Phase 2](README.md)
 
 ## Status
 
-Started as design/research only; implementation sequence now underway. Steps 1–2 of
-the "Proposed implementation sequence" below are done and real-data-verified
-(addon vendored and loading, real-cell heightmap import round-trips bit-exact). Steps
-3 onward (the real-data census work informing texture/grass design) were also
-completed out of order, before formal implementation began — see "Real-data
-findings." Remaining steps (control-map painting, collision, `WorldStreamer`
-integration, grass) are not yet started. Several sections below still list open
-questions that needed (and got) real-data answers before their part of
-implementation could start — see "Open questions requiring real-data research."
+**Implementation underway and live-play-tested, real bugs still being found and
+fixed as it goes — not a finished feature.** Steps 1, 2, 4, 5, and most of 6 in the
+"Proposed implementation sequence" below are done, each verified against real data
+(not just passing an isolated test): the addon is vendored, built, and wired into
+`WorldStreamer` behind an opt-in `use_terrain3d` toggle; real per-cell height/texture
+import is verified bit-exact against `GamebryoTerrainBuilder`'s own placement; real
+multi-layer texture painting, collision, and culling all work in actual play. A
+running list of real bugs found this way (each with root cause, fix, and
+verification) lives inline in the "Real-data findings" section below, in
+chronological order — read that section for the full, current picture rather than
+trusting summary bullets elsewhere in this doc that predate later corrections (this
+file was written progressively as a design doc *and* an implementation log, so
+earlier conclusions sometimes get superseded by later real-play findings — each
+correction says so explicitly where it happens, e.g. `region_size` below).
 
-**Update:** all three of those open questions (ATXT/VTXT layer counts, the LTEX/TXST
-texture budget, and whether FNV encodes grass data anywhere) have since been resolved
-against real data via a standalone research tool,
-`native/tools/terrain_census.cpp` — see "Real-data findings" below and the updated
-compatibility table/open-questions entries. The texture-budget question took two
-passes to get right: an initial per-region check at `region_size = 256` looked
-sufficient but wasn't (a single resident region fit under 32, but realistic
-concurrent-neighbor residency didn't) — re-measuring across three region sizes found
-`region_size = 64` closes it completely, backed by an LRU eviction pool + reserved
-"missing texture" fallback slot as a safety net for cases outside the measured
-approximation. The tool is a one-off, read-only research artifact (kept in the repo
-per this project's established `native/tools/`-as-standalone-C++-CLI convention, same
-as `dump_object`), not part of the GDExtension build.
+**Current known-good configuration**: `vertex_spacing = 128/70`, **`region_size =
+256`** (not the `64` earlier sections of this doc conclude — corrected after a real
+coverage bug, see "`region_size` corrected to 256" further down), the opacity-priority
+`ATXT`/`VTXT` reduction, and the pink-fallback texture pool (still append-only, no
+real LRU eviction yet — see "Still not done" near the end of "Real-data findings").
+Grass is designed but not implemented. Real LRU eviction, region
+residency/removal-as-the-camera-moves policy, and the texture-ID bit-width widening
+(discussed, scoped, not started) are the known next real gaps.
+
+The three open questions this doc originally blocked implementation on (`ATXT`/`VTXT`
+layer counts, the `LTEX`/`TXST` texture budget, and whether FNV encodes grass data at
+all) were resolved early via a standalone research tool,
+`native/tools/terrain_census.cpp` (kept in the repo per this project's established
+`native/tools/`-as-standalone-C++-CLI convention, same as `dump_object`, not part of
+the GDExtension build) — see "Real-data findings" below.
 
 ## Goal
 
@@ -131,7 +138,7 @@ questions.
 | Cell = 32×32 grid intervals | Region = `region_size`×`region_size` pixels | **Good if `region_size` is a whole multiple of 32** (see below) |
 | `BTXT` base texture per quadrant (17×17 verts) | Control map base texture ID per pixel | **Good** — strictly finer-grained than our current per-quadrant flat assignment (quadrant-uniform BTXT can be written as a uniform block of control-map pixels) |
 | `ATXT`/`VTXT` additional layers, per-vertex alpha, N layers/quadrant | Control map: exactly 2 layers (base+overlay) blended per pixel, one scalar weight | **Gap, now measured.** Real census (see below): 85% of quadrants use 0 additional layers (`BTXT` alone fits perfectly), but a real tail goes up to 6 additional `ATXT` layers in a single quadrant (7 including `BTXT`'s base). A reduction heuristic is genuinely needed for that tail, not hypothetically. |
-| Global set of `LTEX`/`TXST` ground textures used across the whole worldspace | Per-region texture *list*, capped at 32 slots | **Real gap, closed by real data.** 94 distinct textures game-wide, 80 in `WastelandNV` alone. At `region_size = 256` a realistic concurrently-resident neighborhood (a region + its 8 neighbors) exceeds 32 in 45% of the worldspace's regions, worst case 49 — but at `region_size = 64`, that same realistic check **never exceeds 32 anywhere in the real worldspace** (worst case 24). Chosen design: `region_size = 64` + a 31-slot LRU eviction pool (safety net, not load-bearing per the numbers) + a reserved pink "missing texture" fallback slot for genuine overflow. See below. |
+| Global set of `LTEX`/`TXST` ground textures used across the whole worldspace | Per-region texture *list*, capped at 32 slots | **Real gap, partially closed.** 94 distinct textures game-wide, 80 in `WastelandNV` alone. `region_size = 64` would have kept realistic concurrent-neighborhood need under 32 everywhere (worst case 24) — but `region_size` was later corrected to **256** (see "`region_size` corrected to 256" below — a *different*, higher-priority real constraint: Terrain3D's fixed 32×32 region map doesn't fit the real worldspace at `64` at all). At `256`, realistic concurrent-neighborhood need reaches a real worst case of **49**, exceeding the 31-slot pool. Current design: pool + reserved pink "missing texture" fallback slot degrades safely for the overflow case; real LRU eviction is not yet built and is now more load-bearing than originally scoped. |
 | Per-cell terrain load/unload (current `WorldStreamer` granularity) | Per-region load/unload (regions span many cells) | **Architecture mismatch** — see "Streaming integration" below |
 | No terrain LOD (current system) | Clipmap LOD, built-in | **Pure win**, no FNV-side data needed — Terrain3D generates its own LOD from the height data, unlike 2.12's object LOD which needed Bethesda's own `_lod.nif` companion meshes |
 | Grass/scatter | Instancer, editor-painted or `add_transforms()`-driven | **Real match, now confirmed.** `LTEX.GNAM` is a real FormID field referencing a `GRAS` record (52/89 base-game `LTEX` records have one set); `GRAS.DATA` carries real density/slope/water/jitter/wave parameters and `GRAS.MODL` a real grass mesh path — see below. This maps directly onto per-texture-ID procedural scattering via `Terrain3DInstancer.add_transforms()`, keyed off the control map's own base/overlay texture ID — i.e. the same data-driven design the original engine used, not a new one. |
@@ -389,15 +396,20 @@ decode-order bugs, both only found by comparing against real REFR/physics data):
    "Real-data findings" above: 85% of quadrants need no reduction at all; worst real
    case is 7 simultaneous layers at one point, needing a defined (not yet
    implemented) priority-by-opacity reduction to Terrain3D's 2.
-2. ~~Real distinct-`LTEX`/`TXST` count across the whole worldspace.~~ **Fully
-   resolved** — see "Real-data findings" above: 94 globally, 80 in `WastelandNV`
-   alone, but scoped to realistic concurrent residency (a region + its 8 neighbors)
-   at `region_size = 64`, the real measured max is 24 — never exceeds Terrain3D's
-   32-slot budget anywhere in the real worldspace. Design chosen: `region_size = 64`
-   + a 31-slot LRU eviction pool as a safety net (not load-bearing per the real
-   numbers) + a reserved pink "missing texture" fallback slot for genuine overflow.
-   Remaining work is implementation, not further open design questions — the LRU
-   pool's real runtime cost still needs profiling (folds into open question 6).
+2. ~~Real distinct-`LTEX`/`TXST` count across the whole worldspace.~~ **Resolved,
+   then the chosen `region_size` itself was superseded by a later, higher-priority
+   real constraint — see "`region_size` corrected to 256" further down.** The
+   texture-budget research below concluded `region_size = 64` at the time (real
+   measured max concurrent-neighborhood need: 24, comfortably under the 31-slot
+   budget). That reasoning is still real and correct on its own terms — but a
+   later real-play bug revealed `region_size = 64` doesn't fit the real
+   `WastelandNV` worldspace at all (Terrain3D's region map is a hard-coded 32×32
+   grid, and the real worldspace needs `region_size ≥ 256` to fit inside it — see
+   below), so the final chosen value is `256`, not `64`. At `256`, the real
+   worst-case concurrent-neighborhood need is 49 (still measured, see below), which
+   the 31-slot pool cannot fully cover on its own — the LRU eviction /
+   pink-fallback pieces of this design are accordingly more load-bearing than
+   originally scoped, not just a safety net.
 3. ~~Does FNV encode grass/scatter placement anywhere in the ESM at all?~~
    **Answered** — see "Real-data findings" above: yes, `LTEX.GNAM` → `GRAS` with real
    density/slope/water/jitter data and a real mesh path. Design conclusion reached
@@ -797,39 +809,54 @@ granularity rather than one large change:
        down from the ~27ms/cell the live profiler showed after round 1 alone,
        with the real, unavoidable full-rebuild cost still paid correctly for
        cells that actually expand into new territory.
-   - **A new, real, significant, NOT-yet-addressed finding surfaced while
-     verifying the stutter fix's scaling behavior**: `Terrain3DData`'s region
-     map is a **hard-coded, fixed 32×32 grid**
-     (`REGION_MAP_SIZE = 32`, `terrain_3d_data.h`) — region locations are
+   - **`region_size` corrected to 256 — the region-map-cap finding, resolved with
+     real data.** `Terrain3DData`'s region map is a **hard-coded, fixed 32×32
+     grid** (`REGION_MAP_SIZE = 32`, `terrain_3d_data.h`) — region locations are
      bounds-checked against `-16..15` on each axis and rejected outside that
-     range (confirmed via real errors hit during the scaling test above, once
-     it walked far enough from the origin). At `region_size = 64` (this
-     design's chosen value), that caps real coverage at **32 × 64 = 2048
-     vertex-intervals across, i.e. only a 64×64 real cell area** — the real
-     scaling test above hit this bound at just ~48 cells from the origin in
-     one direction. `WastelandNV` is real and known to be far larger than a
-     64×64-cell area (see "Real-data findings" above — 16,388 `LAND` cells
-     total, spanning a real coordinate range this test already exceeded with
-     a small fraction of that). **This is a genuine architectural tension, not
-     yet resolved**: the texture-budget finding specifically wanted a
-     *smaller* `region_size` (64, not 256+) to keep per-region/per-neighborhood
-     texture counts under the 32-slot budget, but `REGION_MAP_SIZE` being fixed
-     means a smaller `region_size` also shrinks total representable world
-     area — the two constraints pull in opposite directions. Real options,
-     none vetted: (1) since `native/terrain3d` is a vendored submodule we
-     already build from source (not a consumed prebuilt binary),
-     `REGION_MAP_SIZE` could be patched upward directly — real, available,
-     but unknown GPU/memory cost at a much larger value, and unknown whether
-     other addon internals assume 32 elsewhere; (2) some kind of region-grid
-     rebasing/windowing scheme (only ever representing a bounded area around
-     the player, evicting/rebasing distant regions) — real work, ties directly
-     into the still-not-built region-residency-removal policy below; (3)
-     accept a bounded real play area for now and treat full-map coverage as a
-     later problem. **Not investigated further this pass** — flagging clearly
-     rather than picking an approach without discussion, since this affects
-     the core region-size decision the rest of this design's texture-budget
-     conclusions are built on.
-   - **Still not done**: real LRU texture-slot eviction (see directly above —
+     range. At `region_size = 64` (this design's original choice), that caps
+     real coverage at only a **64×64 real cell area** — hit directly in real
+     play (a user report: "No active region found" errors and real lag for
+     cells far from the starting area, matching this exactly) and independently
+     in a scaling test that walked far enough from the origin. Resolved by
+     scanning the **real, whole `WastelandNV` worldspace** (not assumed):
+     `find_exterior_cell()` across the full plausible grid range found real
+     cells spanning `grid_x`/`grid_y` both in **`[-65, 64]`** — 130 cells
+     across. Checked exact region-map coverage per `region_size` against this
+     real extent: `128` falls just short (computed region range `[-17, 16]`
+     vs. the allowed `[-16, 15]`); **`256` is the smallest valid `region_size`
+     that actually fits** (computed region range `[-9, 8]`, comfortable
+     margin). This also happens to be a `region_size` the texture-budget
+     research already measured (real worst-case concurrent-neighborhood need:
+     49) — real, non-zero tension with the 31-slot pool (unlike the original
+     `64` choice, which fit with margin), but the pool's existing pink-fallback
+     design degrades safely rather than breaking, so this doesn't block the
+     coverage fix. Changed `Terrain3DBridge.REGION_SIZE` from `64` to `256`.
+     Verified three ways against real data: (1) the two previously-failing far
+     cells now import successfully with no region errors; (2) a scan of real
+     cells across the worldspace's full extent (9 sample points per axis, `53`
+     real cells found) shows zero region-coverage failures — the only 3
+     `import_cell()` "failures" found are cells with no real `LAND` record at
+     all, a genuine, expected case, confirmed directly (`get_land_data()`
+     empty), not a region-bounds issue; (3) the existing placement
+     cross-check and full test suite both re-run clean, and the streaming
+     scaling test shows no cost regression from the larger region size (fewer,
+     bigger regions cover the same explored area). **Real bit-width widening
+     of Terrain3D's texture-ID encoding (discussed but not started)**: would
+     raise the 31-slot budget to comfortably exceed the real 49-texture need at
+     `region_size = 256`, but investigation found this is a real repacking of
+     the entire 32-bit control-map format, not just "add one bit" — base and
+     overlay's 5-bit fields sit with zero gap against the 8-bit blend field
+     (bits 14–31 fully packed, no room to grow adjacent fields in place), and
+     the identical bit layout is separately hardcoded in the GPU shader
+     (`main.glsl`'s `DECODE_BASE`/`DECODE_OVER` macros plus a second vectorized
+     copy, `auto_shader.glsl`'s encoder, `debug_views.glsl`'s decoder) — a real,
+     doable patch since this addon is vendored and built from source, but
+     substantial (6+ call sites across C++ and GLSL, all needing to move
+     together) and deliberately scoped as a separate follow-up, not bundled
+     with the urgent coverage fix.
+   - **Still not done**: real LRU texture-slot eviction (more load-bearing now
+     that `region_size = 256`'s real 49-texture worst case exceeds the 31-slot
+     pool, not just a safety net — see directly above);
      confirmed necessary now, not speculative); region create/keep-resident/
      eventual-removal policy *within* one active worldspace session as the
      camera moves (currently every imported cell's data stays resident for the
