@@ -289,6 +289,17 @@ func _check_streaming() -> void:
 	var center: Variant = _current_grid_coord()
 	if center == null:
 		return
+	if _terrain3d != null:
+		# Real bug found in real play: Terrain3D's own clipmap LOD update
+		# (_grab_camera(), internal to the addon) needs a real camera reference
+		# to position its rings -- never set anywhere in this file before, so it
+		# silently failed ("Cannot find the active camera") and its own
+		# _physics_process() stopped updating entirely, causing angle-dependent
+		# culling that looked like broken vertex data but wasn't. Kept in sync
+		# here (not just once in activate()) since the active camera can
+		# legitimately change (free-fly viewer swaps, etc) -- same cadence
+		# _current_grid_coord() above already re-queries it at.
+		_terrain3d.set_camera(_active_camera())
 	_current_cell_form_id_cache = _tile_cell_form_id(center) # cached here, on this already-throttled cycle, instead of get_current_cell_form_id() re-deriving it from a fresh find_exterior_cell() scan on every single call -- caught directly: that scan alone costs ~41ms (a full linear walk over WastelandNV's 185,720 child records), and game.gd's own _process() was calling get_current_cell_form_id() completely unthrottled, every frame, while active. Real, severe, unrelated to rendering at all -- explained the entire flat ~30fps ceiling this whole investigation was chasing.
 
 	# The dx/dy loop bounds are still a square -- a cheap-to-enumerate

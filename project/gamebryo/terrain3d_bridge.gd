@@ -174,6 +174,22 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# it is worth the complexity, is exactly the open profiling question
 	# phases/2/13-terrain3d-integration.md's implementation step 6 still has.
 	terrain.data.update_maps()
+
+	# Real bug found in real play (angle-dependent culling -- terrain only
+	# visible looking down more than ~40 degrees, distant terrain less affected):
+	# Terrain3DData::update_master_height() (terrain_3d_data.h) exists to keep
+	# the terrain's own cached height range current as pixels are written, but
+	# is NEVER actually called by set_height()/set_pixel() -- confirmed by
+	# reading the source, not assumed; it's genuinely dead code in the addon.
+	# A freshly-created blank region's height range defaults near 0, and
+	# without this call it never gets recalculated from our real writes, so the
+	# mesh's own culling AABB (built from that stale [0,0]-ish range instead of
+	# the real ~110-125m data) doesn't cover where the real, shader-displaced
+	# geometry actually ends up -- exactly explains angle-dependent culling.
+	# calc_height_range(true) forces a real recalculation from the actual pixel
+	# data. Called once per cell here, same batching caveat as update_maps()
+	# above.
+	terrain.data.calc_height_range(true)
 	return true
 
 ## Real bug found via a 9x9-cell real-data verification pass (many cells resident
