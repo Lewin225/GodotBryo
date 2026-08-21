@@ -235,25 +235,49 @@ func lod_companion_path(model_path: String) -> String:
 	_lod_path_cache[model_path] = result
 	return result
 
+## Black-background decal fix (see memory: black-background-decal-findings):
+## a DXT1 (BC1) texture's 1-bit punch-through alpha survives CPU decode but
+## is LOST on GPU upload (confirmed with a real-GPU render census -- a
+## correctly-scissored DXT1 quad rendered fully opaque), so a submesh whose
+## NiAlphaProperty actually needs that alpha gets its diffuse decompressed
+## to RGBA8 on the worker thread instead. Cached under a distinct "#rgba"
+## variant key so the same texture used elsewhere WITHOUT an alpha property
+## keeps its compressed (8x smaller VRAM/upload) form -- first-upload-wins
+## collisions between the two uses would silently reintroduce the bug.
+static func _tex_variant_key(tex_path: String, alpha_safe: bool) -> String:
+	return tex_path + "#rgba" if (alpha_safe and tex_path != "") else tex_path
+
 ## Decodes a texture's raw pixel data from its Data/-relative path (as
 ## stored in a NIF's texture slot, already including "textures\"). Returns
 ## an Image (plain pixel buffer, no RID -- confirmed safe to construct off
-## the main thread) or null if not found/undecodable. Cached by tex_path.
-## Worker-safe. Deliberately stops at Image, NOT ImageTexture -- see this
-## class's own doc comment for why the GPU-upload step has to wait for the
-## main thread.
-func _load_image(tex_path: String) -> Image:
+## the main thread) or null if not found/undecodable. Cached by tex_path
+## (plus the "#rgba" variant suffix when `alpha_safe` -- see
+## _tex_variant_key()). Worker-safe -- decompress()/generate_mipmaps() are
+## plain CPU Image ops, no RS involvement. Deliberately stops at Image, NOT
+## ImageTexture -- see this class's own doc comment for why the GPU-upload
+## step has to wait for the main thread.
+func _load_image(tex_path: String, alpha_safe: bool = false) -> Image:
 	if tex_path == "":
 		return null
-	if _image_cache.has(tex_path):
-		return _image_cache[tex_path]
+	var key := _tex_variant_key(tex_path, alpha_safe)
+	if _image_cache.has(key):
+		return _image_cache[key]
 	var img: Image = null
 	var found := resolve_bytes(tex_path)
 	if not found.is_empty():
 		var candidate := Image.new()
 		if candidate.load_dds_from_buffer(found["data"]) == OK:
 			img = candidate
-	_image_cache[tex_path] = img
+	# Only DXT1 needs the decompress -- DXT3/DXT5 alpha reaches the GPU
+	# intact (confirmed in the same render census). Verified (2026-08-21,
+	# Godot 4.7.1, _diag_decompress_mips.gd): decompress() preserves the
+	# mipmap chain (1.6ms for a 1024x1024) -- the regenerate below is a
+	# cheap guard against that behavior changing, not an expected path.
+	if img != null and alpha_safe and img.get_format() == Image.FORMAT_DXT1:
+		var had_mips := img.has_mipmaps()
+		if img.decompress() == OK and had_mips and not img.has_mipmaps():
+			img.generate_mipmaps()
+	_image_cache[key] = img
 	return img
 
 ## Main-thread-only convenience: decode + GPU-upload a texture in one call.
@@ -308,6 +332,12 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 		var tex_path := nif.get_texture_path(i)
 		var normal_path := nif.get_normal_texture_path(i)
 		var glow_path := nif.get_glow_texture_path(i)
+		var alpha_info := nif.get_alpha_info(i)
+		# Only the diffuse slot ever needs its alpha channel on the GPU
+		# (blend or scissor) -- normal/glow alpha is never sampled by the
+		# materials we build, so those keep their compressed form always.
+		var needs_alpha := bool(alpha_info.get("blend_enabled", false)) \
+				or bool(alpha_info.get("test_enabled", false))
 		mesh_entries.append({
 			"cache_key": "%s#%d" % [model_path, i],
 			"positions": nif.get_positions(i),
@@ -317,12 +347,13 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"colors": nif.get_colors(i),
 			"transform": nif.get_transform(i),
 			"texture_path": tex_path,
+			"texture_key": _tex_variant_key(tex_path, needs_alpha),
 			"normal_texture_path": normal_path,
 			"glow_texture_path": glow_path,
-			"alpha_info": nif.get_alpha_info(i),
+			"alpha_info": alpha_info,
 			"has_vertex_colors": nif.get_colors(i).size() > 0,
 			"is_unlit": nif.is_unlit(i),
-			"diffuse_image": _load_image(tex_path),
+			"diffuse_image": _load_image(tex_path, needs_alpha),
 			"normal_image": _load_image(normal_path),
 			"glow_image": _load_image(glow_path),
 		})
@@ -611,7 +642,10 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 		mat.vertex_color_use_as_albedo = true
 		have_content = true
 
-	var albedo := _get_texture_from_image(tex_path, e.get("diffuse_image"))
+	# `texture_key` (not tex_path) so the RGBA8 alpha-safe variant of a DXT1
+	# diffuse gets its own _texture_cache slot -- see _tex_variant_key().
+	# Falls back to tex_path for a pre-fix `raw` Dictionary shape.
+	var albedo := _get_texture_from_image(String(e.get("texture_key", tex_path)), e.get("diffuse_image"))
 	if albedo != null:
 		mat.albedo_texture = albedo
 		have_content = true
@@ -633,7 +667,26 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 		have_content = true
 	elif bool(alpha.get("test_enabled", false)):
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		mat.alpha_scissor_threshold = float(alpha.get("threshold", 0.5))
+		# Bethesda's test is "keep if alpha GREATER than threshold", and Godot's
+		# scissor discards when alpha < threshold, so a shipped threshold of 0
+		# (treejoshanv_lod.nif and friends -- 41 of ~330 test-enabled shapes
+		# sampled ship exactly 0) discards NOTHING -- the tree-billboard
+		# black-background bug. A literal epsilon floor (1/255) was tried
+		# first and traded "solid black square" for "blobby thick black
+		# fringe": the texture's own mip chain averages alpha outward across
+		# black background texels, and near-zero-alpha fringe renders fully
+		# opaque under a binary scissor. Confirmed by a real-GPU scale/
+		# threshold matrix render (_diag_billboard_fringe.gd): 0.25-0.5 both
+		# resolve individual branches at every mip level, 1/255 blobs. 0.5 is
+		# used for the zero case -- the modal value Bethesda's own artists
+		# authored (128/255 is the most common shipped threshold in the same
+		# sample), and the value Godot's docs recommend against mip alpha
+		# bleed. Real non-zero thresholds are used as-authored, including
+		# deliberately soft ones (16/255 edge trims, 32/255 road strips --
+		# visually confirmed correct in play). See memory:
+		# black-background-decal-findings.
+		var threshold := float(alpha.get("threshold", 0.5))
+		mat.alpha_scissor_threshold = threshold if threshold > 0.0 else 0.5
 		have_content = true
 
 	var result := mat if have_content else null
