@@ -115,7 +115,15 @@ public:
 	// PackedFloat32Array (33*33, row-major, already decoded and in
 	// meters — see esm::LandData's confidence caveat on the decode order),
 	// "quadrant_base_ltex": PackedInt64Array (4 FormIDs, fopdoc order:
-	// 0=BL, 1=BR, 2=TL, 3=TR) }, or {} if the cell has no LAND record.
+	// 0=BL, 1=BR, 2=TL, 3=TR), "alpha_layers": Array of { "ltex_form_id":
+	// int, "quadrant": int, "layer_index": int, "opacity": PackedFloat32Array
+	// (289, row-major within the quadrant's own 17x17 sub-grid) },
+	// "vertex_colors": PackedByteArray (33*33*3, row-major RGB, raw 0-255,
+	// empty if the cell has no VCLR), "vertex_normals_raw": PackedByteArray
+	// (33*33*3, row-major XYZ, RAW undecoded bytes — see
+	// esm::LandData::vertex_normals_raw's own comment for the real decode
+	// formula, empty if the cell has no VNML) }, or {} if the cell has no
+	// LAND record.
 	Dictionary get_land_data(int64_t cell_form_id) const;
 
 	// LTEX -> TXST -> diffuse path (no "textures\" prefix — see

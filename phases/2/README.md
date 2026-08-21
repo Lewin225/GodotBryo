@@ -46,7 +46,8 @@ task files.
 | 2.10 | Threaded tile resolve (WorkerThreadPool) — 2.2's threading investigation, informed by a real measured frame-time budget | [10-threaded-streaming-workers.md](10-threaded-streaming-workers.md) |
 | 2.11 | Exterior cell lookup index — fix `find_exterior_cell()`'s real O(worldspace) scan cost using the ESM's own block/sub-block structure (found to be 81% of tile-streaming settle time) | [11-exterior-cell-lookup-index.md](11-exterior-cell-lookup-index.md) |
 | 2.12 | Distant object LOD — Bethesda's own `_lod.nif` paired-mesh convention, gated by the real "Visible When Distant" REFR flag, via Godot's `visibility_range_begin/end` | [12-distant-object-lod.md](12-distant-object-lod.md) |
-| 2.13 | Terrain3D integration — design doc only, replacing the per-cell `GamebryoTerrainBuilder` with region-based clipmap terrain + real multi-layer texture painting | [13-terrain3d-integration.md](13-terrain3d-integration.md) |
+| 2.13 | Terrain3D integration — implementation in progress, real bugs found/fixed live; region-based clipmap terrain replacing per-cell `GamebryoTerrainBuilder`. Its control-map texturing (2-layer max) is being superseded by 2.14 | [13-terrain3d-integration.md](13-terrain3d-integration.md) |
+| 2.14 | Native multi-layer terrain texture blending — implemented and verified in real play, replacing Terrain3D's 2-texture control map with a real 7-layer format matching FNV's own `BTXT`/`ATXT`/`VTXT` data, keeping Terrain3D's mesh/LOD/streaming/collision. VCLR/VNML still unimplemented | [14-native-terrain-texture-blend.md](14-native-terrain-texture-blend.md) |
 
 ## Open issues (parked, not yet investigated)
 

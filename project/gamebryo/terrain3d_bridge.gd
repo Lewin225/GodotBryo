@@ -58,6 +58,24 @@ var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var texture_pool: Terrain3DTexturePool
 
+## phases/2/14-native-terrain-texture-blend.md: real per-vertex authored normals
+## (VNML), decode solved and verified numerically (128,000 real samples,
+## avg 1.34 deg / max 53.5 deg divergence from a computed-from-heights normal --
+## see _computed_normal()'s own comment for that formula, reused as the fallback
+## here). Cheap A/B lever, not a design commitment either way -- when false, or
+## when a given real cell simply has no VNML data (only 41,989/42,474 real LAND
+## records do), every vertex falls back to _computed_normal() instead.
+@export var import_authored_normals: bool = true
+
+## Real debugging aid for the live white-terrain-patch investigation: when
+## set to a real grid coordinate (e.g. Vector2i(-18, 0)), import_cell() prints
+## exactly what real base/overlay pool slots it resolved for that ONE cell --
+## cross-checkable directly against native/tools/land_cell_dump's own offline
+## ESM dump of the same cell. Default (a coordinate no real WastelandNV cell
+## can have) means "off"; deliberately not gated behind a separate bool so
+## it's always obvious which cell (if any) is being watched.
+var debug_dump_grid: Vector2i = Vector2i(999999, 999999)
+
 func _init(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver, pool: Terrain3DTexturePool) -> void:
 	esm = esm_reader
 	resolver = mesh_resolver
@@ -68,9 +86,26 @@ func _init(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver, pool: Ter
 ## to the tree; `data`/`assets` only become valid once added (Terrain3D::_initialize()
 ## runs on entering the tree -- confirmed by reading terrain_3d.cpp, see
 ## test_terrain3d_spike.gd's own header comment for the same finding).
-static func create_terrain(parent: Node) -> Terrain3D:
+##
+## `debug_level` (Terrain3D.ERROR/INFO/DEBUG/EXTREME) is a STATIC property on the
+## Terrain3D class itself (terrain_3d.h's own `static DebugLevel debug_level`),
+## not per-instance -- setting it here on this one runtime-instantiated node
+## (there's no Terrain3D node in the editor scene tree to configure this on
+## directly, since it's built at runtime by activate(), not placed in
+## game.tscn) affects every LOG() call across the whole addon for the rest of
+## the session. Defaults back to the addon's own default (ERROR) -- the
+## real solid-white-terrain-patch investigation
+## ([[terrain3d_texture_normalize_bug]] in memory) already got what it needed
+## from a DEBUG-level capture (ruled out shader-regen-on-new-texture as the
+## cause); the next lead is a GDScript-side `push_warning` from
+## `Terrain3DTexturePool._normalize_texture()`'s own content sanity check,
+## which would otherwise be buried in this addon's own copious DEBUG-level
+## noise. Pass `Terrain3D.DEBUG` explicitly again if the addon's own internals
+## need tracing again later.
+static func create_terrain(parent: Node, debug_level: Terrain3D.DebugLevel = Terrain3D.ERROR) -> Terrain3D:
 	var terrain := Terrain3D.new()
 	terrain.name = "Terrain3D"
+	terrain.debug_level = debug_level
 	terrain.vertex_spacing = VERTEX_SPACING
 	parent.add_child(terrain)
 	terrain.region_size = REGION_SIZE
@@ -129,98 +164,105 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# edge-continuity check.
 	var created_new_regions := ensure_regions_for_cell(terrain, grid_x, grid_y)
 
-	# --- Per-quadrant BTXT base + PER-VERTEX ATXT/VTXT overlay selection ---
+	# --- Real N=7-layer per-vertex texture write path ---
+	# phases/2/14-native-terrain-texture-blend.md: real BTXT base (implicit
+	# weight 1.0) + up to 6 real ATXT overlays, each alpha-blended over the
+	# accumulated result by its own real per-vertex VTXT opacity in real
+	# authored layer_index order. Replaces the old Terrain3D control-map
+	# 2-texture "winner selection" entirely -- every real layer at every real
+	# vertex is written, not just whichever one happened to be strongest.
 	#
-	# Real fix for a live-play report ("blending looks quadrant-wide, not
-	# organic") that an earlier version of this reduction picked a single
-	# "winning" overlay layer for the WHOLE quadrant (by aggregate opacity
-	# mass across all 289 vertices), then applied that same overlay
-	# everywhere in it -- an unforced simplification, not a real Terrain3D
-	# constraint. Terrain3D's control map is already per-vertex (every pixel
-	# gets its own independent base/overlay/blend triplet); the real "2
-	# textures blended" limit is per-POINT, not per-quadrant. Now every
-	# vertex independently picks whichever real ATXT layer has the highest
-	# opacity AT THAT EXACT VERTEX as its overlay, instead of one
-	# quadrant-wide winner -- still bounded by the same real 2-per-point
-	# ceiling (base + one overlay), just chosen at the granularity Terrain3D
-	# actually supports.
-	#
-	# The base itself stays quadrant-uniform: real BTXT is inherently
-	# quadrant-wide in FNV's own format (one LTEX per quadrant, not per
-	# vertex), and keeping it fixed avoids a NEW class of hard edges a
-	# per-vertex BASE choice would introduce (Terrain3D only cross-fades the
-	# blend weight between neighboring pixels that share the same base/
-	# overlay IDs -- a base that changes vertex-to-vertex would be a hard
-	# cut every time, worse than today). For the real BTXT=0 case (no
-	# authored base -- some quadrants are painted entirely via ATXT/VTXT),
-	# falls back to the single ATXT layer with the highest TOTAL opacity
-	# mass across the quadrant as a stable substitute base, and removes it
-	# from the overlay candidate pool below so it isn't picked twice --
-	# every OTHER real layer for that quadrant (not just a single runner-up)
-	# remains available as a genuine per-vertex overlay choice, richer than
-	# the fixed-pair fallback this replaces.
-	#
-	# Still a real, documented, acknowledged approximation: real quadrants
-	# can have up to 6 ATXT layers (7 including BTXT) stacked at one exact
-	# point (phases/2/13-terrain3d-integration.md's real census), and
-	# Terrain3D can only ever blend 2 at a time -- per-vertex selection picks
-	# the single best-fitting pair at each point instead of a quadrant-wide
-	# compromise, but a vertex with 3+ real overlapping layers still only
-	# keeps its single strongest one.
+	# The real, uncapped worldspace-wide distinct-texture need (measured by
+	# resolving every real BTXT/ATXT reference unconditionally, not just
+	# winners -- phases/2/14's own verification) is 64, comfortably inside
+	# the 126-slot pool budget, so every real layer for every quadrant is
+	# resolved unconditionally here. No more lazy "only resolve if it wins
+	# somewhere" -- that optimization existed only because the old
+	# winner-take-all model made most candidate layers genuinely never render;
+	# the real N=7 model renders every real layer that has nonzero opacity
+	# anywhere, so lazy resolution would save nothing real.
 	var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
 	var alpha_layers: Array = land.get("alpha_layers", [])
 
-	# Group raw ATXT layers by quadrant WITHOUT resolving texture slots yet
-	# -- real bug found via a live-play report (rainbow/garbage patches
-	# persisting even after reserving RESERVED_SLOT): resolving every real
-	# ATXT layer up front, whether or not it ever actually wins at any
-	# vertex below, wastes real pool slots on layers that never render
-	# anywhere. Confirmed directly: the same 91x91-cell real-data area that
-	# only needed 53/63 slots under the old quadrant-wide reduction now
-	# genuinely exhausts the 62-slot budget (62/62 used, real overflow) --
-	# once the pool is full, overlay IDs land in the high range often
-	# enough to make the residual base=63 NaN collision
-	# (Terrain3DTexturePool.RESERVED_SLOT's own comment) reachable again in
-	# practice, not just in theory. Slots are now resolved lazily, only for
-	# layers that actually win the per-vertex opacity comparison somewhere
-	# in the quadrant (see the two-pass loop below).
-	var quadrant_layers := [[], [], [], []] # Array[{"opacity": PackedFloat32Array, "ltex_form_id": int}] per quadrant, unresolved
+	var quadrant_layers := [[], [], [], []] # Array[{"opacity": PackedFloat32Array, "ltex_form_id": int, "layer_index": int}] per quadrant
 	for layer in alpha_layers:
 		var q: int = layer["quadrant"]
 		if q < 0 or q >= 4:
 			continue
 		quadrant_layers[q].append(layer)
+	for q in range(4):
+		# Real authored stacking order -- ATXT's own layer_index field.
+		quadrant_layers[q].sort_custom(func(a, b): return int(a["layer_index"]) < int(b["layer_index"]))
 
 	var base_slot := [-1, -1, -1, -1]
+	var overlay_slots := [[], [], [], []] # Array[int] (pool slot per real overlay, up to 6) per quadrant
+	var overlay_layers := [[], [], [], []] # Array[Dictionary] (the layer dict each overlay_slots entry came from) per quadrant
 	for q in range(4):
 		var base_ltex := int(quadrant_ltex[q]) if q < quadrant_ltex.size() else 0
 		base_slot[q] = _resolve_to_slot(base_ltex)
-		if base_slot[q] < 0 and not quadrant_layers[q].is_empty():
+		var candidates: Array = quadrant_layers[q]
+		if base_slot[q] < 0 and not candidates.is_empty():
 			# Real BTXT=0 case: pick the aggregate-strongest raw layer as a
-			# stable substitute base (still needs a real resolved slot,
-			# unconditionally used) and remove it from the per-vertex
-			# overlay candidate pool so it isn't picked twice.
+			# stable substitute base and remove it from the real overlay set
+			# so it isn't written twice (as both base and an overlay).
 			var best_i := -1
 			var best_mass := -1.0
-			for i in range(quadrant_layers[q].size()):
-				var opacity: PackedFloat32Array = quadrant_layers[q][i]["opacity"]
+			for i in range(candidates.size()):
+				var opacity: PackedFloat32Array = candidates[i]["opacity"]
 				var mass := 0.0
 				for v in opacity:
 					mass += v
 				if mass > best_mass:
 					best_mass = mass
 					best_i = i
-			var fallback_slot := _resolve_to_slot(int(quadrant_layers[q][best_i]["ltex_form_id"]))
+			var fallback_slot := _resolve_to_slot(int(candidates[best_i]["ltex_form_id"]))
 			if fallback_slot >= 0:
 				base_slot[q] = fallback_slot
-				quadrant_layers[q].remove_at(best_i)
+				candidates = candidates.duplicate()
+				candidates.remove_at(best_i)
+		# Real max is 6 (phases/2/13's own census + GECK wiki), clamp
+		# defensively in case any other Gamebryo-family title's real data
+		# ever exceeds that.
+		for i in range(mini(candidates.size(), 6)):
+			var slot := _resolve_to_slot(int(candidates[i]["ltex_form_id"]))
+			overlay_slots[q].append(slot)
+			overlay_layers[q].append(candidates[i])
 
-	# --- Write every real vertex directly: height always, control only within
-	# whichever quadrant(s) actually have a resolved base texture. ---
+	if Vector2i(grid_x, grid_y) == debug_dump_grid:
+		print("Terrain3DBridge debug dump: cell (", grid_x, ",", grid_y, ")")
+		for q in range(4):
+			print("  quadrant ", q, ": base_slot=", base_slot[q], " overlay_slots=", overlay_slots[q],
+					" overlay_layer_indices=", overlay_layers[q].map(func(l): return int(l["layer_index"])))
+
+	# --- Real VCLR (vertex color) + VNML (authored normal) ---
+	# phases/2/14-native-terrain-texture-blend.md: VCLR slots directly into
+	# Terrain3D's own existing color_map (TYPE_COLOR) -- zero new cost, a real
+	# free win from data this pipeline wasn't using. VNML is real per-vertex
+	# authored normal data; falls back to _computed_normal() (same formula
+	# this shader used to compute live, now baked in once at import) when
+	# disabled or the real cell has no VNML.
+	var vertex_colors: PackedByteArray = land.get("vertex_colors", PackedByteArray())
+	var vertex_normals_raw: PackedByteArray = land.get("vertex_normals_raw", PackedByteArray())
+	var has_vertex_colors := vertex_colors.size() >= GRID_SIZE * GRID_SIZE * 3
+	var use_authored_normals := import_authored_normals and vertex_normals_raw.size() >= GRID_SIZE * GRID_SIZE * 3
+
+	# --- Write every real vertex: height + VCLR/VNML + N=7 layer IDs/weights. ---
 	for row in range(GRID_SIZE):
 		for col in range(GRID_SIZE):
 			var pos := vertex_world_position(global_pos, row, col)
-			terrain.data.set_height(pos, heights[row * GRID_SIZE + col])
+			var idx := row * GRID_SIZE + col
+			terrain.data.set_height(pos, heights[idx])
+
+			if has_vertex_colors:
+				var cr := float(vertex_colors[idx * 3 + 0]) / 255.0
+				var cg := float(vertex_colors[idx * 3 + 1]) / 255.0
+				var cb := float(vertex_colors[idx * 3 + 2]) / 255.0
+				terrain.data.set_pixel(Terrain3DRegion.TYPE_COLOR, pos, Color(cr, cg, cb, 0.5))
+
+			var world_normal: Vector3 = _decode_vnml_normal(vertex_normals_raw, idx) if use_authored_normals \
+					else _computed_normal(heights, row, col)
+			var enc := (world_normal + Vector3.ONE) * 0.5
+			terrain.data.set_pixel(Terrain3DRegion.TYPE_NORMAL, pos, Color(enc.x, enc.y, enc.z, 1.0))
 
 	for q in range(4):
 		if base_slot[q] < 0:
@@ -228,52 +270,32 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		var r: Array = QUADRANT_RANGES[q]
 		var row_start: int = r[0]
 		var col_start: int = r[2]
-		var layers: Array = quadrant_layers[q]
+		var slots: Array = overlay_slots[q]
+		var layers: Array = overlay_layers[q]
 
-		# Pass 1: find each vertex's winning RAW layer (by index into
-		# `layers`, no slot resolution yet) and the set of indices that win
-		# anywhere in this quadrant.
-		var vert_count := QUAD_VERTS_PER_SIDE * QUAD_VERTS_PER_SIDE
-		var winner_at := PackedInt32Array()
-		winner_at.resize(vert_count)
-		var winning_indices := {} # int -> true
 		for row in range(r[0], r[1] + 1):
 			for col in range(r[2], r[3] + 1):
 				var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
-				var best_op := 0.0
-				var best_i := -1
-				for i in range(layers.size()):
+				var ids := PackedInt32Array([base_slot[q], 0, 0, 0, 0, 0, 0])
+				var weights := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+				for i in range(slots.size()):
+					if slots[i] < 0:
+						continue
 					var opacity: PackedFloat32Array = layers[i]["opacity"]
 					var op: float = opacity[local_index] if local_index < opacity.size() else 0.0
-					if op > best_op:
-						best_op = op
-						best_i = i
-				winner_at[local_index] = best_i
-				if best_i >= 0:
-					winning_indices[best_i] = true
-
-		# Resolve slots ONLY for layers that actually won somewhere.
-		var slot_by_index := {} # int (index into layers) -> int (pool slot)
-		for i in winning_indices:
-			var slot := _resolve_to_slot(int(layers[i]["ltex_form_id"]))
-			if slot >= 0:
-				slot_by_index[i] = slot
-
-		# Pass 2: write control values using the precomputed per-vertex winner.
-		for row in range(r[0], r[1] + 1):
-			for col in range(r[2], r[3] + 1):
-				var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
-				var overlay := -1
-				var blend := 0.0
-				var wi: int = winner_at[local_index]
-				if wi >= 0 and slot_by_index.has(wi):
-					overlay = slot_by_index[wi]
-					var opacity: PackedFloat32Array = layers[wi]["opacity"]
-					blend = opacity[local_index] if local_index < opacity.size() else 0.0
-				var blend_u8 := int(roundf(clampf(blend, 0.0, 1.0) * 255.0))
-				var control_value: int = Terrain3DUtil.enc_base(base_slot[q]) | Terrain3DUtil.enc_overlay(maxi(overlay, 0)) | Terrain3DUtil.enc_blend(blend_u8)
+					if op <= 0.0:
+						continue
+					ids[i + 1] = slots[i]
+					weights[i] = clampf(op, 0.0, 1.0)
 				var pos := vertex_world_position(global_pos, row, col)
-				terrain.data.set_control(pos, control_value)
+				terrain.data.set_pixel(Terrain3DRegion.TYPE_TEX_ID_A, pos,
+						Color(float(ids[0]) / 255.0, float(ids[1]) / 255.0, float(ids[2]) / 255.0, float(ids[3]) / 255.0))
+				terrain.data.set_pixel(Terrain3DRegion.TYPE_TEX_ID_B, pos,
+						Color(float(ids[4]) / 255.0, float(ids[5]) / 255.0, float(ids[6]) / 255.0, 0.0))
+				terrain.data.set_pixel(Terrain3DRegion.TYPE_WEIGHT_A, pos,
+						Color(weights[0], weights[1], weights[2], weights[3]))
+				terrain.data.set_pixel(Terrain3DRegion.TYPE_WEIGHT_B, pos,
+						Color(weights[4], weights[5], 0.0, 0.0))
 
 	# Regenerates the GPU-side texture arrays/normals + the cached height range
 	# this import's real changes need to actually render and cull correctly --
@@ -380,6 +402,38 @@ static func vertex_world_position(cell_global_pos: Vector3, row: int, col: int) 
 			col * VERTEX_SPACING + _PIXEL_INDEX_EPSILON, 0.0,
 			_flipped_row(row) * VERTEX_SPACING + _PIXEL_INDEX_EPSILON)
 
+## Real VNML decode, verified numerically against 128,000 real samples
+## (phases/2/14-native-terrain-texture-blend.md): SIGNED byte (not fopdoc's
+## documented unsigned), Bethesda's own internal (X, Z, Y) file axis order.
+## `raw` is the whole cell's flat PackedByteArray (3 bytes/vertex); `idx` is
+## row*GRID_SIZE+col into it.
+static func _decode_vnml_normal(raw: PackedByteArray, idx: int) -> Vector3:
+	var bx: int = raw[idx * 3 + 0]
+	var by: int = raw[idx * 3 + 1]
+	var bz: int = raw[idx * 3 + 2]
+	var cx := float(bx - 256 if bx >= 128 else bx) / 127.0
+	var cy := float(by - 256 if by >= 128 else by) / 127.0
+	var cz := float(bz - 256 if bz >= 128 else bz) / 127.0
+	# world = (component[0], component[2], -component[1])
+	var n := Vector3(cx, cz, -cy)
+	return n.normalized() if n.length_squared() > 0.0001 else Vector3.UP
+
+## Fallback normal for vertices/cells with no real VNML data (or the
+## import_authored_normals toggle disabled) -- the same central-difference
+## formula native/tools/vnml_check.cpp verified against real VNML data this
+## same session (avg 1.34 deg divergence from the real authored normal), now
+## reused as the actual real-play fallback instead of a one-off research
+## check. Clamps at grid edges (one-sided difference) instead of wrapping or
+## sampling outside the real 33x33 grid.
+static func _computed_normal(heights: PackedFloat32Array, row: int, col: int) -> Vector3:
+	var h_l := heights[row * GRID_SIZE + maxi(col - 1, 0)]
+	var h_r := heights[row * GRID_SIZE + mini(col + 1, GRID_SIZE - 1)]
+	var h_d := heights[maxi(row - 1, 0) * GRID_SIZE + col]
+	var h_u := heights[mini(row + 1, GRID_SIZE - 1) * GRID_SIZE + col]
+	var dx := Vector3(2.0 * VERTEX_SPACING, h_r - h_l, 0.0)
+	var dz := Vector3(0.0, h_u - h_d, -2.0 * VERTEX_SPACING)
+	return dx.cross(dz).normalized()
+
 static func _floor_div(a: int, b: int) -> int:
 	var q := a / b # GDScript int division truncates toward zero, not floor -- correct below
 	var r := a % b
@@ -449,6 +503,48 @@ static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int
 			created_any = true
 	return created_any
 
+## Real debugging aid, not (yet) a perf optimization: resolves every real
+## `BTXT`/`ATXT` ground-texture reference for the whole worldspace into
+## `texture_pool` UP FRONT, before any cell streams in, so the pool becomes a
+## static, fully-populated set for the rest of the session instead of
+## growing lazily as new cells get explored. Real motivation -- a live-play
+## report of solid-white terrain patches (with bloom glowing around them,
+## spreading to previously-fine cells, matching the addon's own
+## `_generate_shader_code()`/`_update_shader()` firing on every genuinely-new
+## texture added to the pool, visible directly in a real Terrain3D DEBUG-level
+## log capture) -- isolates whether that's the actual cause: with a static
+## pool, no new texture ever gets discovered mid-session, so if the
+## corruption still happens, this rules out texture-pool growth as the cause
+## entirely; if it stops, that confirms it.
+##
+## `grid_min`/`grid_max` default to WastelandNV's own real confirmed extent
+## (both axes span [-65, 64] -- verified via a real full-worldspace scan,
+## phases/2/14-native-terrain-texture-blend.md's own research). Pass explicit
+## bounds for a different worldspace; this project has no general real
+## worldspace-bounds parser yet (no `WRLD` `NAM0`/`NAM9`-equivalent read),
+## just this hardcoded, confirmed-correct range for the one real worldspace
+## currently in scope.
+##
+## Returns the real distinct-texture count registered (expected ~64, per the
+## same real full-worldspace measurement this doc's design cited).
+func prewarm_textures(wrld_form_id: int, grid_min: int = -65, grid_max: int = 64) -> int:
+	var before := texture_pool.used_slot_count()
+	for gx in range(grid_min, grid_max + 1):
+		for gy in range(grid_min, grid_max + 1):
+			var cell: Dictionary = esm.find_exterior_cell(wrld_form_id, gx, gy)
+			if cell.is_empty():
+				continue
+			var land: Dictionary = esm.get_land_data(int(cell["form_id"]))
+			if land.is_empty():
+				continue
+			var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
+			for ltex in quadrant_ltex:
+				_resolve_to_slot(int(ltex))
+			var alpha_layers: Array = land.get("alpha_layers", [])
+			for layer in alpha_layers:
+				_resolve_to_slot(int(layer["ltex_form_id"]))
+	return texture_pool.used_slot_count() - before
+
 func _resolve_to_slot(ltex_id: int) -> int:
 	if ltex_id == 0:
 		return -1
@@ -458,4 +554,4 @@ func _resolve_to_slot(ltex_id: int) -> int:
 	var tex := resolver.load_texture("textures\\" + tex_path)
 	if tex == null:
 		return -1
-	return texture_pool.get_slot(tex)
+	return texture_pool.get_slot(tex, tex_path)

@@ -58,7 +58,7 @@ const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/D
 ## precision would matter) -- it's so a radius can be tuned to a real
 ## fractional distance instead of only whole grid steps, now that the
 ## check is a genuine distance comparison rather than a per-axis one.
-const RADIUS_LOAD_FULL := 3.0
+const RADIUS_LOAD_FULL := 5.0
 const RADIUS_LOAD_DISTANT := 20.0
 
 ## Hysteresis for the full/distant boundary, same reasoning as RADIUS_UNLOAD
@@ -135,6 +135,24 @@ const CHECK_INTERVAL_SEC := 0.1
 ## array for a direct, real before/after comparison (see _stream_tile()).
 @export var use_terrain3d: bool = false
 
+## phases/2/14-native-terrain-texture-blend.md: real debugging aid for a live
+## white-terrain-patch investigation -- resolves every real ground texture the
+## active worldspace could ever need into Terrain3DTexturePool up front in
+## activate(), before any cell streams in, instead of discovering them lazily
+## as new cells get explored. See Terrain3DBridge.prewarm_textures()'s own
+## doc comment for why: isolates whether the corruption is caused by the
+## addon's own shader-regeneration-on-new-texture behavior (visible directly
+## in a real Terrain3D DEBUG-level log capture) by making the pool a static
+## set that never grows again mid-session. Real total worldspace need is only
+## ~64 distinct textures (confirmed this session), so this is cheap.
+@export var prewarm_terrain_textures: bool = true
+
+## See Terrain3DBridge.debug_dump_grid's own doc comment -- set to a real
+## grid coordinate (e.g. Vector2i(-18, 0)) to print exactly what real
+## base/overlay texture-pool slots import_cell() resolves for that one cell.
+## Default (an impossible coordinate) means off.
+@export var terrain3d_debug_dump_grid: Vector2i = Vector2i(999999, 999999)
+
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
@@ -197,6 +215,10 @@ func activate(wrld_form_id: int) -> void:
 		_terrain3d = Terrain3DBridge.create_terrain(self)
 		_terrain3d_pool = Terrain3DTexturePool.new(_terrain3d)
 		_terrain3d_bridge = Terrain3DBridge.new(esm, resolver, _terrain3d_pool)
+		_terrain3d_bridge.debug_dump_grid = terrain3d_debug_dump_grid
+		if prewarm_terrain_textures:
+			var registered := _terrain3d_bridge.prewarm_textures(wrld_form_id)
+			print("WorldStreamer: prewarmed Terrain3DTexturePool with ", registered, " real distinct ground textures (", _terrain3d_pool.used_slot_count(), " total slots used)")
 	_stream_persistent_root()
 	_check_streaming() # immediate check, don't wait for the next timer tick
 
@@ -295,7 +317,7 @@ func _check_streaming() -> void:
 		# to position its rings -- never set anywhere in this file before, so it
 		# silently failed ("Cannot find the active camera") and its own
 		# _physics_process() stopped updating entirely, causing angle-dependent
-		# culling that looked like broken vertex data but wasn't. Kept in sync
+		# culling Kept in sync
 		# here (not just once in activate()) since the active camera can
 		# legitimately change (free-fly viewer swaps, etc) -- same cadence
 		# _current_grid_coord() above already re-queries it at.

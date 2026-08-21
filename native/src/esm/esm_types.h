@@ -203,6 +203,24 @@ struct LandData {
 	std::vector<float> heights; // size kLandGridSize*kLandGridSize, row-major, meters
 	uint32_t quadrant_base_ltex[kLandQuadrantCount] = { 0, 0, 0, 0 };
 	std::vector<LandAlphaLayer> alpha_layers; // ATXT/VTXT-derived, empty if the cell has none
+
+	// VCLR: real per-vertex color, raw RGB bytes as stored (no decode needed --
+	// already plain 0-255 unsigned per channel). Size kLandGridSize*kLandGridSize*3,
+	// row-major, empty if the cell has none (phases/2/13's own census: only 29,681
+	// of 42,474 real LAND records have it).
+	std::vector<uint8_t> vertex_colors;
+
+	// VNML: real per-vertex authored normal, raw bytes as stored (NOT yet decoded --
+	// decode is signed-byte, Bethesda's own (X,Z,Y) file axis order, verified
+	// numerically against 128,000 real samples in phases/2/14's own research:
+	//   component = int8_t(byte) / 127.0
+	//   world = (component[0], component[2], -component[1])
+	// Left raw here rather than pre-decoded so callers can choose their own world
+	// convention without baking an assumption into this shared parser -- same
+	// reasoning as heights being pre-decoded (a single, unambiguous scale) vs this
+	// being a caller-specific axis remap. Size kLandGridSize*kLandGridSize*3,
+	// row-major, empty if the cell has none.
+	std::vector<uint8_t> vertex_normals_raw;
 };
 
 } // namespace esm

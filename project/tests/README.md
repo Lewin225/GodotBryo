@@ -124,8 +124,6 @@ anything.
 | `test_lod_direct_batch` | 2.12 step 7: RID-based construct path (`DirectGeometryBatch` LOD tier) | headless |
 | `test_lod_crossover_config` | 2.12 step 8: real configurable crossover distance/margin plumbing | headless |
 | `test_terrain3d_spike` | 2.13 step 2: real-cell `VHGT` heightmap import into Terrain3D, bit-exact numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
-| `test_terrain3d_texture_paint` | 2.13 step 4 (base-texture half): real `BTXT`→`LTEX`→`TXST` quadrant texture painting via Terrain3D's control map, numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
-| `test_terrain3d_multilayer_paint` | 2.13 step 4 (`ATXT`/`VTXT` half): real multi-layer opacity-priority reduction to Terrain3D's base+overlay+blend control map, numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
 | `test_terrain3d_collision` | 2.13 step 5: real physics drop test against `Terrain3DCollision.FULL_GAME`, confirms no repeat of 1.4's `HeightMapShape3D` failure | headless |
 | `test_terrain3d_bridge_placement` | 2.13 step 6: `Terrain3DBridge`'s real per-cell world placement, cross-checked against `GamebryoTerrainBuilder`'s own real placement + real 2-cell edge continuity | headless |
 | `test_terrain3d_texture_pool_overflow` | 2.13 step 6: real texture-budget overflow (961 real cells) confirms `Terrain3DTexturePool`'s pink fallback matches the real first texture's size/format/mipmap state (a real "all white" rendering bug otherwise) | headless |
