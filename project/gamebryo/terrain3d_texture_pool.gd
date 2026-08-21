@@ -1,18 +1,22 @@
 class_name Terrain3DTexturePool
 extends RefCounted
 
-## phases/2/13-terrain3d-integration.md's chosen texture-budget design: real,
-## measured data (see that doc's "Real-data findings") shows region_size=64 keeps
-## every realistic concurrently-resident neighborhood under Terrain3D's 32-slot
-## control-map budget across the whole real worldspace (worst case 24 of 31 usable
-## slots) -- so this pool does NOT implement LRU eviction yet (that machinery has
-## never been exercised against a real trigger case; building it untested would be
-## speculative complexity, not a real fix). What it DOES do, for real: assign each
-## distinct texture its own slot (0..30), and once genuinely exhausted, hand out a
-## reserved, unmissable solid-pink fallback texture instead of silently reusing/
-## misassigning a slot -- the user's own framing for this design ("we'll see if we
-## ever hit this in practice"). If real play ever shows the pink fallback firing,
-## that's the real signal to build eviction, not a guess made in advance.
+## phases/2/13-terrain3d-integration.md's texture-budget design. Original
+## real-data conclusion was region_size=64 (worst-case concurrent-neighborhood
+## need: 24 of 31 usable slots) -- but region_size was later corrected to 256
+## for an unrelated, higher-priority real bug (Terrain3D's fixed 32x32 region
+## map didn't cover the real WastelandNV worldspace at region_size=64). At
+## region_size=256, the real worst-case need (49) exceeds the original 31-slot
+## budget, so the control-map format itself was widened: Terrain3D's base/
+## overlay texture-ID fields grew from 5 bits (32 slots) to 6 bits (64 slots) --
+## a real source patch to the vendored native/terrain3d addon (see
+## terrain_3d_util.h's own comment on the full bit-layout change, which also
+## had to move in lockstep across several GLSL shader files). USABLE_SLOTS/
+## TOTAL_SLOTS below reflect that: 63 usable + 1 pink fallback. Still no LRU
+## eviction (real overflow is possible in principle at very large concurrent
+## areas, but hasn't been hit in real testing at this larger budget) -- if real
+## play ever shows the pink fallback firing again, that's the signal to build
+## eviction, not a guess made in advance.
 ##
 ## Uses Terrain3DAssets.set_texture(id, asset) one at a time, NOT
 ## set_texture_list() with a pre-sized array -- a real crash found while building
@@ -23,12 +27,12 @@ extends RefCounted
 ## appends new entries using the list's current size as the real assigned id
 ## (confirmed by reading its source, not assumed) -- so filling slots strictly
 ## sequentially, one real call per new texture, is both the crash-safe path and
-## naturally gives real textures ids 0..30 and the fallback (added only once, on
-## first genuine overflow) id 31, matching this design's slot numbering without
+## naturally gives real textures ids 0..62 and the fallback (added only once, on
+## first genuine overflow) id 63, matching this design's slot numbering without
 ## needing to force ids by hand.
 
-const USABLE_SLOTS := 31 # ids 0..30
-const TOTAL_SLOTS := 32 # id 31 is the pink fallback, added lazily on first overflow
+const USABLE_SLOTS := 63 # ids 0..62
+const TOTAL_SLOTS := 64 # id 63 is the pink fallback, added lazily on first overflow
 
 var _terrain: Terrain3D
 var _slot_by_texture: Dictionary = {} # Texture2D -> int slot
@@ -56,7 +60,7 @@ func get_slot(tex: Texture2D) -> int:
 		return _ensure_pink_slot()
 	var asset := Terrain3DTextureAsset.new()
 	asset.set_name("slot_%d" % _slot_by_texture.size())
-	asset.set_albedo_texture(tex)
+	asset.set_albedo_texture(_normalize_texture(tex))
 	# Real bug, same one reported against the old GamebryoTerrainBuilder
 	# renderer: ground textures looked "far too scaled up." Terrain3D's own
 	# Terrain3DTextureAsset.uv_scale defaults to 0.1 (uv = world_position *
@@ -77,47 +81,70 @@ func get_slot(tex: Texture2D) -> int:
 	_slot_by_texture[tex] = id
 	return id
 
-## Real bug found in real play (961-cell test area, well past 31 distinct real
-## textures): Terrain3DAssets::_update_texture_files() (terrain_3d_assets.cpp)
-## requires every texture in the list to share the EXACT SAME size/format/mipmap
-## state as the first one -- a real, enforced requirement for building one GPU
-## texture array, not a soft suggestion. A pink placeholder that doesn't match
-## (this used to be a fixed 4x4 RGB8 image, unconditionally wrong) triggers
-## `_terrain->set_warning(...)`, and _update_texture_files() checks
-## `if (_terrain->get_warnings()) { return; }` BEFORE ever rebuilding the albedo
-## array -- meaning a single mismatched texture blocks the WHOLE array from
-## updating, not just its own slot. This is exactly what "goes all white" was:
-## once real play streamed in more than 31 distinct ground textures (confirmed
-## real, not hypothetical -- happens with a real ~31x31 cell area), the pink
-## fallback's mismatched size broke every already-correctly-textured region's
-## rendering too. Fixed by building the pink image to match the FIRST real
-## texture's own actual size/format/mipmap state (queried directly, not assumed)
-## instead of a fixed placeholder size.
+## Real bug found in real play: Terrain3DAssets::_update_texture_files()
+## (terrain_3d_assets.cpp) requires every texture in the list to share the
+## EXACT SAME size/format/mipmap state as the first one -- a real, enforced
+## requirement for building one GPU texture array, not a soft suggestion. Two
+## real, separate ways this broke rendering entirely (not just one slot):
+## (1) the pink placeholder not matching real ground textures (a ~31x31-cell
+## test surfaced this first), and (2) REAL ground textures not matching EACH
+## OTHER -- confirmed via a real full-worldspace scan: most `WastelandNV`
+## ground textures are 512x512, but the `NV_Rocks` set is 1024x1024. Whichever
+## texture happened to load FIRST silently determined the array's fixed size
+## for the whole session, and every later texture (real or pink) at a
+## different size broke the ENTIRE array, not just its own slot.
+##
+## Fixed properly instead of patched around: every texture entering this pool
+## (real or pink) is normalized to one fixed canonical size/format/mipmap
+## state via _normalize_texture() before ever becoming a Terrain3DTextureAsset,
+## so "whichever texture loads first" can no longer matter. Canonical size is
+## 512x512 (the real, dominant case -- confirmed via the same full-worldspace
+## scan: only the `NV_Rocks` set needs downscaling, not the majority needing
+## upscaling, the less lossy direction).
+const CANONICAL_SIZE := 512
+const CANONICAL_FORMAT := Image.FORMAT_DXT1 # BC1 -- this project's own confirmed real ground-texture format, phases/0/04-dds-texture-import.md
+
+## Resizes/reformats `tex` to this pool's fixed canonical size/format/mipmap
+## state if it doesn't already match, so it can never trigger the real
+## Terrain3DAssets texture-array mismatch bug documented above. A no-op (just
+## returns `tex` unchanged) for the common case where it already matches.
+func _normalize_texture(tex: Texture2D) -> Texture2D:
+	var img := tex.get_image()
+	if img == null:
+		return tex
+	if img.get_size() == Vector2i(CANONICAL_SIZE, CANONICAL_SIZE) and img.get_format() == CANONICAL_FORMAT and img.has_mipmaps():
+		return tex
+	# Image.resize()/generate_mipmaps() both refuse to operate on compressed
+	# formats directly (confirmed via a real error) -- decompress first,
+	# resize/mipmap in an uncompressed format, then recompress to the
+	# canonical target format.
+	if img.is_compressed():
+		img.decompress()
+	if img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE):
+		img.resize(CANONICAL_SIZE, CANONICAL_SIZE, Image.INTERPOLATE_LANCZOS)
+	# Drop any alpha channel before compressing -- Image.compress(COMPRESS_S3TC)
+	# picks DXT1 vs DXT5 based on whether the source has non-opaque alpha
+	# BYTES present, not visual appearance, so a real ground diffuse texture
+	# that happens to carry stray non-255 alpha would otherwise silently
+	# produce DXT5 and break the fixed CANONICAL_FORMAT guarantee this whole
+	# normalization exists for.
+	img.convert(Image.FORMAT_RGB8)
+	img.generate_mipmaps()
+	img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
+	return ImageTexture.create_from_image(img)
+
 func _ensure_pink_slot() -> int:
 	if _pink_slot >= 0:
 		return _pink_slot
-	var pink_size := Vector2i(512, 512)
-	var pink_format := Image.FORMAT_RGB8
-	var pink_mipmaps := false
-	var first_asset: Terrain3DTextureAsset = _terrain.assets.get_texture(0) if _terrain.assets.get_texture_list().size() > 0 else null
-	if first_asset != null and first_asset.get_albedo_texture() != null:
-		var first_img := first_asset.get_albedo_texture().get_image()
-		if first_img != null:
-			pink_size = first_img.get_size()
-			pink_format = first_img.get_format()
-			pink_mipmaps = first_img.has_mipmaps()
-	# Real ground textures decode to a COMPRESSED format (BC1/BC3, this
-	# project's own DDS pipeline -- see phases/0/04-dds-texture-import.md), and
-	# Image.fill()/generate_mipmaps() both refuse to operate on compressed
-	# formats directly (confirmed via a real error, not assumed) -- so this
-	# always builds the pink placeholder uncompressed first, then compresses it
-	# to match the real target format afterward if needed.
-	var pink_img := Image.create(pink_size.x, pink_size.y, false, Image.FORMAT_RGB8)
+	# Built directly at the canonical size/format -- no longer needs to query
+	# an existing texture's own state, since every real texture entering this
+	# pool is normalized to the same canonical target (see _normalize_texture()
+	# above), so the pink fallback can just target it directly instead of
+	# copying whatever happened to load first.
+	var pink_img := Image.create(CANONICAL_SIZE, CANONICAL_SIZE, false, Image.FORMAT_RGB8)
 	pink_img.fill(Color(1.0, 0.0, 1.0))
-	if pink_mipmaps:
-		pink_img.generate_mipmaps()
-	if pink_format != Image.FORMAT_RGB8:
-		pink_img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
+	pink_img.generate_mipmaps()
+	pink_img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
 	var pink_tex := ImageTexture.create_from_image(pink_img)
 	var pink_asset := Terrain3DTextureAsset.new()
 	pink_asset.set_name("__missing_texture_fallback")

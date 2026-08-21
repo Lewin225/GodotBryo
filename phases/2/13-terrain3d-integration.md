@@ -24,9 +24,14 @@ correction says so explicitly where it happens, e.g. `region_size` below).
 coverage bug, see "`region_size` corrected to 256" further down), the opacity-priority
 `ATXT`/`VTXT` reduction, and the pink-fallback texture pool (still append-only, no
 real LRU eviction yet — see "Still not done" near the end of "Real-data findings").
-Grass is designed but not implemented. Real LRU eviction, region
-residency/removal-as-the-camera-moves policy, and the texture-ID bit-width widening
-(discussed, scoped, not started) are the known next real gaps.
+The control-map texture-ID fields were also widened from 5 to 6 bits each (32→64
+slots, 63 usable) — see "Texture-ID bit-width widening" further down — closing the
+`region_size=256` texture-budget gap: a real full-worldspace scan now shows only
+53/63 slots needed for the *entire* game, so real overflow through real game data is
+no longer reachable at all. Grass is designed but not implemented. Real LRU eviction
+and region residency/removal-as-the-camera-moves policy are the known next real gaps
+(eviction is arguably no longer load-bearing given the 53/63 headroom, but is kept as
+a safety net rather than removed, per the pool's own design comment).
 
 The three open questions this doc originally blocked implementation on (`ATXT`/`VTXT`
 layer counts, the `LTEX`/`TXST` texture budget, and whether FNV encodes grass data at
@@ -840,36 +845,109 @@ granularity rather than one large change:
      empty), not a region-bounds issue; (3) the existing placement
      cross-check and full test suite both re-run clean, and the streaming
      scaling test shows no cost regression from the larger region size (fewer,
-     bigger regions cover the same explored area). **Real bit-width widening
-     of Terrain3D's texture-ID encoding (discussed but not started)**: would
-     raise the 31-slot budget to comfortably exceed the real 49-texture need at
-     `region_size = 256`, but investigation found this is a real repacking of
-     the entire 32-bit control-map format, not just "add one bit" — base and
-     overlay's 5-bit fields sit with zero gap against the 8-bit blend field
-     (bits 14–31 fully packed, no room to grow adjacent fields in place), and
-     the identical bit layout is separately hardcoded in the GPU shader
-     (`main.glsl`'s `DECODE_BASE`/`DECODE_OVER` macros plus a second vectorized
-     copy, `auto_shader.glsl`'s encoder, `debug_views.glsl`'s decoder) — a real,
-     doable patch since this addon is vendored and built from source, but
-     substantial (6+ call sites across C++ and GLSL, all needing to move
-     together) and deliberately scoped as a separate follow-up, not bundled
-     with the urgent coverage fix.
-   - **Still not done**: real LRU texture-slot eviction (more load-bearing now
-     that `region_size = 256`'s real 49-texture worst case exceeds the 31-slot
-     pool, not just a safety net — see directly above);
-     confirmed necessary now, not speculative); region create/keep-resident/
-     eventual-removal policy *within* one active worldspace session as the
-     camera moves (currently every imported cell's data stays resident for the
-     worldspace's whole active session, matching "terrain is cheap to keep
-     resident across a coarser radius" from "Streaming integration" above, but
-     not yet the actual coarser-radius removal policy that section describes —
-     also now more urgent, since it would naturally bound how many distinct
-     textures are ever concurrently needed, easing the eviction problem too); a
-     real, non-scratch `WorldStreamer`-level test exercising `use_terrain3d=true`
-     through the normal `activate()`/`_check_streaming()` path (the scratch
-     diagnostics above deliberately bypassed it); and further real play
-     validation (the "good enough, real play verified" bar 2.12 used) before
-     flipping the default.
+     bigger regions cover the same explored area).
+   - **Texture-ID bit-width widening — done, real-data-verified.** Raises the
+     usable-slot budget from 31 to 63, closing the `region_size=256`
+     texture-budget gap identified above (real worst-case concurrent-
+     neighborhood need: 49, over the old 31-slot pool). Confirmed via
+     investigation before starting: this is a real repacking of the entire
+     32-bit control-map format, not "add one bit" — base and overlay's 5-bit
+     fields sat with zero gap against the 8-bit blend field (bits 14–31 fully
+     packed), and the identical bit layout was separately hardcoded in the GPU
+     shader. **New bit layout** (`native/terrain3d/src/terrain_3d_util.h`'s own
+     comment has the full old→new mapping): base texture ID 6 bits (26–31),
+     overlay texture ID 6 bits (20–25), blend weight 8 bits (12–19), UV
+     rotation 4 bits (8–11), UV scale 3 bits (5–7), hole 1 bit (4), nav 1 bit
+     (3), auto 1 bit (2), 2 spare bits (0–1) — 32 bits exactly, zero gaps.
+     Patched in lockstep across every real call site (verified by an
+     exhaustive `grep -rn` scan for every old bit-shift pattern after editing,
+     confirming zero old-layout references remained):
+     `native/terrain3d/src/terrain_3d_util.h` (all 8 `get_*`/`enc_*` pairs),
+     `terrain_3d_data.h` (8 inline setter clear-masks + `MAX_TEXTURES` in
+     `terrain_3d_assets.h`, 32→64), and four GLSL shaders whose decode/encode
+     macros duplicate this same layout: `main.glsl` (`DECODE_*` macros plus a
+     second vectorized `ivec4` decode), `auto_shader.glsl` (`is_auto`
+     decode + `u_auto` encoder + the `hint_range(0,63)` uniforms),
+     `debug_views.glsl` (4 real decode sites; its 32-entry debug-only color
+     palette was deliberately left at 32 with indices wrapped `% 32`, since
+     it's a debug visualization aid, not real-path code), and
+     `editor_functions.glsl` (nav-bit check, `>>1u` → `>>3u`). Rebuilt via
+     `scons platform=linux target=template_debug -j16`, clean build.
+     **Build-output gotcha**: `native/terrain3d`'s own scons build writes to
+     its own submodule tree (`native/terrain3d/project/addons/terrain_3d/bin/`),
+     separate from what the actual Godot project reads
+     (`project/addons/terrain_3d/bin/`) — the fresh `.so` must be manually
+     copied over after every rebuild.
+     - **A second real bug found only by testing at wide-enough scale after
+       the widening**: an 8,281-cell (91×91) real-data test hit
+       `Texture ID 43 albedo size: (1024, 1024) doesn't match size of first
+       texture: (512, 512)` — the *exact same*
+       `Terrain3DAssets::_update_texture_files()` abort-on-any-mismatch
+       behavior documented above (pink-placeholder mismatch), now triggered by
+       two REAL ground textures disagreeing with each other instead. Confirmed
+       via a dedicated real texture-size survey: most `WastelandNV` ground
+       textures are 512×512, but the `NV_Rocks` set
+       (`landscape\NV_Rocks\NV_RockFormations_02_D.dds`/`_03_D.dds`) is
+       1024×1024 — whichever texture happened to load first silently
+       determined the array's fixed size for the whole session, breaking every
+       other real, correctly-loaded region the moment a size-mismatched
+       texture was needed. Fixed properly rather than patched around: added
+       `Terrain3DTexturePool._normalize_texture()`
+       (`project/gamebryo/terrain3d_texture_pool.gd`) — every texture entering
+       the pool (real or pink) is now forced through a fixed canonical state
+       (512×512, `FORMAT_DXT1`/BC1, mipmapped) via decompress → resize
+       (Lanczos, only for the minority needing it) → `convert(FORMAT_RGB8)`
+       (drops alpha before compressing, since `Image.compress(COMPRESS_S3TC)`
+       picks DXT1 vs DXT5 based on raw alpha bytes present, not visual
+       appearance) → `generate_mipmaps()` → `compress(COMPRESS_S3TC)`, before
+       it's ever assigned to a `Terrain3DTextureAsset`. `_ensure_pink_slot()`
+       simplified to build directly at the canonical target instead of
+       dynamically querying whatever real texture happened to load first.
+       Verified: rebuilt, reran the same 91×91-cell (8,281-cell) test —
+       `0` texture-mismatch errors (down from 11), `used_slot_count=53/63`.
+     - **Real, whole-game headroom finding**: at `region_size=256`, importing
+       every real `WastelandNV` cell (all 16,388) needs only **53 distinct
+       ground textures** total — comfortably under the new 63-usable-slot
+       budget. This means real texture-slot overflow is no longer reachable
+       anywhere in the real game at this region size — a materially different
+       situation from the 31-slot budget, where real overflow *did* fire in
+       real play (see the "All white" bug above).
+     - **Regression test rewritten**: `test_terrain3d_texture_pool_overflow.gd`
+       originally forced real overflow at the old 31-slot budget using a real
+       ~31×31 cell area — that area now only needs 35/63 slots, so it can no
+       longer demonstrate overflow with real data (the whole worldspace's real
+       need, 53, is itself under budget). Rewritten with two checks instead:
+       (1) the same real cell area now asserts it fits comfortably under
+       budget with no pink fallback needed at all — a positive "real data
+       fits" check, replacing the old overflow-forcing one; (2) a new
+       synthetic sub-test forces overflow deterministically with
+       `USABLE_SLOTS+1` fabricated textures passed directly through
+       `pool.get_slot()`, keeping the overflow/pink-fallback *mechanism*
+       itself under real test coverage even though real game data can no
+       longer reach it. (One synthetic-data-only wrinkle hit while writing
+       this: fabricated textures that vary only one color channel trip
+       `Image.compress()`'s `COMPRESS_SOURCE_GENERIC` heuristic into picking a
+       single-channel format, `FORMAT_RGTC_R`, instead of `FORMAT_DXT1` —
+       not a real bug, since real diffuse textures always vary all three
+       channels; worked around in the test by varying all three channels in
+       the fabricated fill color.)
+     - Full existing test suite re-run clean after all of the above (native
+       addon C++/GLSL changes, `terrain3d_texture_pool.gd` changes, and the
+       rewritten overflow test).
+   - **Still not done**: real LRU texture-slot eviction (no longer strictly
+     load-bearing given the 53/63 whole-game headroom above, but kept as a
+     documented safety net per the pool's own design comment, not removed);
+     region create/keep-resident/eventual-removal policy *within* one active
+     worldspace session as the camera moves (currently every imported cell's
+     data stays resident for the worldspace's whole active session, matching
+     "terrain is cheap to keep resident across a coarser radius" from
+     "Streaming integration" above, but not yet the actual coarser-radius
+     removal policy that section describes); a real, non-scratch
+     `WorldStreamer`-level test exercising `use_terrain3d=true` through the
+     normal `activate()`/`_check_streaming()` path (the scratch diagnostics
+     above deliberately bypassed it); and further real play validation (the
+     "good enough, real play verified" bar 2.12 used) before flipping the
+     default.
 7. Grass/instancer work — separate follow-on (design now settled, see "Real-data
    findings" above: `LTEX.GNAM` → `GRAS` → `Terrain3DInstancer.add_transforms()`),
    explicitly not bundled into the core terrain swap.
