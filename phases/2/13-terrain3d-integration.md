@@ -21,14 +21,19 @@ correction says so explicitly where it happens, e.g. `region_size` below).
 
 **Current known-good configuration**: `vertex_spacing = 128/70`, **`region_size =
 256`** (not the `64` earlier sections of this doc conclude — corrected after a real
-coverage bug, see "`region_size` corrected to 256" further down), the opacity-priority
-`ATXT`/`VTXT` reduction, and the pink-fallback texture pool (still append-only, no
-real LRU eviction yet — see "Still not done" near the end of "Real-data findings").
-The control-map texture-ID fields were also widened from 5 to 6 bits each (32→64
-slots, 63 usable) — see "Texture-ID bit-width widening" further down — closing the
-`region_size=256` texture-budget gap: a real full-worldspace scan now shows only
-53/63 slots needed for the *entire* game, so real overflow through real game data is
-no longer reachable at all. Grass is designed but not implemented. Real LRU eviction
+coverage bug, see "`region_size` corrected to 256" further down), **per-vertex**
+`ATXT`/`VTXT` overlay selection (not quadrant-wide — see "Per-vertex overlay
+selection..." further down), and the pink-fallback texture pool (still append-only,
+no real LRU eviction yet — see "Still not done" near the end of "Real-data
+findings"). The control-map texture-ID fields were widened TWICE: 5→6 bits
+(32→64 slots), then 6→7 bits (64→128 slots) after true per-vertex selection
+revealed a real, higher texture-diversity need than the quadrant-wide reduction
+ever surfaced. One pool slot (`RESERVED_SLOT`) is permanently reserved to avoid a
+real IEEE-754 NaN bit-pattern collision in Terrain3D's own control-map storage
+format — see "Per-vertex overlay selection..." for the full writeup. Current
+budget: 126 usable slots; a real full-worldspace scan shows only 63-64 needed for
+the *entire* game, so real overflow through real game data is not currently
+reachable. Grass is designed but not implemented. Real LRU eviction
 and region residency/removal-as-the-camera-moves policy are the known next real gaps
 (eviction is arguably no longer load-bearing given the 53/63 headroom, but is kept as
 a safety net rather than removed, per the pool's own design comment).
@@ -934,6 +939,83 @@ granularity rather than one large change:
      - Full existing test suite re-run clean after all of the above (native
        addon C++/GLSL changes, `terrain3d_texture_pool.gd` changes, and the
        rewritten overflow test).
+   - **Per-vertex overlay selection, a real NaN control-value collision, and
+     a second bit-width widening (5→6→7 bits) — done, real-data-verified.**
+     Three real bugs found from a single live-play report chain (starting
+     with "blending looks quadrant-wide, not organic" after the per-vertex
+     work began, through "bright rainbow/magenta patches, bits in the wrong
+     place" once it landed).
+     1. **Quadrant-wide overlay was a self-imposed limit, not a real
+        Terrain3D constraint.** The original `ATXT`/`VTXT` reduction picked
+        one "winning" overlay layer per quadrant (by aggregate opacity mass
+        across all 289 vertices) and applied it uniformly — but Terrain3D's
+        control map is already per-vertex; the real "2 textures blended"
+        ceiling is per-point, not per-quadrant. `terrain3d_bridge.gd`
+        rewritten so every vertex independently picks whichever real `ATXT`
+        layer has the highest opacity *at that exact vertex* as its
+        overlay. Base stays quadrant-uniform (matches real `BTXT` semantics
+        — one LTEX per quadrant, not per vertex — and avoids a new class of
+        hard edges a per-vertex base would introduce, since Terrain3D only
+        cross-fades the blend weight between neighboring pixels that share
+        the same base/overlay IDs). The real `BTXT=0` case (no authored
+        base) falls back to the aggregate-strongest layer as a stable
+        substitute base, freeing every *other* real layer for that quadrant
+        as a genuine per-vertex overlay candidate. Verified against the
+        real cell that prompted the report
+        (`SLPowderGangerCampWest`, -14,-6): quadrant 3's overlay choice now
+        genuinely varies across 5 distinct real textures at different
+        vertices instead of one fixed pick.
+     2. **A real IEEE-754 NaN collision, found by direct calculation, not
+        guessed.** Terrain3D stores the control map as a `uint32`
+        reinterpreted as a `float32`, and `Terrain3DData::get_control()`
+        explicitly treats any control value whose bit pattern is NaN as an
+        "invalid" sentinel, silently replacing it with `UINT32_MAX` — which
+        decodes to the maximum base/overlay ID with hole/nav/auto all set,
+        and reading a texture-array layer far beyond what's actually
+        resident produces undefined GPU memory content (the reported varied
+        bright colors, not one fixed pink). Confirmed by computing every
+        `(base, overlay)` pair's reinterpreted float32 under the then-6-bit
+        layout: base ID 31 or 63 combined with ANY overlay ID 56–63 always
+        produces NaN regardless of blend weight — and 31 was an entirely
+        ordinary slot in the real usable range, reachable in normal play
+        once the pool filled up, not a rare edge case. Fixed by reserving
+        one slot (`Terrain3DTexturePool.RESERVED_SLOT`) so no real texture
+        is ever assigned the dangerous value, closing the only
+        practically-reachable half of the collision (the other half, the
+        top ID, is already the pink fallback and only reachable during
+        genuine overflow).
+     3. **Per-vertex selection genuinely needs more texture-ID headroom than
+        62 slots, confirmed by real measurement, not assumption.** Real
+        overflow persisted even after the NaN-collision fix — a real
+        8,281-cell (91×91) area that only needed 53/63 slots under the old
+        quadrant-wide reduction now genuinely exhausted the 62-slot budget.
+        Root-caused two contributing factors: (a) the reduction was
+        resolving *every* candidate `ATXT` layer into a pool slot up front,
+        whether or not it ever actually won at any vertex — fixed with a
+        two-pass, lazy-resolution algorithm in `import_cell()` (pass 1
+        finds each vertex's winning layer by raw opacity with no slot
+        resolution; only the *set* of layers that win somewhere get
+        resolved to real pool slots); (b) even after that fix, true
+        per-vertex accuracy legitimately surfaces more real texture
+        diversity than the old "one winner per quadrant" scheme — measured
+        directly by bypassing the pool's cap entirely (reading
+        `GamebryoMeshResolver`'s own texture cache size): the *true*,
+        uncapped distinct-texture need for the **entire real WastelandNV
+        worldspace** (all 16,388 cells) is only **64** — barely over the
+        62-slot budget, not a runaway number. Closed with a second bit-width
+        widening, base/overlay 6→7 bits (64→128 slots), reclaiming the
+        layout's last 2 previously-unused spare bits rather than shrinking
+        any other field (`uv_rotation`/`uv_scale`/hole/nav/auto keep their
+        same widths, just shifted down by 2) — patched in the same lockstep
+        pattern across `terrain_3d_util.h`, `terrain_3d_data.h`,
+        `terrain_3d_assets.h`'s `MAX_TEXTURES` (128), and all four GLSL
+        shaders. Re-derived the NaN-collision analysis for the new layout
+        (danger values shift to base 63 or 127 combined with overlay
+        96–127) and moved `RESERVED_SLOT` to 63 accordingly.  **Re-verified
+        after all three fixes**: the full real worldspace import
+        (16,388 cells) now completes with **zero** overflow warnings,
+        `used_slot_count=63/126` — comfortable real margin. Full terrain3d
+        test suite re-run clean throughout.
    - **Still not done**: real LRU texture-slot eviction (no longer strictly
      load-bearing given the 53/63 whole-game headroom above, but kept as a
      documented safety net per the pool's own design comment, not removed);

@@ -170,24 +170,36 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
 	var alpha_layers: Array = land.get("alpha_layers", [])
 
-	# Resolve every real ATXT layer's texture slot ONCE up front, grouped by
-	# quadrant -- _resolve_to_slot() does real path resolution + texture
-	# load + pool lookup, far too expensive to repeat per vertex.
-	var quadrant_layers := [[], [], [], []] # Array[{"opacity": PackedFloat32Array, "slot": int}] per quadrant
+	# Group raw ATXT layers by quadrant WITHOUT resolving texture slots yet
+	# -- real bug found via a live-play report (rainbow/garbage patches
+	# persisting even after reserving RESERVED_SLOT): resolving every real
+	# ATXT layer up front, whether or not it ever actually wins at any
+	# vertex below, wastes real pool slots on layers that never render
+	# anywhere. Confirmed directly: the same 91x91-cell real-data area that
+	# only needed 53/63 slots under the old quadrant-wide reduction now
+	# genuinely exhausts the 62-slot budget (62/62 used, real overflow) --
+	# once the pool is full, overlay IDs land in the high range often
+	# enough to make the residual base=63 NaN collision
+	# (Terrain3DTexturePool.RESERVED_SLOT's own comment) reachable again in
+	# practice, not just in theory. Slots are now resolved lazily, only for
+	# layers that actually win the per-vertex opacity comparison somewhere
+	# in the quadrant (see the two-pass loop below).
+	var quadrant_layers := [[], [], [], []] # Array[{"opacity": PackedFloat32Array, "ltex_form_id": int}] per quadrant, unresolved
 	for layer in alpha_layers:
 		var q: int = layer["quadrant"]
 		if q < 0 or q >= 4:
 			continue
-		var slot := _resolve_to_slot(int(layer["ltex_form_id"]))
-		if slot < 0:
-			continue
-		quadrant_layers[q].append({"opacity": layer["opacity"], "slot": slot})
+		quadrant_layers[q].append(layer)
 
 	var base_slot := [-1, -1, -1, -1]
 	for q in range(4):
 		var base_ltex := int(quadrant_ltex[q]) if q < quadrant_ltex.size() else 0
 		base_slot[q] = _resolve_to_slot(base_ltex)
 		if base_slot[q] < 0 and not quadrant_layers[q].is_empty():
+			# Real BTXT=0 case: pick the aggregate-strongest raw layer as a
+			# stable substitute base (still needs a real resolved slot,
+			# unconditionally used) and remove it from the per-vertex
+			# overlay candidate pool so it isn't picked twice.
 			var best_i := -1
 			var best_mass := -1.0
 			for i in range(quadrant_layers[q].size()):
@@ -198,8 +210,10 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 				if mass > best_mass:
 					best_mass = mass
 					best_i = i
-			base_slot[q] = quadrant_layers[q][best_i]["slot"]
-			quadrant_layers[q].remove_at(best_i)
+			var fallback_slot := _resolve_to_slot(int(quadrant_layers[q][best_i]["ltex_form_id"]))
+			if fallback_slot >= 0:
+				base_slot[q] = fallback_slot
+				quadrant_layers[q].remove_at(best_i)
 
 	# --- Write every real vertex directly: height always, control only within
 	# whichever quadrant(s) actually have a resolved base texture. ---
@@ -215,17 +229,47 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		var row_start: int = r[0]
 		var col_start: int = r[2]
 		var layers: Array = quadrant_layers[q]
+
+		# Pass 1: find each vertex's winning RAW layer (by index into
+		# `layers`, no slot resolution yet) and the set of indices that win
+		# anywhere in this quadrant.
+		var vert_count := QUAD_VERTS_PER_SIDE * QUAD_VERTS_PER_SIDE
+		var winner_at := PackedInt32Array()
+		winner_at.resize(vert_count)
+		var winning_indices := {} # int -> true
+		for row in range(r[0], r[1] + 1):
+			for col in range(r[2], r[3] + 1):
+				var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
+				var best_op := 0.0
+				var best_i := -1
+				for i in range(layers.size()):
+					var opacity: PackedFloat32Array = layers[i]["opacity"]
+					var op: float = opacity[local_index] if local_index < opacity.size() else 0.0
+					if op > best_op:
+						best_op = op
+						best_i = i
+				winner_at[local_index] = best_i
+				if best_i >= 0:
+					winning_indices[best_i] = true
+
+		# Resolve slots ONLY for layers that actually won somewhere.
+		var slot_by_index := {} # int (index into layers) -> int (pool slot)
+		for i in winning_indices:
+			var slot := _resolve_to_slot(int(layers[i]["ltex_form_id"]))
+			if slot >= 0:
+				slot_by_index[i] = slot
+
+		# Pass 2: write control values using the precomputed per-vertex winner.
 		for row in range(r[0], r[1] + 1):
 			for col in range(r[2], r[3] + 1):
 				var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
 				var overlay := -1
 				var blend := 0.0
-				for entry in layers:
-					var opacity: PackedFloat32Array = entry["opacity"]
-					var op: float = opacity[local_index] if local_index < opacity.size() else 0.0
-					if op > blend:
-						blend = op
-						overlay = entry["slot"]
+				var wi: int = winner_at[local_index]
+				if wi >= 0 and slot_by_index.has(wi):
+					overlay = slot_by_index[wi]
+					var opacity: PackedFloat32Array = layers[wi]["opacity"]
+					blend = opacity[local_index] if local_index < opacity.size() else 0.0
 				var blend_u8 := int(roundf(clampf(blend, 0.0, 1.0) * 255.0))
 				var control_value: int = Terrain3DUtil.enc_base(base_slot[q]) | Terrain3DUtil.enc_overlay(maxi(overlay, 0)) | Terrain3DUtil.enc_blend(blend_u8)
 				var pos := vertex_world_position(global_pos, row, col)

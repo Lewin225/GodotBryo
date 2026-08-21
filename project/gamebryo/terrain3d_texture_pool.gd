@@ -7,14 +7,18 @@ extends RefCounted
 ## for an unrelated, higher-priority real bug (Terrain3D's fixed 32x32 region
 ## map didn't cover the real WastelandNV worldspace at region_size=64). At
 ## region_size=256, the real worst-case need (49) exceeds the original 31-slot
-## budget, so the control-map format itself was widened: Terrain3D's base/
-## overlay texture-ID fields grew from 5 bits (32 slots) to 6 bits (64 slots) --
-## a real source patch to the vendored native/terrain3d addon (see
+## budget, so the control-map format was widened TWICE: Terrain3D's base/
+## overlay texture-ID fields grew from 5 bits (32 slots) to 6 bits (64 slots),
+## then from 6 to 7 bits (128 slots) after true per-vertex overlay selection
+## (terrain3d_bridge.gd) revealed a real whole-worldspace need of 64 distinct
+## textures -- over the 62-usable-slot budget the first widening left. Both
+## are real source patches to the vendored native/terrain3d addon (see
 ## terrain_3d_util.h's own comment on the full bit-layout change, which also
 ## had to move in lockstep across several GLSL shader files). USABLE_SLOTS/
-## TOTAL_SLOTS below reflect that: 63 usable + 1 pink fallback. Still no LRU
-## eviction (real overflow is possible in principle at very large concurrent
-## areas, but hasn't been hit in real testing at this larger budget) -- if real
+## TOTAL_SLOTS below reflect the second widening: 126 usable + 1 reserved
+## (RESERVED_SLOT) + 1 pink fallback = 128. Still no LRU eviction (real
+## overflow is possible in principle at very large concurrent areas, but the
+## real whole-worldspace need, 64, is nowhere close to this budget) -- if real
 ## play ever shows the pink fallback firing again, that's the signal to build
 ## eviction, not a guess made in advance.
 ##
@@ -27,39 +31,44 @@ extends RefCounted
 ## appends new entries using the list's current size as the real assigned id
 ## (confirmed by reading its source, not assumed) -- so filling slots strictly
 ## sequentially, one real call per new texture, is both the crash-safe path and
-## naturally gives real textures ids 0..62 and the fallback (added only once, on
-## first genuine overflow) id 63, matching this design's slot numbering without
-## needing to force ids by hand.
+## naturally gives real textures sequential ids and the fallback (added only
+## once, on first genuine overflow) the final id, matching this design's slot
+## numbering without needing to force ids by hand (see RESERVED_SLOT below for
+## the one deliberate gap in that sequence).
 
 ## Real bug found via a live-play report ("bright rainbow/magenta patches,
 ## bits ending up in the wrong place"): Terrain3D stores the control map as
 ## a uint32 REINTERPRETED as a float32 (Color(as_float(p_control), ...) in
 ## terrain_3d_data.h), and Terrain3DData::get_control() explicitly treats
 ## any control value whose bit pattern happens to BE an IEEE-754 NaN as an
-## "invalid/no data" sentinel, silently replacing it with UINT32_MAX
-## (`std::isnan(val) ? UINT32_MAX : as_uint(val)`) -- which itself decodes
-## to base=63/overlay=63/hole=1/nav=1/auto=1, and reading texture-array
-## layer 63 when far fewer real layers are actually resident produces
-## undefined/garbage GPU memory content (the varied bright colors seen,
-## not just one fixed magenta). Confirmed directly, not guessed: with the
-## 6-bit base/overlay fields (terrain_3d_util.h), base ID 31 or 63 combined
-## with ANY overlay ID 56-63 always produces a NaN bit pattern regardless of
-## blend weight -- verified by computing every (base, overlay) pair's
-## reinterpreted float32 and checking isnan(). 63 is already reserved as
-## the pink fallback and effectively never used as an ordinary base, but 31
-## is an entirely ordinary slot in the middle of the real usable range, and
-## overlay values 56-63 are reachable as soon as a session's texture pool
-## fills toward its real budget -- not a rare edge case.
+## "invalid/no data" sentinel, silently replacing it with UINT32_MAX --
+## which decodes to base=TOTAL_SLOTS-1/overlay=TOTAL_SLOTS-1/hole=1/nav=1/
+## auto=1, and reading a texture-array layer far beyond what's actually
+## resident produces undefined/garbage GPU memory content (the varied
+## bright colors seen, not just one fixed magenta). Confirmed directly, not
+## guessed, for each bit-width this pool has used: the highest legal base ID
+## combined with a high-enough overlay ID always produces a NaN bit pattern
+## regardless of blend weight -- verified by computing every (base, overlay)
+## pair's reinterpreted float32 and checking isnan(). The top ID
+## (TOTAL_SLOTS-1) is already reserved as the pink fallback and effectively
+## never used as an ordinary base, but the SECOND-highest 7-bit-range value
+## (63, under the current 7-bit/128-slot layout) is an entirely ordinary
+## slot in the middle of the real usable range, and high overlay IDs are
+## reachable as soon as a session's texture pool fills toward its real
+## budget -- not a rare edge case. First found and fixed under the earlier
+## 6-bit/64-slot layout (danger value was 31 there); re-derived for the
+## current 7-bit/128-slot layout after that widening moved the field
+## boundaries.
 ##
-## Fixed by reserving slot 31 -- never assigning a real texture there --
+## Fixed by reserving slot 63 -- never assigning a real texture there --
 ## which removes the only practically-reachable half of the collision
-## (base=31 is now impossible; base=63 remains only in the already-
-## degrading-gracefully real-overflow case). USABLE_SLOTS drops to 62
-## (ids 0..30, 32..62) accordingly, still comfortably above the real
-## whole-worldspace need of 53 (phases/2/13-terrain3d-integration.md).
-const RESERVED_SLOT := 31
-const USABLE_SLOTS := 62 # ids 0..30, 32..62 (31 reserved, see RESERVED_SLOT)
-const TOTAL_SLOTS := 64 # id 63 is the pink fallback, added lazily on first overflow
+## (base=63 is now impossible; base=127 remains only in the already-
+## degrading-gracefully real-overflow case). USABLE_SLOTS is 126
+## (ids 0..62, 64..126) accordingly, comfortably above the real
+## whole-worldspace need of 64 (phases/2/13-terrain3d-integration.md).
+const RESERVED_SLOT := 63
+const USABLE_SLOTS := 126 # ids 0..62, 64..126 (63 reserved, see RESERVED_SLOT)
+const TOTAL_SLOTS := 128 # id 127 is the pink fallback, added lazily on first overflow
 
 var _terrain: Terrain3D
 var _slot_by_texture: Dictionary = {} # Texture2D -> int slot
