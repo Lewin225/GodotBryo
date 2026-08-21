@@ -21,6 +21,15 @@ extends Node3D
 # MECHANISM is still real code worth covering, so the second check forces it
 # deterministically with synthetic textures instead of relying on real data
 # that can no longer trigger it.
+#
+# USABLE_SLOTS dropped to 62 (from 63) after a further real bug: base ID
+# 31 or 63 combined with overlay ID 56-63 produces a control value whose
+# bit pattern is IEEE-754 NaN when reinterpreted as float32 (Terrain3D's own
+# storage format), which Terrain3DData::get_control() treats as an "invalid"
+# sentinel -- corrupting real, correctly-painted data into garbage/pink-
+# looking patches in real play. Fixed by reserving slot 31
+# (Terrain3DTexturePool.RESERVED_SLOT) so no real texture is ever assigned
+# there. Still comfortably above the real 53-texture whole-worldspace need.
 
 const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
@@ -71,9 +80,16 @@ func _check_real_data_fits_budget() -> void:
 	check(pool.used_slot_count() < Terrain3DTexturePool.USABLE_SLOTS,
 			"real texture usage fits comfortably within budget (%d/%d slots used)" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS])
 
+	# texture_list.size() may be used_slot_count()+1, not exactly equal: once
+	# real usage crosses slot 31, Terrain3DTexturePool.RESERVED_SLOT inserts
+	# one throwaway placeholder there (a real NaN-bit-pattern guard -- see its
+	# own comment) that doesn't count as a distinct real texture.
 	var texture_list: Array = terrain.assets.get_texture_list()
-	check(texture_list.size() == pool.used_slot_count(),
-			"no pink fallback needed for real data (%d texture(s) in list)" % texture_list.size())
+	var expected_list_size := pool.used_slot_count()
+	if pool.used_slot_count() > Terrain3DTexturePool.RESERVED_SLOT:
+		expected_list_size += 1
+	check(texture_list.size() == expected_list_size,
+			"no pink fallback needed for real data (%d texture(s) in list, expected %d)" % [texture_list.size(), expected_list_size])
 
 ## Synthetic check: USABLE_SLOTS+1 distinct fabricated textures (not tied to
 ## real game files, so this doesn't depend on how many distinct textures the
@@ -104,7 +120,9 @@ func _check_synthetic_overflow_engages_fallback() -> void:
 
 	check(pool.used_slot_count() == Terrain3DTexturePool.USABLE_SLOTS,
 			"synthetic overflow filled the real budget exactly (%d/%d slots used)" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS])
-	check(slots[-1] == Terrain3DTexturePool.USABLE_SLOTS,
+	# The pink fallback always lands at TOTAL_SLOTS-1 (appended last, after
+	# RESERVED_SLOT's own throwaway placeholder), not at USABLE_SLOTS itself.
+	check(slots[-1] == Terrain3DTexturePool.TOTAL_SLOTS - 1,
 			"the (USABLE_SLOTS+1)th distinct texture landed on the pink fallback slot (got %d)" % slots[-1])
 	# Calling get_slot() again for the SAME overflowed texture must return the
 	# SAME pink slot, not warn/allocate again.
