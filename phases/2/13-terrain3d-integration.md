@@ -516,9 +516,57 @@ granularity rather than one large change:
    reasoning documented inline — still tight enough to catch a real placement bug
    (wrong cell, axis swap, order-of-magnitude misalignment). No fallback to
    `ConcavePolygonShape3D` needed.
-6. Wire into `WorldStreamer` per the region-residency design above (option A); real
-   before/after profiling of streaming settle time and frame stability during
-   traversal, same discipline as 2.8–2.12.
+6. **In progress — real per-cell bridge built and verified; `WorldStreamer` wiring
+   itself not yet done.** `project/gamebryo/terrain3d_bridge.gd` +
+   `terrain3d_texture_pool.gd` implement the actual "given a real cell, write its
+   real height/control data into a shared, persistent Terrain3D node at its real
+   world position" work, verified by `project/tests/test_terrain3d_bridge_placement.gd`
+   two ways: (1) cross-checked against `GamebryoTerrainBuilder`'s own real,
+   already-live placement for the same cell — exact match, 0.000000m error at 5
+   sample points; (2) two real adjacent cells (`(-17,0)`/`(-17,1)`) imported into
+   the *same* Terrain3D node agree exactly at their shared boundary. Three real
+   bugs found and fixed while building this (real engineering findings, not
+   guesses caught in review):
+   - **A real crash in Terrain3D itself.** `Terrain3DAssets::_set_asset_list()`
+     (`terrain_3d_assets.cpp`) dereferences every array element's `get_id()` with
+     no null check — passing a pre-sized `Array[Terrain3DTextureAsset]` with empty
+     slots to `set_texture_list()` segfaults inside the compiled addon. Fixed by
+     using `Terrain3DAssets.set_texture(id, asset)` one at a time instead (its
+     `_set_asset()` append path assigns real sequential ids safely) —
+     `terrain3d_texture_pool.gd` documents this inline.
+   - **`Terrain3DData.import_images()` cannot be used for incremental per-cell
+     streaming at all.** It's a bulk, region-*aligned*, whole-region-*replacing*
+     operation (`region->set_maps(images)` per slice, confirmed by reading the
+     source) — a second cell imported into an already-populated shared region via
+     `import_images()` silently wipes the first cell's data outside its own narrow
+     slice. This directly contradicts what the original design (implementation
+     step 2/4) assumed based on the single-cell spike tests, where it happened to
+     work because each test only ever touched one, always-freshly-created region.
+     Fixed by switching to the real per-pixel API (`set_height()`/`set_control()`,
+     confirmed to write into an existing region without disturbing the rest of it)
+     after explicitly pre-creating every region a cell's vertex range touches.
+   - **A real float-epsilon bug at exact region boundaries.** A cell edge that
+     mathematically sits exactly on a region boundary (e.g. world Z=0) can resolve
+     to either neighboring region depending on tiny floating-point rounding
+     differences between two expressions that are only equal in exact math
+     (`VERTEX_SPACING*(GRID_SIZE-1)` vs `CELL_SIZE_UNITS*GAMEBRYO_UNITS_TO_METERS` —
+     mathematically identical since `32*128=4096`, not bit-identical after
+     rounding) — real, reproducible, not hypothetical: two of five real cross-check
+     points failed with "no active region found" the first time this was tried.
+     Fixed by computing which regions a cell touches via pure integer grid math
+     (`grid_x`/`grid_y`/`REGION_SIZE` only, no floats) in
+     `ensure_regions_for_cell()`, and always pre-creating *every* candidate region
+     regardless of which one the float math would predict — makes the later
+     per-vertex float lookups robust no matter which side of the boundary their
+     own rounding lands on.
+   - **Still not done**: actually wiring `terrain3d_bridge.gd` into
+     `WorldStreamer`'s real streaming loop (behind an opt-in toggle, old path
+     untouched per the coexistence plan), region create/keep-resident/eventual-removal
+     policy during real play, and the real before/after profiling of streaming
+     settle time and frame stability this step's title calls for (same discipline
+     as 2.8–2.12) — per-vertex `set_height()`/`set_control()` calls (1089 vertices
+     × 2 map types per cell) are real native calls with real per-call overhead that
+     hasn't been measured yet against real streaming radii.
 7. Grass/instancer work — separate follow-on (design now settled, see "Real-data
    findings" above: `LTEX.GNAM` → `GRAS` → `Terrain3DInstancer.add_transforms()`),
    explicitly not bundled into the core terrain swap.
