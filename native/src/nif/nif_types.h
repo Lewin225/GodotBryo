@@ -64,6 +64,29 @@ struct SubMesh {
 	bool alpha_test_enabled = false;
 	float alpha_threshold = 0.5f;
 
+	// phases/2/01-material-pipeline.md's known gap, closed: NiAlphaProperty's
+	// src/dst blend-function bits (flags bits 1-4 / 5-8), decoded to one of
+	// Godot's own composite-mode buckets rather than passed through raw —
+	// only meaningful when alpha_blend_enabled (never for alpha_test, which
+	// is a discard, not a blend). Sourced against real data, not assumed:
+	// sampled every blend-enabled shape across ~2,000 real FO3/NV NIFs (see
+	// alpha_survey tool + phases/2/xx write-up) and found exactly three
+	// combinations in use, no others —
+	//   src=SRC_ALPHA dst=INV_SRC_ALPHA (734/796): ordinary alpha blend
+	//   src=SRC_ALPHA dst=ONE, or src=ONE dst=ONE (40/796): additive — the
+	//     light-shaft/glow-effect convention (IndFXLightRays* etc)
+	//   src=ZERO dst=SRC_COLOR (22/796): multiply
+	// An unrecognized combination (none seen in the sample, but nothing rules
+	// one out in unsampled content) falls back to kMix — the same "always
+	// mix" behavior this project used before this field existed, not a new
+	// failure mode.
+	enum class BlendFunc {
+		kMix,
+		kAdd,
+		kMultiply,
+	};
+	BlendFunc alpha_blend_func = BlendFunc::kMix;
+
 	// Local transform relative to the NIF's root (or parent shape node),
 	// for meshes composed of multiple sub-shapes. Rotation is row-major 3x3
 	// (rotation[0..2] = row 0, etc.), matching nifly's MatTransform.

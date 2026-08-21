@@ -159,6 +159,7 @@ Dictionary NifReader::get_alpha_info(int index) const {
 	out["blend_enabled"] = s ? s->alpha_blend_enabled : false;
 	out["test_enabled"] = s ? s->alpha_test_enabled : false;
 	out["threshold"] = s ? s->alpha_threshold : 0.5f;
+	out["blend_func"] = s ? static_cast<int>(s->alpha_blend_func) : 0;
 	return out;
 }
 

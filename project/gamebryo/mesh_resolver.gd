@@ -623,9 +623,9 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 
 	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
 		return null
-	var key := "%s|%s|%s|%s|%s|%.4f|%s|%s" % [tex_path, normal_path, glow_path,
+	var key := "%s|%s|%s|%s|%s|%.4f|%d|%s|%s" % [tex_path, normal_path, glow_path,
 			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
-			float(alpha.get("threshold", 0.5)), has_vertex_colors, is_unlit]
+			float(alpha.get("threshold", 0.5)), int(alpha.get("blend_func", 0)), has_vertex_colors, is_unlit]
 	if _material_cache.has(key):
 		material_cache_hits += 1
 		return _material_cache[key]
@@ -664,6 +664,20 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 
 	if bool(alpha.get("blend_enabled", false)):
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		# phases/2/01-material-pipeline.md's known gap, closed: the real
+		# src/dst blend-function bits, decoded in nif_loader.cpp
+		# (nif::SubMesh::BlendFunc) against a real-data census of ~2,000
+		# NIFs' NiAlphaProperty blocks -- 92% ordinary mix, ~5% additive
+		# (light-shaft/glow effects like IndFXLightRays*.nif, which
+		# genuinely ship src=SRC_ALPHA dst=ONE, not Godot's default mix),
+		# ~3% multiply. blend_func is int-typed on the wire (not a Godot
+		# enum) since nif_reader_gd's C++ side has no godot-cpp BaseMaterial3D
+		# dependency to draw the enum from -- mapped explicitly here, not by
+		# numeric coincidence (our kMultiply=2 is Godot's BLEND_MODE_MUL=3).
+		match int(alpha.get("blend_func", 0)):
+			1: mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			2: mat.blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+			_: mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 		have_content = true
 	elif bool(alpha.get("test_enabled", false)):
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
