@@ -107,7 +107,17 @@ static func _build_quadrant_mesh(heights: PackedFloat32Array, row_start: int, ro
 			var col := col_start + c
 			var i := r * cols + c
 			verts[i] = Vector3(col * VERTEX_SPACING, _height_at(heights, row, col), -(row * VERTEX_SPACING))
-			uvs[i] = Vector2(float(c) / float(cols - 1), float(r) / float(rows - 1))
+			# Real bug, found via a direct user report that ground textures looked
+			# "far too scaled up": UV used to be normalized 0..1 across the WHOLE
+			# quadrant (~29m across), meaning one full texture tile stretched over
+			# the entire quadrant with zero repeats -- unmistakably wrong once
+			# actually looked at, just never flagged before. Real ground textures
+			# should tile once per grid interval (VERTEX_SPACING, ~1.83m), giving
+			# a real repeat count across the quadrant instead of one giant stretch.
+			# Using the GLOBAL col/row (not local c/r) keeps UVs continuous across
+			# quadrant boundaries within the same cell, matching what a real
+			# splatted terrain looks like (no visible seam at the quadrant seam).
+			uvs[i] = Vector2(float(col), float(row))
 
 	var indices := PackedInt32Array()
 	indices.resize((rows - 1) * (cols - 1) * 6)
