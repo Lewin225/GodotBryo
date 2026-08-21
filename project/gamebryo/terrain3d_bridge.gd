@@ -28,7 +28,24 @@ const GRID_SIZE := 33 # esm::kLandGridSize
 const QUAD_HALF := 16
 const QUAD_VERTS_PER_SIDE := 17
 const VERTEX_SPACING := 128.0 * GAMEBRYO_UNITS_TO_METERS
-const REGION_SIZE := 64 # phases/2/13-terrain3d-integration.md's chosen value
+## Real bug found in real play: region_size=64 (this doc's original choice, driven
+## by the texture-budget research) doesn't actually fit the real WastelandNV
+## worldspace at all -- Terrain3DData's region map is a hard-coded 32x32 grid
+## (REGION_MAP_SIZE=32, terrain_3d_data.h), and WastelandNV's real grid extent
+## (confirmed via a real full-worldspace scan, not assumed: grid_x/grid_y both span
+## [-65, 64], 130 cells across) needs a region_size of at least 256 to fit inside
+## that fixed grid -- 128 falls just short (computed region range [-17,16] vs the
+## allowed [-16,15]). Real users hit this directly: cells far from the starting
+## area failed every per-vertex write with "No active region found" (silently
+## discarded region-creation for out-of-bounds locations), producing real,
+## visible lag from the sheer volume of failed native calls/error logs, not real
+## streaming work. 256 was also already the region_size phases/2/13's own
+## real-data findings measured a worst-case texture need for (49 in a realistic
+## 3x3-neighborhood) -- fits the current 31-usable-slot pool with real margin
+## (14 spare) without needing to widen Terrain3D's own 5-bit texture-ID format
+## (a separate, real, larger undertaking -- touches both this vendored addon's
+## C++ AND its GLSL shaders in lockstep, deliberately not bundled with this fix).
+const REGION_SIZE := 256
 
 const QUADRANT_RANGES := [
 	[0, QUAD_HALF, 0, QUAD_HALF], # BL
