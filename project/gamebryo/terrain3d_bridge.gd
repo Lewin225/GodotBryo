@@ -165,6 +165,15 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 				var pos := vertex_world_position(global_pos, row, col)
 				terrain.data.set_control(pos, control_value)
 
+	# Regenerates the GPU-side texture arrays/normals this import's real changes
+	# need to actually render -- the numeric get_height()/get_control() checks in
+	# test_terrain3d_bridge_placement.gd read region image data directly and pass
+	# without this, but real rendering doesn't update without it. Called once per
+	# cell here (simplest, definitely-correct starting point) rather than batched
+	# across multiple tiles-per-frame -- real per-call cost, and whether batching
+	# it is worth the complexity, is exactly the open profiling question
+	# phases/2/13-terrain3d-integration.md's implementation step 6 still has.
+	terrain.data.update_maps()
 	return true
 
 ## World position of vertex (row, col) given the cell's own cell_terrain3d_global_position()
