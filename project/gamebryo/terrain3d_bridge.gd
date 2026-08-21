@@ -129,82 +129,77 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# edge-continuity check.
 	var created_new_regions := ensure_regions_for_cell(terrain, grid_x, grid_y)
 
-	# --- Per-quadrant BTXT base + opacity-priority ATXT/VTXT overlay reduction
-	# (same algorithm as test_terrain3d_multilayer_paint.gd, reused here for real
-	# streaming instead of an isolated test cell) ---
+	# --- Per-quadrant BTXT base + PER-VERTEX ATXT/VTXT overlay selection ---
 	#
-	# Tracks the top TWO layers by total opacity mass per quadrant, not just
-	# the top one -- needed for the BTXT=0 case below, where there's no
-	# authored base to pair the strongest overlay against. Real quadrants can
-	# have up to 6 ATXT layers (7 including BTXT) stacked at one point
-	# (phases/2/13-terrain3d-integration.md's real census); Terrain3D's
-	# control map can only ever blend 2 at a time, so anything beyond the
-	# top two is always dropped here -- a real, documented, acknowledged
-	# approximation, not a bug.
+	# Real fix for a live-play report ("blending looks quadrant-wide, not
+	# organic") that an earlier version of this reduction picked a single
+	# "winning" overlay layer for the WHOLE quadrant (by aggregate opacity
+	# mass across all 289 vertices), then applied that same overlay
+	# everywhere in it -- an unforced simplification, not a real Terrain3D
+	# constraint. Terrain3D's control map is already per-vertex (every pixel
+	# gets its own independent base/overlay/blend triplet); the real "2
+	# textures blended" limit is per-POINT, not per-quadrant. Now every
+	# vertex independently picks whichever real ATXT layer has the highest
+	# opacity AT THAT EXACT VERTEX as its overlay, instead of one
+	# quadrant-wide winner -- still bounded by the same real 2-per-point
+	# ceiling (base + one overlay), just chosen at the granularity Terrain3D
+	# actually supports.
+	#
+	# The base itself stays quadrant-uniform: real BTXT is inherently
+	# quadrant-wide in FNV's own format (one LTEX per quadrant, not per
+	# vertex), and keeping it fixed avoids a NEW class of hard edges a
+	# per-vertex BASE choice would introduce (Terrain3D only cross-fades the
+	# blend weight between neighboring pixels that share the same base/
+	# overlay IDs -- a base that changes vertex-to-vertex would be a hard
+	# cut every time, worse than today). For the real BTXT=0 case (no
+	# authored base -- some quadrants are painted entirely via ATXT/VTXT),
+	# falls back to the single ATXT layer with the highest TOTAL opacity
+	# mass across the quadrant as a stable substitute base, and removes it
+	# from the overlay candidate pool below so it isn't picked twice --
+	# every OTHER real layer for that quadrant (not just a single runner-up)
+	# remains available as a genuine per-vertex overlay choice, richer than
+	# the fixed-pair fallback this replaces.
+	#
+	# Still a real, documented, acknowledged approximation: real quadrants
+	# can have up to 6 ATXT layers (7 including BTXT) stacked at one exact
+	# point (phases/2/13-terrain3d-integration.md's real census), and
+	# Terrain3D can only ever blend 2 at a time -- per-vertex selection picks
+	# the single best-fitting pair at each point instead of a quadrant-wide
+	# compromise, but a vertex with 3+ real overlapping layers still only
+	# keeps its single strongest one.
 	var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
 	var alpha_layers: Array = land.get("alpha_layers", [])
-	var quadrant_best := [null, null, null, null]
-	var quadrant_best_mass := [0.0, 0.0, 0.0, 0.0]
-	var quadrant_second := [null, null, null, null]
-	var quadrant_second_mass := [0.0, 0.0, 0.0, 0.0]
+
+	# Resolve every real ATXT layer's texture slot ONCE up front, grouped by
+	# quadrant -- _resolve_to_slot() does real path resolution + texture
+	# load + pool lookup, far too expensive to repeat per vertex.
+	var quadrant_layers := [[], [], [], []] # Array[{"opacity": PackedFloat32Array, "slot": int}] per quadrant
 	for layer in alpha_layers:
 		var q: int = layer["quadrant"]
 		if q < 0 or q >= 4:
 			continue
-		var opacity: PackedFloat32Array = layer["opacity"]
-		var mass := 0.0
-		for v in opacity:
-			mass += v
-		if mass > quadrant_best_mass[q]:
-			quadrant_second[q] = quadrant_best[q]
-			quadrant_second_mass[q] = quadrant_best_mass[q]
-			quadrant_best[q] = layer
-			quadrant_best_mass[q] = mass
-		elif mass > quadrant_second_mass[q]:
-			quadrant_second[q] = layer
-			quadrant_second_mass[q] = mass
+		var slot := _resolve_to_slot(int(layer["ltex_form_id"]))
+		if slot < 0:
+			continue
+		quadrant_layers[q].append({"opacity": layer["opacity"], "slot": slot})
 
 	var base_slot := [-1, -1, -1, -1]
-	var overlay_slot := [-1, -1, -1, -1]
-	var quadrant_overlay := [null, null, null, null] # opacity source for the resolved overlay_slot, if any
 	for q in range(4):
 		var base_ltex := int(quadrant_ltex[q]) if q < quadrant_ltex.size() else 0
 		base_slot[q] = _resolve_to_slot(base_ltex)
-		var overlay_layer = quadrant_best[q]
-		if base_slot[q] < 0:
-			# Real case, not a parsing failure: BTXT=0 means this quadrant is
-			# painted entirely via ATXT/VTXT with no separate base -- found
-			# via a real-play report ("this quadrant renders an unrelated
-			# leftover texture") that this used to leave base_slot[q] at -1,
-			# skipping this quadrant's control-map write entirely and
-			# silently keeping whatever Terrain3D's region defaulted to
-			# (texture ID 0 -- whichever real texture happened to be the
-			# FIRST one assigned a pool slot this session, unrelated to
-			# anything painted near this quadrant).
-			#
-			# Uses the second-strongest layer as this quadrant's base and
-			# the strongest as a real graded overlay on top -- preserves
-			# actual blending for this case instead of flattening to one
-			# uniform texture (an earlier version of this fix did exactly
-			# that, discarding the strongest layer's own real per-vertex
-			# opacity gradient -- strictly better than the random-texture
-			# bug, but still hard-edged, and part of what a live-play
-			# report of "still not blending" was seeing). Falls back to a
-			# single flat texture only if a second layer truly doesn't
-			# exist or fails to resolve.
-			if quadrant_second[q] != null:
-				var second_slot := _resolve_to_slot(int(quadrant_second[q]["ltex_form_id"]))
-				if second_slot >= 0:
-					base_slot[q] = second_slot
-				else:
-					overlay_layer = null # only one usable layer after all
-			if base_slot[q] < 0 and overlay_layer != null:
-				base_slot[q] = _resolve_to_slot(int(overlay_layer["ltex_form_id"]))
-				overlay_layer = null
-		if overlay_layer != null:
-			overlay_slot[q] = _resolve_to_slot(int(overlay_layer["ltex_form_id"]))
-			if overlay_slot[q] >= 0:
-				quadrant_overlay[q] = overlay_layer
+		if base_slot[q] < 0 and not quadrant_layers[q].is_empty():
+			var best_i := -1
+			var best_mass := -1.0
+			for i in range(quadrant_layers[q].size()):
+				var opacity: PackedFloat32Array = quadrant_layers[q][i]["opacity"]
+				var mass := 0.0
+				for v in opacity:
+					mass += v
+				if mass > best_mass:
+					best_mass = mass
+					best_i = i
+			base_slot[q] = quadrant_layers[q][best_i]["slot"]
+			quadrant_layers[q].remove_at(best_i)
 
 	# --- Write every real vertex directly: height always, control only within
 	# whichever quadrant(s) actually have a resolved base texture. ---
@@ -219,14 +214,18 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		var r: Array = QUADRANT_RANGES[q]
 		var row_start: int = r[0]
 		var col_start: int = r[2]
-		var overlay: int = overlay_slot[q]
-		var opacity: PackedFloat32Array = quadrant_overlay[q]["opacity"] if quadrant_overlay[q] != null else PackedFloat32Array()
+		var layers: Array = quadrant_layers[q]
 		for row in range(r[0], r[1] + 1):
 			for col in range(r[2], r[3] + 1):
+				var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
+				var overlay := -1
 				var blend := 0.0
-				if overlay >= 0:
-					var local_index := (row - row_start) * QUAD_VERTS_PER_SIDE + (col - col_start)
-					blend = opacity[local_index] if local_index < opacity.size() else 0.0
+				for entry in layers:
+					var opacity: PackedFloat32Array = entry["opacity"]
+					var op: float = opacity[local_index] if local_index < opacity.size() else 0.0
+					if op > blend:
+						blend = op
+						overlay = entry["slot"]
 				var blend_u8 := int(roundf(clampf(blend, 0.0, 1.0) * 255.0))
 				var control_value: int = Terrain3DUtil.enc_base(base_slot[q]) | Terrain3DUtil.enc_overlay(maxi(overlay, 0)) | Terrain3DUtil.enc_blend(blend_u8)
 				var pos := vertex_world_position(global_pos, row, col)
