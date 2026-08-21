@@ -57,6 +57,17 @@ func get_slot(tex: Texture2D) -> int:
 	var asset := Terrain3DTextureAsset.new()
 	asset.set_name("slot_%d" % _slot_by_texture.size())
 	asset.set_albedo_texture(tex)
+	# Real bug, same one reported against the old GamebryoTerrainBuilder
+	# renderer: ground textures looked "far too scaled up." Terrain3D's own
+	# Terrain3DTextureAsset.uv_scale defaults to 0.1 (uv = world_position *
+	# uv_scale), meaning one texture tile spans 10 real-world meters --
+	# matches the same "textures far too large" symptom, from a different
+	# mechanism than the old renderer's own bug (that one used raw 0..1 UVs
+	# across a whole ~29m quadrant; this is a per-texture world-space scale
+	# constant instead). Matched to the same real-world tile size the old
+	# renderer's fix uses -- one tile per VERTEX_SPACING interval (~1.83m,
+	# terrain_builder.gd) -- for visual consistency between both renderers.
+	asset.set_uv_scale(1.0 / Terrain3DBridge.VERTEX_SPACING)
 	# _set_asset()'s append path (terrain_3d_assets.cpp) assigns the real id as
 	# the list's current size, ignoring the id argument beyond deciding
 	# "append vs overwrite" -- passing TOTAL_SLOTS-1 here is just "definitely

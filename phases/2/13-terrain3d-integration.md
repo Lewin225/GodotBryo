@@ -710,6 +710,75 @@ granularity rather than one large change:
         real play session will keep hitting this same 31-slot ceiling
         repeatedly as new areas stream in. This is now confirmed necessary,
         not speculative.
+   - **Texture-scale bug, both renderers.** Real user report, not caught by any
+     screenshot test (none zoomed in close enough): ground textures looked "far
+     too scaled up" in both `GamebryoTerrainBuilder` (old) and Terrain3D (new)
+     — two unrelated mechanisms, same visible symptom, both real. Old renderer
+     (`terrain_builder.gd`): UVs were normalized 0–1 across a whole ~29m
+     quadrant, meaning one texture tile stretched over the entire quadrant with
+     zero repeats. Fixed to use unnormalized global grid coordinates
+     (`Vector2(col, row)`, not per-quadrant-local `Vector2(c, r)`) — one tile
+     per `VERTEX_SPACING` interval (~1.83m), and using the *global* index
+     also removes a seam that would otherwise appear at every quadrant
+     boundary within a cell. Terrain3D: `Terrain3DTextureAsset.uv_scale`
+     defaults to `0.1` (`uv = world_position * uv_scale`, one tile per 10m) —
+     set to `1.0 / VERTEX_SPACING` in `Terrain3DTexturePool` to match the same
+     real-world tile size as the old renderer's fix, keeping both visually
+     consistent with each other.
+   - **A real stutter regression, the same class 2.9–2.12 already fixed once
+     for the old path — caused by this task's own culling fix above.** Real
+     user report (a profiler capture): `Terrain3DBridge.import_cell()` costing
+     75ms across 3 calls in one frame, a real "half a second of 30fps," not
+     hypothetical. Root cause: `Terrain3DData::calc_height_range(true)`
+     (`terrain_3d_data.cpp`, added for the culling-AABB fix above) recomputes
+     **every** resident region's full height range from scratch on every
+     single call, with no filtering to just the region(s) actually touched —
+     confirmed by reading its source, a plain loop over all of
+     `_region_locations`. Calling it unconditionally per cell import means
+     cost grows with *total resident regions*, not O(1) per cell — cheap early
+     in a session, increasingly expensive the longer play continues, matching
+     exactly what was reported. Fixed by only recalculating the specific
+     region(s) the just-imported cell touches
+     (`Terrain3DRegion.calc_height_range()`, real per-region work, correctly
+     unavoidable) then a cheap non-recursive
+     `Terrain3DData.calc_height_range(false)` to re-aggregate the master range
+     from each region's own already-correct cached value. Verified two ways:
+     correctness unchanged (same `(0.0, 120.8)` real height-range result as
+     before the fix) and a real 20-batch scaling test (9 new cells per batch,
+     up to 174 total) showing per-batch cost stayed flat (10–40ms) instead of
+     growing with resident-region count.
+   - **A new, real, significant, NOT-yet-addressed finding surfaced while
+     verifying the stutter fix's scaling behavior**: `Terrain3DData`'s region
+     map is a **hard-coded, fixed 32×32 grid**
+     (`REGION_MAP_SIZE = 32`, `terrain_3d_data.h`) — region locations are
+     bounds-checked against `-16..15` on each axis and rejected outside that
+     range (confirmed via real errors hit during the scaling test above, once
+     it walked far enough from the origin). At `region_size = 64` (this
+     design's chosen value), that caps real coverage at **32 × 64 = 2048
+     vertex-intervals across, i.e. only a 64×64 real cell area** — the real
+     scaling test above hit this bound at just ~48 cells from the origin in
+     one direction. `WastelandNV` is real and known to be far larger than a
+     64×64-cell area (see "Real-data findings" above — 16,388 `LAND` cells
+     total, spanning a real coordinate range this test already exceeded with
+     a small fraction of that). **This is a genuine architectural tension, not
+     yet resolved**: the texture-budget finding specifically wanted a
+     *smaller* `region_size` (64, not 256+) to keep per-region/per-neighborhood
+     texture counts under the 32-slot budget, but `REGION_MAP_SIZE` being fixed
+     means a smaller `region_size` also shrinks total representable world
+     area — the two constraints pull in opposite directions. Real options,
+     none vetted: (1) since `native/terrain3d` is a vendored submodule we
+     already build from source (not a consumed prebuilt binary),
+     `REGION_MAP_SIZE` could be patched upward directly — real, available,
+     but unknown GPU/memory cost at a much larger value, and unknown whether
+     other addon internals assume 32 elsewhere; (2) some kind of region-grid
+     rebasing/windowing scheme (only ever representing a bounded area around
+     the player, evicting/rebasing distant regions) — real work, ties directly
+     into the still-not-built region-residency-removal policy below; (3)
+     accept a bounded real play area for now and treat full-map coverage as a
+     later problem. **Not investigated further this pass** — flagging clearly
+     rather than picking an approach without discussion, since this affects
+     the core region-size decision the rest of this design's texture-budget
+     conclusions are built on.
    - **Still not done**: real LRU texture-slot eviction (see directly above —
      confirmed necessary now, not speculative); region create/keep-resident/
      eventual-removal policy *within* one active worldspace session as the

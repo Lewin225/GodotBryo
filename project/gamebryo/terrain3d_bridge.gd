@@ -187,9 +187,28 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# the real ~110-125m data) doesn't cover where the real, shader-displaced
 	# geometry actually ends up -- exactly explains angle-dependent culling.
 	# calc_height_range(true) forces a real recalculation from the actual pixel
-	# data. Called once per cell here, same batching caveat as update_maps()
-	# above.
-	terrain.data.calc_height_range(true)
+	# data -- but a real, separate bug found in real play (a real half-second
+	# 30fps stall reappearing, the same class of stutter 2.9-2.12 already fixed
+	# once for the old terrain path): Terrain3DData::calc_height_range(true)
+	# (terrain_3d_data.cpp) recomputes EVERY resident region's full height
+	# range from scratch on EVERY call, not just the region(s) this one cell
+	# touched -- confirmed by reading its source, a plain loop over
+	# `_region_locations` with no filtering. Calling it unconditionally per
+	# cell means cost grows with TOTAL resident regions, not O(1) per cell --
+	# fine early in a session, increasingly expensive the longer play
+	# continues and more of the map has streamed in, matching exactly what was
+	# reported (a real profiler capture showing 75ms across 3 import_cell()
+	# calls in one frame). Fixed by only recalculating the region(s) this
+	# cell's own vertex range actually touched (Terrain3DRegion.calc_height_range(),
+	# real per-region work, unavoidable and correct), then a cheap
+	# non-recursive Terrain3DData.calc_height_range(false) to re-aggregate the
+	# master range from each region's own (now correctly cached) range instead
+	# of recomputing all of them.
+	for loc in _region_locations_for_cell(grid_x, grid_y):
+		var region: Terrain3DRegion = terrain.data.get_region(loc)
+		if region != null:
+			region.calc_height_range()
+	terrain.data.calc_height_range(false)
 	return true
 
 ## Real bug found via a 9x9-cell real-data verification pass (many cells resident
@@ -249,7 +268,10 @@ static func _floor_div(a: int, b: int) -> int:
 ## them upfront makes the actual per-vertex float lookups robust regardless of
 ## which side of the boundary their own rounding lands on, since both candidate
 ## regions already exist either way.
-static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int) -> void:
+## The (up to 4) distinct Terrain3D region locations cell (grid_x, grid_y)'s own
+## vertex range touches -- pure integer grid math, see ensure_regions_for_cell()'s
+## own doc comment for why (a real float-epsilon bug this replaced).
+static func _region_locations_for_cell(grid_x: int, grid_y: int) -> Array[Vector2i]:
 	var cell_span := GRID_SIZE - 1 # 32 vertex-intervals per cell side
 	var x0 := grid_x * cell_span
 	var x1 := x0 + cell_span
@@ -257,13 +279,20 @@ static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int
 	var z1 := -grid_y * cell_span
 	var region_x := [_floor_div(x0, REGION_SIZE), _floor_div(x1, REGION_SIZE)]
 	var region_z := [_floor_div(z0, REGION_SIZE), _floor_div(z1, REGION_SIZE)]
-	var existing: Array = terrain.data.region_locations
+	var out: Array[Vector2i] = []
 	for rx in region_x:
 		for rz in region_z:
 			var loc := Vector2i(rx, rz)
-			if not existing.has(loc):
-				terrain.data.add_region_blank(loc, false) # p_update=false -- batched update_maps() call is the caller's job (once per real streaming batch, not once per region)
-				existing = terrain.data.region_locations
+			if not out.has(loc):
+				out.append(loc)
+	return out
+
+static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int) -> void:
+	var existing: Array = terrain.data.region_locations
+	for loc in _region_locations_for_cell(grid_x, grid_y):
+		if not existing.has(loc):
+			terrain.data.add_region_blank(loc, false) # p_update=false -- batched update_maps() call is the caller's job (once per real streaming batch, not once per region)
+			existing = terrain.data.region_locations
 
 func _resolve_to_slot(ltex_id: int) -> int:
 	if ltex_id == 0:
