@@ -14,13 +14,20 @@ extends RefCounted
 ## textures -- over the 62-usable-slot budget the first widening left. Both
 ## are real source patches to the vendored native/terrain3d addon (see
 ## terrain_3d_util.h's own comment on the full bit-layout change, which also
-## had to move in lockstep across several GLSL shader files). USABLE_SLOTS/
-## TOTAL_SLOTS below reflect the second widening: 126 usable + 1 reserved
-## (RESERVED_SLOT) + 1 pink fallback = 128. Still no LRU eviction (real
-## overflow is possible in principle at very large concurrent areas, but the
-## real whole-worldspace need, 64, is nowhere close to this budget) -- if real
-## play ever shows the pink fallback firing again, that's the signal to build
-## eviction, not a guess made in advance.
+## had to move in lockstep across several GLSL shader files). Superseded by
+## phases/2/14-native-terrain-texture-blend.md, which replaces the control-map
+## 2-texture format entirely with a real per-vertex N=7 layer format -- this
+## pool's own 128-slot budget carries over unchanged (real worldspace need is
+## still 64, comfortably inside it), but the control-map bit-width/NaN-guard
+## concerns below no longer apply, since nothing writes texture IDs into the
+## control map anymore. USABLE_SLOTS/TOTAL_SLOTS: 126 usable (1..126) + 1
+## reserved default/unpainted placeholder (0, see _reserve_default_slot()) +
+## 1 pink overflow fallback (127) = 128. Still no LRU eviction (real overflow
+## is possible in
+## principle at very large concurrent areas, but the real whole-worldspace
+## need, 64, is nowhere close to this budget) -- if real play ever shows the
+## pink fallback firing again, that's the signal to build eviction, not a
+## guess made in advance.
 ##
 ## Uses Terrain3DAssets.set_texture(id, asset) one at a time, NOT
 ## set_texture_list() with a pre-sized array -- a real crash found while building
@@ -33,51 +40,71 @@ extends RefCounted
 ## sequentially, one real call per new texture, is both the crash-safe path and
 ## naturally gives real textures sequential ids and the fallback (added only
 ## once, on first genuine overflow) the final id, matching this design's slot
-## numbering without needing to force ids by hand (see RESERVED_SLOT below for
-## the one deliberate gap in that sequence).
+## numbering without needing to force ids by hand.
 
-## Real bug found via a live-play report ("bright rainbow/magenta patches,
-## bits ending up in the wrong place"): Terrain3D stores the control map as
-## a uint32 REINTERPRETED as a float32 (Color(as_float(p_control), ...) in
-## terrain_3d_data.h), and Terrain3DData::get_control() explicitly treats
-## any control value whose bit pattern happens to BE an IEEE-754 NaN as an
-## "invalid/no data" sentinel, silently replacing it with UINT32_MAX --
-## which decodes to base=TOTAL_SLOTS-1/overlay=TOTAL_SLOTS-1/hole=1/nav=1/
-## auto=1, and reading a texture-array layer far beyond what's actually
-## resident produces undefined/garbage GPU memory content (the varied
-## bright colors seen, not just one fixed magenta). Confirmed directly, not
-## guessed, for each bit-width this pool has used: the highest legal base ID
-## combined with a high-enough overlay ID always produces a NaN bit pattern
-## regardless of blend weight -- verified by computing every (base, overlay)
-## pair's reinterpreted float32 and checking isnan(). The top ID
-## (TOTAL_SLOTS-1) is already reserved as the pink fallback and effectively
-## never used as an ordinary base, but the SECOND-highest 7-bit-range value
-## (63, under the current 7-bit/128-slot layout) is an entirely ordinary
-## slot in the middle of the real usable range, and high overlay IDs are
-## reachable as soon as a session's texture pool fills toward its real
-## budget -- not a rare edge case. First found and fixed under the earlier
-## 6-bit/64-slot layout (danger value was 31 there); re-derived for the
-## current 7-bit/128-slot layout after that widening moved the field
-## boundaries.
+## RETIRED (phases/2/14-native-terrain-texture-blend.md): this pool used to
+## reserve a throwaway slot to dodge a real IEEE-754 NaN collision --
+## Terrain3D's control map stored texture IDs as a uint32 REINTERPRETED as a
+## float32, and certain (base, overlay) ID combinations produced a bit
+## pattern Terrain3DData::get_control() treated as an "invalid" sentinel,
+## corrupting real painted data into visible rainbow/magenta garbage. Fixed
+## twice (reserved slot 31, then 63) as the control map's bit width grew.
 ##
-## Fixed by reserving slot 63 -- never assigning a real texture there --
-## which removes the only practically-reachable half of the collision
-## (base=63 is now impossible; base=127 remains only in the already-
-## degrading-gracefully real-overflow case). USABLE_SLOTS is 126
-## (ids 0..62, 64..126) accordingly, comfortably above the real
-## whole-worldspace need of 64 (phases/2/13-terrain3d-integration.md).
-const RESERVED_SLOT := 63
-const USABLE_SLOTS := 126 # ids 0..62, 64..126 (63 reserved, see RESERVED_SLOT)
-const TOTAL_SLOTS := 128 # id 127 is the pink fallback, added lazily on first overflow
+## That entire bug class is now structurally impossible: terrain3d_bridge.gd
+## no longer writes texture IDs into the control map at all (see phases/2/14's
+## integration plan step 4) -- real per-vertex IDs go into
+## TYPE_TEX_ID_A/TYPE_TEX_ID_B, plain FORMAT_RGBA8 normalized channels
+## decoded via round(sample*255.0) in the shader, never reinterpreted as bits.
+## No reserved slot needed; USABLE_SLOTS is a plain budget again.
+const USABLE_SLOTS := 126 # ids 1..126 (0 reserved -- see _reserve_default_slot(); 127 is the pink overflow fallback)
+const TOTAL_SLOTS := 128
 
 var _terrain: Terrain3D
 var _slot_by_texture: Dictionary = {} # Texture2D -> int slot
 var _pink_slot := -1 # -1 until a real overflow actually happens
 var _overflow_warned: Dictionary = {} # Texture2D -> true, warn once per distinct overflowed texture
-var _reserved_slot_consumed := false
 
 func _init(terrain: Terrain3D) -> void:
 	_terrain = terrain
+	_reserve_default_slot()
+
+## Real fix for a live-play report of solid-white (or solid-whatever) terrain
+## patches, static and reproducible rather than intermittent: ANY vertex
+## whose real per-vertex texture-ID data was never actually written --
+## terrain3d_bridge.gd's own "if base_slot[q] < 0: continue" (a quadrant with
+## no real BTXT and no real ATXT to fall back on), or simply a region's
+## default COLOR_ZERO before its own cell streams in -- decodes to real
+## texture ID 0 at the shader's ALWAYS-FULL-WEIGHT implicit base layer (see
+## main.glsl's accumulate_material(), phases/2/14-native-terrain-texture-
+## blend.md). Before this fix, whichever real ground texture this session's
+## pool happened to resolve FIRST silently became "the default texture for
+## everywhere nothing was actually painted" -- an accident of resolution
+## order, not a design choice. Once `prewarm_textures()` made resolution
+## order deterministic (worldspace grid-scan order) instead of
+## streaming-order-dependent, real slot 0 became a REAL, SPECIFIC, always-
+## the-same ground texture -- and if that texture happens to be bright/pale,
+## every unpainted vertex renders as a real, solid, unmistakably "corrupt"-
+## looking patch of it, consistently, from the very first frame.
+##
+## Fixed by reserving real slot 0 for the same pink placeholder overflow
+## already uses, added before any real texture ever gets resolved (so it's
+## guaranteed to land at 0 -- Terrain3DAssets.set_texture()'s own
+## append-by-list-size behavior, the same mechanism get_slot() already relies
+## on for every other slot). "Nothing painted here" now visually says so
+## honestly instead of silently showing an arbitrary real texture as if it
+## had been deliberately painted.
+## Dimmer than the full-brightness overflow pink (_build_pink_texture()'s own
+## default) -- see that function's own comment for why. Still an obviously
+## synthetic magenta, just not bright enough to blow out real HDR exposure
+## across what's expected to be real, ordinary, large "not streamed in yet"
+## screen area.
+const DEFAULT_SLOT_COLOR := Color(0.35, 0.0, 0.35)
+
+func _reserve_default_slot() -> void:
+	var placeholder := Terrain3DTextureAsset.new()
+	placeholder.set_name("__default_unpainted_placeholder")
+	placeholder.set_albedo_texture(_build_pink_texture(DEFAULT_SLOT_COLOR))
+	_terrain.assets.set_texture(TOTAL_SLOTS - 1, placeholder)
 
 ## Returns the slot id for `tex`, assigning a new one (via a real, sequential
 ## Terrain3DAssets.set_texture() call) if this is the first time this exact texture
@@ -85,7 +112,16 @@ func _init(terrain: Terrain3D) -> void:
 ## overflow) once all 31 usable slots are taken, logging a warning exactly once per
 ## distinct texture that overflowed, so a real overflow is loud and greppable in
 ## real play, not silently wrong.
-func get_slot(tex: Texture2D) -> int:
+##
+## `debug_name` (the real texture path, plumbed from _resolve_to_slot() in
+## terrain3d_bridge.gd) is for diagnostics only. Real bug found while adding
+## it: `tex.resource_path` (used directly in the overflow warning below before
+## this) is ALWAYS empty for these textures -- they're built via
+## ImageTexture.create_from_image() (mesh_resolver.gd's own
+## _get_texture_from_image()), which never sets resource_path. Every real
+## overflow warning this pool has ever logged named an empty string, silently
+## useless for tracking down which real texture actually overflowed.
+func get_slot(tex: Texture2D, debug_name: String = "") -> int:
 	if tex == null:
 		return _ensure_pink_slot()
 	if _slot_by_texture.has(tex):
@@ -93,12 +129,11 @@ func get_slot(tex: Texture2D) -> int:
 	if _slot_by_texture.size() >= USABLE_SLOTS:
 		if not _overflow_warned.has(tex):
 			_overflow_warned[tex] = true
-			push_warning("Terrain3DTexturePool: texture budget exhausted (%d/%d slots used) -- %s falls back to solid pink. See phases/2/13-terrain3d-integration.md's texture-budget design." % [USABLE_SLOTS, USABLE_SLOTS, tex.resource_path])
+			push_warning("Terrain3DTexturePool: texture budget exhausted (%d/%d slots used) -- %s falls back to solid pink. See phases/2/13-terrain3d-integration.md's texture-budget design." % [USABLE_SLOTS, USABLE_SLOTS, debug_name])
 		return _ensure_pink_slot()
-	_reserve_slot_if_needed()
 	var asset := Terrain3DTextureAsset.new()
 	asset.set_name("slot_%d" % _terrain.assets.get_texture_list().size())
-	asset.set_albedo_texture(_normalize_texture(tex))
+	asset.set_albedo_texture(_normalize_texture(tex, debug_name))
 	# Real bug, same one reported against the old GamebryoTerrainBuilder
 	# renderer: ground textures looked "far too scaled up." Terrain3D's own
 	# Terrain3DTextureAsset.uv_scale defaults to 0.1 (uv = world_position *
@@ -146,10 +181,30 @@ const CANONICAL_FORMAT := Image.FORMAT_DXT1 # BC1 -- this project's own confirme
 ## state if it doesn't already match, so it can never trigger the real
 ## Terrain3DAssets texture-array mismatch bug documented above. A no-op (just
 ## returns `tex` unchanged) for the common case where it already matches.
-func _normalize_texture(tex: Texture2D) -> Texture2D:
+##
+## Real bug found via a live-play report (solid white patches with bloom
+## glowing around them, appearing only after this pool started resolving
+## EVERY real ATXT layer unconditionally instead of only "winning" ones --
+## phases/2/14-native-terrain-texture-blend.md -- meaning real ground
+## textures that had NEVER been loaded through this path before started
+## hitting it for the first time): every fallible step here
+## (decompress()/resize()/convert()/compress()) had its Error return code
+## silently ignored. If any one of them fails on some real texture's
+## particular encoding, the following steps operate on a still-wrong-format
+## Image, and the final ImageTexture.create_from_image() can end up wrapping
+## blank/garbage pixel data while still LOOKING like a valid canonical-format
+## entry (right size, right format, right mipmap flag) -- passing
+## Terrain3DAssets' own format/size/mipmap validation while actually being
+## corrupt, worst of both worlds. Fixed by checking every step and falling
+## back to the same canonical pink placeholder (loud, safe, already-proven
+## degradation) instead of silently shipping whatever `img` ended up holding.
+## `debug_name` (the real texture path, from _resolve_to_slot()) makes the
+## warning actionable instead of just "something, somewhere, is white."
+func _normalize_texture(tex: Texture2D, debug_name: String = "") -> Texture2D:
 	var img := tex.get_image()
 	if img == null:
-		return tex
+		push_warning("Terrain3DTexturePool: %s has no accessible Image data, using pink placeholder" % debug_name)
+		return _build_pink_texture()
 	if img.get_size() == Vector2i(CANONICAL_SIZE, CANONICAL_SIZE) and img.get_format() == CANONICAL_FORMAT and img.has_mipmaps():
 		return tex
 	# Image.resize()/generate_mipmaps() both refuse to operate on compressed
@@ -157,8 +212,15 @@ func _normalize_texture(tex: Texture2D) -> Texture2D:
 	# resize/mipmap in an uncompressed format, then recompress to the
 	# canonical target format.
 	if img.is_compressed():
-		img.decompress()
+		if img.decompress() != OK:
+			push_warning("Terrain3DTexturePool: %s failed to decompress, using pink placeholder" % debug_name)
+			return _build_pink_texture()
 	if img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE):
+		# resize()/convert() below both return void, not Error -- Godot gives
+		# no per-call signal on failure for these two (confirmed against the
+		# real Image class API, not assumed same as the Error-returning calls
+		# around them). The final normalized-state check after compress()
+		# below is what catches a bad outcome from either of these instead.
 		img.resize(CANONICAL_SIZE, CANONICAL_SIZE, Image.INTERPOLATE_LANCZOS)
 	# Drop any alpha channel before compressing -- Image.compress(COMPRESS_S3TC)
 	# picks DXT1 vs DXT5 based on whether the source has non-opaque alpha
@@ -167,16 +229,59 @@ func _normalize_texture(tex: Texture2D) -> Texture2D:
 	# produce DXT5 and break the fixed CANONICAL_FORMAT guarantee this whole
 	# normalization exists for.
 	img.convert(Image.FORMAT_RGB8)
-	img.generate_mipmaps()
-	img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
+	# Real content sanity check, added while hunting a live-play report of
+	# solid-white terrain patches: none of the format/size/mipmap validation
+	# above can catch a texture that's technically well-formed but visually
+	# blank/near-white (e.g. a bad source DDS, or a genuine decode issue this
+	# pipeline doesn't otherwise detect). Sparse-samples a 16x16 grid (cheap,
+	# no need to touch every one of 512*512 real pixels) and warns loudly,
+	# naming the real texture path, on anything suspiciously bright and flat
+	# -- ground diffuse textures are real, varied, natural material photos,
+	# never uniformly near-white in real game data.
+	var sample_sum := 0.0
+	var sample_min := 1.0
+	var sample_count := 0
+	var step := maxi(img.get_width() / 16, 1)
+	for y in range(0, img.get_height(), step):
+		for x in range(0, img.get_width(), step):
+			var lum: float = img.get_pixel(x, y).get_luminance()
+			sample_sum += lum
+			sample_min = minf(sample_min, lum)
+			sample_count += 1
+	if sample_count > 0:
+		var sample_avg := sample_sum / sample_count
+		if sample_avg > 0.9 and sample_min > 0.8:
+			push_warning("Terrain3DTexturePool: %s looks suspiciously blank/white (sampled avg luminance %.3f, min %.3f) -- likely the corrupt-texture source, not a real ground diffuse" % [debug_name, sample_avg, sample_min])
+	if img.generate_mipmaps() != OK:
+		push_warning("Terrain3DTexturePool: %s failed to generate mipmaps, using pink placeholder" % debug_name)
+		return _build_pink_texture()
+	if img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC) != OK:
+		push_warning("Terrain3DTexturePool: %s failed to compress, using pink placeholder" % debug_name)
+		return _build_pink_texture()
+	if img.get_format() != CANONICAL_FORMAT or img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE) or not img.has_mipmaps():
+		push_warning("Terrain3DTexturePool: %s normalized to unexpected state (format=%d size=%s mipmaps=%s), using pink placeholder" % [debug_name, img.get_format(), img.get_size(), img.has_mipmaps()])
+		return _build_pink_texture()
 	return ImageTexture.create_from_image(img)
 
 ## Shared by the pink fallback and the slot-31 NaN-collision guard below --
 ## both just need an unmissable, canonical-format placeholder that's never
 ## meant to be treated as real ground texture content.
-func _build_pink_texture() -> ImageTexture:
+## Real bug found via a live-play report right after _reserve_default_slot()
+## started using this for real slot 0: full-saturation Color(1,0,1) has two
+## channels pinned at maximum, and with real vertex-shading/bloom in play,
+## enough real screen area covered by that (real per-vertex data currently
+## unpainted regions are common -- most of a region outside its own resident
+## cells, by design) blew out the whole view's exposure, reading as "solid
+## white" rather than a recognizable, legible pink. `p_color` lets
+## _reserve_default_slot() use a deliberately dimmer variant (still
+## obviously synthetic, not a real ground texture) while genuine overflow
+## keeps the original full-brightness pink -- that case is meant to be rare
+## and attention-grabbing, this one is expected to cover real, large,
+## ordinary "not streamed in yet" area and needs to stay legible instead of
+## flooding the screen.
+func _build_pink_texture(p_color: Color = Color(1.0, 0.0, 1.0)) -> ImageTexture:
 	var pink_img := Image.create(CANONICAL_SIZE, CANONICAL_SIZE, false, Image.FORMAT_RGB8)
-	pink_img.fill(Color(1.0, 0.0, 1.0))
+	pink_img.fill(p_color)
 	pink_img.generate_mipmaps()
 	pink_img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
 	return ImageTexture.create_from_image(pink_img)
@@ -195,23 +300,6 @@ func _ensure_pink_slot() -> int:
 	_terrain.assets.set_texture(TOTAL_SLOTS - 1, pink_asset)
 	_pink_slot = _terrain.assets.get_texture_list().size() - 1
 	return _pink_slot
-
-## See RESERVED_SLOT's own comment: inserts a throwaway placeholder at the
-## exact moment the next real texture would otherwise land on slot 31,
-## pushing it to 32 instead. Fires at most once per pool (idempotent via
-## _reserved_slot_consumed) -- called unconditionally at the top of the
-## real-texture-adding path in get_slot() so it always fires at precisely
-## the right append, regardless of call order.
-func _reserve_slot_if_needed() -> void:
-	if _reserved_slot_consumed:
-		return
-	if _terrain.assets.get_texture_list().size() != RESERVED_SLOT:
-		return
-	_reserved_slot_consumed = true
-	var dummy_asset := Terrain3DTextureAsset.new()
-	dummy_asset.set_name("__reserved_nan_collision_guard")
-	dummy_asset.set_albedo_texture(_build_pink_texture())
-	_terrain.assets.set_texture(TOTAL_SLOTS - 1, dummy_asset)
 
 ## Real slot count currently assigned to distinct textures (excludes the pink
 ## fallback, whether or not it's been added yet) -- for diagnostics/tests, not

@@ -901,6 +901,10 @@ std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 					layer.opacity[position] = opacity;
 				}
 			}
+		} else if (s.type == "VCLR" && s.size >= static_cast<size_t>(kLandGridSize) * kLandGridSize * 3) {
+			out.vertex_colors.assign(s.data, s.data + static_cast<size_t>(kLandGridSize) * kLandGridSize * 3);
+		} else if (s.type == "VNML" && s.size >= static_cast<size_t>(kLandGridSize) * kLandGridSize * 3) {
+			out.vertex_normals_raw.assign(s.data, s.data + static_cast<size_t>(kLandGridSize) * kLandGridSize * 3);
 		}
 	}
 	if (!have_vhgt) {

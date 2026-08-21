@@ -435,6 +435,22 @@ Dictionary EsmReader::get_land_data(int64_t cell_form_id) const {
 			alpha_layers.push_back(layer_dict);
 		}
 		out["alpha_layers"] = alpha_layers;
+		// phases/2/14-native-terrain-texture-blend.md: real VCLR/VNML, raw bytes
+		// (PackedByteArray already matches VCLR's own 0-255-unsigned-RGB layout
+		// exactly; VNML decode -- signed byte, (X,Z,Y) file axis order -- is left
+		// to the caller, see LandData::vertex_normals_raw's own comment).
+		PackedByteArray vertex_colors;
+		vertex_colors.resize(static_cast<int>(land->vertex_colors.size()));
+		for (size_t i = 0; i < land->vertex_colors.size(); ++i) {
+			vertex_colors[static_cast<int>(i)] = land->vertex_colors[i];
+		}
+		out["vertex_colors"] = vertex_colors;
+		PackedByteArray vertex_normals_raw;
+		vertex_normals_raw.resize(static_cast<int>(land->vertex_normals_raw.size()));
+		for (size_t i = 0; i < land->vertex_normals_raw.size(); ++i) {
+			vertex_normals_raw[static_cast<int>(i)] = land->vertex_normals_raw[i];
+		}
+		out["vertex_normals_raw"] = vertex_normals_raw;
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
