@@ -46,8 +46,12 @@ public:
 	String get_normal_texture_path(int index) const;
 	String get_glow_texture_path(int index) const;
 	// { "has_alpha_property": bool, "blend_enabled": bool, "test_enabled":
-	// bool, "threshold": float (0..1) } — from the shape's NiAlphaProperty,
-	// or has_alpha_property=false if it has none (treat as fully opaque).
+	// bool, "threshold": float (0..1), "blend_func": int } — from the
+	// shape's NiAlphaProperty, or has_alpha_property=false if it has none
+	// (treat as fully opaque). "blend_func" (only meaningful when
+	// blend_enabled) is nif::SubMesh::BlendFunc as a plain int: 0=mix
+	// (ordinary alpha blend), 1=add (additive, e.g. light-shaft/glow
+	// effects), 2=multiply — see nif_types.h for the real-data sourcing.
 	Dictionary get_alpha_info(int index) const;
 	// True if the shape's NIF shader is BSShaderNoLightingProperty (see
 	// phases/2/06-vertex-color-transparency.md) — Bethesda's own signal

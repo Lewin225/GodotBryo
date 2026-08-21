@@ -296,11 +296,31 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			sub.has_alpha_property = true;
 			// Standard NIF NiAlphaProperty.flags bitfield (niftools spec,
 			// stable across NIF versions, not nifly-specific): bit 0 =
-			// alpha blend enable, bit 9 = alpha test enable. threshold is a
-			// raw 0..255 byte, normalized here to 0..1 for the Godot side.
+			// alpha blend enable, bits 1-4 = source blend function, bits
+			// 5-8 = destination blend function, bit 9 = alpha test enable.
+			// threshold is a raw 0..255 byte, normalized here to 0..1 for
+			// the Godot side.
 			sub.alpha_blend_enabled = (alpha->flags & 0x0001) != 0;
 			sub.alpha_test_enabled = (alpha->flags & 0x0200) != 0;
 			sub.alpha_threshold = static_cast<float>(alpha->threshold) / 255.0f;
+
+			// niftools ALPHA_BLEND_FUNCTION enum values actually seen in
+			// this game's data (see nif_types.h's own doc comment for the
+			// real-data census this was sourced from).
+			constexpr uint32_t kBlendOne = 0, kBlendZero = 1, kBlendSrcColor = 2,
+					kBlendSrcAlpha = 6, kBlendInvSrcAlpha = 7;
+			uint32_t src_func = (alpha->flags >> 1) & 0xF;
+			uint32_t dst_func = (alpha->flags >> 5) & 0xF;
+			if (src_func == kBlendSrcAlpha && dst_func == kBlendInvSrcAlpha) {
+				sub.alpha_blend_func = SubMesh::BlendFunc::kMix;
+			} else if ((src_func == kBlendSrcAlpha && dst_func == kBlendOne) ||
+					(src_func == kBlendOne && dst_func == kBlendOne)) {
+				sub.alpha_blend_func = SubMesh::BlendFunc::kAdd;
+			} else if (src_func == kBlendZero && dst_func == kBlendSrcColor) {
+				sub.alpha_blend_func = SubMesh::BlendFunc::kMultiply;
+			} else {
+				sub.alpha_blend_func = SubMesh::BlendFunc::kMix; // unrecognized combo, not seen in the real-data sample -- fall back to prior "always mix" behavior
+			}
 		}
 
 		flatten_transform(flatten_to_root(nif, shape), sub);
