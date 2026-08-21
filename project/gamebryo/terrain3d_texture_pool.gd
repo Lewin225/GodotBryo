@@ -66,11 +66,47 @@ func get_slot(tex: Texture2D) -> int:
 	_slot_by_texture[tex] = id
 	return id
 
+## Real bug found in real play (961-cell test area, well past 31 distinct real
+## textures): Terrain3DAssets::_update_texture_files() (terrain_3d_assets.cpp)
+## requires every texture in the list to share the EXACT SAME size/format/mipmap
+## state as the first one -- a real, enforced requirement for building one GPU
+## texture array, not a soft suggestion. A pink placeholder that doesn't match
+## (this used to be a fixed 4x4 RGB8 image, unconditionally wrong) triggers
+## `_terrain->set_warning(...)`, and _update_texture_files() checks
+## `if (_terrain->get_warnings()) { return; }` BEFORE ever rebuilding the albedo
+## array -- meaning a single mismatched texture blocks the WHOLE array from
+## updating, not just its own slot. This is exactly what "goes all white" was:
+## once real play streamed in more than 31 distinct ground textures (confirmed
+## real, not hypothetical -- happens with a real ~31x31 cell area), the pink
+## fallback's mismatched size broke every already-correctly-textured region's
+## rendering too. Fixed by building the pink image to match the FIRST real
+## texture's own actual size/format/mipmap state (queried directly, not assumed)
+## instead of a fixed placeholder size.
 func _ensure_pink_slot() -> int:
 	if _pink_slot >= 0:
 		return _pink_slot
-	var pink_img := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	var pink_size := Vector2i(512, 512)
+	var pink_format := Image.FORMAT_RGB8
+	var pink_mipmaps := false
+	var first_asset: Terrain3DTextureAsset = _terrain.assets.get_texture(0) if _terrain.assets.get_texture_list().size() > 0 else null
+	if first_asset != null and first_asset.get_albedo_texture() != null:
+		var first_img := first_asset.get_albedo_texture().get_image()
+		if first_img != null:
+			pink_size = first_img.get_size()
+			pink_format = first_img.get_format()
+			pink_mipmaps = first_img.has_mipmaps()
+	# Real ground textures decode to a COMPRESSED format (BC1/BC3, this
+	# project's own DDS pipeline -- see phases/0/04-dds-texture-import.md), and
+	# Image.fill()/generate_mipmaps() both refuse to operate on compressed
+	# formats directly (confirmed via a real error, not assumed) -- so this
+	# always builds the pink placeholder uncompressed first, then compresses it
+	# to match the real target format afterward if needed.
+	var pink_img := Image.create(pink_size.x, pink_size.y, false, Image.FORMAT_RGB8)
 	pink_img.fill(Color(1.0, 0.0, 1.0))
+	if pink_mipmaps:
+		pink_img.generate_mipmaps()
+	if pink_format != Image.FORMAT_RGB8:
+		pink_img.compress(Image.COMPRESS_S3TC, Image.COMPRESS_SOURCE_GENERIC)
 	var pink_tex := ImageTexture.create_from_image(pink_img)
 	var pink_asset := Terrain3DTextureAsset.new()
 	pink_asset.set_name("__missing_texture_fallback")

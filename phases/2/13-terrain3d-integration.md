@@ -635,16 +635,95 @@ granularity rather than one large change:
      "verify against real data at real scale," not just isolated unit tests, is
      load-bearing — every earlier test in this task passed and still would have
      shipped a visibly broken terrain without this real-play report.
-   - **Still not done**: region create/keep-resident/eventual-removal policy
-     *within* one active worldspace session as the camera moves (currently every
-     imported cell's data stays resident for the worldspace's whole active
-     session, matching "terrain is cheap to keep resident across a coarser
-     radius" from "Streaming integration" above, but not yet the actual coarser-
-     radius removal policy that section describes); a real, non-scratch
-     `WorldStreamer`-level test exercising `use_terrain3d=true` through the
-     normal `activate()`/`_check_streaming()` path (the scratch diagnostic above
-     deliberately bypassed it); and real play validation (the "good enough, real
-     play verified" bar 2.12 used) before flipping the default.
+   - **Three more real bugs found and fixed from real play, after the off-by-one
+     fix above** (user manually enabled `use_terrain3d` on `game.tscn`'s
+     `WorldStreamer` node to look): terrain culled oddly (only visible looking
+     more than ~40° downward, distant terrain less affected), and ground
+     textures started as one real dirt texture during loading but ended up
+     **entirely white** once loading settled.
+     1. **Culling bug, two contributing causes.** First:
+        `_terrain3d.set_camera()` was never called anywhere in the real
+        `WorldStreamer` wiring (only in isolated test scenes) — without a real
+        camera reference, Terrain3D's own internal `_grab_camera()` (its
+        clipmap LOD update) fails every physics frame and its
+        `_physics_process()` stops entirely, exactly the
+        `"Cannot find the active camera"` error seen throughout this whole
+        implementation's own testing, previously dismissed as cosmetic test
+        noise. Fixed by syncing `_terrain3d.set_camera(_active_camera())`
+        every `_check_streaming()` tick. **Confirmed real but not sufficient
+        on its own** — the reported culling symptom persisted after this fix.
+        Second, the actual root cause: `Terrain3DData::update_master_height()`
+        (`terrain_3d_data.h`) exists specifically to keep the terrain's cached
+        height range current as pixels are written, but is **never actually
+        called** by `set_height()`/`set_pixel()` — confirmed by reading the
+        source, genuinely dead code in the addon, not a usage mistake on our
+        side. A freshly-created blank region's height range defaults near
+        `(0,0)`, and without ever recalculating it, the mesh's own
+        vertex-shader-displacement culling AABB stayed built from that stale
+        near-zero range instead of the real ~110–125m data — so Godot's
+        ordinary frustum culling, working correctly against the *wrong* bounds,
+        clipped real geometry depending on view angle exactly as reported
+        (shallow angles clip out an AABB that doesn't reach the real height;
+        looking steeply down keeps more of it in frame by chance). Fixed by
+        calling `terrain.data.calc_height_range(true)` once per cell import,
+        alongside the existing `update_maps()` call. Verified directly (not
+        just by re-checking the visual): a real diagnostic showed the height
+        range API returning `(0.0, 0.0)` before a cell's import and the real
+        `(0.0, 120.8)` — matching the cell's actual known max height — right
+        after, once this fix was in place.
+     2. **"All white" bug — a real, confirmed texture-budget overflow, exactly
+        the scenario the design's "still not evidenced in practice" pink
+        fallback was built for, now genuinely triggered.** A real diagnostic
+        scan (961 real cells, ~31×31 around Goodsprings) confirmed real
+        overflow: `Terrain3DTexturePool.used_slot_count()` hit exactly 31 —
+        the 31-slot budget is real and gets exhausted in real play, not
+        theoretical. But the pink fallback itself was broken: it was a fixed
+        4×4 `FORMAT_RGB8` image, while real ground textures are real ~512×512
+        *compressed* (BC1) textures with mipmaps. Found by reading
+        `Terrain3DAssets::_update_texture_files()`
+        (`terrain_3d_assets.cpp`): it requires every texture in the list to
+        share the *exact* size/format/mipmap state as the first one, and
+        **aborts rebuilding the entire albedo texture array** the moment any
+        one texture fails that check (`if (_terrain->get_warnings()) {
+        return; }`, checked *before* the rebuild) — so the mismatched pink
+        placeholder wasn't just wrong itself, it silently blocked every
+        already-correctly-textured region in the whole node from ever
+        rendering, the moment the 32nd distinct texture was needed. Fixed in
+        `Terrain3DTexturePool._ensure_pink_slot()`: build the placeholder
+        uncompressed first (`Image.fill()`/`generate_mipmaps()` both refuse to
+        operate on compressed formats directly, confirmed via a real error),
+        then `Image.compress()` it to match the real first texture's actual
+        size/format/mipmap state, queried directly rather than assumed. Real
+        regression test added:
+        `project/tests/test_terrain3d_texture_pool_overflow.gd` — imports the
+        same real ~31×31 cell area, confirms real overflow happens
+        (31/31 slots used) and the pink fallback's size/format/mipmap state
+        now exactly matches the first real texture (512×512, format 17/BC1,
+        mipmaps true). This is the confirming, no-longer-hypothetical case for
+        the design doc's own "if real play ever shows the pink fallback
+        firing, that's the real signal to build eviction" — it fired, at a
+        realistic real-play area size, well before the WastelandNV-wide
+        worst-case numbers in "Real-data findings" above would have predicted
+        needing it. **Real LRU eviction (reclaiming slots from
+        no-longer-resident cells, not just detecting exhaustion) is still not
+        built** — the pool is genuinely append-only/global today, and a large
+        real play session will keep hitting this same 31-slot ceiling
+        repeatedly as new areas stream in. This is now confirmed necessary,
+        not speculative.
+   - **Still not done**: real LRU texture-slot eviction (see directly above —
+     confirmed necessary now, not speculative); region create/keep-resident/
+     eventual-removal policy *within* one active worldspace session as the
+     camera moves (currently every imported cell's data stays resident for the
+     worldspace's whole active session, matching "terrain is cheap to keep
+     resident across a coarser radius" from "Streaming integration" above, but
+     not yet the actual coarser-radius removal policy that section describes —
+     also now more urgent, since it would naturally bound how many distinct
+     textures are ever concurrently needed, easing the eviction problem too); a
+     real, non-scratch `WorldStreamer`-level test exercising `use_terrain3d=true`
+     through the normal `activate()`/`_check_streaming()` path (the scratch
+     diagnostics above deliberately bypassed it); and further real play
+     validation (the "good enough, real play verified" bar 2.12 used) before
+     flipping the default.
 7. Grass/instancer work — separate follow-on (design now settled, see "Real-data
    findings" above: `LTEX.GNAM` → `GRAS` → `Terrain3DInstancer.add_transforms()`),
    explicitly not bundled into the core terrain swap.
