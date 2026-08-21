@@ -132,10 +132,21 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# --- Per-quadrant BTXT base + opacity-priority ATXT/VTXT overlay reduction
 	# (same algorithm as test_terrain3d_multilayer_paint.gd, reused here for real
 	# streaming instead of an isolated test cell) ---
+	#
+	# Tracks the top TWO layers by total opacity mass per quadrant, not just
+	# the top one -- needed for the BTXT=0 case below, where there's no
+	# authored base to pair the strongest overlay against. Real quadrants can
+	# have up to 6 ATXT layers (7 including BTXT) stacked at one point
+	# (phases/2/13-terrain3d-integration.md's real census); Terrain3D's
+	# control map can only ever blend 2 at a time, so anything beyond the
+	# top two is always dropped here -- a real, documented, acknowledged
+	# approximation, not a bug.
 	var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
 	var alpha_layers: Array = land.get("alpha_layers", [])
-	var quadrant_overlay := [null, null, null, null]
-	var quadrant_overlay_mass := [0.0, 0.0, 0.0, 0.0]
+	var quadrant_best := [null, null, null, null]
+	var quadrant_best_mass := [0.0, 0.0, 0.0, 0.0]
+	var quadrant_second := [null, null, null, null]
+	var quadrant_second_mass := [0.0, 0.0, 0.0, 0.0]
 	for layer in alpha_layers:
 		var q: int = layer["quadrant"]
 		if q < 0 or q >= 4:
@@ -144,35 +155,56 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		var mass := 0.0
 		for v in opacity:
 			mass += v
-		if mass > quadrant_overlay_mass[q]:
-			quadrant_overlay_mass[q] = mass
-			quadrant_overlay[q] = layer
+		if mass > quadrant_best_mass[q]:
+			quadrant_second[q] = quadrant_best[q]
+			quadrant_second_mass[q] = quadrant_best_mass[q]
+			quadrant_best[q] = layer
+			quadrant_best_mass[q] = mass
+		elif mass > quadrant_second_mass[q]:
+			quadrant_second[q] = layer
+			quadrant_second_mass[q] = mass
 
 	var base_slot := [-1, -1, -1, -1]
 	var overlay_slot := [-1, -1, -1, -1]
+	var quadrant_overlay := [null, null, null, null] # opacity source for the resolved overlay_slot, if any
 	for q in range(4):
 		var base_ltex := int(quadrant_ltex[q]) if q < quadrant_ltex.size() else 0
 		base_slot[q] = _resolve_to_slot(base_ltex)
-		if quadrant_overlay[q] != null:
-			overlay_slot[q] = _resolve_to_slot(int(quadrant_overlay[q]["ltex_form_id"]))
-		# Real bug found via a real-play report ("this entire quadrant renders
-		# as an unrelated leftover texture"): BTXT=0 (no base LTEX authored --
-		# confirmed real, not a parsing failure, e.g. a quadrant painted
-		# entirely via ATXT/VTXT layers with no separate base) previously
-		# left base_slot[q] at -1, which skips writing this quadrant's
-		# control data AT ALL below -- so it silently kept whatever control
-		# value Terrain3D's region defaulted to, which decodes base texture
-		# ID 0, i.e. whichever real texture happened to be the FIRST one
-		# assigned a pool slot this session (arbitrary, load-order-dependent,
-		# not necessarily anything painted anywhere near this quadrant).
-		# Falls back to the strongest resolved ATXT overlay as this
-		# quadrant's uniform base instead -- an honest, partial
-		# approximation (this quadrant's other, lower-priority ATXT layers
-		# are still dropped, same documented lossy reduction as every other
-		# quadrant), but strictly better than an unrelated random texture.
-		if base_slot[q] < 0 and overlay_slot[q] >= 0:
-			base_slot[q] = overlay_slot[q]
-			overlay_slot[q] = -1
+		var overlay_layer = quadrant_best[q]
+		if base_slot[q] < 0:
+			# Real case, not a parsing failure: BTXT=0 means this quadrant is
+			# painted entirely via ATXT/VTXT with no separate base -- found
+			# via a real-play report ("this quadrant renders an unrelated
+			# leftover texture") that this used to leave base_slot[q] at -1,
+			# skipping this quadrant's control-map write entirely and
+			# silently keeping whatever Terrain3D's region defaulted to
+			# (texture ID 0 -- whichever real texture happened to be the
+			# FIRST one assigned a pool slot this session, unrelated to
+			# anything painted near this quadrant).
+			#
+			# Uses the second-strongest layer as this quadrant's base and
+			# the strongest as a real graded overlay on top -- preserves
+			# actual blending for this case instead of flattening to one
+			# uniform texture (an earlier version of this fix did exactly
+			# that, discarding the strongest layer's own real per-vertex
+			# opacity gradient -- strictly better than the random-texture
+			# bug, but still hard-edged, and part of what a live-play
+			# report of "still not blending" was seeing). Falls back to a
+			# single flat texture only if a second layer truly doesn't
+			# exist or fails to resolve.
+			if quadrant_second[q] != null:
+				var second_slot := _resolve_to_slot(int(quadrant_second[q]["ltex_form_id"]))
+				if second_slot >= 0:
+					base_slot[q] = second_slot
+				else:
+					overlay_layer = null # only one usable layer after all
+			if base_slot[q] < 0 and overlay_layer != null:
+				base_slot[q] = _resolve_to_slot(int(overlay_layer["ltex_form_id"]))
+				overlay_layer = null
+		if overlay_layer != null:
+			overlay_slot[q] = _resolve_to_slot(int(overlay_layer["ltex_form_id"]))
+			if overlay_slot[q] >= 0:
+				quadrant_overlay[q] = overlay_layer
 
 	# --- Write every real vertex directly: height always, control only within
 	# whichever quadrant(s) actually have a resolved base texture. ---
