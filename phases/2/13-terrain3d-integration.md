@@ -726,27 +726,77 @@ granularity rather than one large change:
      real-world tile size as the old renderer's fix, keeping both visually
      consistent with each other.
    - **A real stutter regression, the same class 2.9–2.12 already fixed once
-     for the old path — caused by this task's own culling fix above.** Real
-     user report (a profiler capture): `Terrain3DBridge.import_cell()` costing
-     75ms across 3 calls in one frame, a real "half a second of 30fps," not
-     hypothetical. Root cause: `Terrain3DData::calc_height_range(true)`
-     (`terrain_3d_data.cpp`, added for the culling-AABB fix above) recomputes
-     **every** resident region's full height range from scratch on every
-     single call, with no filtering to just the region(s) actually touched —
-     confirmed by reading its source, a plain loop over all of
-     `_region_locations`. Calling it unconditionally per cell import means
-     cost grows with *total resident regions*, not O(1) per cell — cheap early
-     in a session, increasingly expensive the longer play continues, matching
-     exactly what was reported. Fixed by only recalculating the specific
-     region(s) the just-imported cell touches
-     (`Terrain3DRegion.calc_height_range()`, real per-region work, correctly
-     unavoidable) then a cheap non-recursive
-     `Terrain3DData.calc_height_range(false)` to re-aggregate the master range
-     from each region's own already-correct cached value. Verified two ways:
-     correctness unchanged (same `(0.0, 120.8)` real height-range result as
-     before the fix) and a real 20-batch scaling test (9 new cells per batch,
-     up to 174 total) showing per-batch cost stayed flat (10–40ms) instead of
-     growing with resident-region count.
+     for the old path — caused by this task's own culling fix above, and it
+     took TWO rounds to actually close.** Real user report (a profiler
+     capture): `Terrain3DBridge.import_cell()` costing 75ms across 3 calls in
+     one frame, a real "half a second of 30fps," not hypothetical.
+     - **Round 1**: `Terrain3DData::calc_height_range(true)`
+       (`terrain_3d_data.cpp`, added for the culling-AABB fix above)
+       recomputes **every** resident region's full height range from scratch
+       on every single call, with no filtering to just the region(s) actually
+       touched. Fixed by only recalculating the specific region(s) the
+       just-imported cell touches (`Terrain3DRegion.calc_height_range()`)
+       then a cheap non-recursive `Terrain3DData.calc_height_range(false)` to
+       re-aggregate. Verified correctness unchanged and flat per-batch cost
+       in a scaling test — **but a second live profiler capture after this
+       fix showed `import_cell()` essentially unchanged (~27ms/call, ~80ms
+       across 3 calls)**, proving this fix alone didn't close the real
+       symptom — a second, separate bug was still there.
+     - **Round 2, the actual dominant cost**:
+       `Terrain3DData::update_maps()`, called with no arguments — its real
+       defaults are `p_map_type=TYPE_MAX`, `p_all_regions=true`, which
+       **unconditionally rebuilds all three GPU texture arrays (height/
+       control/color) from every resident region on every single call**
+       (confirmed by reading the `default:` case under "Mark texture arrays
+       dirty for rebuilding" in `terrain_3d_data.cpp`) — the identical
+       category of bug as round 1, just in a different function, and missed
+       the first time because the default-argument call looked innocuous.
+       Its own "only update edited regions" incremental path exists
+       (`p_all_regions=false`) but requires the caller to mark regions
+       `set_edited(true)` first (`set_height()`/`set_pixel()` don't do this
+       themselves — a different flag, `set_modified()`, tracks save-dirty
+       state instead) — and that incremental path never resets
+       `set_edited(false)` afterward either (confirmed by reading it), so a
+       naive fix would just grow back into "all regions" again over a long
+       session. Fixed in `Terrain3DBridge.import_cell()`: mark only the
+       region(s) this cell touches as edited, call
+       `update_maps(Terrain3DRegion.TYPE_MAX, false, false)`, then reset
+       `set_edited(false)` on those same regions immediately after.
+     - **Round 3 — round 2's fix as first written broke rendering entirely.**
+       Real user report right after round 2: terrain visible only briefly at
+       startup, then invisible (though still walkable — collision, driven by
+       the height-range fix, was fine). Root cause: `update_maps()`'s own
+       internal "region map changed" handling (triggered by
+       `add_region_blank()`, independent of the `p_all_regions` argument) sets
+       its internal `any_changed=true` whenever a genuinely NEW region was
+       created this call — which *skips* the incremental "only edited
+       regions" branch — but calling with `p_all_regions=false` never marks
+       the texture arrays dirty in the first place, so the *full* rebuild
+       branch doesn't run either. Net effect: a newly-created region's real
+       data reached the CPU-side region data (collision, `get_height()`
+       queries — correct) but **never reached the GPU texture arrays at all**
+       (rendering — broken) whenever `p_all_regions=false` was used on a call
+       that also created a new region. Fixed by making
+       `ensure_regions_for_cell()` report whether it actually created any new
+       region, and branching in `import_cell()`: a genuinely new region
+       forces the real, necessary full `update_maps()` rebuild (a texture
+       array literally has to grow to add a new region layer — no way around
+       that cost); only cells streaming into *already-existing* regions use
+       the cheap incremental path. Verified visually this time, not just
+       numerically (the earlier numeric checks read region data directly and
+       would never have caught a GPU-array-only bug) — a real 25-cell,
+       16-region import (a genuine mix of new and shared regions, matching
+       real streaming) screenshotted correctly: full real height variation,
+       real multi-cell texture blending, no invisible patches.
+     - **Verified overall**: correctness unchanged (same `(0.0, 120.8)` real
+       height-range result throughout all three rounds) and a real 20-batch
+       scaling test (9 new cells per batch, up to 174 total) showing real
+       per-cell cost dropped to roughly **1–4ms/cell** (excluding one-time
+       first-call shader/texture-array warmup and the separate
+       region-map-bounds issue below) once regions are already established —
+       down from the ~27ms/cell the live profiler showed after round 1 alone,
+       with the real, unavoidable full-rebuild cost still paid correctly for
+       cells that actually expand into new territory.
    - **A new, real, significant, NOT-yet-addressed finding surfaced while
      verifying the stutter fix's scaling behavior**: `Terrain3DData`'s region
      map is a **hard-coded, fixed 32×32 grid**

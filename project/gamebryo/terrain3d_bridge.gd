@@ -110,7 +110,7 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# test_terrain3d_bridge_placement.gd's cross-check against
 	# GamebryoTerrainBuilder's own real placement, and its 2-real-adjacent-cell
 	# edge-continuity check.
-	ensure_regions_for_cell(terrain, grid_x, grid_y)
+	var created_new_regions := ensure_regions_for_cell(terrain, grid_x, grid_y)
 
 	# --- Per-quadrant BTXT base + opacity-priority ATXT/VTXT overlay reduction
 	# (same algorithm as test_terrain3d_multilayer_paint.gd, reused here for real
@@ -165,50 +165,78 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 				var pos := vertex_world_position(global_pos, row, col)
 				terrain.data.set_control(pos, control_value)
 
-	# Regenerates the GPU-side texture arrays/normals this import's real changes
-	# need to actually render -- the numeric get_height()/get_control() checks in
-	# test_terrain3d_bridge_placement.gd read region image data directly and pass
-	# without this, but real rendering doesn't update without it. Called once per
-	# cell here (simplest, definitely-correct starting point) rather than batched
-	# across multiple tiles-per-frame -- real per-call cost, and whether batching
-	# it is worth the complexity, is exactly the open profiling question
-	# phases/2/13-terrain3d-integration.md's implementation step 6 still has.
-	terrain.data.update_maps()
-
-	# Real bug found in real play (angle-dependent culling -- terrain only
-	# visible looking down more than ~40 degrees, distant terrain less affected):
+	# Regenerates the GPU-side texture arrays/normals + the cached height range
+	# this import's real changes need to actually render and cull correctly --
+	# the numeric get_height()/get_control() checks in
+	# test_terrain3d_bridge_placement.gd read region image data directly and
+	# pass without any of this, but real rendering doesn't update without it,
+	# and real culling doesn't work without the height range (see below).
+	#
+	# TWO separate real O(total-resident-regions) scaling bugs were found here
+	# via real play profiling, not assumption -- both follow the identical
+	# pattern: a Terrain3DData-level "recompute everything" call that's cheap
+	# early in a session and increasingly expensive the longer play continues,
+	# because neither one filters to just the region(s) THIS cell touched:
+	#
+	# 1. Terrain3DData::update_maps() (terrain_3d_data.cpp), called with no
+	#    arguments: its real defaults are p_map_type=TYPE_MAX,
+	#    p_all_regions=true -- which unconditionally clears
+	#    _generated_height_maps/_generated_control_maps/_generated_color_maps
+	#    and rebuilds ALL THREE GPU texture arrays from EVERY resident region,
+	#    every single call (confirmed by reading the source's `default:` case
+	#    under "Mark texture arrays dirty for rebuilding"). This was still
+	#    real and dominant in a live profiler capture even AFTER fixing (2)
+	#    below -- 27ms per import_cell() call, ~80ms across 3 calls in one
+	#    frame, essentially unchanged, because this bug was untouched by that
+	#    first fix.
+	# 2. Terrain3DData::calc_height_range(true) (fixed first, still documented
+	#    below for the full picture): recomputes EVERY resident region's
+	#    height range from scratch, not just the touched one.
+	#
 	# Terrain3DData::update_master_height() (terrain_3d_data.h) exists to keep
-	# the terrain's own cached height range current as pixels are written, but
-	# is NEVER actually called by set_height()/set_pixel() -- confirmed by
-	# reading the source, not assumed; it's genuinely dead code in the addon.
-	# A freshly-created blank region's height range defaults near 0, and
-	# without this call it never gets recalculated from our real writes, so the
-	# mesh's own culling AABB (built from that stale [0,0]-ish range instead of
-	# the real ~110-125m data) doesn't cover where the real, shader-displaced
-	# geometry actually ends up -- exactly explains angle-dependent culling.
-	# calc_height_range(true) forces a real recalculation from the actual pixel
-	# data -- but a real, separate bug found in real play (a real half-second
-	# 30fps stall reappearing, the same class of stutter 2.9-2.12 already fixed
-	# once for the old terrain path): Terrain3DData::calc_height_range(true)
-	# (terrain_3d_data.cpp) recomputes EVERY resident region's full height
-	# range from scratch on EVERY call, not just the region(s) this one cell
-	# touched -- confirmed by reading its source, a plain loop over
-	# `_region_locations` with no filtering. Calling it unconditionally per
-	# cell means cost grows with TOTAL resident regions, not O(1) per cell --
-	# fine early in a session, increasingly expensive the longer play
-	# continues and more of the map has streamed in, matching exactly what was
-	# reported (a real profiler capture showing 75ms across 3 import_cell()
-	# calls in one frame). Fixed by only recalculating the region(s) this
-	# cell's own vertex range actually touched (Terrain3DRegion.calc_height_range(),
-	# real per-region work, unavoidable and correct), then a cheap
-	# non-recursive Terrain3DData.calc_height_range(false) to re-aggregate the
-	# master range from each region's own (now correctly cached) range instead
-	# of recomputing all of them.
-	for loc in _region_locations_for_cell(grid_x, grid_y):
+	# the cached height range current as pixels are written, but is NEVER
+	# actually called by set_height()/set_pixel() -- genuinely dead code in
+	# the addon, confirmed by reading the source, not a usage mistake on our
+	# side. Without a real recalculation, a freshly-created blank region's
+	# height range stays near (0,0), and the mesh's own culling AABB (built
+	# from that stale range instead of the real ~110-125m data) doesn't cover
+	# where the real, shader-displaced geometry actually ends up -- this is
+	# what caused the original angle-dependent culling bug this whole height-
+	# range-recalculation path exists to fix.
+	#
+	# Both fixed the same way: mark ONLY the region(s) this cell's own vertex
+	# range touches as needing work (Terrain3DRegion.set_edited(true) for the
+	# texture-array path, Terrain3DRegion.calc_height_range() for the height-
+	# range path -- real per-region work, correctly unavoidable), call the
+	# Data-level functions in their CHEAP mode (update_maps(..., false, false)
+	# takes the "only edited regions" incremental branch instead of a full
+	# rebuild; calc_height_range(false) re-aggregates from each region's own
+	# already-correct cached value instead of recomputing all of them), then
+	# reset set_edited(false) -- update_maps()'s own incremental branch never
+	# does this itself (confirmed by reading it), so without resetting here,
+	# every previously-touched region would stay "edited" forever and the
+	# incremental path would silently grow back into processing the entire
+	# resident set again, defeating the fix over a long session.
+	var touched_regions := _region_locations_for_cell(grid_x, grid_y)
+	for loc in touched_regions:
 		var region: Terrain3DRegion = terrain.data.get_region(loc)
 		if region != null:
+			region.set_edited(true)
 			region.calc_height_range()
+	if created_new_regions:
+		# A brand new region grows the GPU texture ARRAYS themselves (one
+		# layer per region) -- only a full rebuild (default args) can do that
+		# correctly. Real, unavoidable cost for cells that expand into new
+		# territory; the incremental path below is only safe once a region
+		# already exists in the array.
+		terrain.data.update_maps()
+	else:
+		terrain.data.update_maps(Terrain3DRegion.TYPE_MAX, false, false)
 	terrain.data.calc_height_range(false)
+	for loc in touched_regions:
+		var region: Terrain3DRegion = terrain.data.get_region(loc)
+		if region != null:
+			region.set_edited(false)
 	return true
 
 ## Real bug found via a 9x9-cell real-data verification pass (many cells resident
@@ -287,12 +315,29 @@ static func _region_locations_for_cell(grid_x: int, grid_y: int) -> Array[Vector
 				out.append(loc)
 	return out
 
-static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int) -> void:
+## Returns true if at least one NEW region was created for this cell -- the
+## caller (import_cell()) needs this: creating a region grows Terrain3D's own
+## GPU texture ARRAYS (one layer per region), which can only be done via a full
+## update_maps() rebuild, not the cheap per-region incremental path. Real bug
+## found in real play from getting this wrong: using the incremental path
+## unconditionally left every newly-created region's real data never actually
+## reaching the GPU (Terrain3DData::update_maps()'s own "region map changed"
+## handling sets its internal any_changed=true whenever add_region_blank() ran,
+## which skips the incremental "only edited regions" branch -- but since the
+## incremental call never marks the texture arrays dirty either, NEITHER path
+## ends up rebuilding them for the new region). Terrain looked correct only for
+## whatever streamed in before this bug was introduced, then invisible for
+## everything after -- exactly matching "visible at startup, gone once more
+## cells load."
+static func ensure_regions_for_cell(terrain: Terrain3D, grid_x: int, grid_y: int) -> bool:
 	var existing: Array = terrain.data.region_locations
+	var created_any := false
 	for loc in _region_locations_for_cell(grid_x, grid_y):
 		if not existing.has(loc):
 			terrain.data.add_region_blank(loc, false) # p_update=false -- batched update_maps() call is the caller's job (once per real streaming batch, not once per region)
 			existing = terrain.data.region_locations
+			created_any = true
+	return created_any
 
 func _resolve_to_slot(ltex_id: int) -> int:
 	if ltex_id == 0:
