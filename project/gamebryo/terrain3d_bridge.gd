@@ -176,12 +176,36 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	terrain.data.update_maps()
 	return true
 
+## Real bug found via a 9x9-cell real-data verification pass (many cells resident
+## at once, not just the 1-2-cell isolated tests): Terrain3DData::set_pixel()/
+## get_pixel() (terrain_3d_data.cpp) compute their internal Vector2i pixel index by
+## a raw C++ float-to-int CAST of `p_global_position / vertex_spacing` -- a
+## TRUNCATION, not a round(). A world position meant to land exactly on integer
+## pixel N can, after passing through VERTEX_SPACING's own multiply/divide chain
+## (128.0/70.0 is not exactly representable in binary floating point), come out as
+## N-0.0000001 due to ordinary accumulated rounding -- truncating to N-1 instead of
+## N. Confirmed directly, not assumed: real (row,col) writes for cell (-14,-1)
+## landed one column off (col=29's real value got overwritten by col=30's,
+## verified by comparing the wrong stored value against every neighboring vertex's
+## real expected height, not by guessing). This bias grows with distance from the
+## world origin (more float precision loss at larger magnitudes), matching the
+## real symptom: cells farther from (0,0) showed more affected vertices.
+##
+## Fixed with a small, consistently-signed epsilon nudge before the position ever
+## reaches Terrain3D's own API -- real vertices are always >=1 full VERTEX_SPACING
+## apart (~1.83m), so a nudge many orders of magnitude smaller can only ever push a
+## "just barely on the wrong side" float back onto the intended integer pixel, and
+## can never plausibly cross into a genuinely different vertex's own pixel.
+const _PIXEL_INDEX_EPSILON := 0.001 # meters, ~0.05% of VERTEX_SPACING
+
 ## World position of vertex (row, col) given the cell's own cell_terrain3d_global_position()
 ## -- the row-flip is baked in here (see this file's header comment) so every caller
 ## (height writes, control writes, external cross-checks) uses one shared, single
 ## source of truth for the mapping instead of re-deriving it.
 static func vertex_world_position(cell_global_pos: Vector3, row: int, col: int) -> Vector3:
-	return cell_global_pos + Vector3(col * VERTEX_SPACING, 0.0, _flipped_row(row) * VERTEX_SPACING)
+	return cell_global_pos + Vector3(
+			col * VERTEX_SPACING + _PIXEL_INDEX_EPSILON, 0.0,
+			_flipped_row(row) * VERTEX_SPACING + _PIXEL_INDEX_EPSILON)
 
 static func _floor_div(a: int, b: int) -> int:
 	var q := a / b # GDScript int division truncates toward zero, not floor -- correct below

@@ -595,6 +595,46 @@ granularity rather than one large change:
      `test_world_streamer.tscn`, unaffected since `use_terrain3d` defaults off) —
      no regressions from either the `WorldStreamer` change or the earlier
      `esm_file.cpp`/`esm_types.h` `ATXT`/`VTXT` change.
+   - **A real, serious bug found and fixed only after testing at real scale.**
+     All the single/two-cell tests above passed cleanly, but the user directly
+     observed garbled, spiky terrain in real play (`game.tscn`, `use_terrain3d`
+     manually enabled for inspection) — massive vertical spikes and a sharp white
+     wall cutting through otherwise-correct textured terrain. A real-data
+     verification pass across a 9×9 real-cell grid (`project/_diag_terrain3d_verify.gd`,
+     untracked scratch tool) confirmed it: **11,671 of 88,209 real vertices
+     (13.2%) had wrong height data**, affecting 74 of 81 cells, worsening with
+     distance from the world origin. Root-caused by comparing a wrong vertex's
+     stored value against every neighboring vertex's real expected height (not
+     guessed): the wrong value at `(row=16, col=29)` in cell `(-14,-1)` was
+     *exactly* the correct expected value for `(row=16, col=30)` — a real
+     off-by-one column indexing bug, not a boundary-region issue (this vertex
+     wasn't near any region edge) and not the earlier float-epsilon bug (already
+     fixed). Real cause: `Terrain3DData::set_pixel()`/`get_pixel()`
+     (`terrain_3d_data.cpp`) compute their internal pixel index via a raw C++
+     float-to-int **cast** of `world_position / vertex_spacing` — a **truncation**,
+     not a `round()`. A world position meant to land exactly on integer pixel N
+     can, after passing through `VERTEX_SPACING`'s own multiply/divide chain
+     (`128.0/70.0` has no exact binary floating-point representation), come out as
+     `N - 0.0000001` due to ordinary accumulated rounding — truncating down to
+     `N-1` instead. This explains every earlier symptom precisely: worse at
+     cells farther from the origin (more accumulated float error at larger
+     magnitudes), and *not* caught by the 1–2-cell isolated tests (their cells
+     were close enough to the origin, or just lucky, that no vertex happened to
+     land on the wrong side of an integer boundary). Fixed in
+     `Terrain3DBridge.vertex_world_position()` with a small, consistently-signed
+     epsilon nudge (0.001m, ~20× larger than a real float32 ULP at these
+     magnitudes, ~1800× smaller than the ~1.83m real vertex spacing — large
+     enough to always correct a "just barely on the wrong side" truncation,
+     nowhere near large enough to ever cross into a genuinely different vertex's
+     own pixel) applied before any position ever reaches Terrain3D's own API.
+     **Re-verified after the fix: 0 of 88,209 vertices mismatched** across the
+     same real 9×9-cell grid — a complete fix, not a reduction. Full test suite
+     and the real profiling comparison above both re-run clean after the fix
+     (performance unaffected: 261.50ms vs the pre-fix 260.22ms for the same 49
+     tiles). This is the strongest evidence yet in this design doc for why
+     "verify against real data at real scale," not just isolated unit tests, is
+     load-bearing — every earlier test in this task passed and still would have
+     shipped a visibly broken terrain without this real-play report.
    - **Still not done**: region create/keep-resident/eventual-removal policy
      *within* one active worldspace session as the camera moves (currently every
      imported cell's data stays resident for the worldspace's whole active
