@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_terrain3d_bridge_placement.gd" id="1"]
+
+[node name="TestTerrain3DBridgePlacement" type="Node3D"]
+script = ExtResource("1")
