@@ -178,6 +178,23 @@ var _pending: Dictionary = {} # Vector2i grid coord -> true, a _stream_tile() co
 var _queued: Dictionary = {} # Vector2i grid coord -> true, waiting in _load_queue for its turn to actually start -- see tiles_per_frame's own doc comment. A coord's lifecycle: queued -> pending -> resident
 var _load_queue: Array = [] # Array of { "coord": Vector2i, "full_detail": bool }, FIFO, consumed by _process_load_queue()
 var _load_queue_running := false # true while a _process_load_queue() coroutine is actively draining _load_queue -- avoids starting a second overlapping one
+## Vector2i grid coord -> true, confirmed (via _start_tile_load()'s own
+## esm.find_exterior_cell() lookup) to have no real cell in the CURRENTLY
+## active worldspace. Real, common, and permanent for a given
+## (worldspace, coord) pair -- a worldspace's grid footprint doesn't change
+## at runtime -- so once confirmed empty, _check_streaming() should never
+## enqueue that coord again for as long as this worldspace stays active.
+## Without this, _check_streaming() re-enqueues the SAME out-of-bounds
+## coordinates forever (nothing ever marks them resident/pending, so its
+## own "not resident and not pending and not queued" guard never excludes
+## them once they've cycled back out of the queue) -- pure wasted work for
+## any worldspace with an edge within RADIUS_LOAD_DISTANT, and the dominant
+## case (not the edge case) for a worldspace smaller than the streaming
+## radius itself, like Freeside's own (see this file's own softlock
+## write-up in memory: freeside-softlock-streaming-settled). Cleared in
+## deactivate() -- a coord empty in one worldspace says nothing about the
+## next one activate() switches to.
+var _no_cell_cache: Dictionary = {}
 var _persistent_root: Node3D = null
 var _persistent_batch: DirectGeometryBatch = null
 var _in_flight_count := 0
@@ -231,6 +248,7 @@ func deactivate() -> void:
 	_active_wrld_form_id = -1
 	_generation += 1 # invalidates any in-flight tile/persistent-root streams
 	_current_cell_form_id_cache = 0
+	_no_cell_cache.clear() # per-worldspace -- a coord empty here says nothing about whichever worldspace activates next
 	for coord in _resident:
 		_resident[coord].free()
 		if _resident_batches.has(coord):
@@ -335,6 +353,8 @@ func _check_streaming() -> void:
 			if not _within_radius(dx, dy, RADIUS_LOAD_DISTANT):
 				continue # inside the square bound but outside the real circular radius
 			var coord := Vector2i(center.x + dx, center.y + dy)
+			if _no_cell_cache.has(coord):
+				continue # confirmed no real cell here for this worldspace -- see _no_cell_cache's own doc comment
 			var desired_full: bool = _within_radius(dx, dy, RADIUS_LOAD_FULL)
 			if not _resident.has(coord) and not _pending.has(coord) and not _queued.has(coord):
 				_enqueue_tile_load(coord, desired_full)
@@ -436,13 +456,28 @@ func _process_load_queue() -> void:
 		if not _load_queue.is_empty():
 			await get_tree().process_frame
 	_load_queue_running = false
+	# Softlock fix (real bug, found via a real freeze entering Freeside):
+	# this coroutine is the only place that can make all three of
+	# _maybe_emit_settled()'s conditions true WITHOUT itself calling it --
+	# every other place that can (every return path in _stream_tile()/
+	# _stream_persistent_root()) already does. Without this, once every real
+	# coordinate near the player is resident and only no-longer-relevant
+	# out-of-bounds coordinates remain (see _no_cell_cache below -- a small/
+	# enclosed worldspace like Freeside's own, where the streaming radius
+	# overhangs its actual grid footprint in every direction, hits this on
+	# essentially every entry), nothing is left to ever re-check settlement,
+	# and a caller awaiting streaming_settled (game.gd's
+	# _do_exterior_transition(), which froze the player for exactly this
+	# signal) hangs forever.
+	_maybe_emit_settled()
 
 func _start_tile_load(coord: Vector2i, full_detail: bool = true) -> void:
 	var _d0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
 	var cell: Dictionary = esm.find_exterior_cell(_active_wrld_form_id, coord.x, coord.y)
 	diagnostic_find_exterior_cell_us += Time.get_ticks_usec() - _d0 # TEMP DIAGNOSTIC
 	if cell.is_empty():
-		return # no cell at this grid coordinate -- a real case at a worldspace's edge, not an error
+		_no_cell_cache[coord] = true # a real case at a worldspace's edge, not an error -- see _no_cell_cache's own doc comment for why this is remembered rather than re-attempted every check
+		return
 	_pending[coord] = true
 	_in_flight_count += 1
 	_stream_tile(int(cell["form_id"]), coord, _generation, full_detail)
