@@ -155,6 +155,24 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		base_slot[q] = _resolve_to_slot(base_ltex)
 		if quadrant_overlay[q] != null:
 			overlay_slot[q] = _resolve_to_slot(int(quadrant_overlay[q]["ltex_form_id"]))
+		# Real bug found via a real-play report ("this entire quadrant renders
+		# as an unrelated leftover texture"): BTXT=0 (no base LTEX authored --
+		# confirmed real, not a parsing failure, e.g. a quadrant painted
+		# entirely via ATXT/VTXT layers with no separate base) previously
+		# left base_slot[q] at -1, which skips writing this quadrant's
+		# control data AT ALL below -- so it silently kept whatever control
+		# value Terrain3D's region defaulted to, which decodes base texture
+		# ID 0, i.e. whichever real texture happened to be the FIRST one
+		# assigned a pool slot this session (arbitrary, load-order-dependent,
+		# not necessarily anything painted anywhere near this quadrant).
+		# Falls back to the strongest resolved ATXT overlay as this
+		# quadrant's uniform base instead -- an honest, partial
+		# approximation (this quadrant's other, lower-priority ATXT layers
+		# are still dropped, same documented lossy reduction as every other
+		# quadrant), but strictly better than an unrelated random texture.
+		if base_slot[q] < 0 and overlay_slot[q] >= 0:
+			base_slot[q] = overlay_slot[q]
+			overlay_slot[q] = -1
 
 	# --- Write every real vertex directly: height always, control only within
 	# whichever quadrant(s) actually have a resolved base texture. ---
