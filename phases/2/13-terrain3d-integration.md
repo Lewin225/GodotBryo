@@ -559,14 +559,52 @@ granularity rather than one large change:
      regardless of which one the float math would predict — makes the later
      per-vertex float lookups robust no matter which side of the boundary their
      own rounding lands on.
-   - **Still not done**: actually wiring `terrain3d_bridge.gd` into
-     `WorldStreamer`'s real streaming loop (behind an opt-in toggle, old path
-     untouched per the coexistence plan), region create/keep-resident/eventual-removal
-     policy during real play, and the real before/after profiling of streaming
-     settle time and frame stability this step's title calls for (same discipline
-     as 2.8–2.12) — per-vertex `set_height()`/`set_control()` calls (1089 vertices
-     × 2 map types per cell) are real native calls with real per-call overhead that
-     hasn't been measured yet against real streaming radii.
+   - **Wired into `WorldStreamer`, real profiling done.** A new
+     `@export var use_terrain3d: bool = false` (default off, per the coexistence
+     plan) creates one shared, persistent Terrain3D node in `activate()` (freed in
+     `deactivate()`, fresh per worldspace switch — real region residency *within*
+     one active worldspace session, as the camera moves, is still the coarser,
+     not-yet-built policy the "Streaming integration" section above describes) and
+     `_stream_tile()` branches to `Terrain3DBridge.import_cell()` instead of
+     `CellStreamBuilder.build_terrain()`, timed into the same
+     `diagnostic_terrain_ms` array used since 2.9 for a direct comparison.
+     `import_cell()` also now calls `terrain.data.update_maps()` once per cell (the
+     numeric round-trip tests passed without it — they read region data directly —
+     but real rendering needs it; batching it across multiple tiles-per-frame
+     instead of once-per-cell is a real, identified follow-up, not yet needed).
+     Real measurement (`project/_diag_terrain3d_cost.gd`, untracked scratch tool,
+     same convention as `_diag_construct_cost.gd`): 49 real tiles around
+     Goodsprings, `_stream_tile()` called directly (bypassing `activate()`'s own
+     full `RADIUS_LOAD_DISTANT=20` scan — ~1257 tiles, too much for a first timing
+     pass) —
+
+     | | avg | median | p95 | sum (49 tiles) |
+     |---|---|---|---|---|
+     | `GamebryoTerrainBuilder` (existing) | 5.09ms | 2.57ms | 3.30ms | 249ms |
+     | `Terrain3DBridge` (new) | 5.31ms | 1.16ms | 21.05ms | 260ms |
+
+     **Real, reassuring result**: despite the real concern that per-vertex
+     `set_height()`/`set_control()` calls (1089 vertices × 2 map types per cell —
+     genuinely more native calls than the old path's single mesh-build call) might
+     be meaningfully slower, aggregate cost is comparable — even a better median —
+     though p95 is notably higher (21ms vs 3.3ms), suggesting some tiles (likely
+     ones needing new region creation, or with more resolved textures) cost more
+     than the typical case. Good enough to not block further work, but real
+     evidence for where the update_maps()-batching follow-up would matter most if
+     ever needed. Full existing test suite re-run clean (including
+     `test_world_streamer.tscn`, unaffected since `use_terrain3d` defaults off) —
+     no regressions from either the `WorldStreamer` change or the earlier
+     `esm_file.cpp`/`esm_types.h` `ATXT`/`VTXT` change.
+   - **Still not done**: region create/keep-resident/eventual-removal policy
+     *within* one active worldspace session as the camera moves (currently every
+     imported cell's data stays resident for the worldspace's whole active
+     session, matching "terrain is cheap to keep resident across a coarser
+     radius" from "Streaming integration" above, but not yet the actual coarser-
+     radius removal policy that section describes); a real, non-scratch
+     `WorldStreamer`-level test exercising `use_terrain3d=true` through the
+     normal `activate()`/`_check_streaming()` path (the scratch diagnostic above
+     deliberately bypassed it); and real play validation (the "good enough, real
+     play verified" bar 2.12 used) before flipping the default.
 7. Grass/instancer work — separate follow-on (design now settled, see "Real-data
    findings" above: `LTEX.GNAM` → `GRAS` → `Terrain3DInstancer.add_transforms()`),
    explicitly not bundled into the core terrain swap.

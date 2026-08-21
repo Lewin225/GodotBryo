@@ -124,11 +124,25 @@ const CHECK_INTERVAL_SEC := 0.1
 @export var lod_crossover_distance_m: float = 100.0
 @export var lod_crossover_margin_m: float = 5.0
 
+## phases/2/13-terrain3d-integration.md, implementation step 6: opt-in switch to
+## the Terrain3D-based terrain path (Terrain3DBridge) instead of the existing,
+## already-validated GamebryoTerrainBuilder path -- default false, per that doc's
+## own "Coexistence / migration plan" (don't remove/risk the working path until
+## Terrain3D's is validated in real play the same way 2.12 was). When true, a
+## single shared, persistent Terrain3D node is created in activate() and each
+## tile's terrain step calls Terrain3DBridge.import_cell() into it instead of
+## CellStreamBuilder.build_terrain() -- timed into the same diagnostic_terrain_ms
+## array for a direct, real before/after comparison (see _stream_tile()).
+@export var use_terrain3d: bool = false
+
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
 var _builder: CellStreamBuilder
 var _pool: GamebryoResolverPool # phases/2/10-threaded-streaming-workers.md, step 4
+var _terrain3d: Terrain3D # only non-null when use_terrain3d, created fresh per activate()
+var _terrain3d_pool: Terrain3DTexturePool
+var _terrain3d_bridge: Terrain3DBridge
 
 var diagnostic_construct_ms: Array = [] # TEMP DIAGNOSTIC -- stutter investigation
 var diagnostic_batch_build_ms: Array = [] # TEMP DIAGNOSTIC
@@ -171,6 +185,18 @@ func activate(wrld_form_id: int) -> void:
 	deactivate()
 	_active_wrld_form_id = wrld_form_id
 	_generation += 1
+	if use_terrain3d:
+		# Fresh per activate() -- a worldspace switch shouldn't carry stale
+		# regions from the previous one (this is also why deactivate() frees it
+		# rather than leaving it resident across an activate()/deactivate() pair
+		# for a DIFFERENT worldspace; simple and correct, not yet the
+		# region-residency-across-a-single-worldspace-session optimization the
+		# design doc's "Streaming integration" section describes -- that's about
+		# which regions stay loaded WITHIN one active worldspace as the camera
+		# moves, a separate question from this per-worldspace lifecycle).
+		_terrain3d = Terrain3DBridge.create_terrain(self)
+		_terrain3d_pool = Terrain3DTexturePool.new(_terrain3d)
+		_terrain3d_bridge = Terrain3DBridge.new(esm, resolver, _terrain3d_pool)
 	_stream_persistent_root()
 	_check_streaming() # immediate check, don't wait for the next timer tick
 
@@ -200,6 +226,11 @@ func deactivate() -> void:
 		_persistent_batch.free_all()
 		_persistent_batch = null
 	_in_flight_count = 0
+	if _terrain3d != null:
+		_terrain3d.free()
+		_terrain3d = null
+		_terrain3d_pool = null
+		_terrain3d_bridge = null
 
 func is_active() -> bool:
 	return _active_wrld_form_id != -1
@@ -398,11 +429,22 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	tile_root.add_child(terrain_root)
 
 	var _tt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
-	var terrain := _builder.build_terrain(cell_form_id)
-	diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
-	if terrain != null:
-		CellStreamBuilder.set_collision_disabled(terrain, false) # visible+collidable immediately -- see _construct_results()'s own doc comment on progressive reveal
-		terrain_root.add_child(terrain)
+	if use_terrain3d:
+		# phases/2/13-terrain3d-integration.md, implementation step 6: same
+		# diagnostic_terrain_ms array as the GamebryoTerrainBuilder path below,
+		# for a direct real before/after comparison -- import_cell() writes
+		# directly into the shared _terrain3d node (real per-vertex
+		# set_height()/set_control() calls, see terrain3d_bridge.gd), nothing to
+		# parent under terrain_root (there's exactly one Terrain3D node for the
+		# whole worldspace, not one per tile).
+		_terrain3d_bridge.import_cell(_terrain3d, cell_form_id)
+		diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
+	else:
+		var terrain := _builder.build_terrain(cell_form_id)
+		diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
+		if terrain != null:
+			CellStreamBuilder.set_collision_disabled(terrain, false) # visible+collidable immediately -- see _construct_results()'s own doc comment on progressive reveal
+			terrain_root.add_child(terrain)
 
 	# Deliberately NOT get_persistent_refs_for_cell() here -- persistent
 	# refs are streamed exactly once into PersistentRoot by
