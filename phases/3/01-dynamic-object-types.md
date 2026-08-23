@@ -76,7 +76,7 @@ enough real instances that leaving them unregistered is a genuine, measurable ga
 
 | Type | Name | Real SCRI usage | Node type | Status |
 |---|---|---|---|---|
-| `MISC` | Misc. Item | 178/507 | `ItemNode` (shared) | Not started — largest real gap in this branch |
+| `MISC` | Misc. Item | 178/507 | `ItemNode` (shared) | Done — Phase 3.2 proves the shared ItemNode pattern: real MISC DATA, inventory conversion, rigid-body world props, drag/pickup. The remaining six Item types can follow it after their individual DATA layouts are verified. |
 | `ARMO` | Armor | 47/389 | `ItemNode` (shared) | Not started |
 | `KEYM` | Key | 7/283 | `ItemNode` (shared) | Not started |
 | `WEAP` | Weapon | 17/261 | `ItemNode` (shared) | Not started |

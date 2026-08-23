@@ -37,6 +37,7 @@ const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
 # ESM/NIF data) -- picked to comfortably reach a door/lever from just
 # outside its collision, not tuned further.
 const INTERACT_REACH_METERS := 2.5
+const ITEM_DRAG_HOLD_SECONDS := 0.28
 
 var cell_loader: CellLoader
 var world_streamer: WorldStreamer
@@ -45,6 +46,10 @@ var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 var _sun: DirectionalLight3D
 var _world_environment: WorldEnvironment
+var inventory := Inventory.new()
+var _pending_item: ItemNode = null
+var _dragging_item: ItemNode = null
+var _item_press_time_msec := 0
 
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
 # (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
@@ -155,8 +160,7 @@ func _process(_delta: float) -> void:
 			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellLoader's single-load case
 	if cell_loader == null or cell_loader._loading:
 		return # a load is already in flight -- don't stack another
-	if Input.is_action_just_pressed("interact"):
-		_try_interact()
+	_update_item_interaction()
 
 ## Shared by _try_interact() and _update_look_at_label() -- the same
 ## reach/gesture raycast, run either on an actual interact press or every
@@ -181,7 +185,7 @@ func _interact_raycast() -> Dictionary:
 	if collider == null:
 		return {}
 	var target: Object = collider
-	if collider is GamebryoCollisionBody:
+	if collider is GamebryoCollisionBody or collider is GamebryoRigidBody:
 		target = collider.owner_ref
 	return { "collider": collider, "target": target }
 
@@ -206,6 +210,62 @@ func _update_look_at_label() -> void:
 	if target != null and "editor_description" in target:
 		text += "\n" + String(target.editor_description)
 	_look_at_label.text = text
+
+## Tap E picks up an ItemNode; holding E for a short deliberate threshold
+## drags it instead. This preserves the existing one-key interact UX while
+## making both actions reachable without introducing a speculative binding.
+func _update_item_interaction() -> void:
+	if Input.is_action_just_pressed("interact"):
+		var hit := _interact_raycast()
+		var target: Object = hit.get("target") if not hit.is_empty() else null
+		if target is ItemNode:
+			_pending_item = target
+			_item_press_time_msec = Time.get_ticks_msec()
+		else:
+			_try_interact()
+	if _pending_item != null and Input.is_action_pressed("interact") and _dragging_item == null:
+		if Time.get_ticks_msec() - _item_press_time_msec >= int(ITEM_DRAG_HOLD_SECONDS * 1000.0):
+			var player := _find_character_body(self)
+			if player != null and "CAMERA" in player and _pending_item.begin_drag(player.CAMERA):
+				_dragging_item = _pending_item
+			_pending_item = null
+	if Input.is_action_just_released("interact"):
+		if _dragging_item != null:
+			_dragging_item.end_drag()
+			_dragging_item = null
+		elif _pending_item != null:
+			_pickup_item(_pending_item)
+		_pending_item = null
+
+func _pickup_item(target: Object) -> void:
+	var picked: Dictionary = target.pickup()
+	if picked.is_empty(): return
+	inventory.add_item(int(picked["base_form_id"]), picked["item_data"], int(picked.get("count", 1)))
+	if target is Node:
+		target.queue_free()
+
+func debug_add_inventory_item(base_form_id: int) -> bool:
+	for entry in inventory.get_entries():
+		if int(entry.get("base_form_id", 0)) == base_form_id:
+			inventory.add_item(base_form_id, entry)
+			return true
+	return false
+
+func debug_drop_inventory_item(base_form_id: int) -> bool:
+	var entry := {}
+	for candidate in inventory.get_entries():
+		if int(candidate.get("base_form_id", 0)) == base_form_id:
+			entry = candidate
+			break
+	if entry.is_empty() or not inventory.remove_item(base_form_id): return false
+	var player := _find_character_body(self)
+	if player == null or not ("CAMERA" in player): return false
+	var camera: Camera3D = player.CAMERA
+	var placement := { "base_form_id": base_form_id, "base_type": "MISC", "model": entry.get("model_path", ""), "position": camera.global_position - camera.global_transform.basis.z * 1.2, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0, "editor_id": entry.get("full_name", "DroppedItem") }
+	var node := cell_loader.registry.build(placement)
+	if node == null: return false
+	add_child(node)
+	return true
 
 ## Dynamic types split into two real interact shapes right now: DoorNode
 ## (the only real has_method("activate") case) still always calls its own
@@ -233,6 +293,9 @@ func _try_interact() -> void:
 		return
 	var target: Object = hit["target"]
 	if target == null:
+		return
+	if target.has_method("pickup"):
+		_pickup_item(target)
 		return
 	if not target.has_method("activate"):
 		if script_engine != null and script_engine.is_scripted(target):

@@ -126,6 +126,8 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_
 			return _resolve_scol(placement, ctx)
 		"LIGH":
 			return _resolve_light(placement, ctx)
+		"MISC":
+			return _resolve_item(placement, ctx)
 		"CONT", "ACTI", "FURN", "TACT", "TERM", "MSTT":
 			return _resolve_visual(placement, ctx, type_tag)
 		_:
@@ -237,6 +239,14 @@ func _resolve_light(placement: Dictionary, ctx: GamebryoResolveContext) -> Dicti
 		return { "kind": "skip", "placement": placement }
 	return { "kind": "light", "geometry": geometry, "light_data": light_data, "placement": placement }
 
+func _resolve_item(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	var visual := _resolve_visual(placement, ctx, "MISC")
+	if visual["kind"] == "skip":
+		return visual
+	visual["kind"] = "item"
+	visual["item_data"] = ctx.esm.get_item_data(int(placement.get("base_form_id", 0)))
+	return visual
+
 ## phases/2/10-threaded-streaming-workers.md, step 4: the main-thread-only
 ## "commit" half of the resolve/commit split -- builds the real Node
 ## subtree (or feeds `batch`, a DirectGeometryBatch, for the structural-
@@ -260,6 +270,8 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 			return _construct_door(result)
 		"light":
 			return _construct_light(result)
+		"item":
+			return _construct_item(result)
 		"scol":
 			return _construct_scol(result)
 		"visual":
@@ -346,6 +358,17 @@ func _construct_light(result: Dictionary) -> Node3D:
 		return null
 	return _finalize(node, result["placement"])
 
+func _construct_item(result: Dictionary) -> Node3D:
+	var item_data: Dictionary = result.get("item_data", {})
+	if item_data.is_empty(): return null
+	item_data["model_path"] = result["placement"].get("model", "")
+	var node := ItemNode.new()
+	node.configure_item(item_data, int(result["placement"].get("base_form_id", 0)))
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}))
+	# Weight is only a loose placeholder mass until Phase 4 reads bhk mass.
+	node.attach_rigid_body(resolver.populate_rigid_body_children(node, geometry, max(float(item_data.get("weight", 0.1)), 0.05)))
+	return _finalize(node, result["placement"])
+
 ## SCOL parts always become real Node children, never routed through a
 ## DirectGeometryBatch -- matches _build_scol()'s existing behavior (which
 ## recurses through build(), always a Node), not a new restriction
@@ -408,6 +431,7 @@ func _register_defaults() -> void:
 	register("TACT", func(p, r): return _instantiate_visual(TalkingActivatorNode, p, r))
 	register("TERM", func(p, r): return _instantiate_visual(TerminalNode, p, r))
 	register("MSTT", func(p, r): return _instantiate_visual(MovableStaticNode, p, r))
+	register("MISC", func(p, r): return _build_item(p, r))
 	register("SCOL", func(p, r): return _build_scol(p, r))
 	register("LIGH", func(p, r): return _build_light(p, r))
 	# Every other Tier 1 type (WEAP/ARMO/AMMO/BOOK/KEYM/ALCH/NOTE/TREE/CCRD/
@@ -435,6 +459,20 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model), lod_raw)
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
+	return _finalize(node, placement)
+
+func _build_item(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var data: Dictionary = esm.get_item_data(int(placement.get("base_form_id", 0)))
+	if data.is_empty(): return null
+	var model: String = placement.get("model", "")
+	if model == "": return null
+	var nif := mesh_resolver.load_nif(model)
+	if nif == null or nif.get_submesh_count() == 0: return null
+	data["model_path"] = model
+	var node := ItemNode.new()
+	node.configure_item(data, int(placement.get("base_form_id", 0)))
+	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
+	node.attach_rigid_body(mesh_resolver.populate_rigid_body_children(node, geometry, max(float(data.get("weight", 0.1)), 0.05)))
 	return _finalize(node, placement)
 
 ## phases/3/00-door-completion.md step 7: DOOR is Dynamic (can script, and

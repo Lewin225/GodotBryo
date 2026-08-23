@@ -974,6 +974,25 @@ func populate_collision_children(parent: Node3D, nif: NifReader, model_path: Str
 		col.transform = entry["transform"]
 		body.add_child(col)
 
+## Item physics uses the same extracted/fallback shapes as static collision,
+## but parents both mesh and shapes under a movable RigidBody3D. Keeping this
+## separate prevents MISC from accidentally changing every existing prop.
+func populate_rigid_body_children(parent: ItemNode, geometry: Dictionary, mass: float) -> GamebryoRigidBody:
+	var body := GamebryoRigidBody.new()
+	body.name = "RigidBody3D"
+	body.owner_ref = parent
+	body.mass = max(mass, 0.05)
+	body.can_sleep = true
+	parent.add_child(body)
+	populate_mesh_children(body, null, "", geometry)
+	for entry in geometry["shape_entries"]:
+		var col := CollisionShape3D.new()
+		col.name = String(entry.get("name", "collision"))
+		col.shape = entry["shape"]
+		col.transform = entry["transform"]
+		body.add_child(col)
+	return body
+
 func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
 	var pos_flat: PackedFloat32Array = e["positions"]
 	var norm_flat: PackedFloat32Array = e["normals"]

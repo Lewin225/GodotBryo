@@ -157,6 +157,16 @@ struct LightData {
 	bool off_by_default() const { return (flags & kLightFlagOffByDefault) != 0; }
 };
 
+// Shared basic item fields. MISC.DATA is verified as Value(i32), Weight(f32);
+// callers must not assume other item record types use the same DATA layout.
+struct ItemData {
+	std::string full_name;
+	int32_t value = 0;
+	float weight = 0.0f;
+	std::string inventory_icon;
+	std::string message_icon;
+};
+
 // CELL.XCLL ("Lighting") -- confirmed layout via fopdoc's CELL page: 40
 // bytes -- Ambient Color(rgba), Directional Color(rgba), Fog Color(rgba),
 // Fog Near(f32), Fog Far(f32), Directional Rotation XY(i32), Directional
