@@ -1,0 +1,506 @@
+<title>Mojave Script Interpreter</title>
+<style>
+:root {
+  --bg: #EDEDE1;
+  --surface: #E3E3D4;
+  --surface-2: #D8D8C6;
+  --ink: #1E2823;
+  --ink-soft: #4C584F;
+  --ink-faint: #79806f;
+  --accent: #8A5A2B;
+  --accent-2: #2B5C6B;
+  --rule: #C6C6B2;
+  --code-bg: #DEDECE;
+  --bar: #2B5C6B;
+  --bar-bg: #D2DEDF;
+  --tier1: #3C7A4B;
+  --tier1-bg: #DCEBDD;
+  --data: #6B4C8A;
+  --data-bg: #E7DFF0;
+  --shadow: 0 1px 2px rgba(30,40,35,0.08), 0 6px 20px rgba(30,40,35,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+    --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+    --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+    --bar: #6BB2C2; --bar-bg: #16292D;
+    --tier1: #6CBF7F; --tier1-bg: #17301F;
+    --data: #B79BE0; --data-bg: #241A33;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+  --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+  --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+  --bar: #6BB2C2; --bar-bg: #16292D;
+  --tier1: #6CBF7F; --tier1-bg: #17301F;
+  --data: #B79BE0; --data-bg: #241A33;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px; line-height: 1.65;
+}
+h1, h2, h3, h4 {
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  text-wrap: balance; color: var(--ink); margin: 0;
+}
+code, .mono { font-family: ui-monospace, "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace; }
+a { color: var(--accent-2); }
+a:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { max-width: 900px; margin: 0 auto; padding: 56px 28px 120px; }
+@media (max-width: 640px) { .wrap { padding: 40px 18px 100px; } }
+
+.hero { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 44px; }
+.hero .kicker {
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+}
+.hero h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; max-width: 18ch; }
+.hero .dek {
+  font-family: ui-sans-serif, sans-serif; text-transform: none; letter-spacing: normal;
+  color: var(--ink-soft); max-width: 68ch; margin-top: 14px; font-size: 16px;
+}
+.hero .companion {
+  margin-top: 16px; font-size: 13.5px; color: var(--ink-faint);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+
+section.block { margin-bottom: 50px; }
+section.block > h2 {
+  font-size: 20px; padding-bottom: 9px; border-bottom: 2px solid var(--accent);
+  margin-bottom: 16px; display: flex; align-items: baseline; gap: 10px;
+}
+section.block > h2 .idx { color: var(--accent); font-family: ui-monospace, monospace; font-size: 14px; }
+section.block h3 {
+  font-size: 15px; text-transform: none; letter-spacing: normal; font-weight: 700;
+  margin: 22px 0 8px; color: var(--ink);
+}
+p { margin: 10px 0; max-width: 68ch; }
+strong { color: var(--ink); }
+.cls {
+  font-family: ui-monospace, monospace; font-size: 0.92em; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px; background: var(--code-bg); color: var(--accent-2);
+  white-space: nowrap;
+}
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--surface);
+  padding: 16px 20px; border-radius: 0 6px 6px 0; font-size: 15px; color: var(--ink-soft);
+  margin: 18px 0; box-shadow: var(--shadow);
+}
+.callout strong { color: var(--ink); }
+.callout.verified { border-left-color: var(--tier1); }
+.callout.verified strong { color: var(--tier1); }
+
+.tree-panel, .code-panel {
+  background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 22px; margin: 16px 0; overflow-x: auto; box-shadow: var(--shadow);
+}
+.tree-panel pre, .code-panel pre {
+  margin: 0; font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13.2px; line-height: 1.65; white-space: pre;
+}
+.tree-panel .tag { color: var(--accent-2); font-weight: 700; }
+.tree-panel .payload { color: var(--ink-faint); }
+.tree-panel .hl { color: var(--tier1); font-weight: 700; }
+.code-panel .kw { color: var(--accent); font-weight: 600; }
+.code-panel .cm { color: var(--ink-faint); font-style: italic; }
+
+table.xtable { width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0; }
+table.xtable th {
+  text-align: left; font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 8px 12px 8px 0; border-bottom: 2px solid var(--accent);
+}
+table.xtable td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.xtable td:first-child { color: var(--accent-2); font-weight: 600; white-space: nowrap; }
+
+/* frequency bars */
+.freq-list { display: flex; flex-direction: column; gap: 7px; margin: 16px 0; }
+.freq-row { display: grid; grid-template-columns: 140px 1fr 46px; align-items: center; gap: 10px; font-size: 13.5px; }
+.freq-label { font-family: ui-monospace, monospace; color: var(--ink); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.freq-track { background: var(--bar-bg); border-radius: 3px; height: 14px; position: relative; overflow: hidden; }
+.freq-fill { background: var(--bar); height: 100%; border-radius: 3px 0 0 3px; }
+.freq-count { font-variant-numeric: tabular-nums; color: var(--ink-faint); font-size: 12.5px; }
+
+/* function tier chips */
+.chip-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.chip {
+  font-family: ui-monospace, monospace; font-size: 13px; font-weight: 600;
+  padding: 4px 10px; border-radius: 4px; background: var(--tier1-bg); color: var(--tier1);
+  border: 1px solid color-mix(in srgb, var(--tier1) 35%, transparent);
+}
+
+/* pipeline steps */
+.pipeline { display: flex; flex-direction: column; gap: 0; margin: 18px 0; }
+.pipe-step {
+  display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 12px 0;
+  border-left: 2px solid var(--rule); margin-left: 12px; padding-left: 20px; position: relative;
+}
+.pipe-step::before {
+  content: ""; position: absolute; left: -7px; top: 18px; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--accent); border: 2px solid var(--bg);
+}
+.pipe-step:last-child { border-left-color: transparent; }
+.pipe-step h4 { font-size: 14px; text-transform: none; letter-spacing: normal; font-weight: 700; margin-bottom: 3px; grid-column: 2; }
+.pipe-step p { margin: 0; font-size: 13.5px; color: var(--ink-soft); grid-column: 2; max-width: 60ch; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+@media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+.mini-card {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 18px; box-shadow: var(--shadow);
+}
+.mini-card h4 { font-size: 13px; text-transform: none; letter-spacing: normal; font-weight: 700; margin-bottom: 6px; }
+.mini-card p { font-size: 14px; margin: 0; color: var(--ink-soft); }
+
+ul.nongoals { list-style: none; margin: 14px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+ul.nongoals li {
+  padding: 12px 16px; background: var(--data-bg); border-radius: 6px; font-size: 14.5px;
+  color: var(--ink-soft); border-left: 3px solid var(--data);
+}
+ul.nongoals li strong { color: var(--data); }
+
+footer.doc-foot {
+  border-top: 1px solid var(--rule); margin-top: 56px; padding-top: 18px;
+  color: var(--ink-faint); font-size: 13px;
+}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="kicker">Architecture Notes</div>
+    <h1>The Mojave Script Interpreter</h1>
+    <p class="dek">
+      Every <code>SCPT</code> record, every <code>OnActivate</code>/<code>OnDeath</code>/<code>GameMode</code>
+      block &mdash; the part of this port that actually runs the game. The central decision below is
+      verified against real bytes in this project's own <code>FalloutNV.esm</code>, not assumed from
+      documentation.
+    </p>
+    <p class="companion">Third of three companion documents, alongside the Mojave Data Model
+    (record reference) and the Mojave Class Hierarchy (Node design).</p>
+  </div>
+
+  <section class="block">
+    <h2><span class="idx">01</span> Don't decode Bethesda's bytecode</h2>
+    <p>
+      A compiled <span class="cls">SCPT</span> record carries several subrecords. Read byte-for-byte
+      from a real record in this project's own ESM (<code>VLCSafetyTrigger01SCRIPT</code>, picked at
+      random):
+    </p>
+    <div class="tree-panel">
+      <pre><span class="tag">EDID</span>  25   <span class="payload">"VLCSafetyTrigger01SCRIPT"</span>
+<span class="tag">SCHR</span>  20   <span class="payload">refCount, compiledSize, lastIndex, scriptType, scriptFlags</span>
+<span class="tag">SCDA</span>  400  <span class="payload">&lt;compiled bytecode &mdash; Bethesda's own proprietary VM format&gt;</span>
+<span class="hl">SCTX</span>  1268 <span class="hl">"scn VLCSafetyTrigger01SCRIPT\r\n\r\nRef ActivatorREF;\r\n\r\nBEGIN OnTriggerEnter\r\n..."</span>
+<span class="tag">SLSD</span>  24   <span class="payload">local variable slot 1 (index, type flags)</span>
+<span class="tag">SCVR</span>  13   <span class="payload">"ActivatorREF" &mdash; that slot's name</span>
+<span class="tag">SCRV</span>  4    <span class="payload">which SLSD slot this SCRO entry resolves for</span>
+<span class="tag">SCRO</span>  4&times;8 <span class="payload">FormIDs referenced by name in the script text</span></pre>
+    </div>
+    <div class="callout verified">
+      <strong>Verified, not assumed:</strong> <span class="cls">SCTX</span> &mdash; the original,
+      human-readable source &mdash; is present and complete on every one of <strong>11,483</strong>
+      scripts sampled directly across the whole ESM, a full scan, not a handful of spot checks.
+    </div>
+    <p>
+      <span class="cls">SCDA</span>, the actual bytecode Bethesda's runtime executes, is also
+      present &mdash; but there's no reason to ever decode it. The interpreter should tokenize and
+      parse <span class="cls">SCTX</span> directly, the same way the GECK's own compiler did, and
+      never touch <span class="cls">SCDA</span> at all. Reverse-engineering a proprietary bytecode VM
+      buys nothing when the real source is sitting right next to it, already in a syntax fully
+      documented by the GECK Wiki.
+    </p>
+    <p>
+      <span class="cls">SLSD</span>/<span class="cls">SCVR</span> and
+      <span class="cls">SCRO</span>/<span class="cls">SCRV</span> are worth keeping too, even though
+      they're derivable by parsing <span class="cls">SCTX</span> yourself: they're Bethesda's own
+      <strong>pre-resolved symbol table</strong>. A hand-rolled parser has to resolve
+      <code>ActivatorREF</code> or a quest editor ID against the whole ESM's namespace at parse
+      time &mdash; the compiler already did that once and left the answer in the record.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">02</span> Three flavors, one grammar</h2>
+    <p>
+      Every script (except a bare <strong>Result script</strong> fragment &mdash; no
+      <code>ScriptName</code>, no blocks, just a snippet run once) declares its type at compile time,
+      and the type gates which block types and calling conventions are legal.
+    </p>
+    <table class="xtable">
+      <tr><th>Flavor</th><th>Attached to</th><th>Reference script?</th><th>Notable rule</th></tr>
+      <tr><td>Object</td><td>NPCs, Creatures, Activators&hellip;</td><td>Yes</td><td>Runs even for disabled references; <code>GameMode</code>/<code>MenuMode</code> fire every frame, no configurable delay</td></tr>
+      <tr><td>Quest</td><td><code>QUST</code> only</td><td>No</td><td>Can't use implicit-reference syntax at all; own configurable processing delay (default 5s)</td></tr>
+      <tr><td>Effect</td><td>Base Effect via Actor/Object Effect or Ingestible</td><td>Yes &mdash; on the <em>target</em></td><td>Limited to exactly three blocktypes; variables can't be accessed remotely</td></tr>
+    </table>
+    <p>
+      "Reference script" vs. "non-reference script" is the single most consequential distinction in
+      the language, because it decides whether a call needs an explicit target:
+    </p>
+    <div class="code-panel">
+      <pre>GetFactionRelation player          <span class="cm">; implicit -- only legal in a reference script</span>
+LucasSimmsRef.GetFactionRelation player   <span class="cm">; explicit -- legal anywhere, always names the reference</span></pre>
+    </div>
+    <p>
+      Mapped onto this project's class hierarchy: an Object script's calling reference <em>is</em>
+      the <span class="cls">GamebryoReference</span>/<span class="cls">GamebryoActor</span> node it's
+      attached to &mdash; implicit calls resolve to <code>self</code>, the way <code>game.gd</code>'s
+      interact raycast already resolves its collider. A Quest script has no such <code>self</code> at
+      all &mdash; the <span class="cls">Resource</span>-based, never-a-Node case from that document;
+      its calling references always come from a local <code>ref</code> variable or an explicit lookup.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">03</span> Variables: three types, four storage tiers</h2>
+    <div class="code-panel">
+      <pre><span class="kw">int</span>   varName    <span class="cm">; alias: short, long -- identical, 32-bit signed</span>
+<span class="kw">float</span> varName    <span class="cm">; single precision</span>
+<span class="kw">ref</span>   varName    <span class="cm">; a FormID -- either a Reference or a Base Form</span></pre>
+    </div>
+    <table class="xtable">
+      <tr><th>Tier</th><th>Syntax</th><th>Rule</th><th>Maps to</th></tr>
+      <tr><td>Local</td><td><code>myVar</code></td><td>Private per Reference running the same Object script</td><td>A field on the interpreter's per-instance execution context</td></tr>
+      <tr><td>Cross-reference</td><td><code>MyRef.MyVar</code></td><td>Only reachable if <code>MyRef</code> is <strong>persistent</strong></td><td>Owning node's own local-variable table</td></tr>
+      <tr><td>Quest-scoped</td><td><code>MyQuest.MyVar</code></td><td>Survives the quest being stopped &mdash; "stopped" only halts processing</td><td>The Quest <span class="cls">Resource</span></td></tr>
+      <tr><td>Global</td><td><code>GLOB</code> form</td><td>Stored as <strong>float internally</strong> even when declared Short/Long &mdash; high-magnitude int comparisons can silently fail after arithmetic</td><td>A <span class="cls">Resource</span>-backed lookup table by editor ID</td></tr>
+    </table>
+    <div class="callout">
+      A <code>ref</code> can hold <strong>either</strong> a live Reference or a bare Base Form, and
+      the two aren't interchangeable &mdash; calling a reference function through a <code>ref</code>
+      holding only a Base Form is a real, documented crash risk. The idiomatic vanilla guard,
+      <code>if IsFormValid rRef</code> then <code>if IsReference rRef</code>, should be a first-class
+      runtime check the interpreter enforces on every call, not something the script author has to
+      remember.
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">04</span> Grammar sketch</h2>
+    <div class="code-panel">
+      <pre>statement      := assignment | conditional | block | bare-call | comment
+assignment     := (<span class="kw">"set"</span> IDENT <span class="kw">"to"</span> expr) | (<span class="kw">"let"</span> lvalue <span class="kw">":="</span> expr)
+conditional    := <span class="kw">"if"</span> expr stmt* (<span class="kw">"elseif"</span> expr stmt*)* (<span class="kw">"else"</span> stmt*)? <span class="kw">"endif"</span>
+block          := <span class="kw">"begin"</span> blocktype param* stmt* <span class="kw">"end"</span>
+call           := [reference <span class="kw">"."</span>] funcname arg*
+comment        := <span class="kw">";"</span> .*                    <span class="cm">/* */ block comments are xNVSE 6.2.1+, not vanilla</span></pre>
+    </div>
+    <p>
+      Operators, exactly as documented &mdash; <strong>there is no switch/case</strong> in this
+      language, by design, confirmed directly in the beginner tutorial:
+    </p>
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>Arithmetic / Comparison</h4>
+        <p><code>+ &nbsp;- &nbsp;* &nbsp;/ &nbsp;%</code><br>
+        <code>== &nbsp;!= &nbsp;&gt; &nbsp;&lt; &nbsp;&gt;= &nbsp;&lt;=</code> &mdash; always yield exactly 1 or 0</p>
+      </div>
+      <div class="mini-card">
+        <h4>Logical / Truthiness</h4>
+        <p><code>&amp;&amp; &nbsp;||</code> &mdash; no native NOT/XOR (<code>A == 0</code>, <code>(A||B)-(A&amp;&amp;B)</code> are the idioms). <code>0</code> is false, anything else is true.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">05</span> Execution model</h2>
+    <p>
+      <code>Begin</code>/<code>End</code> blocks aren't function definitions &mdash; they're the
+      language's entire event dispatch mechanism. Every frame, every loaded script's blocks are
+      checked top-to-bottom; if a block's condition is true, its body runs <em>that frame</em>.
+      Ranked by real usage across all 11,483 scripts &mdash; counted, not guessed:
+    </p>
+    <div class="freq-list">
+      <div class="freq-row"><span class="freq-label">GameMode</span><div class="freq-track"><div class="freq-fill" style="width:100%"></div></div><span class="freq-count">766</span></div>
+      <div class="freq-row"><span class="freq-label">OnTriggerEnter</span><div class="freq-track"><div class="freq-fill" style="width:97.9%"></div></div><span class="freq-count">750</span></div>
+      <div class="freq-row"><span class="freq-label">OnActivate</span><div class="freq-track"><div class="freq-fill" style="width:71.1%"></div></div><span class="freq-count">545</span></div>
+      <div class="freq-row"><span class="freq-label">OnDeath</span><div class="freq-track"><div class="freq-fill" style="width:59.1%"></div></div><span class="freq-count">453</span></div>
+      <div class="freq-row"><span class="freq-label">OnLoad</span><div class="freq-track"><div class="freq-fill" style="width:44.4%"></div></div><span class="freq-count">340</span></div>
+      <div class="freq-row"><span class="freq-label">OnAdd</span><div class="freq-track"><div class="freq-fill" style="width:27.7%"></div></div><span class="freq-count">212</span></div>
+      <div class="freq-row"><span class="freq-label">OnHit</span><div class="freq-track"><div class="freq-fill" style="width:26%"></div></div><span class="freq-count">199</span></div>
+      <div class="freq-row"><span class="freq-label">ScriptEffectStart</span><div class="freq-track"><div class="freq-fill" style="width:18.5%"></div></div><span class="freq-count">142</span></div>
+      <div class="freq-row"><span class="freq-label">OnTrigger</span><div class="freq-track"><div class="freq-fill" style="width:18%"></div></div><span class="freq-count">138</span></div>
+      <div class="freq-row"><span class="freq-label">SayToDone</span><div class="freq-track"><div class="freq-fill" style="width:17.8%"></div></div><span class="freq-count">136</span></div>
+      <div class="freq-row"><span class="freq-label">OnStartCombat</span><div class="freq-track"><div class="freq-fill" style="width:15.1%"></div></div><span class="freq-count">116</span></div>
+      <div class="freq-row"><span class="freq-label">OnTriggerLeave</span><div class="freq-track"><div class="freq-fill" style="width:11.4%"></div></div><span class="freq-count">87</span></div>
+      <div class="freq-row"><span class="freq-label">MenuMode</span><div class="freq-track"><div class="freq-fill" style="width:7.8%"></div></div><span class="freq-count">60</span></div>
+      <div class="freq-row"><span class="freq-label">ScriptEffectFinish</span><div class="freq-track"><div class="freq-fill" style="width:3.7%"></div></div><span class="freq-count">28</span></div>
+      <div class="freq-row"><span class="freq-label">OnCombatEnd</span><div class="freq-track"><div class="freq-fill" style="width:3.4%"></div></div><span class="freq-count">26</span></div>
+      <div class="freq-row"><span class="freq-label">ScriptEffectUpdate</span><div class="freq-track"><div class="freq-fill" style="width:2.9%"></div></div><span class="freq-count">22</span></div>
+      <div class="freq-row"><span class="freq-label">OnHitWith</span><div class="freq-track"><div class="freq-fill" style="width:2.5%"></div></div><span class="freq-count">19</span></div>
+    </div>
+    <p>
+      <code>GameMode</code>'s dominance matters for frame-loop integration: it needs to hook the same
+      per-frame cadence <code>WorldStreamer._process()</code> already runs streaming checks on, not a
+      second polling timer. Quest scripts are the one exception &mdash; their own configurable delay
+      (default 5s, live-adjustable via <code>SetQuestDelay</code>) is decoupled from the object-script
+      per-frame cadence entirely.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">06</span> The function library: a registry, not a rewrite of 488</h2>
+    <p>
+      The GECK Wiki catalogs 488 built-in functions before any NVSE extensions &mdash; the wrong
+      shape to document exhaustively here. What matters architecturally is that this project already
+      has the right pattern: <code>GamebryoObjectRegistry</code>'s <code>_factories</code> is a
+      runtime-populated <code>String &rarr; Callable</code> dictionary, grown by calling
+      <code>register()</code>, zero compiled-in switch statement. A script function table is the same
+      shape.
+    </p>
+    <p>
+      <strong>Real usage frequency</strong>, counted directly across every script in the ESM
+      (filtered to exclude keywords/blocktypes/project-specific reference names) &mdash; each of
+      these appears 400+ times:
+    </p>
+    <div class="chip-cloud">
+      <span class="chip">SetObjectiveDisplayed</span><span class="chip">SetObjectiveCompleted</span>
+      <span class="chip">SetStage</span><span class="chip">GetStage</span>
+      <span class="chip">Enable</span><span class="chip">Disable</span>
+      <span class="chip">AddItem</span><span class="chip">RemoveItem</span>
+      <span class="chip">AddScriptPackage</span><span class="chip">ShowMessage</span>
+      <span class="chip">MoveTo</span><span class="chip">GetDead</span>
+      <span class="chip">GetObjectiveCompleted</span><span class="chip">GetObjectiveDisplayed</span>
+      <span class="chip">RewardXP</span><span class="chip">StartCombat</span>
+      <span class="chip">SayTo</span><span class="chip">Activate</span>
+      <span class="chip">RemoveFromFaction</span><span class="chip">AddReputation</span>
+      <span class="chip">GameDaysPassed</span><span class="chip">ResetAI</span>
+      <span class="chip">GetItemCount</span><span class="chip">SetActorValue</span>
+      <span class="chip">GetSecondsPassed</span><span class="chip">AddToFaction</span>
+      <span class="chip">GetDisabled</span><span class="chip">SetEnemy</span>
+      <span class="chip">IsActionRef</span><span class="chip">GetRandomPercent</span>
+      <span class="chip">MarkForDelete</span><span class="chip">Unlock</span>
+      <span class="chip">GetLinkedRef</span>
+    </div>
+    <p>
+      ~30 functions covering the large majority of real call sites &mdash; a tractable first
+      milestone against the 488-signature wall the raw category page presents.
+      <code>GetContainer</code>/<code>GetIsReference</code>/<code>IsFormValid</code>/<code>IsReference</code>
+      belong alongside them despite not ranking in raw frequency, since they're the load-bearing
+      safety idioms every other script leans on implicitly.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">07</span> Proposed pipeline</h2>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <h4>SCTX (plaintext, already in the ESM)</h4>
+        <p>The source, exactly as the GECK's own compiler saw it &mdash; no decoding required.</p>
+      </div>
+      <div class="pipe-step">
+        <h4>Lexer</h4>
+        <p>Tokens: keywords, identifiers, numbers, operators; comments stripped.</p>
+      </div>
+      <div class="pipe-step">
+        <h4>Parser</h4>
+        <p>AST: one ScriptDef per SCPT, blocks as a flat ordered list of (blocktype, params, stmts).</p>
+      </div>
+      <div class="pipe-step">
+        <h4>Symbol resolution</h4>
+        <p>Cross-check identifiers against SCRO/SCRV first; fall back to a live editor-ID lookup only for names the compiler's own table didn't cover.</p>
+      </div>
+      <div class="pipe-step">
+        <h4>Interpreter</h4>
+        <p>Tree-walking, not bytecode &mdash; a per-instance ExecutionContext holds the local variable table plus a reference to the calling <span class="cls">GamebryoReference</span>/<span class="cls">GamebryoActor</span> (or null, for a Quest script's non-reference context).</p>
+      </div>
+      <div class="pipe-step">
+        <h4>Frame integration</h4>
+        <p>GameMode/MenuMode bodies run on the existing frame tick, not a second timer; Quest scripts get their own SetQuestDelay-driven timer instead.</p>
+      </div>
+    </div>
+    <p>
+      Tree-walking over the parsed AST matches both what the source data actually gives us (real,
+      readable <code>SCTX</code>, not opaque <code>SCDA</code>) and this project's established
+      preference for verified-format parsers over reverse-engineered binary reimplementations &mdash;
+      the ESM/NIF/BSA readers are all real-format parsers, never black boxes.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">08</span> How close to GDScript should this be?</h2>
+    <p>
+      Close in three specific ways, deliberately far in two others &mdash; not an all-or-nothing
+      question.
+    </p>
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>Close &mdash; implementation language</h4>
+        <p>GDScript, not C++. This project already states its own split &mdash; heavy GDExtension
+        for performance-critical work, GDScript for game-logic glue (<code>direct_geometry_batch.h</code>'s
+        own doc comment) &mdash; and FNV scripts are exactly the glue-logic case: event-driven,
+        mostly idle between frames, nothing like the tight per-vertex loops that justified C++
+        elsewhere.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Close &mdash; function dispatch</h4>
+        <p>Every built-in should be a real GDScript function in a <code>String &rarr; Callable</code>
+        table &mdash; the same pattern <code>GamebryoObjectRegistry._factories</code> already uses.
+        <code>Enable</code>/<code>Disable</code> toggle the node the way
+        <code>set_collision_disabled()</code> already does; <code>Activate</code> calls the same
+        contract the interact raycast already uses. The interpreter looks up and calls existing game
+        logic &mdash; it doesn't reimplement it.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Close &mdash; data representation</h4>
+        <p><code>int</code>/<code>float</code> map straight onto GDScript's own primitives;
+        <code>ref</code> maps onto either a Node reference or a plain form-ID <code>int</code> &mdash;
+        no separate boxed-value wrapper type needed.</p>
+      </div>
+      <div class="mini-card">
+        <h4>Far &mdash; don't transpile and hot-compile</h4>
+        <p>Tempting: parse FNV script, emit <code>.gd</code> text, load it at runtime. Resist it
+        &mdash; Godot's compiler isn't a sandboxed target, generated-code bugs are miserable to debug,
+        and it gives up exactly the control needed here: capping a runaway loop, enforcing the
+        silently-stop-don't-crash rule on a bad <code>ref</code>, single-stepping a block for a debug
+        overlay.</p>
+      </div>
+    </div>
+    <p>
+      <strong>Far &mdash; but don't hand-roll the expression grammar either, where a real Godot API
+      already does the job.</strong> Godot ships an <code>Expression</code> class built for exactly
+      this &mdash; runtime-evaluated arithmetic/comparison/logical expressions with named variable
+      bindings, confirmed present in this project's own Godot version
+      (<code>native/godot-cpp/gen/include/godot_cpp/classes/expression.hpp</code>):
+    </p>
+    <div class="code-panel">
+      <pre><span class="kw">Error</span>   Expression.parse(String expression, PackedStringArray input_names = [])
+<span class="kw">Variant</span> Expression.execute(Array inputs = [], Object base_instance = null, ...)</pre>
+    </div>
+    <p>
+      Use it for the <em>leaf</em> expressions inside <code>if</code>/<code>set</code> &mdash; not the
+      whole script. It has no concept of <code>Begin</code>/<code>End</code> blocks, and FNV's own
+      space-separated, no-parens call syntax (<code>AddItem Caps001 10</code>) isn't valid
+      <code>Expression</code> syntax either, so the project's own parser still owns control flow and
+      statement-level function calls. <code>Expression</code> just removes the need to hand-write an
+      operator-precedence parser for the arithmetic/comparison sub-expressions that appear inside them.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">09</span> Explicit non-goals for a first pass</h2>
+    <ul class="nongoals">
+      <li><strong>NVSE arrays/strings/lambdas/Let/ForEach/UDFs.</strong> Real and eventually worth having, but an extension layer on top of the vanilla grammar above &mdash; not required to run Bethesda's own base-game scripts. All 11,483 sampled scripts are vanilla-syntax SCTX.</li>
+      <li><strong>Console-only functions.</strong> The 38 Designer Debug Tools commands and the broader console-function set never appear in SCTX bodies at all &mdash; a separate REPL surface, not part of the interpreter proper.</li>
+      <li><strong>All 488 catalogued functions up front.</strong> Build the real-usage Tier 1 list, verify each against actual call sites, grow the registry the same incremental way <code>object_registry.gd</code> already does &mdash; not a single 488-function push.</li>
+      <li><strong>Decoding SCDA.</strong> Worth repeating as an explicit non-goal, not just an omission: there is no reason to ever touch it.</li>
+    </ul>
+  </section>
+
+  <footer class="doc-foot">
+    Local design notes, not published. Companion to <code>nv_script_interpreter_design.md</code>
+    (same content, source-controlled Markdown), <code>nv_data_model_reference.html</code>, and
+    <code>nv_class_hierarchy.html</code>. Grounded in 17 saved GECK Wiki scripting pages and a direct
+    byte-level scan of this project's own <code>FalloutNV.esm</code>.
+  </footer>
+</div>

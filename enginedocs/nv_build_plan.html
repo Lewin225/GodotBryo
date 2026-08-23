@@ -1,0 +1,332 @@
+<title>Mojave Build Plan</title>
+<style>
+:root {
+  --bg: #EDEDE1;
+  --surface: #E3E3D4;
+  --surface-2: #D8D8C6;
+  --ink: #1E2823;
+  --ink-soft: #4C584F;
+  --ink-faint: #79806f;
+  --accent: #8A5A2B;
+  --accent-2: #2B5C6B;
+  --rule: #C6C6B2;
+  --code-bg: #DEDECE;
+  --trackA: #2B5C6B;
+  --trackA-bg: #DCE7E9;
+  --trackB: #6B4C8A;
+  --trackB-bg: #E7DFF0;
+  --merge: #8A5A2B;
+  --merge-bg: #F0E3CE;
+  --shadow: 0 1px 2px rgba(30,40,35,0.08), 0 6px 20px rgba(30,40,35,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+    --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+    --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+    --trackA: #6BB2C2; --trackA-bg: #16292D;
+    --trackB: #B79BE0; --trackB-bg: #241A33;
+    --merge: #D9A441; --merge-bg: #2E250F;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+  --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+  --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+  --trackA: #6BB2C2; --trackA-bg: #16292D;
+  --trackB: #B79BE0; --trackB-bg: #241A33;
+  --merge: #D9A441; --merge-bg: #2E250F;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px; line-height: 1.65;
+}
+h1, h2, h3, h4 {
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  text-wrap: balance; color: var(--ink); margin: 0;
+}
+code, .mono { font-family: ui-monospace, "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace; }
+a { color: var(--accent-2); }
+a:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 56px 28px 120px; }
+@media (max-width: 640px) { .wrap { padding: 40px 18px 100px; } }
+
+.hero { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.hero .kicker {
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+}
+.hero h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; max-width: 18ch; }
+.hero .dek {
+  font-family: ui-sans-serif, sans-serif; text-transform: none; letter-spacing: normal;
+  color: var(--ink-soft); max-width: 70ch; margin-top: 14px; font-size: 16px;
+}
+.hero .companion {
+  margin-top: 16px; font-size: 13.5px; color: var(--ink-faint);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+
+section.block { margin-bottom: 48px; }
+section.block > h2 {
+  font-size: 20px; padding-bottom: 9px; border-bottom: 2px solid var(--accent);
+  margin-bottom: 16px; display: flex; align-items: baseline; gap: 10px;
+}
+section.block > h2 .idx { color: var(--accent); font-family: ui-monospace, monospace; font-size: 14px; }
+p { margin: 10px 0; max-width: 70ch; }
+strong { color: var(--ink); }
+.cls {
+  font-family: ui-monospace, monospace; font-size: 0.92em; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px; background: var(--code-bg); color: var(--accent-2);
+  white-space: nowrap;
+}
+
+/* Contract callout */
+.contract {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 22px 24px; margin: 16px 0; box-shadow: var(--shadow);
+}
+.contract h3 {
+  font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700;
+  color: var(--merge); margin-bottom: 10px;
+}
+.contract-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.contract-field {
+  display: grid; grid-template-columns: 220px 1fr; gap: 12px; font-size: 14px;
+  padding: 8px 0; border-bottom: 1px solid var(--rule);
+}
+.contract-field:last-child { border-bottom: none; }
+.contract-field code { color: var(--merge); font-weight: 600; }
+.contract-field span { color: var(--ink-soft); }
+
+/* Two-track layout */
+.tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 20px 0; }
+@media (max-width: 800px) { .tracks { grid-template-columns: 1fr; } }
+.track {
+  border-radius: 10px; padding: 22px 22px 8px; box-shadow: var(--shadow);
+}
+.track.a { background: var(--trackA-bg); border: 1px solid color-mix(in srgb, var(--trackA) 35%, transparent); }
+.track.b { background: var(--trackB-bg); border: 1px solid color-mix(in srgb, var(--trackB) 35%, transparent); }
+.track-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.track.a .track-head h3 { color: var(--trackA); }
+.track.b .track-head h3 { color: var(--trackB); }
+.track-head h3 { font-size: 16px; text-transform: none; letter-spacing: normal; font-weight: 700; }
+.track-head .who {
+  font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 99px;
+}
+.track.a .who { background: color-mix(in srgb, var(--trackA) 22%, transparent); color: var(--trackA); }
+.track.b .who { background: color-mix(in srgb, var(--trackB) 22%, transparent); color: var(--trackB); }
+.track > p.dep { font-size: 13.5px; color: var(--ink-soft); margin-bottom: 14px; }
+
+.steps { display: flex; flex-direction: column; gap: 0; }
+.step {
+  display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 12px 0 14px;
+  border-left: 2px solid var(--rule); margin-left: 13px; padding-left: 18px; position: relative;
+}
+.track.a .step { border-left-color: color-mix(in srgb, var(--trackA) 40%, transparent); }
+.track.b .step { border-left-color: color-mix(in srgb, var(--trackB) 40%, transparent); }
+.step:last-child { border-left-color: transparent; padding-bottom: 4px; }
+.step::before {
+  content: attr(data-n); position: absolute; left: -15px; top: 10px; width: 26px; height: 26px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; color: var(--bg);
+}
+.track.a .step::before { background: var(--trackA); }
+.track.b .step::before { background: var(--trackB); }
+.step h4 { grid-column: 2; font-size: 14px; text-transform: none; letter-spacing: normal; font-weight: 700; margin-bottom: 3px; }
+.step p { grid-column: 2; margin: 0; font-size: 13.5px; color: var(--ink-soft); max-width: 56ch; }
+.step .native-tag {
+  display: inline-block; font-family: ui-monospace, monospace; font-size: 10.5px;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px;
+  background: var(--code-bg); color: var(--ink-faint); margin-left: 8px; vertical-align: middle;
+}
+
+/* Merge phase */
+.merge-panel {
+  background: var(--merge-bg); border: 1px solid color-mix(in srgb, var(--merge) 40%, transparent);
+  border-radius: 10px; padding: 22px 24px 10px; margin: 16px 0; box-shadow: var(--shadow);
+}
+.merge-panel .steps .step::before { background: var(--merge); }
+.merge-panel .steps .step { border-left-color: color-mix(in srgb, var(--merge) 45%, transparent); }
+.merge-panel h3 { font-size: 16px; text-transform: none; letter-spacing: normal; font-weight: 700; color: var(--merge); margin-bottom: 14px; }
+
+.callout {
+  border-left: 3px solid var(--accent-2); background: var(--surface);
+  padding: 14px 18px; border-radius: 0 6px 6px 0; font-size: 14.5px; color: var(--ink-soft);
+  margin: 16px 0;
+}
+.callout strong { color: var(--ink); }
+
+footer.doc-foot {
+  border-top: 1px solid var(--rule); margin-top: 56px; padding-top: 18px;
+  color: var(--ink-faint); font-size: 13px;
+}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="kicker">Rollout Plan</div>
+    <h1>The Mojave Build Plan</h1>
+    <p class="dek">
+      Two people can start today, in parallel, with no coordination beyond agreeing on one small
+      contract up front. This is that plan: what each track builds, in what order, and the exact
+      steps that bring them back together.
+    </p>
+    <p class="companion">Fourth of four companion documents &mdash; sits downstream of the Mojave
+    Data Model, Mojave Class Hierarchy, and Mojave Script Interpreter design notes.</p>
+  </div>
+
+  <section class="block">
+    <h2><span class="idx">00</span> The one thing to agree on first</h2>
+    <p>
+      Both tracks depend on a single narrow interface: what the interpreter's
+      <span class="cls">ExecutionContext</span> needs from whatever object a script is attached to.
+      Agree on this shape before either track starts, and the merge later is a swap, not a rewrite.
+    </p>
+    <div class="contract">
+      <h3>Calling-Reference Contract</h3>
+      <div class="contract-fields">
+        <div class="contract-field"><code>get_form_id() -&gt; int</code><span>Identity &mdash; needed for symbol resolution and debug output.</span></div>
+        <div class="contract-field"><code>get_local_var(name) / set_local_var(name, value)</code><span>Per-instance script-local variable storage &mdash; a different value per Reference running the same Object script.</span></div>
+        <div class="contract-field"><code>is_persistent() -&gt; bool</code><span>Gates cross-reference <code>MyRef.MyVar</code> access &mdash; only persistent references expose their variables remotely.</span></div>
+        <div class="contract-field"><code>get_editor_id() -&gt; String</code><span>For error messages and the fallback symbol lookup when SCRO/SCRV doesn't already resolve a name.</span></div>
+      </div>
+    </div>
+    <p class="callout">
+      Track B builds a tiny mock class satisfying exactly this shape and never needs anything from
+      Track A to make progress. Track A's real <span class="cls">GamebryoReference</span>/
+      <span class="cls">GamebryoObject</span>/<span class="cls">GamebryoActor</span> chain just needs
+      to satisfy the same four members once it exists &mdash; the interpreter never knows the
+      difference.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">01</span> The two tracks</h2>
+    <div class="tracks">
+      <div class="track a">
+        <div class="track-head"><h3>Track A</h3><span class="who">Nodes / Objects / RefCounted</span></div>
+        <p class="dep">Builds the real class hierarchy. No dependency on the interpreter existing.</p>
+        <div class="steps">
+          <div class="step" data-n="1">
+            <h4>GamebryoReference: StaticBody3D &rarr; Node3D</h4>
+            <p>The root change everything else in this track depends on &mdash; keeps the transform, drops the physics-body assumption.</p>
+          </div>
+          <div class="step" data-n="2">
+            <h4>Internal StaticBody3D child on GamebryoVisual</h4>
+            <p>Retarget <code>populate_collision_children()</code> and <code>game.gd</code>'s interact raycast to walk from the physics-body child up to its owning reference.</p>
+          </div>
+          <div class="step" data-n="3">
+            <h4>Regression pass</h4>
+            <p>Confirm DoorNode/ContainerNode/ActivatorNode/FurnitureNode/LightNode/SCOL all still collide and interact correctly post-refactor before building anything new on top.</p>
+          </div>
+          <div class="step" data-n="4">
+            <h4>GamebryoActor, sibling of GamebryoVisual</h4>
+            <p>Extends GamebryoObject directly; adds its own internal CharacterBody3D child &mdash; same composition trick as step 2, for movement instead of static collision.</p>
+          </div>
+          <div class="step" data-n="5">
+            <h4>NPCNode / CreatureNode stubs</h4>
+            <p>Thin leaves satisfying the Calling-Reference Contract above &mdash; real AI/dialogue can come later, but the contract needs to be live early since Track B's merge step depends on it.</p>
+          </div>
+          <div class="step" data-n="6">
+            <h4>Quest / Faction / LeveledList as Resources</h4>
+            <p>Resource-backed, cached by form ID/editor ID the same way <code>_nif_cache</code>/<code>_image_cache</code> already work &mdash; never Nodes, per the class hierarchy doc's own rule.</p>
+          </div>
+          <div class="step" data-n="7">
+            <h4>ESM parsing for NPC_/CREA/QUST/FACT/LVLN/LVLC/LVLI <span class="native-tag">native</span></h4>
+            <p>Real new C++ parser + GDExtension binding work, not just GDScript &mdash; feeds the Resources/Nodes from steps 4&ndash;6.</p>
+          </div>
+          <div class="step" data-n="8">
+            <h4>Register new base_types</h4>
+            <p>Wire NPC_/CREA (and eventually the others) into <code>GamebryoObjectRegistry</code>'s factory table, same one-line-per-type pattern DOOR/CONT/ACTI already use.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="track b">
+        <div class="track-head"><h3>Track B</h3><span class="who">Parser / Interpreter</span></div>
+        <p class="dep">Builds the language engine. Tested entirely against real SCTX text and a mock reference &mdash; zero dependency on Track A's classes existing.</p>
+        <div class="steps">
+          <div class="step" data-n="1">
+            <h4>Mock calling-reference stub</h4>
+            <p>A small class satisfying the Calling-Reference Contract &mdash; this single class unblocks every other step in this track.</p>
+          </div>
+          <div class="step" data-n="2">
+            <h4>Lexer</h4>
+            <p>Tokens: keywords, identifiers, numbers, operators, comments stripped. Test directly against real <code>SCTX</code> samples pulled from <code>FalloutNV.esm</code> &mdash; no synthetic fixtures needed, the real data is already on disk.</p>
+          </div>
+          <div class="step" data-n="3">
+            <h4>Parser &rarr; AST</h4>
+            <p>ScriptDef, an ordered list of (blocktype, params, stmts) blocks, statements, expressions &mdash; covers set/let, if/elseif/else/endif, begin/end, comments, no switch/case.</p>
+          </div>
+          <div class="step" data-n="4">
+            <h4>Symbol resolution against SCRO/SCRV</h4>
+            <p>May need a small ESM-reader addition to expose SCPT's SLSD/SCVR/SCRO/SCRV subrecords if not already surfaced &mdash; flag this as a possible native-layer touchpoint with Track A, the one place the two tracks' native work might overlap.</p>
+          </div>
+          <div class="step" data-n="5">
+            <h4>Tree-walking Interpreter + ExecutionContext</h4>
+            <p>Tested entirely against the mock from step 1 &mdash; a real script can be parsed and executed end-to-end here without a single Track A class existing yet.</p>
+          </div>
+          <div class="step" data-n="6">
+            <h4>Wire Expression for leaf arithmetic/comparison</h4>
+            <p>Godot's own <code>Expression.parse()</code>/<code>execute()</code> for the sub-expressions inside if/set &mdash; not control flow, not statement-level calls.</p>
+          </div>
+          <div class="step" data-n="7">
+            <h4>Function dispatch table, stubbed</h4>
+            <p>The ~30 Tier-1 built-ins (Enable, AddItem, MoveTo, Activate...) registered as no-op/print-debug Callables &mdash; proves the whole pipeline dispatches the right function with the right args, without needing real behavior yet.</p>
+          </div>
+          <div class="step" data-n="8">
+            <h4>GameMode/MenuMode on a test tick</h4>
+            <p>Hook block execution to a manual tick or <code>SceneTree.process_frame</code> in a test harness &mdash; not <code>WorldStreamer._process()</code> itself yet, that wiring is a merge-phase step.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">02</span> Merge phase</h2>
+    <p>
+      Starts once both tracks have their own milestones done. Small by design &mdash; the contract
+      from step 00 is what makes it small.
+    </p>
+    <div class="merge-panel">
+      <h3>Bringing Track A and Track B together</h3>
+      <div class="steps">
+        <div class="step" data-n="1">
+          <h4>Swap the mock for the real reference chain</h4>
+          <p>Point Track B's ExecutionContext at real <span class="cls">GamebryoReference</span>/<span class="cls">GamebryoObject</span>/<span class="cls">GamebryoActor</span> instances. If the contract held, this is a one-line change per call site, not a rewrite.</p>
+        </div>
+        <div class="step" data-n="2">
+          <h4>Implement the real Tier-1 function bodies</h4>
+          <p>Replace each stub Callable with real behavior calling into Track A: Enable/Disable toggle the real node, AddItem calls the real inventory, MoveTo repositions the real node, Activate calls the real <code>activate()</code> contract <code>game.gd</code>'s interact raycast already uses.</p>
+        </div>
+        <div class="step" data-n="3">
+          <h4>Hook GameMode into the real frame loop</h4>
+          <p>Swap the test-harness tick from Track B step 8 for the real <code>WorldStreamer</code>/<code>game.gd</code> cadence.</p>
+        </div>
+        <div class="step" data-n="4">
+          <h4>Wire Quest-script variables into the real Resource cache</h4>
+          <p>Connect <code>MyQuest.MyVar</code> access to Track A's real Quest <span class="cls">Resource</span> lookup table from Track A step 6.</p>
+        </div>
+        <div class="step" data-n="5">
+          <h4>Run one real script from the ESM, in play</h4>
+          <p>Pick one of the Tier-1-only scripts already sampled during the interpreter research pass, attach it to a real placed object in a loaded cell, and confirm it behaves correctly &mdash; the actual acceptance check for this whole plan.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="doc-foot">
+    Local plan, not published. Companion to <code>nv_data_model_reference.html</code>,
+    <code>nv_class_hierarchy.html</code>, and <code>nv_script_interpreter_design.html</code>.
+  </footer>
+</div>
