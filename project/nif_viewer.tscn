@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dijw84pn2wto1"]
 
-[ext_resource type="Script" path="res://nif_viewer.gd" id="1"]
+[ext_resource type="Script" uid="uid://c1vxstypix6l2" path="res://nif_viewer.gd" id="1"]
 
-[node name="NifViewer" type="Node3D"]
+[node name="NifViewer" type="Node3D" unique_id=1911384985]
 script = ExtResource("1")
+preset = "Elevator - Silo (complex)"

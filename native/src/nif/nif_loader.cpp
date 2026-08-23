@@ -42,40 +42,53 @@ void flatten_transform(const nifly::MatTransform &t, SubMesh &out) {
 // Confirmed against real data (phases/2/04-articulated-prop-transforms.md):
 // Clutter\Fridge\FridgeClosed01.NIF's body render mesh has an identity
 // local transform of its own; the real ~1.05m Z lift that keeps it off the
-// floor lives entirely on its parent "FridgeContainer" NiNode. nifly's own
-// NifFile::GetNodeTransformToGlobal() was tried first and rejected — it
-// silently fails (returns false) for NiShape/NiTriStrips leaf blocks in
-// testing, only working for NiNode-type blocks — so this walks the parent
-// chain manually instead, which works for any NiAVObject type.
+// floor lives entirely on its parent "FridgeContainer" NiNode.
 //
 // The file's own ROOT block's transform is deliberately NEVER composed in
-// (whether encountered as an ancestor, or as `obj` itself for the common
-// case of collision attached directly to the root) — confirmed against
-// real data (phases/2/05-root-transform-exclusion.md) that this is required,
-// not optional: some Bethesda architecture-kit NIFs (e.g.
+// (whether encountered as an ancestor, or as the starting node itself, for
+// the common case of collision attached directly to the root) — confirmed
+// against real data (phases/2/05-root-transform-exclusion.md) that this is
+// required, not optional: some Bethesda architecture-kit NIFs (e.g.
 // NVCraftsmanRmEndB.nif) bake a real, nonzero rotation directly onto their
 // root block (a -90 degree roll in that example) that is NOT meant to be
 // applied when the file is instanced as a placed object — verified by
 // comparing multiple real kit pieces, where the ones rendering correctly
 // all have an identity root transform and the ones rendering wrong all
-// have a nonzero one. The original (pre-flattening) code got this right by
-// accident for single-level objects, since shape->GetTransformToParent()
-// when the shape's parent IS the root never reads the root's own field —
-// an earlier version of this function broke that by composing the root's
-// own transform back in during the ancestor walk.
-nifly::MatTransform flatten_to_root(const nifly::NifFile &nif, nifly::NiAVObject *obj) {
+// have a nonzero one.
+//
+// phases/3/00-door-completion.md follow-up: this used to independently
+// re-walk the NiAVObject parent chain via nifly's own GetParentNode() (an
+// O(n) linear scan per step — see NifFile::GetParentNode()/GetBlockID()),
+// the exact same walk the scene_nodes pass above already performs and
+// caches. Re-deriving the same composition a second, separately-coded way
+// was exactly the kind of divergence risk phases/3/00-door-completion.md's
+// "generation of an object from a NIF should be a consistent code path"
+// principle rules out: Static content's flattened SubMesh/CollisionShape
+// transform and Dynamic content's real scene_nodes hierarchy would each be
+// computed correctly on their own, but by two different algorithms that
+// could quietly drift out of sync under a future edit to one and not the
+// other. This now composes the SAME cached local transforms scene_nodes
+// itself was built from (`local_raw`, parallel to mesh.scene_nodes),
+// walking parent_index instead of re-querying nifly — one source of truth,
+// with Static's flattening simply "peeling" a scalar result off of it
+// rather than recomputing it independently. Mathematically identical
+// result to the old per-shape walk (same steps, same order, same
+// ComposeTransforms calls — just sourced from the cache instead of
+// re-fetched), verified via the full regression suite's exact position/
+// AABB assertions after this change.
+nifly::MatTransform flatten_via_scene_nodes(nifly::NiAVObject *obj,
+		const std::unordered_map<nifly::NiAVObject *, int32_t> &scene_node_index,
+		const std::vector<nifly::MatTransform> &local_raw,
+		const std::vector<SceneNode> &scene_nodes) {
 	nifly::MatTransform result;
 	result.Clear();
-	nifly::NiAVObject *current = obj;
-	while (current) {
-		nifly::NiNode *parent = nif.GetParentNode(current);
-		if (!parent) {
-			break; // `current` is the file's root -- its own transform is excluded
-		}
-		result = current->GetTransformToParent().ComposeTransforms(result);
-		current = parent;
+	auto it = scene_node_index.find(obj);
+	int32_t idx = (it != scene_node_index.end()) ? it->second : -1;
+	while (idx != -1) {
+		result = local_raw[idx].ComposeTransforms(result);
+		idx = scene_nodes[idx].parent_index;
 	}
-	return result;
+	return result; // idx == -1: `obj` is the file's own root, or wasn't tracked -- its transform is excluded either way
 }
 
 void flatten_transform(const nifly::MatTransform &t, CollisionShape &out) {
@@ -119,7 +132,7 @@ void write_local_transform(const nifly::MatTransform &t, SceneNode &out) {
 // translation + rotation that must be composed on top of the
 // collision-bearing NiAVObject's own transform-to-root — needed when
 // collision is attached directly to the NIF's root block, whose own
-// transform is deliberately never composed in (see flatten_to_root's
+// transform is deliberately never composed in (see flatten_via_scene_nodes's
 // comment on NVCraftsmanRmEndB.nif's stray root rotation), so the root
 // case has nowhere else for a real offset to live. Confirmed real, not
 // hypothetical: NVCraftsmanFireplace.NIF and NVCraftsmanRmDoor.NIF both
@@ -350,15 +363,21 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 
 	// General node-graph preservation (SceneNode's own doc comment in
 	// nif_types.h) — built first so the submesh/collision loops below can
-	// fill in owning_node_index as they go. Two passes: the first assigns
-	// every non-root NiAVObject a scene_nodes slot (in block-index order)
-	// and records a pointer -> index map; the second fills in each entry's
-	// parent_index/local transform. GetParentNode() itself is the same
-	// proven-but-O(n)-per-call traversal flatten_to_root() already relies
-	// on elsewhere in this file (see its own doc comment) — that cost is
-	// already accepted here, unchanged. What the map buys is resolving a
-	// parent NiAVObject* to ITS scene_nodes index in O(1), instead of a
-	// second nested block search on top of that.
+	// fill in owning_node_index AND resolve their own flattened transform
+	// (flatten_via_scene_nodes(), below) from it. Two passes: the first
+	// assigns every non-root NiAVObject a scene_nodes slot (in block-index
+	// order) and records a pointer -> index map; the second fills in each
+	// entry's parent_index/local transform, and stashes the same local
+	// transform in RAW (pre-unit-conversion) form in `local_raw` (parallel
+	// to mesh.scene_nodes) — SceneNode's own translation is already
+	// meters-converted for the GDScript side, but flatten_via_scene_nodes()
+	// needs to compose in nifly's native MatTransform domain, matching what
+	// flatten_transform() expects at the end of the whole composed chain.
+	// GetParentNode() itself is an O(n) linear scan per call (nifly's own
+	// NifFile::GetParentNode()/GetBlockID()); calling it once per block
+	// here is the same cost this file already accepted before scene_nodes
+	// existed. What the map buys is resolving a parent NiAVObject* to ITS
+	// scene_nodes index in O(1), instead of a second nested block search.
 	uint32_t num_blocks = nif.GetHeader().GetNumBlocks();
 	std::unordered_map<nifly::NiAVObject *, int32_t> scene_node_index;
 	for (uint32_t i = 0; i < num_blocks; ++i) {
@@ -371,6 +390,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		node.name = av->name.get();
 		mesh.scene_nodes.push_back(std::move(node));
 	}
+	std::vector<nifly::MatTransform> local_raw(mesh.scene_nodes.size());
 	for (uint32_t i = 0; i < num_blocks; ++i) {
 		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
 		auto it = av ? scene_node_index.find(av) : scene_node_index.end();
@@ -378,7 +398,9 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			continue;
 		}
 		SceneNode &node = mesh.scene_nodes[it->second];
-		write_local_transform(av->GetTransformToParent(), node);
+		nifly::MatTransform local = av->GetTransformToParent();
+		local_raw[it->second] = local;
+		write_local_transform(local, node);
 		nifly::NiNode *parent = nif.GetParentNode(av);
 		auto parent_it = scene_node_index.find(parent);
 		node.parent_index = (parent_it != scene_node_index.end()) ? parent_it->second : -1;
@@ -489,7 +511,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			}
 		}
 
-		flatten_transform(flatten_to_root(nif, shape), sub);
+		flatten_transform(flatten_via_scene_nodes(shape, scene_node_index, local_raw, mesh.scene_nodes), sub);
 		{
 			auto node_it = scene_node_index.find(shape);
 			sub.owning_node_index = (node_it != scene_node_index.end()) ? node_it->second : -1;
@@ -536,7 +558,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		// The rigid body's own translation/rotation is innermost — it maps
 		// the raw collision-shape data into the AV node's local frame,
 		// before the AV's own transform-to-root is applied on top.
-		flatten_transform(flatten_to_root(nif, av).ComposeTransforms(rigid_body_transform(body)), cs);
+		flatten_transform(flatten_via_scene_nodes(av, scene_node_index, local_raw, mesh.scene_nodes).ComposeTransforms(rigid_body_transform(body)), cs);
 		mesh.collision_shapes.push_back(std::move(cs));
 	}
 
