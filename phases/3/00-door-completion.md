@@ -255,6 +255,30 @@ is genuinely from scratch, not extending existing partial support.
    resolution already built for it. ✅ Confirmed: full regression suite at the same
    baseline as before this step.
 
+   **A real, serious placement bug found via real play — reported as "the doorframe is
+   misaligned with the door/doorway" on `IndDoorSmAnim01.NIF` (`REPCONNTopToMidDoor`
+   among others), tracked down using a new debug tool (`game.gd`'s F3 `LookAtLabel`,
+   added specifically for this: shows the interact raycast's hit node name plus the
+   resolved reference's own `editor_description`) — now fixed.** `populate_dynamic_children()`'s
+   mesh-building loop looked up each submesh's `owning_node_index`/name via a plain
+   `0,1,2...` loop counter over `geometry["mesh_entries"]`, assuming position-in-array
+   always equals the native `NifReader` submesh index. That's only true when nothing
+   was skipped upstream — but `resolve_raw_geometry()` skips `EditorMarker` submeshes (a
+   real, common case), so any submesh AFTER a skipped one silently got the WRONG owning
+   node and name. Confirmed exactly: `IndDoorSmAnim01.NIF` has an `EditorMarker` as
+   submesh #2; its real doorframe (#3) was being misattached under submesh #2's own
+   (the EditorMarker's) owning node instead of its own, visibly displacing the frame
+   away from the door leaf/doorway. Fixed by threading each entry's own true
+   `submesh_index` through `resolve_raw_geometry()`/`build_geometry_entries()`
+   explicitly (a new field on the raw and final mesh-entry Dictionaries) instead of
+   re-deriving it from a loop counter — `populate_mesh_children()`'s own (cosmetic-only,
+   not functionally bugged) submesh naming fixed the same way for consistency. Verified
+   directly: the frame's own `MeshInstance3D` now builds with real geometry, correctly
+   named `sub3_IndDoorSmAnim01_13`, and its world-space center now coincides with the
+   door leaf's own center (previously it silently built with ZERO geometry under the
+   wrong node — the frame wasn't just misaligned, it was effectively missing). Full
+   regression suite at the same baseline as before this fix.
+
 ### Part B — GECK feature parity (lower priority, not blocking)
 
 10. ✅ **Open/Close/Loop sounds.** Real subrecord tags confirmed via fopdoc (not
