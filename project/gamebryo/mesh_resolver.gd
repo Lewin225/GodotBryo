@@ -483,6 +483,88 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		parent.add_child(mi)
 		i += 1
 
+## phases/3/00-door-completion.md step 5: the Dynamic-path counterpart to
+## populate_mesh_children() above — for objects that can move and/or carry
+## a script (see enginedocs/nv_class_hierarchy.md's Dynamic/Static split),
+## builds the NIF's REAL SceneNode hierarchy (nif_types.h's own doc
+## comment) as real Node3D children of `parent`, instead of the single
+## flattened transform every submesh gets on the Static path. Same
+## resolved-texture/material MeshInstance3D construction as
+## populate_mesh_children() (shares `geometry`'s mesh_entries, same cache),
+## just parented differently: each submesh's MeshInstance3D goes under its
+## owning_node_index's Node3D with an IDENTITY local transform — the owning
+## node's own composed transform chain already reconstructs
+## get_transform(i)'s flattened result (both walk the same NiAVObject
+## parent chain — see flatten_to_root()'s and SceneNode's own doc comments
+## in native/src/nif/nif_loader.cpp / nif_types.h), so this deliberately
+## never also applies the flattened per-submesh transform (that would
+## double it).
+##
+## Does NOT yet build collision hierarchically — CollisionShape's own
+## owning_node_index isn't threaded through build_geometry_entries()'s
+## shape_entries (a real, still-open gap in this step), so a caller wanting
+## collision on a Dynamic object still uses populate_collision_children()
+## as today, flattened. This means an animated node's collision will not
+## yet follow it if it moves — a known, not-yet-fixed limitation, not an
+## oversight (see phases/3/00-door-completion.md).
+##
+## Returns the array of built Node3D, indexed exactly like
+## NifReader.get_scene_nodes() — entry i's Node3D is the return value's
+## [i], so a caller (e.g. a future animation player resolving a track's
+## target_node_name) can look up the right node directly.
+func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> Array:
+	if geometry.is_empty():
+		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
+
+	var entries: Array = nif.get_scene_nodes()
+	var built: Array = []
+	built.resize(entries.size())
+	for i in entries.size():
+		var e: Dictionary = entries[i]
+		var n3d := Node3D.new()
+		var raw_name: String = e["name"] if not String(e["name"]).is_empty() else "SceneNode%d" % i
+		n3d.name = raw_name.validate_node_name()
+		n3d.transform = e["transform"]
+		built[i] = n3d
+
+	# Real NIFs always emit a parent block before its children (needed for
+	# the format's own streaming parse), so a single forward pass normally
+	# suffices — this loop still tolerates any order via repeated passes,
+	# since scene_nodes is small enough (bounded by one NIF's own block
+	# count) for that to cost nothing real.
+	var attached: Array = []
+	attached.resize(entries.size())
+	attached.fill(false)
+	var remaining := entries.size()
+	while remaining > 0:
+		var progressed := false
+		for i in entries.size():
+			if attached[i]:
+				continue
+			var parent_index: int = entries[i]["parent_index"]
+			var node_parent: Node3D = parent if parent_index == -1 else (built[parent_index] if attached[parent_index] else null)
+			if parent_index != -1 and not attached[parent_index]:
+				continue
+			node_parent.add_child(built[i])
+			attached[i] = true
+			remaining -= 1
+			progressed = true
+		if not progressed:
+			push_error("populate_dynamic_children: scene_nodes has a parent_index cycle -- %d node(s) left unattached" % remaining)
+			break
+
+	var i := 0
+	for entry in geometry["mesh_entries"]:
+		var owning: int = nif.get_submesh_owning_node_index(i)
+		var mesh_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else (built[0] if not built.is_empty() else parent)
+		var mi := MeshInstance3D.new()
+		mi.name = ("sub%d_%s" % [i, nif.get_submesh_name(i)]).validate_node_name()
+		mi.mesh = entry["mesh"]
+		mesh_parent.add_child(mi)
+		i += 1
+
+	return built
+
 ## phases/2/12-distant-object-lod.md, step 8: the real (single-sourced, not
 ## duplicated across GDScript/C++) configurable crossover distance and
 ## hysteresis margin, defaulting to the same placeholder values step 6/7
