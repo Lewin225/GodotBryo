@@ -93,9 +93,10 @@ combat, no dialogue yet).
   teleporting door at the same base type) carrying real `NiControllerManager`/
   `NiControllerSequence`/`NiTransformInterpolator`/`NiTransformData` keyframe blocks —
   rigid single-node transform animation, no `NiSkinInstance`/bone hierarchy, so it
-  doesn't need skeleton/skinning support to land first. Currently a real gameplay
-  blocker: `DoorNode.activate()` only handles the teleport case, so a non-teleporting
-  door does nothing on interact and can gate off map areas.
+  doesn't need skeleton/skinning support to land first. **Done** — see
+  [phases/3/00-door-completion.md](phases/3/00-door-completion.md): `DoorNode.activate()`
+  now plays real animation, sounds, and flags for non-teleporting doors, with a
+  mid-swing reactivation debounce.
 - Equipment/armor mesh swapping on the skeleton (the "nif per body part + biped slot"
   model FNV uses).
 - Basic third-person player controller: movement, jump, camera collision — using
