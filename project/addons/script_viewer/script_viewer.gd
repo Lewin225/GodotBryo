@@ -5,15 +5,23 @@ extends Control
 ## editor ID, see its actual GECK source text with every function call
 ## color-coded by whether script_function_registry.gd implements it, and
 ## Ctrl+Click an implemented call to jump straight to its registration in
-## the editor's own script view (EditorInterface.edit_script()). Same
-## "open the scene, no Play needed" convention as nif_viewer.gd/
-## interior_viewer.gd -- this Control renders and is fully interactive in
-## the editor's own 2D viewport the moment the scene is open.
+## the editor's own script view (EditorInterface.edit_script()). Docked as
+## a real EditorPlugin main-screen tab (see plugin.gd's own doc comment for
+## why a plain @tool scene can't do this).
 ##
-## Deliberately never writes anything -- no save, no edit, not even of the
-## displayed RichTextLabel's own text. The real source is read straight
-## from the ESM every time a script is selected; nothing here could touch
+## Deliberately never writes anything -- no save, no edit. `_source_display`
+## (a CodeEdit) is set non-editable; the real source is read straight from
+## the ESM every time a script is selected, and nothing here could touch
 ## FalloutNV.esm even if it tried.
+##
+## CodeEdit chosen over RichTextLabel specifically for its built-in
+## "Ctrl+Click a symbol to look it up" support (symbol_lookup_on_click) --
+## the exact Ctrl+Click-to-navigate UX this tool needs, already handling
+## word-boundary detection, hover-underline feedback, and the Ctrl gating
+## itself, instead of hand-rolling all three around RichTextLabel's
+## meta_clicked. Highlighting uses a CodeHighlighter with per-script
+## keyword colors (re-populated on every selection) rather than manual
+## BBCode spans -- simpler, and avoids needing exact source offsets at all.
 ##
 ## Reuses the exact same lex/parse/registry pipeline
 ## project/script_vm/script_engine.gd runs at actual game time -- this
@@ -24,27 +32,35 @@ extends Control
 const ESM_PATH := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm"
 const REGISTRY_SCRIPT_PATH := "res://script_vm/script_function_registry.gd"
 
-const COLOR_KNOWN := "#7ec699" # implemented -- registered in script_function_registry.gd
-const COLOR_UNKNOWN := "#e06c75" # real, per script_function_registry.gd's own doc comment: evaluates to 0/false at runtime, not a guess
+const COLOR_KNOWN := Color("#7ec699") # implemented -- registered in script_function_registry.gd
+const COLOR_UNKNOWN := Color("#e06c75") # real, per script_function_registry.gd's own doc comment: evaluates to 0/false at runtime, not a guess
 
 @onready var _search_edit: LineEdit = $HSplit/Left/SearchEdit
 @onready var _script_list: ItemList = $HSplit/Left/ScriptList
 @onready var _summary_label: Label = $HSplit/Right/SummaryLabel
-@onready var _source_display: RichTextLabel = $HSplit/Right/SourceDisplay
+@onready var _source_display: CodeEdit = $HSplit/Right/SourceDisplay
 @onready var _status_label: Label = $HSplit/Right/StatusLabel
 
 var _esm: EsmReader
 var _function_registry: ScriptFunctionRegistry
+var _highlighter: CodeHighlighter
 var _all_scripts: Array = [] # [{ "form_id": int, "editor_id": String }], sorted by editor_id
 var _visible_indices: PackedInt32Array = [] # indices into _all_scripts currently shown in _script_list
+var _found_calls_lower: Dictionary = {} # lowercased call name -> bool known, rebuilt fresh on every _show_script()
 
 func _ready() -> void:
 	if not Engine.is_editor_hint():
 		return # editor tooling only -- see this file's own doc comment
 	_function_registry = ScriptFunctionRegistry.new()
+	_highlighter = CodeHighlighter.new()
+	_source_display.syntax_highlighter = _highlighter
+	_source_display.editable = false
+	_source_display.gutters_draw_line_numbers = true
+	_source_display.set_symbol_lookup_on_click_enabled(true)
 	_search_edit.text_changed.connect(_on_search_changed)
 	_script_list.item_selected.connect(_on_script_selected)
-	_source_display.meta_clicked.connect(_on_meta_clicked)
+	_source_display.symbol_validate.connect(_on_symbol_validate)
+	_source_display.symbol_lookup.connect(_on_symbol_lookup)
 	_load_script_list()
 
 func _load_script_list() -> void:
@@ -99,96 +115,76 @@ func _show_script(form_id: int, editor_id: String) -> void:
 		", ".join(block_names) if not block_names.is_empty() else "(none)",
 	]
 
-	var spans := [] # { "start": int, "end": int, "name": String, "known": bool }, sorted, non-overlapping by construction (parser never nests two calls at the same source span)
+	# casing_variants: the literal text as it appears at each call site (a
+	# script can call the same function with different casing at different
+	# sites -- real, since the language is case-insensitive) -> bool known.
+	# CodeHighlighter's own keyword matching needs every real casing
+	# variant registered, since it isn't case-insensitive itself.
+	var casing_variants := {}
+	_found_calls_lower.clear()
 	for block in program["blocks"]:
-		_collect_call_spans(block["stmts"], spans)
-	spans.sort_custom(func(a, b): return a["start"] < b["start"])
+		_collect_call_names(block["stmts"], casing_variants)
+	for name in casing_variants:
+		_found_calls_lower[String(name).to_lower()] = casing_variants[name]
 
-	_source_display.text = _build_bbcode(source, spans)
-	_status_label.text = "%d function calls found (%d implemented, %d not) -- Ctrl+Click an implemented one to jump to its code" % [
-		spans.size(), spans.filter(func(s): return s["known"]).size(), spans.filter(func(s): return not s["known"]).size(),
+	_highlighter.clear_keyword_colors()
+	for name in casing_variants:
+		_highlighter.add_keyword_color(name, COLOR_KNOWN if casing_variants[name] else COLOR_UNKNOWN)
+
+	_source_display.text = source
+	var known_count: int = casing_variants.values().count(true)
+	_status_label.text = "%d distinct calls found (%d implemented, %d not) -- Ctrl+Click an implemented one to jump to its code" % [
+		casing_variants.size(), known_count, casing_variants.size() - known_count,
 	]
 
-func _collect_call_spans(stmts: Array, out: Array) -> void:
+func _collect_call_names(stmts: Array, out: Dictionary) -> void:
 	for stmt in stmts:
 		match String(stmt["kind"]):
 			"set":
-				_collect_call_spans_in_expr(stmt["expr"], out)
+				_collect_call_names_in_expr(stmt["expr"], out)
 			"if":
 				for branch in stmt["branches"]:
-					_collect_call_spans_in_expr(branch["cond"], out)
-					_collect_call_spans(branch["stmts"], out)
-				_collect_call_spans(stmt.get("else_stmts", []), out)
+					_collect_call_names_in_expr(branch["cond"], out)
+					_collect_call_names(branch["stmts"], out)
+				_collect_call_names(stmt.get("else_stmts", []), out)
 			"call":
-				_collect_call_span(stmt, out)
+				_collect_call_name(stmt, out)
 				for a in stmt["args"]:
-					_collect_call_spans_in_expr(a, out)
+					_collect_call_names_in_expr(a, out)
 
-func _collect_call_spans_in_expr(expr: Dictionary, out: Array) -> void:
+func _collect_call_names_in_expr(expr: Dictionary, out: Dictionary) -> void:
 	match String(expr["kind"]):
 		"binop":
-			_collect_call_spans_in_expr(expr["left"], out)
-			_collect_call_spans_in_expr(expr["right"], out)
+			_collect_call_names_in_expr(expr["left"], out)
+			_collect_call_names_in_expr(expr["right"], out)
 		"unary":
-			_collect_call_spans_in_expr(expr["operand"], out)
+			_collect_call_names_in_expr(expr["operand"], out)
 		"call":
-			_collect_call_span(expr, out)
+			_collect_call_name(expr, out)
 			for a in expr["args"]:
-				_collect_call_spans_in_expr(a, out)
+				_collect_call_names_in_expr(a, out)
 
-func _collect_call_span(call_expr: Dictionary, out: Array) -> void:
-	if not call_expr.has("name_start"):
-		return # defensive -- every real "call" node has this; see script_parser.gd's own doc comment
+func _collect_call_name(call_expr: Dictionary, out: Dictionary) -> void:
 	var name: String = call_expr["name"]
-	out.append({
-		"start": int(call_expr["name_start"]),
-		"end": int(call_expr["name_end"]),
-		"name": name,
-		"known": _function_registry.is_registered(name),
-	})
+	out[name] = _function_registry.is_registered(name)
 
-## Renders `source` as BBCode, wrapping each call-name span in a color +
-## [url] tag (meta payload: "known:<name>" or "unknown:<name>") so
-## meta_clicked can tell which one was clicked and whether it's worth
-## trying to navigate to. Everything else is plain, BBCode-escaped text.
-func _build_bbcode(source: String, spans: Array) -> String:
-	var out := ""
-	var cursor := 0
-	for span in spans:
-		var start: int = span["start"]
-		var end: int = span["end"]
-		if start < cursor:
-			continue # overlap guard -- shouldn't happen, but never emit malformed BBCode over it
-		out += _bbcode_escape(source.substr(cursor, start - cursor))
-		var color: String = COLOR_KNOWN if span["known"] else COLOR_UNKNOWN
-		var tag: String = "known" if span["known"] else "unknown"
-		out += "[color=%s][url=%s:%s]%s[/url][/color]" % [color, tag, span["name"], _bbcode_escape(source.substr(start, end - start))]
-		cursor = end
-	out += _bbcode_escape(source.substr(cursor))
-	return out
+## CodeEdit's own built-in symbol-lookup flow: while Ctrl is held and the
+## mouse hovers a word, this is asked whether that word is a valid,
+## clickable symbol (controls the hover-underline) -- gated on it actually
+## being one of this specific script's own real function calls, not just
+## any word that happens to match a known function name elsewhere (a local
+## variable coincidentally named the same as a real function, say).
+func _on_symbol_validate(symbol: String) -> void:
+	_source_display.set_symbol_lookup_word_as_valid(_found_calls_lower.has(symbol.to_lower()))
 
-func _bbcode_escape(text: String) -> String:
-	return text.replace("[", "[lb]")
-
-func _on_meta_clicked(meta: Variant) -> void:
-	var meta_str := String(meta)
-	var sep := meta_str.find(":")
-	if sep == -1:
+func _on_symbol_lookup(symbol: String, _line: int, _column: int) -> void:
+	var lower := symbol.to_lower()
+	if not _found_calls_lower.has(lower):
 		return
-	var kind := meta_str.substr(0, sep)
-	var func_name := meta_str.substr(sep + 1)
-
-	if not Input.is_key_pressed(KEY_CTRL):
-		_status_label.text = "%s -- %s (Ctrl+Click to jump to its code)" % [
-			func_name, "implemented in script_function_registry.gd" if kind == "known" else "NOT implemented -- evaluates to 0/false at runtime",
-		]
+	if not _found_calls_lower[lower]:
+		_status_label.text = "%s is not implemented -- evaluates to 0/false at runtime" % symbol
 		return
-
-	if kind != "known":
-		_status_label.text = "%s is not implemented -- nothing to jump to" % func_name
-		return
-
-	_jump_to_registration(func_name)
+	_jump_to_registration(symbol)
 
 ## "if possible" per this tool's own design goal -- EditorInterface is only
 ## meaningful when this scene is actually open inside the running editor
