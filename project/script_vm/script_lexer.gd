@@ -27,8 +27,9 @@ func _init(source_text: String) -> void:
 	_text = source_text
 	_len = _text.length()
 
-## Returns an Array of Dictionaries: { "kind": Kind, "value": Variant, "line": int }.
-## Always ends with one Kind.EOF_ token.
+## Returns an Array of Dictionaries: { "kind": Kind, "value": Variant, "line": int,
+## "start": int, "end": int } -- start/end are absolute character offsets
+## into the original source string. Always ends with one Kind.EOF_ token.
 func tokenize() -> Array:
 	var tokens := []
 	while true:
@@ -41,8 +42,21 @@ func tokenize() -> Array:
 func _peek_char() -> String:
 	return _text[_pos] if _pos < _len else ""
 
+## Every returned token also carries "start"/"end" (absolute character
+## offsets into the original source string) -- not needed by the parser's
+## own control flow, but load-bearing for script_viewer.gd's read-only
+## editor tool: mapping a parsed AST call node back to its exact on-screen
+## span is how unimplemented-function highlighting/ctrl-click navigation
+## finds the right text to annotate.
 func _next_token() -> Dictionary:
 	_skip_whitespace_and_comments()
+	var start := _pos
+	var tok := _next_token_inner()
+	tok["start"] = start
+	tok["end"] = _pos
+	return tok
+
+func _next_token_inner() -> Dictionary:
 	if _pos >= _len:
 		return { "kind": Kind.EOF_, "value": "", "line": _line }
 

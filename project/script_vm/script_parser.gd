@@ -184,14 +184,20 @@ func _parse_call_statement() -> Dictionary:
 	return call
 
 ## Parses `[Ident "."] Ident` -- either a plain name or a reference-prefixed
-## one -- returning { "reference": String or "", "name": String }.
+## one -- returning { "reference": String or "", "name": String, "name_start":
+## int, "name_end": int }. name_start/name_end (absolute source character
+## offsets, from the lexer's own token spans) are load-bearing for
+## script_viewer.gd's read-only editor tool -- how it maps a parsed call
+## back to the exact on-screen text to highlight/link, not used by parsing
+## or interpretation themselves.
 func _parse_call_head() -> Dictionary:
-	var first := str(_advance()["value"])
+	var first_tok := _advance()
+	var first := str(first_tok["value"])
 	if _peek()["kind"] == ScriptLexer.Kind.OP and _peek()["value"] == ".":
 		_advance()
-		var name := str(_advance()["value"])
-		return { "reference": first, "name": name }
-	return { "reference": "", "name": first }
+		var name_tok := _advance()
+		return { "reference": first, "name": str(name_tok["value"]), "name_start": name_tok["start"], "name_end": name_tok["end"] }
+	return { "reference": "", "name": first, "name_start": first_tok["start"], "name_end": first_tok["end"] }
 
 func _parse_dotted_name() -> String:
 	var name := str(_advance()["value"])
