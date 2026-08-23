@@ -145,16 +145,34 @@ list, narrowed further to what's actually runnable today:
   (`Let`/arrays/strings/`ForEach`).** All real, all logged as gaps at the exact point they'd
   matter (see the class/function doc comments), none guessed at.
 
-## Editor tooling: `script_viewer.gd`/`.tscn`
+## Editor tooling: `addons/script_viewer/` (a real `EditorPlugin`, not just an open scene)
 
-A read-only, editor-only script inspector (same "open the scene, no Play needed" convention as
-`nif_viewer.gd`/`interior_viewer.gd`): search/browse every real script by editor ID, see its actual
-`SCTX` source with every function call color-coded by whether `script_function_registry.gd`
-implements it, Ctrl+Click an implemented call to jump straight to its registration
+A read-only script inspector: search/browse every real script by editor ID, see its actual `SCTX`
+source with every function call color-coded by whether `script_function_registry.gd` implements
+it, Ctrl+Click an implemented call to jump straight to its registration
 (`EditorInterface.edit_script()`). Reuses the exact same lex/parse/registry pipeline
 `script_engine.gd` runs at real game time — never a parallel bespoke text scan that could silently
 drift from what the interpreter actually does, and never writes anything (no save path exists at
 all here, not even disabled).
+
+**Real correction mid-build, worth recording**: this started as a plain `@tool` scene
+(`nif_viewer.gd`/`interior_viewer.gd`'s own "just open the scene, no Play needed" convention) —
+wrong for this specific case. That convention works for those two because interacting with their
+3D viewport (selecting built nodes, reading Transform in the Inspector) is native editor
+node-selection behavior. A scene merely *open* in the 2D viewport is in node-editing mode: clicks
+there select/move nodes and never reach a Control's own input handling (the search `LineEdit`,
+`ItemList` selection, `RichTextLabel`'s `meta_clicked`) — real interactivity needs either Play mode
+or a genuine editor panel. Play mode was also ruled out: `EditorInterface` (the jump-to-code
+feature's whole mechanism) only exists for code running *inside* the editor process, and a
+Play-mode scene is a separate process entirely — no combination of scene-open-only or Play-mode
+gets both real clicks and `EditorInterface` access at once. Fixed by making it a proper
+`EditorPlugin` (`addons/script_viewer/plugin.cfg`/`plugin.gd`) with `_has_main_screen() = true`,
+docked as a real top-tab-row screen (alongside 2D/3D/Script/AssetLib) via
+`EditorInterface.get_editor_main_screen().add_child(...)`, enabled through
+`project.godot`'s `[editor_plugins]`. `script_viewer.gd`/`.tscn` itself moved into
+`addons/script_viewer/` (self-contained, matching `addons/fpc/`/`addons/terrain_3d/`'s own
+convention) but needed no logic changes — the plugin is a thin wrapper around the exact same
+Control that already existed.
 
 Required a small, real lexer/parser extension: every token now carries `start`/`end` (absolute
 source character offsets), and `ScriptParser._parse_call_head()` threads a call's own
