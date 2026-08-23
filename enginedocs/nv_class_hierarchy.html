@@ -1,0 +1,370 @@
+<title>Mojave Class Hierarchy</title>
+<style>
+:root {
+  --bg: #EDEDE1;
+  --surface: #E3E3D4;
+  --surface-2: #D8D8C6;
+  --ink: #1E2823;
+  --ink-soft: #4C584F;
+  --ink-faint: #79806f;
+  --accent: #8A5A2B;
+  --accent-2: #2B5C6B;
+  --rule: #C6C6B2;
+  --code-bg: #DEDECE;
+  --world: #2B5C6B;
+  --world-bg: #DCE7E9;
+  --actor: #8A5A2B;
+  --actor-bg: #F0E3CE;
+  --data: #6B4C8A;
+  --data-bg: #E7DFF0;
+  --shadow: 0 1px 2px rgba(30,40,35,0.08), 0 6px 20px rgba(30,40,35,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171A;
+    --surface: #172023;
+    --surface-2: #1D2A2D;
+    --ink: #DCE6E1;
+    --ink-soft: #9AACA5;
+    --ink-faint: #66766f;
+    --accent: #D9A441;
+    --accent-2: #6BB2C2;
+    --rule: #2B3B3E;
+    --code-bg: #0E1517;
+    --world: #6BB2C2;
+    --world-bg: #16292D;
+    --actor: #D9A441;
+    --actor-bg: #2E250F;
+    --data: #B79BE0;
+    --data-bg: #241A33;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+  --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+  --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+  --world: #6BB2C2; --world-bg: #16292D;
+  --actor: #D9A441; --actor-bg: #2E250F;
+  --data: #B79BE0; --data-bg: #241A33;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px; line-height: 1.65;
+}
+h1, h2, h3, h4 {
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  text-wrap: balance; color: var(--ink); margin: 0;
+}
+code, .mono { font-family: ui-monospace, "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace; }
+a { color: var(--accent-2); }
+a:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { max-width: 880px; margin: 0 auto; padding: 56px 28px 120px; }
+@media (max-width: 640px) { .wrap { padding: 40px 18px 100px; } }
+
+.hero { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 44px; }
+.hero .kicker {
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+}
+.hero h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; max-width: 16ch; }
+.hero .dek {
+  font-family: ui-sans-serif, sans-serif; text-transform: none; letter-spacing: normal;
+  color: var(--ink-soft); max-width: 66ch; margin-top: 14px; font-size: 16px;
+}
+.hero .companion {
+  margin-top: 16px; font-size: 13.5px; color: var(--ink-faint);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+
+section.block { margin-bottom: 48px; }
+section.block > h2 {
+  font-size: 20px; padding-bottom: 9px; border-bottom: 2px solid var(--accent);
+  margin-bottom: 16px; display: flex; align-items: baseline; gap: 10px;
+}
+section.block > h2 .idx { color: var(--accent); font-family: ui-monospace, monospace; font-size: 14px; }
+section.block h3 {
+  font-size: 15px; text-transform: none; letter-spacing: normal; font-weight: 700;
+  margin: 22px 0 8px; color: var(--ink);
+}
+p { margin: 10px 0; max-width: 68ch; }
+ul, ol { padding-left: 22px; max-width: 64ch; }
+li { margin: 6px 0; }
+strong { color: var(--ink); }
+
+/* class-name inline chips */
+.cls {
+  font-family: ui-monospace, monospace; font-size: 0.92em; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px; background: var(--code-bg); color: var(--accent-2);
+  white-space: nowrap;
+}
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: var(--surface); padding: 16px 20px; border-radius: 0 6px 6px 0;
+  font-size: 15px; color: var(--ink-soft); margin: 18px 0; box-shadow: var(--shadow);
+}
+.callout strong { color: var(--ink); }
+.callout.rule {
+  border-left-color: var(--data);
+  background: var(--data-bg);
+}
+.callout.rule strong { color: var(--data); }
+
+/* Tree diagram panel */
+.tree-panel {
+  background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 20px 22px; margin: 18px 0; overflow-x: auto; box-shadow: var(--shadow);
+}
+.tree-panel pre {
+  margin: 0; font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13.5px; line-height: 1.65; white-space: pre;
+}
+.tree-panel .world { color: var(--world); font-weight: 600; }
+.tree-panel .actor { color: var(--actor); font-weight: 600; }
+.tree-panel .data { color: var(--data); font-weight: 600; }
+.tree-panel .base { color: var(--ink); font-weight: 700; }
+.tree-panel .dim { color: var(--ink-faint); }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+.legend .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+table.xtable { width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0; }
+table.xtable th {
+  text-align: left; font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 8px 12px 8px 0; border-bottom: 2px solid var(--accent);
+}
+table.xtable td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.xtable td:first-child { color: var(--accent-2); font-weight: 600; white-space: nowrap; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+@media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+.mini-card {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 18px; box-shadow: var(--shadow);
+}
+.mini-card h4 {
+  font-size: 13px; text-transform: none; letter-spacing: normal; font-weight: 700;
+  margin-bottom: 6px; color: var(--ink);
+}
+.mini-card p { font-size: 14px; margin: 0; color: var(--ink-soft); }
+
+footer.doc-foot {
+  border-top: 1px solid var(--rule); margin-top: 56px; padding-top: 18px;
+  color: var(--ink-faint); font-size: 13px;
+}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="kicker">Architecture Notes</div>
+    <h1>The Mojave Class Hierarchy</h1>
+    <p class="dek">
+      Given what the record types actually share and where they actually diverge, what should this
+      codebase's Node hierarchy look like? Grounded in what's real today in
+      <code>project/gamebryo/*.gd</code> &mdash; every class below is either already there, or marked
+      <span class="cls">proposed</span> as a direct extension of that real chain.
+    </p>
+    <p class="companion">Companion to the field-level Mojave Data Model reference &mdash; that one
+    documents what each record <em>is</em>; this one is angled toward what class it should become.</p>
+  </div>
+
+  <section class="block">
+    <h2><span class="idx">01</span> One root, not two</h2>
+    <p>
+      <span class="cls">GamebryoReference</span> moves from <span class="cls">StaticBody3D</span> to
+      <span class="cls">Node3D</span>. The original reasoning for <span class="cls">StaticBody3D</span>
+      was sound as far as it went &mdash; "an inert body with no shape is harmless" &mdash; but it
+      baked a physics-body assumption into the one class every subtype inherits from, including a
+      future Actor branch that needs to <em>move</em> under AI, which a static body can't do.
+      <span class="cls">Node3D</span> keeps the one thing every subclass genuinely needs (a transform
+      &mdash; a Reference's whole job is representing something placed <em>somewhere</em>) and drops
+      the one thing only some of them need (a physics body).
+    </p>
+    <p>
+      Wherever collision or movement is actually required, the subclass adds its own internal
+      physics-body <strong>child</strong> node and hangs shapes off that &mdash; composition instead
+      of inheritance for the physics part specifically. That's what unifies World Objects and Actors
+      under one real root instead of two: both are just "<span class="cls">GamebryoObject</span> plus
+      an internal body," they just add a different kind of body.
+    </p>
+
+    <div class="tree-panel">
+      <pre><span class="base">Node3D</span>
+  └─ <span class="base">GamebryoReference</span>        <span class="dim">form_id, base_form_id</span>
+       └─ <span class="base">GamebryoObject</span>      <span class="dim">editor_id, record_type</span>
+            ├─ <span class="dim">MarkerNode</span>       <span class="dim">no mesh, no body &mdash; CK helpers</span>
+            ├─ <span class="world">GamebryoVisual</span>      <span class="dim">+ internal StaticBody3D child</span>
+            │    ├─ <span class="dim">DoorNode</span>          <span class="dim">dest_cell, activate()</span>
+            │    ├─ <span class="dim">ContainerNode</span>
+            │    ├─ <span class="dim">ActivatorNode</span>
+            │    ├─ <span class="dim">FurnitureNode</span>
+            │    ├─ <span class="dim">LightNode</span>
+            │    └─ <span class="world">TerminalNode, TalkingActivatorNode, MovableStaticNode, ItemNode, ...</span>  <span class="dim">proposed, all Dynamic</span>
+            └─ <span class="actor">GamebryoActor</span>       <span class="dim">+ internal CharacterBody3D child</span>  <span class="dim">proposed</span>
+                 ├─ <span class="actor">NPCNode</span>
+                 └─ <span class="actor">CreatureNode</span>
+
+  <span class="data">Quest, Faction, LeveledList, DialogTopic</span>   <span class="dim">Resource &mdash; never in this tree at all</span>
+  <span class="data">Static (STAT)</span>                             <span class="dim">DirectGeometryBatch RID only &mdash; no Node, no subclass needed, ever</span></pre>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--world)"></i>World Objects branch</span>
+        <span><i class="dot" style="background:var(--actor)"></i>Actors branch</span>
+        <span><i class="dot" style="background:var(--data)"></i>Data, not Nodes</span>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Real refactor, not a rename.</strong> <code>mesh_resolver.gd</code>'s
+      <code>populate_collision_children()</code> currently adds shapes as direct children of whatever
+      node it's given &mdash; today that node already <em>is</em> the physics body via inheritance.
+      <code>game.gd</code>'s interact raycast currently assumes the ray's collider <em>is</em> the
+      <span class="cls">GamebryoReference</span> it wants to call <code>activate()</code> on. Both need
+      to retarget to "walk up from the physics-body child to its owning reference" once the body
+      becomes a child instead of the root.
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">02</span> Scope: Dynamic objects, not every placement</h2>
+    <p>
+      Worth naming precisely, because "a <span class="cls">Node3D</span> per placement" sounds
+      expensive at Mojave scale and isn't, in practice. The real dividing line is
+      <strong>Dynamic vs. Static</strong> &mdash; not "interactive," not "registered/unregistered"
+      (language earlier drafts of this doc used, which undersold the point):
+    </p>
+    <div class="callout rule">
+      <strong>Dynamic:</strong> can have a script, or can move (or both) &mdash; either capability
+      means an object's state can diverge from the ESM per-instance at runtime, which a shared-RID
+      batch can't represent. <strong>Static:</strong> neither &mdash; its state never differs from
+      what the ESM already says, so a shared RID is not just cheaper but correct.
+    </div>
+    <div class="two-col">
+      <div class="mini-card">
+        <h4>Static</h4>
+        <p>
+          Thousands of rocks, fence posts, and generic <code>STAT</code> set dressing per tile.
+          Bypasses this whole hierarchy via <code>DirectGeometryBatch</code> &mdash; shared-RID
+          <code>MultiMesh</code> entries with real per-placement <code>PhysicsServer3D</code> bodies
+          for collision, but no Node identity and no way to ever run a script or move independently.
+          This is permanently correct for these types, not a gap to close.
+        </p>
+      </div>
+      <div class="mini-card">
+        <h4>Dynamic</h4>
+        <p>
+          Doors, containers, activators, lights, terminals, talking-activators, movable statics, and
+          (once built) actors. Dozens per tile, not thousands. Every one of these must resolve
+          through a real <span class="cls">GamebryoReference</span> &mdash; not optionally, not
+          gradually.
+        </p>
+      </div>
+    </div>
+    <p>
+      What <em>is</em> gradual is which Dynamic types actually have a registered Node class today.
+      <code>mesh_resolver.gd</code> confirms any <code>base_type</code> with no registered factory
+      "always routes through the RID path at runtime" in the exterior-streaming pipeline &mdash; the
+      same path Static content uses. A Dynamic type sitting unregistered (Terminal, TalkingActivator)
+      isn't merely missing behavior &mdash; it's currently <strong>structurally incapable of ever
+      running a script or being activated outdoors</strong>, because it isn't becoming a Node at all.
+    </p>
+    <div class="callout">
+      Fixing that means registering in <strong>two</strong> places, not one:
+      <code>GamebryoObjectRegistry</code>'s <code>String &rarr; Callable</code> factory dictionary
+      (the interior <code>CellLoader.build()</code> path), and the threaded resolve path's own
+      <strong>separate, deliberately fixed dispatch list</strong> that <code>WorldStreamer</code>
+      actually calls &mdash; <code>construct_from_resolved()</code>'s own doc comment explains why it
+      doesn't consult the mutable registry: a <code>register()</code> call must never be able to
+      inject a non-thread-safe factory into a worker thread. Miss the second one and a type works
+      indoors, then silently stays RID-batched outdoors.
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">03</span> Items: a Node/Resource duality, not a plain leaf</h2>
+    <p>
+      <code>Weapon</code>/<code>Armor</code>/<code>Ammo</code>/<code>Ingestible</code>/<code>Book</code>/
+      <code>MiscItem</code>/<code>Key</code>/<code>Note</code> all have a Model, so they <em>can</em>
+      sit under <span class="cls">GamebryoVisual</span> when dropped loose in the world &mdash; but
+      they have a second life the rest of that branch never needs. Per GECK's own documentation, an
+      Item's Reference <strong>stops existing</strong> the instant it's picked up into a container:
+      its data is re-shaped into a plain inventory-entry dict instead. (This is also the source of the
+      dropped-hotkey bug &mdash; the hotkey lived on a reference that no longer exists once the item is
+      picked back up.)
+    </p>
+    <p>
+      Don't model <span class="cls">ItemNode</span> as just another leaf. It needs the same duality
+      this codebase already applies to mesh data &mdash; a <span class="cls">GamebryoVisual</span>-based
+      node for the in-world state, a plain <code>Dictionary</code>/<code>Resource</code> shape for the
+      in-inventory state, with an explicit <code>to_inventory_entry()</code> conversion between them,
+      mirroring how <code>resolve_raw_geometry()</code> &rarr; <code>build_geometry_entries()</code>
+      already separates raw data from constructed Node for a different reason in this codebase.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">04</span> What never becomes a Node</h2>
+    <div class="callout rule">
+      <strong>Rule of thumb:</strong> the only things in this data model that ever earn a Node are
+      things with an actual place in 3D space <em>and</em> a reason to be individually interactive.
+      Everything else is data &mdash; parsed once, cached, referenced by ID, never instantiated into
+      the tree.
+    </div>
+    <p>
+      <code>QUST</code>, <code>DIAL</code>/<code>INFO</code>, <code>FACT</code>, <code>SCPT</code>, and
+      every leveled list should never be a Node &mdash; not <span class="cls">Node3D</span>, not even
+      plain <span class="cls">Node</span>. A quest's stage table, a faction's rank/relationship table,
+      a dialogue tree, a script's logic: none of it has any use for scene-tree membership. No
+      parent/child position to track, no <code>_ready()</code>/<code>_process()</code> to hook, no
+      signals to route through the tree. At the scale a full playthrough's worth of quests, scripts,
+      and dialogue responses actually reaches &mdash; thousands of records &mdash; giving any of them a
+      Node buys nothing and costs real overhead for zero benefit. Same shape of waste
+      <code>DirectGeometryBatch</code> exists to avoid for world geometry, just for data instead of
+      meshes.
+    </p>
+    <p>
+      The correct Godot shape is <span class="cls">Resource</span> &mdash;
+      <span class="cls">RefCounted</span>-based, cheap to hold by the thousands precisely because
+      it's never in the scene tree &mdash; held in a lookup table keyed by form ID/editor ID, the
+      same pattern <code>GamebryoMeshResolver</code> already uses for its <code>_nif_cache</code>/
+      <code>_image_cache</code>. A <span class="cls">GamebryoActor</span> doesn't own its Faction as a
+      child Node; it holds a reference into that shared table. A Quest doesn't exist anywhere in the
+      tree until something with a real placement points at it.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">05</span> Cross-cutting fields &rarr; composition, not more classes</h2>
+    <p>
+      A few fields recur across branches that otherwise have nothing to do with each other &mdash;
+      <code>Door</code>, <code>Weapon</code>, and <code>NPC_</code> all have a destructible-object
+      hook; nearly everything has a Quest Item checkbox. Forcing these into the inheritance chain
+      would mean multiply-inheriting across branches Godot's single-inheritance model can't express,
+      and shouldn't &mdash; modeled the same way this project already treats <code>activate()</code>:
+      a duck-typed capability, checked at the call site, not a base class.
+    </p>
+    <table class="xtable">
+      <tr><th>Concern</th><th>Seen on</th><th>Shape</th></tr>
+      <tr><td>Destructible</td><td>Door, Container, Activator, Static, Weapon, Armor&hellip;</td><td>Optional field + a stage resource, checked via <code>has_method(...)</code></td></tr>
+      <tr><td>NavMesh-obstacle</td><td>Activator, Container, Static, Light</td><td>A plain bool flag, not a class distinction</td></tr>
+      <tr><td>LOD-eligible</td><td>Static, Activator, Terminal, Tree</td><td>Already handled &mdash; keys off a resolvable <code>_lod</code> companion mesh</td></tr>
+      <tr><td>Quest Item</td><td>Nearly everything</td><td>Universal enough to just live on <span class="cls">GamebryoObject</span> itself</td></tr>
+      <tr><td>Ownership</td><td>Container item entries, Encounter Zone</td><td>Lives on the entry/placement data, never the base object</td></tr>
+    </table>
+  </section>
+
+  <footer class="doc-foot">
+    Local design notes, not published. Companion to <code>nv_data_model_reference.html</code> and
+    <code>nv_class_hierarchy.md</code> (same content, source-controlled Markdown). Grounded in
+    <code>project/gamebryo/*.gd</code>, <code>game.gd</code>, and the GECK Wiki's own
+    <code>Category:Actors</code>/<code>Category:WorldObjects</code>/<code>Category:Items</code> pages.
+  </footer>
+</div>

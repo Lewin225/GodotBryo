@@ -1,0 +1,1176 @@
+<title>Mojave Data Model</title>
+<style>
+:root {
+  --bg: #EDEDE1;
+  --surface: #E3E3D4;
+  --surface-2: #D8D8C6;
+  --ink: #1E2823;
+  --ink-soft: #4C584F;
+  --ink-faint: #79806f;
+  --accent: #8A5A2B;
+  --accent-ink: #FBF3E7;
+  --accent-2: #2B5C6B;
+  --rule: #C6C6B2;
+  --code-bg: #DEDECE;
+  --good: #3C7A4B;
+  --good-bg: #DEEBDF;
+  --warn: #9C6B12;
+  --warn-bg: #F2E3C2;
+  --none: #8B4A3E;
+  --none-bg: #EEDAD3;
+  --shadow: 0 1px 2px rgba(30,40,35,0.08), 0 6px 20px rgba(30,40,35,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171A;
+    --surface: #172023;
+    --surface-2: #1D2A2D;
+    --ink: #DCE6E1;
+    --ink-soft: #9AACA5;
+    --ink-faint: #66766f;
+    --accent: #D9A441;
+    --accent-ink: #17130A;
+    --accent-2: #6BB2C2;
+    --rule: #2B3B3E;
+    --code-bg: #0E1517;
+    --good: #6CBF7F;
+    --good-bg: #17301F;
+    --warn: #E0B45C;
+    --warn-bg: #35290F;
+    --none: #E0897A;
+    --none-bg: #33201B;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171A;
+  --surface: #172023;
+  --surface-2: #1D2A2D;
+  --ink: #DCE6E1;
+  --ink-soft: #9AACA5;
+  --ink-faint: #66766f;
+  --accent: #D9A441;
+  --accent-ink: #17130A;
+  --accent-2: #6BB2C2;
+  --rule: #2B3B3E;
+  --code-bg: #0E1517;
+  --good: #6CBF7F;
+  --good-bg: #17301F;
+  --warn: #E0B45C;
+  --warn-bg: #35290F;
+  --none: #E0897A;
+  --none-bg: #33201B;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+html { text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+h1, h2, h3, h4 {
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
+  color: var(--ink);
+  margin: 0;
+}
+code, .mono, .sig, table.fields td:first-child, .toc a .num {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace;
+}
+a { color: var(--accent-2); }
+a:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}
+
+/* ---------- Shell layout ---------- */
+.shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+@media (max-width: 920px) {
+  .shell { grid-template-columns: 1fr; }
+  .toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--rule); }
+}
+
+/* ---------- Sidebar / TOC ---------- */
+.toc {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 28px 18px 40px;
+  border-right: 1px solid var(--rule);
+  background: var(--surface);
+}
+.toc-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--accent);
+}
+.toc-brand .plate {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.toc-brand .name {
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.toc nav { display: flex; flex-direction: column; gap: 1px; }
+.toc-group {
+  margin-top: 16px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 4px 8px;
+}
+.toc a {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 14.5px;
+}
+.toc a:hover { background: var(--surface-2); color: var(--ink); }
+.toc a .num { font-size: 11px; color: var(--ink-faint); min-width: 1.4em; }
+
+/* ---------- Main content ---------- */
+main { padding: 44px 56px 120px; min-width: 0; }
+@media (max-width: 640px) { main { padding: 32px 20px 100px; } }
+
+.hero {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 32px;
+  margin-bottom: 40px;
+}
+.hero .kicker {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.hero h1 { font-size: clamp(28px, 4vw, 42px); line-height: 1.1; max-width: 18ch; }
+.hero .dek {
+  font-family: ui-sans-serif, sans-serif;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink-soft);
+  max-width: 62ch;
+  margin-top: 14px;
+  font-size: 16.5px;
+}
+.hero .source-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.source-tag {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink-soft);
+  background: var(--surface);
+}
+
+section.block { margin-bottom: 56px; scroll-margin-top: 20px; }
+section.block > h2 {
+  font-size: 22px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+section.block > h2 .idx { color: var(--accent); font-family: ui-monospace, monospace; font-size: 15px; }
+section.block > .lede {
+  color: var(--ink-soft);
+  max-width: 68ch;
+  margin: 12px 0 22px;
+  font-size: 15.5px;
+}
+
+/* Component "spec card" */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sig-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.card-head h3 {
+  font-size: 17px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 700;
+}
+.pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 99px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.pill.good { color: var(--good); background: var(--good-bg); }
+.pill.warn { color: var(--warn); background: var(--warn-bg); }
+.pill.none { color: var(--none); background: var(--none-bg); }
+.card p { margin: 8px 0; color: var(--ink); font-size: 15px; }
+.card p.status-note { color: var(--ink-soft); font-size: 13.5px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--rule); }
+
+table.fields {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 14px;
+}
+table.fields th {
+  text-align: left;
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+table.fields td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  color: var(--ink);
+}
+table.fields td:first-child { color: var(--accent-2); white-space: nowrap; font-weight: 600; }
+table.fields tr:last-child td { border-bottom: none; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+.callout {
+  border-left: 3px solid var(--accent-2);
+  background: var(--surface-2);
+  padding: 14px 18px;
+  border-radius: 0 5px 5px 0;
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  margin: 16px 0;
+}
+.callout strong { color: var(--ink); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; }
+table.appendix { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 720px; }
+table.appendix th {
+  position: sticky; top: 0;
+  background: var(--surface-2);
+  text-align: left;
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 9px 12px;
+  border-bottom: 2px solid var(--accent);
+}
+table.appendix td { padding: 7px 12px; border-bottom: 1px solid var(--rule); }
+table.appendix tr:hover td { background: var(--surface); }
+table.appendix td.sig { color: var(--accent); font-weight: 700; }
+table.appendix tr.group-row td {
+  background: var(--surface-2);
+  font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  padding-top: 12px;
+}
+
+.status-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.status-table th {
+  text-align: left; font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 8px 14px 8px 0; border-bottom: 2px solid var(--accent);
+}
+.status-table td { padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.status-table td.sig { font-family: ui-monospace, monospace; color: var(--accent-2); font-weight: 600; white-space: nowrap; }
+
+footer.doc-foot {
+  border-top: 1px solid var(--rule);
+  margin-top: 60px;
+  padding-top: 20px;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+</style>
+
+<div class="shell">
+  <aside class="toc">
+    <div class="toc-brand">
+      <span class="plate">FNV // GD-PORT REFERENCE</span>
+      <span class="name">Mojave Data Model</span>
+    </div>
+    <nav>
+      <a href="#concepts"><span class="num">00</span> Foundations</a>
+      <div class="toc-group">World Objects</div>
+      <a href="#worldobjects"><span class="num">01</span> Doors, Containers &amp; Set Dressing</a>
+      <div class="toc-group">Actors</div>
+      <a href="#actors"><span class="num">02</span> NPCs &amp; Creatures</a>
+      <a href="#leveled"><span class="num">03</span> Leveled Lists</a>
+      <div class="toc-group">Inventory</div>
+      <a href="#items"><span class="num">04</span> Weapons, Armor &amp; Items</a>
+      <div class="toc-group">Systems</div>
+      <a href="#effects"><span class="num">05</span> Game &amp; Special Effects</a>
+      <a href="#quests"><span class="num">06</span> Quests, Dialogue &amp; Factions</a>
+      <a href="#misc"><span class="num">07</span> Miscellaneous &amp; World Systems</a>
+      <div class="toc-group">Reference</div>
+      <a href="#appendix"><span class="num">08</span> Full Record Signature Table</a>
+      <a href="#status"><span class="num">09</span> This Project's Coverage</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <div class="kicker">Record Schema &middot; Field Manual</div>
+      <h1>The Mojave Data Model</h1>
+      <p class="dek">
+        Fallout: New Vegas's entire world &mdash; every door, raider, quest, and bent tin can &mdash;
+        is built from roughly 145 record types inside <code>FalloutNV.esm</code>. This is a working
+        reference to the core ones: what each record actually is, the fields that define its
+        behavior, and how it relates to the others. Compiled for this project's own Godot port, so
+        each section also notes what's already real in this codebase versus what's still just data
+        on disk.
+      </p>
+      <div class="source-strip">
+        <span class="source-tag">fopdoc &middot; FalloutNV Records.html</span>
+        <span class="source-tag">GECK Wiki &middot; 47 pages, Objects/Actor&nbsp;Data/WorldObjects/Misc/Leveled&nbsp;Lists</span>
+        <span class="source-tag">native/src/esm &middot; this repo's own parser</span>
+      </div>
+    </div>
+
+    <section class="block" id="concepts">
+      <h2><span class="idx">00</span> Foundations</h2>
+      <p class="lede">
+        Two ideas underlie everything below. Get these wrong and every other record in the game
+        misreads.
+      </p>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head"><h3>Object &rarr; Reference</h3></div>
+          <p>
+            An <strong>Object</strong> (a.k.a. Base Form) is the template &mdash; one <code>STAT</code>
+            record for "NCR guard tower," one <code>NPC_</code> record for "Doc Mitchell." Whenever
+            an object is placed in the world it's instantiated as a <strong>Reference</strong>
+            (<code>REFR</code>, or <code>ACHR</code>/<code>ACRE</code> for actors) &mdash; modelled
+            after the object, but carrying its own extra data: position, health, ownership, whatever
+            makes this particular instance different from every other placement of the same base
+            form.
+          </p>
+          <p>
+            This project already leans on the distinction directly &mdash;
+            <code>GamebryoMeshResolver</code> caches every resolved mesh/texture/material by the
+            <em>base object's</em> path, since a cell routinely places the same rock or fence post
+            dozens of times; only the transform is per-reference.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>The Inventory Quirk</h3></div>
+          <p>
+            When an item Reference is picked up into a container or inventory, the reference itself
+            stops existing &mdash; but its extra data (condition, count, hotkey) is folded into the
+            inventory entry first. Drop it again and a new Reference is synthesized from that stored
+            data. This is why a hotkeyed weapon loses its hotkey when dropped and re-equipped: the
+            hotkey lived on the reference, and the reference that held it is gone the moment it hits
+            the ground.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="worldobjects">
+      <h2><span class="idx">01</span> World Objects</h2>
+      <p class="lede">
+        Everything physically placeable that isn't an actor or a piece of terrain falls under
+        <strong>WorldObjects</strong> in the GECK's own taxonomy. All of them share a Model field, an
+        optional destructible-object stage list, and (for animated ones) a Random Anim Start flag so
+        duplicate placements don't animate in visible lock-step.
+      </p>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">DOOR</span>
+          <h3>Door</h3>
+          <span class="pill good">Registered &middot; DOOR</span>
+        </div>
+        <p>
+          A specialized Activator with built-in teleport behavior. <strong>Animating doors</strong>
+          just play an open animation on activation; <strong>load doors</strong> resolve an XTEL
+          link to a destination reference (usually another door) and teleport the actor there &mdash;
+          this is the exact mechanism this project's Freeside softlock investigation traced through
+          <code>game.gd</code>'s <code>_do_exterior_transition()</code>.
+        </p>
+        <table class="fields">
+          <tr><th>Field</th><th>What it does</th></tr>
+          <tr><td>Open/Close/Loop</td><td>Sound triggered on state change &mdash; usually left blank on baseforms since animated doors bake sounds into the NIF via NiTextKeyExtraData; setting both is the classic "double sound" bug.</td></tr>
+          <tr><td>Automatic Door</td><td>Auto-teleports the player once within <code>fAutoDoorActivateDistance</code>. Setting this on a non-load door freezes the player permanently &mdash; a documented engine bug, not a rare edge case.</td></tr>
+          <tr><td>Random destination list</td><td>When populated, the actual destination isn't chosen until first activation, then saved with the save file. Reloading a pre-activation save re-rolls it.</td></tr>
+          <tr><td>Sliding Door</td><td>Skips navmesh obstacle generation &mdash; NPCs will walk through it even closed.</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">CONT</span>
+          <h3>Container</h3>
+          <span class="pill good">Registered &middot; CONT</span>
+        </div>
+        <p>
+          Holds an item list of (Object, Count, Health%, Owner) tuples, including
+          <code>LeveledItem</code> entries for level-scaled loot. Container Havok geometry can be
+          non-static, letting the player shove a footlocker around. Each item can be owned by an NPC
+          or Faction &mdash; taking it then counts as theft against that owner specifically.
+        </p>
+        <table class="fields">
+          <tr><th>Field</th><th>What it does</th></tr>
+          <tr><td>Respawns</td><td>Recomputes leveled-item contents after <code>iHoursToRespawnCell</code>, unless the owning Encounter Zone is flagged Never Resets.</td></tr>
+          <tr><td>Required Rank</td><td>Minimum faction rank to count as a legitimate owner of an item inside.</td></tr>
+        </table>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">ACTI</span>
+            <h3>Activator</h3>
+            <span class="pill good">Registered</span>
+          </div>
+          <p>
+            Anything usable by an actor: levers, water sources, radios, scripted triggers via
+            <code>OnActivate</code>. Requires a Name to be interactable at all &mdash; an unnamed
+            activator can't be activated by the player, full stop.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">TACT</span>
+            <h3>Talking Activator</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            An Activator that can run dialogue and own a Voice Type &mdash; the record behind radios
+            and intercoms. Casino ambient music in FNV specifically uses the <strong>Non-Pipboy</strong>
+            flag so the station exists without being tunable from the Pip-Boy.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">FURN</span>
+            <h3>Furniture</h3>
+            <span class="pill good">Registered</span>
+          </div>
+          <p>
+            Anything an NPC has an animation for using &mdash; chairs, beds, wall-lean markers.
+            Tables and shelves stay <code>STAT</code>; the distinction is purely "does an actor have
+            an anim for this," not visual function. Furniture references must be persistent or AI
+            Packages can't reliably use them.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">STAT</span>
+            <h3>Static</h3>
+            <span class="pill warn">Generic fallback</span>
+          </div>
+          <p>
+            Fully inert geometry &mdash; no Havok, no script, can't be destroyed. Buildings, walls,
+            terrain dressing. This project's registry already treats "has a resolvable Model, no
+            registered factory" as the generic-visual path, which is functionally the STAT case even
+            though it isn't a named factory.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">MSTT</span>
+            <h3>Movable Static</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Statics that <em>do</em> get Havok &mdash; grabbable, blast-movable clutter, plus looping
+            single-animation FX objects (usually <code>FX</code>-prefixed: sprays, flames, smoke).
+            This project's own mesh-resolver doc notes MSTT placements are unregistered today and
+            fall through the RID-based structural path rather than a Node.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">LIGH</span>
+            <h3>Light</h3>
+            <span class="pill good">Registered</span>
+          </div>
+          <p>
+            A spherical illumination source, optionally carryable (the Pip-Boy light uses this via a
+            Base Effect with the Light archetype rather than the raw record). May or may not have an
+            attached 3D model &mdash; a bare light with no mesh is common for fill lighting.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">TERM</span>
+          <h3>Terminal</h3>
+          <span class="pill none">Unregistered</span>
+        </div>
+        <p>
+          A World Object built around a hackable menu tree: Welcome Text, then up to ~7&ndash;8 Menu
+          Items (each with its own result text, optional Note display, optional nested submenu
+          terminal, and Conditions). "Top-level" terminals are the placed activators; "submenu"
+          terminals exist purely to host a menu-item list referenced from another terminal's Sub Menu
+          field &mdash; there's no engine-level distinction, just convention. Locked terminals gate on
+          the hacking minigame or possession of a password <code>Note</code>; failing the minigame
+          locks it out permanently barring the password.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">TREE</span>
+            <h3>Tree</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Authored in SpeedTreeCAD and imported as <code>.SPT</code>, not a NIF &mdash; a genuinely
+            distinct asset pipeline from every other WorldObject. Covers ordinary trees and a wide
+            variety of non-tree plants alike.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">GRAS</span>
+            <h3>Grass</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Painted onto landscape vertices via a <code>LandTexture</code> assignment, not placed as
+            references at all &mdash; density, slope range, and color/height jitter are all
+            per-vertex-random and regenerated per session rather than save-baked.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">PWAT</span>
+            <h3>Placeable Water</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Hand-placed water planes (mainly for interiors), with explicit Reflects/Refracts
+            reference lists rather than automatic reflection &mdash; nearby statics have to be
+            manually linked in the "refracted by" tab to actually appear through the water.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">ECZN</span>
+            <h3>Encounter Zone</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Groups cells/worldspaces/references into one leveled area. Its Zone Level is computed
+            <em>once</em>, on first player visit, and never recalculated &mdash; every leveled list
+            inside resolves against that frozen value, not the player's current level.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">CLMT</span>
+            <h3>Climate</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Per-worldspace definition of sun/moon behavior, sunrise/sunset timing, and a weighted
+            table of eligible <code>WTHR</code> records with a volatility slider controlling how
+            often the active one changes.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">WTHR</span>
+            <h3>Weather</h3>
+            <span class="pill none">Unregistered</span>
+          </div>
+          <p>
+            Nine color slots (ambient, fog, horizon, sky upper/lower, sun, sunlight, stars, cloud
+            layer) each keyed across six times of day, plus fog near/far/power curves and an
+            associated ImageSpace Modifier per time-of-day. This project currently swaps one flat
+            interior/exterior <code>Environment</code> resource rather than reading WTHR at all.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Static Collection (<code>SCOL</code>)</strong> is a real, load-bearing FO3/NV record
+        &mdash; this project's own <code>_build_scol()</code> factory handles it &mdash; but it did
+        not surface in the automated fopdoc capture used for this document's appendix. Treat the
+        appendix as a strong starting index, not a substitute for fopdoc itself when precision
+        matters.
+      </div>
+    </section>
+
+    <section class="block" id="actors">
+      <h2><span class="idx">02</span> Actors: NPCs &amp; Creatures</h2>
+      <p class="lede">
+        Actors are the subset of objects that run AI &mdash; they move, fight, and interact with
+        doors/containers/other actors. Every actor is one of <code>NPC_</code>, <code>CREA</code>, or
+        a Leveled Character/Creature template resolved into one of those two at spawn time; a
+        <code>TalkingActivator</code> counts as an honorary fourth case since it can carry dialogue
+        and a voice like a full actor. NPCs and Creatures share most of their tab structure
+        (Traits, Stats, Factions, AI Data, AI Packages, Inventory, Actor Effects, Animation, Blood,
+        Destruction, Scripts) but differ in two structural ways worth knowing up front.
+      </p>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">NPC_</span>
+            <h3>Non-Player Character</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Can wear <code>ARMO</code>/clothing, can appear in
+            <code>LeveledCharacter</code> lists, always supports dialogue and pickpocketing. The
+            Player is a special-case NPC_ driven by input instead of AI. Placed in the world as an
+            <code>ACHR</code> reference.
+          </p>
+          <p class="status-note">
+            No actor system exists in this codebase yet &mdash; the ESM parser reads
+            <code>WRLD</code>/<code>CELL</code>/<code>REFR</code>/<code>LAND</code>/<code>LIGH</code>/<code>LTEX</code>
+            explicitly and passes every other base record's raw signature through generically as
+            <code>base_type</code>, but the object registry has no <code>ACHR</code> handling: an NPC
+            reference falls through to "has a resolvable model" (false, since NPCs use a race/skeleton,
+            not a MODL) and is silently skipped.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">CREA</span>
+            <h3>Creature</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Cannot wear armor and never appears in LeveledCharacter lists, but runs its own separate
+            skeleton/animation system &mdash; giving creatures more VATS-target and appearance
+            variation than NPCs get. Can still hold dialogue, act as a companion, or run a vendor
+            just like an NPC despite the different rig. Placed as an <code>ACRE</code> reference.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Shared Actor Flags</h3></div>
+        <table class="fields">
+          <tr><th>Flag</th><th>What it does</th></tr>
+          <tr><td>Essential</td><td>Never dies outright; goes unconscious instead, still lootable, no special death message.</td></tr>
+          <tr><td>Respawn</td><td>Reference is recreated three days after death/removal.</td></tr>
+          <tr><td>No Low Level Processing</td><td>AI only updates while the actor shares the player's loaded area &mdash; the standard far-away-NPC cost-saving flag.</td></tr>
+          <tr><td>Quest Item</td><td>Updates more frequently and skips cell-reset cleanup; a dead body carrying <em>any</em> quest-item inventory entry also won't despawn until that item is removed, regardless of the actor's own flag.</td></tr>
+          <tr><td>No Knockdowns / No VATS Melee</td><td>The latter is misleadingly named &mdash; it has nothing to do with VATS, it stops <em>other</em> actors from melee-targeting this one.</td></tr>
+        </table>
+        <p class="status-note">
+          <strong>Template Data</strong> lets one actor inherit whole tabs (Traits, Stats, Factions,
+          AI Data/Packages, Inventory, "Use Model/Animation" &mdash; which bundles Blood, Sounds, and
+          Destruction) from another actor listed as its ActorBase, including a
+          <code>LeveledCharacter</code>/<code>LeveledCreature</code>. This is the mechanism behind
+          most of the Mojave's enemy variety: dozens of raiders sharing one base template with only
+          cosmetic/equipment overrides.
+        </p>
+      </div>
+    </section>
+
+    <section class="block" id="leveled">
+      <h2><span class="idx">03</span> Leveled Lists</h2>
+      <p class="lede">
+        Three record types &mdash; <code>LVLN</code> (Leveled Character), <code>LVLC</code> (Leveled
+        Creature), <code>LVLI</code> (Leveled Item) &mdash; all resolve which entry to pick against
+        player level (items, and container/vendor NPC-owned lists) or the owning actor's own level
+        (an actor's inherited inventory). None of the three can be placed directly in the world:
+        Leveled Character/Creature only work as an actor's Template, and Leveled Item only works
+        inside a container or an actor's inventory.
+      </p>
+      <div class="card">
+        <table class="fields">
+          <tr><th>Setting</th><th>Behavior</th></tr>
+          <tr><td>Calculate from all levels &le; PC's level</td><td>Any entry at or below the resolving level is eligible; unchecked picks only the closest entry <em>not exceeding</em> that level.</td></tr>
+          <tr><td>Use All (items only)</td><td>Every entry is added regardless of level &mdash; supersedes both level-calc checkboxes.</td></tr>
+          <tr><td>Chance None (items only)</td><td>Flat chance the list resolves to nothing at all.</td></tr>
+          <tr><td>Count</td><td>On items: how many copies of the resolved entry to create. On actors: unused, must be 1.</td></tr>
+          <tr><td>Difficulty Modifier (reference-side, actors only)</td><td>Easy/Medium/Hard/Boss/None locks the resolved level to 50/75/125/200/unlocked% of the space's own resolved level &mdash; visualized in the editor as a white/green/yellow/orange/red marker.</td></tr>
+        </table>
+        <div class="callout">
+          <strong>A real crash condition, not a style nit:</strong> every leveled list needs at least
+          one level&#8209;1 entry, or the game crashes on startup when nothing in the list qualifies
+          for a low-level resolve.
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="items">
+      <h2><span class="idx">04</span> Weapons, Armor &amp; Items</h2>
+      <p class="lede">
+        Anything that can occupy a container slot is an Item, sharing a common shape &mdash;
+        Inventory Image, Message Icon, Model, Equip Type, Weight, a Quest Item flag &mdash; before
+        each subtype layers its own behavior on top.
+      </p>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">WEAP</span>
+          <h3>Weapon</h3>
+          <span class="pill none">Unimplemented</span>
+        </div>
+        <p>
+          The densest item record in the game: General/Flags/Game&nbsp;Data/Art&amp;Sound/Rumble/Mod
+          Info/DPS tabs. Damage, Min Spread (the actual spread driver &mdash; the legacy "Spread"
+          field is dead in New Vegas), Crit % Mult, an optional Object Effect applied only once the
+          hit deals &ge;1 damage, and up to three <strong>Weapon Mod</strong> (<code>IMOD</code>)
+          slots that swap models outright rather than compositing geometry &mdash; three mods means
+          eight pre-baked model variants, not additive attachments.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">ARMO</span>
+            <h3>Armor</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            DR (0&ndash;<code>fMaxArmorRating</code>, default 85), DT, and up to 19 Biped Object
+            slots (Head, Hair, UpperBody, Hat, Necklace, Backpack, and so on) that determine what
+            else gets hidden or occupied when this piece is worn. Creatures can hold armor in
+            inventory but can never equip it.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">ARMA</span>
+            <h3>Armor Addon</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Pure 3D-geometry accessories (necklaces, backpacks, masks) attached via a FormList on the
+            parent Armor's Biped Model List. Contributes zero weight/health/value/scripts of its own
+            &mdash; it's purely a visual layer riding on the armor that references it.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">AMMO</span>
+            <h3>Ammunition</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            FNV added per-ammo-type overrides on top of the base record: a substitute Projectile,
+            a projectiles-per-shot override, an Impact Script that runs on struck actors <em>before</em>
+            any Ammo Effects, and a weight field relevant only under Hardcore mode.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">ALCH</span>
+            <h3>Ingestible</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Anything consumable &mdash; food, chems, Stealth Boys. An Ingestible with only detrimental
+            <em>and</em> hostile effects is classified as a poison. Only Base Effects flagged "Self"
+            are legal here.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">BOOK</span>
+            <h3>Book</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            No readable text in the base game &mdash; "using" a book instantly grants a flat bump to
+            its Teaches actor value. FNV's skill magazines are <code>ALCH</code> Ingestibles, not
+            Books, despite the in-fiction framing.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">MISC</span>
+            <h3>Misc. Item</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Havok-physical, has weight and value, otherwise functionally inert unless a script is
+            attached &mdash; the catch-all for scrap, junk, and crafting components.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">KEYM</span>
+            <h3>Key</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Weightless, unsellable, shown on a dedicated in-inventory Keyring. Its Value field is
+            repurposed entirely &mdash; it weights pickpocket detection odds, not price.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">NOTE</span>
+            <h3>Note</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            Picking one up auto-files it in the Pip-Boy as text, an image, or a sound-with-graphic.
+            <code>GetItemCount</code> always returns 0 for notes &mdash; <code>GetHasNote</code> is
+            the only reliable check.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout">
+        FNV-specific item types not tracked above: <strong>Caravan Card</strong> (<code>CCRD</code>,
+        an individual playing card for the Caravan minigame, with high-res face/back texture fields)
+        and <strong>Casino Chip</strong> &mdash; both real, playable-item records; the GECK Wiki's own
+        Casino&nbsp;Chip article is itself a stub with no field documentation yet.
+      </div>
+    </section>
+
+    <section class="block" id="effects">
+      <h2><span class="idx">05</span> Game &amp; Special Effects</h2>
+      <p class="lede">
+        Everything that modifies an actor's stats or triggers a script traces back to one
+        <code>MGEF</code> Base Effect. Three wrapper records apply a Base Effect to something
+        concrete: an <strong>Actor Effect</strong> (<code>SPEL</code>, a "spell") targets an actor
+        directly, an <strong>Object Effect</strong> (<code>ENCH</code>) rides on a weapon or piece of
+        armor, and an <strong>Ingestible</strong>'s own effect list applies on consumption. All three
+        share the same underlying <strong>Effect Item</strong> shape: which Base Effect, at what
+        Range/Area/Duration/Magnitude, gated by optional Conditions.
+      </p>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">MGEF</span>
+          <h3>Base Effect</h3>
+          <span class="pill none">Unimplemented</span>
+        </div>
+        <p>
+          Behavior comes from a hard-coded <strong>Archetype</strong> &mdash; Value Modifier (alter
+          an actor value), Value and Parts (alter a value <em>and</em> distribute it across limb
+          condition, e.g. Stimpaks), Paralysis, Script (run an attached Effect-type script),
+          Chameleon, Light, and several archetypes ("Dispel," "Invisibility," "Lock/Open," "Summon
+          Creature") that exist in the editor but are unused anywhere in the shipped game.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">EFSH</span>
+            <h3>Effect Shader</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            A Membrane Shader (applied to the target's own mesh, blend-mode driven &mdash; e.g. Src
+            = Source Alpha / Dst = Source Inverted Alpha for ordinary alpha blend, or Src = One / Dst
+            = One for a brightening additive look) plus an optional Particle Shader emitted from the
+            target. The exact combinatorial blend-mode question this project already solved for real
+            NIF materials, but authored here per-effect instead of per-NiAlphaProperty.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">EXPL / PROJ / IPDS</span>
+            <h3>Explosion, Projectile, Impact Data Set</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            A Weapon references a Projectile; a Projectile can carry an Explosion; an
+            <strong>Impact Data Set</strong> maps material types (stone, flesh, metal&hellip;) to the
+            correct decal/sound/particle response on hit, so one weapon's impact reads differently on
+            concrete versus a super mutant.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="quests">
+      <h2><span class="idx">06</span> Quests, Dialogue &amp; Factions</h2>
+      <p class="lede">
+        This trio wasn't in the saved GECK Wiki set for this pass &mdash; summarized here at the
+        fopdoc/record-signature level rather than the same field-by-field depth as the sections
+        above. Worth a dedicated follow-up pass if these become load-bearing for the port.
+      </p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">QUST</span>
+            <h3>Quest</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            A stage-based state machine: numbered stages carry result scripts and log entries, quest
+            objectives track target references/locations, and Conditions gate which stages are
+            currently reachable. Every quest-driven scene, companion, and faction-reputation shift in
+            the game ultimately threads through a QUST record's stage log.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="sig-badge">DIAL / INFO</span>
+            <h3>Dialog Topic / Response</h3>
+            <span class="pill none">Unimplemented</span>
+          </div>
+          <p>
+            A <code>DIAL</code> topic groups a branching tree of <code>INFO</code> response records,
+            each with its own Conditions, response text, voice line, and optional result script.
+            Terminal menu items reuse this same Conditions vocabulary independently, without going
+            through DIAL/INFO at all.
+          </p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="sig-badge">FACT</span>
+          <h3>Faction</h3>
+          <span class="pill none">Unimplemented</span>
+        </div>
+        <p>
+          Defines a rank ladder, relationships to other factions (ally/neutral/enemy, each with its
+          own numeric modifier), and crime-gold tracking. Container and Encounter Zone ownership,
+          Ammo/Weapon "faction currency" items, and companion recruitment all key off Faction
+          membership and rank rather than anything on the NPC record itself.
+        </p>
+      </div>
+    </section>
+
+    <section class="block" id="misc">
+      <h2><span class="idx">07</span> Miscellaneous &amp; World Systems</h2>
+      <p class="lede">
+        Support records that don't place in the world themselves but that almost everything above
+        depends on.
+      </p>
+      <div class="tablewrap">
+        <table class="appendix">
+          <tr><th>Sig</th><th>Name</th><th>Role</th></tr>
+          <tr><td class="sig">FLST</td><td>FormList</td><td>An ordered, typeless bag of form references &mdash; the plumbing behind Armor's Biped Model List, a Weapon's acceptable-ammo list, repair-item lists, and dozens of other "pick from this set" fields.</td></tr>
+          <tr><td class="sig">LTEX</td><td>Landscape Texture</td><td>One paintable ground texture; also the record a <code>GRAS</code> entry attaches to for procedural grass placement. Already parsed by this project's own ESM reader for terrain texture resolution.</td></tr>
+          <tr><td class="sig">SOUN</td><td>Sound</td><td>A sound file plus attenuation/randomization data &mdash; referenced by nearly every other record type (doors, containers, weapons, weather) rather than placed on its own.</td></tr>
+          <tr><td class="sig">TXST</td><td>Texture Set</td><td>A bundle of diffuse/normal/glow/etc. texture paths that can override a NIF's own baked textures &mdash; the mechanism behind a weapon's higher-res 1st-person model variant.</td></tr>
+          <tr><td class="sig">LSCR</td><td>Load Screen</td><td>One loading-screen image plus its caption pool.</td></tr>
+          <tr><td class="sig">MICN</td><td>Menu Icon</td><td>A standalone icon record, distinct from the inline Inventory Image most items carry directly.</td></tr>
+          <tr><td class="sig">WATR</td><td>Water</td><td>Defines one water "type" &mdash; the record a cell's Water field and a <code>PWAT</code> placement both point at.</td></tr>
+          <tr><td class="sig">IDLM</td><td>Idle Marker</td><td>An invisible marker an NPC AI package can path an actor to and idle at, distinct from the always-visible <code>Markers</code> family (COCMarkerHeading, XMarker, MapMarker, etc.) used for navigation/placement bookkeeping.</td></tr>
+          <tr><td class="sig">ANIO</td><td>Animated Object</td><td>A standalone animation reference usable outside a full actor rig &mdash; e.g. animated held props.</td></tr>
+          <tr><td class="sig">CSTY</td><td>Combat Style</td><td>Tunable AI combat parameters (aggression, caution, weapon-preference weighting) referenced by NPC/Creature Traits, not authored per-actor.</td></tr>
+          <tr><td class="sig">GMST</td><td>Game Setting</td><td>A single named tunable (<code>fAutoDoorActivateDistance</code>, <code>iHoursToRespawnCell</code>, and every other <code>f</code>/<code>i</code>/<code>b</code>/<code>s</code>-prefixed constant referenced throughout this document) &mdash; effectively the engine's own global config table, stored as ordinary records.</td></tr>
+          <tr><td class="sig">GLOB</td><td>Global</td><td>A single named, script-visible variable shared across the whole game &mdash; distinct from GMST in that scripts can read <em>and write</em> it at runtime.</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="block" id="appendix">
+      <h2><span class="idx">08</span> Full Record Signature Table</h2>
+      <p class="lede">
+        Every top-level record signature captured from fopdoc's FalloutNV Records reference, for
+        lookup. This was captured via an automated single-pass extraction, not a manual cross-check
+        against fopdoc's page &mdash; treat gaps as expected rather than exhaustive. Confirmed gaps
+        already found in this project's own real data: <code>SCOL</code> (Static Collection) and
+        <code>PACK</code> (Package/AI Package), both real, both missing below. Verify against fopdoc
+        directly before relying on this table for anything load-bearing.
+      </p>
+
+      <div class="tablewrap">
+        <table class="appendix">
+          <tr><th>Sig</th><th>Name</th><th>Sig</th><th>Name</th></tr>
+          <tr class="group-row"><td colspan="4">World &amp; Environment</td></tr>
+          <tr><td class="sig">CELL</td><td>Cell</td><td class="sig">WRLD</td><td>Worldspace</td></tr>
+          <tr><td class="sig">LAND</td><td>Landscape</td><td class="sig">CLMT</td><td>Climate</td></tr>
+          <tr><td class="sig">WTHR</td><td>Weather</td><td class="sig">REGN</td><td>Region</td></tr>
+          <tr><td class="sig">LTEX</td><td>Landscape Texture</td><td class="sig">WATR</td><td>Water</td></tr>
+          <tr><td class="sig">ECZN</td><td>Encounter Zone</td><td class="sig">NAVI</td><td>Navigation Mesh Info Map</td></tr>
+          <tr><td class="sig">NAVM</td><td>Navigation Mesh</td><td class="sig">ASPC</td><td>Acoustic Space</td></tr>
+          <tr><td class="sig">LGTM</td><td>Lighting Template</td><td class="sig">IMGS</td><td>Image Space</td></tr>
+          <tr><td class="sig">IMAD</td><td>Image Space Modifier</td><td class="sig">GRAS</td><td>Grass</td></tr>
+          <tr><td class="sig">TREE</td><td>Tree</td><td class="sig">MUSC</td><td>Music Type</td></tr>
+
+          <tr class="group-row"><td colspan="4">References &amp; World Objects</td></tr>
+          <tr><td class="sig">REFR</td><td>Placed Object</td><td class="sig">ACHR</td><td>Placed NPC</td></tr>
+          <tr><td class="sig">ACRE</td><td>Placed Creature</td><td class="sig">PGRE</td><td>Placed Grenade</td></tr>
+          <tr><td class="sig">PMIS</td><td>Placed Missile</td><td class="sig">ACTI</td><td>Activator</td></tr>
+          <tr><td class="sig">TACT</td><td>Talking Activator</td><td class="sig">DOOR</td><td>Door</td></tr>
+          <tr><td class="sig">CONT</td><td>Container</td><td class="sig">FURN</td><td>Furniture</td></tr>
+          <tr><td class="sig">STAT</td><td>Static</td><td class="sig">MSTT</td><td>Moveable Static</td></tr>
+          <tr><td class="sig">LIGH</td><td>Light</td><td class="sig">TERM</td><td>Terminal</td></tr>
+          <tr><td class="sig">PWAT</td><td>Placeable Water</td><td class="sig">ADDN</td><td>Addon Node</td></tr>
+          <tr><td class="sig">DEBR</td><td>Debris</td><td class="sig">IDLM</td><td>Idle Marker</td></tr>
+
+          <tr class="group-row"><td colspan="4">Actors &amp; Actor Data</td></tr>
+          <tr><td class="sig">NPC_</td><td>Non-Player Character</td><td class="sig">CREA</td><td>Creature</td></tr>
+          <tr><td class="sig">RACE</td><td>Race</td><td class="sig">CLAS</td><td>Class</td></tr>
+          <tr><td class="sig">FACT</td><td>Faction</td><td class="sig">EYES</td><td>Eyes</td></tr>
+          <tr><td class="sig">HAIR</td><td>Hair</td><td class="sig">HDPT</td><td>Head Part</td></tr>
+          <tr><td class="sig">BPTD</td><td>Body Part Data</td><td class="sig">RGDL</td><td>Ragdoll</td></tr>
+          <tr><td class="sig">VTYP</td><td>Voice Type</td><td class="sig">AVIF</td><td>Actor Value Information</td></tr>
+          <tr><td class="sig">REPU</td><td>Reputation</td><td class="sig">CSTY</td><td>Combat Style</td></tr>
+          <tr><td class="sig">PERK</td><td>Perk</td><td class="sig">HUNG</td><td>Hunger Stage</td></tr>
+          <tr><td class="sig">DEHY</td><td>Dehydration Stage</td><td class="sig">SLPD</td><td>Sleep Deprivation Stage</td></tr>
+          <tr><td class="sig">RADS</td><td>Radiation Stage</td><td class="sig">CHAL</td><td>Challenge</td></tr>
+
+          <tr class="group-row"><td colspan="4">Leveled Lists</td></tr>
+          <tr><td class="sig">LVLN</td><td>Leveled NPC</td><td class="sig">LVLC</td><td>Leveled Creature</td></tr>
+          <tr><td class="sig">LVLI</td><td>Leveled Item</td><td class="sig"></td><td></td></tr>
+
+          <tr class="group-row"><td colspan="4">Items</td></tr>
+          <tr><td class="sig">WEAP</td><td>Weapon</td><td class="sig">IMOD</td><td>Item Mod</td></tr>
+          <tr><td class="sig">ARMO</td><td>Armor</td><td class="sig">ARMA</td><td>Armor Addon</td></tr>
+          <tr><td class="sig">AMMO</td><td>Ammunition</td><td class="sig">AMEF</td><td>Ammo Effect</td></tr>
+          <tr><td class="sig">ALCH</td><td>Ingestible</td><td class="sig">BOOK</td><td>Book</td></tr>
+          <tr><td class="sig">MISC</td><td>Misc. Item</td><td class="sig">KEYM</td><td>Key</td></tr>
+          <tr><td class="sig">NOTE</td><td>Note</td><td class="sig">INGR</td><td>Ingredient</td></tr>
+          <tr><td class="sig">CCRD</td><td>Caravan Card</td><td class="sig">CDCK</td><td>Caravan Deck</td></tr>
+          <tr><td class="sig">CMNY</td><td>Caravan Money</td><td class="sig">CHIP</td><td>Casino Chip</td></tr>
+          <tr><td class="sig">CSNO</td><td>Casino</td><td class="sig">COBJ</td><td>Constructable Object</td></tr>
+          <tr><td class="sig">RCPE</td><td>Recipe</td><td class="sig">RCCT</td><td>Recipe Category</td></tr>
+
+          <tr class="group-row"><td colspan="4">Game &amp; Special Effects</td></tr>
+          <tr><td class="sig">MGEF</td><td>Base Effect</td><td class="sig">SPEL</td><td>Actor Effect</td></tr>
+          <tr><td class="sig">ENCH</td><td>Object Effect</td><td class="sig">EFSH</td><td>Effect Shader</td></tr>
+          <tr><td class="sig">EXPL</td><td>Explosion</td><td class="sig">PROJ</td><td>Projectile</td></tr>
+          <tr><td class="sig">IPCT</td><td>Impact</td><td class="sig">IPDS</td><td>Impact Data Set</td></tr>
+          <tr><td class="sig">CAMS</td><td>Camera Shot</td><td class="sig">CPTH</td><td>Camera Path</td></tr>
+
+          <tr class="group-row"><td colspan="4">Quests, Dialogue &amp; UI</td></tr>
+          <tr><td class="sig">QUST</td><td>Quest</td><td class="sig">DIAL</td><td>Dialog Topic</td></tr>
+          <tr><td class="sig">INFO</td><td>Dialog Response</td><td class="sig">MESG</td><td>Message</td></tr>
+          <tr><td class="sig">LSCR</td><td>Load Screen</td><td class="sig">LSCT</td><td>Load Screen Type</td></tr>
+          <tr><td class="sig">MSET</td><td>Media Set</td><td class="sig">ALOC</td><td>Media Relation Controller</td></tr>
+          <tr><td class="sig">DOBJ</td><td>Default Object Manager</td><td class="sig">FLST</td><td>FormID List</td></tr>
+
+          <tr class="group-row"><td colspan="4">Miscellaneous</td></tr>
+          <tr><td class="sig">GMST</td><td>Game Setting</td><td class="sig">GLOB</td><td>Global</td></tr>
+          <tr><td class="sig">SOUN</td><td>Sound</td><td class="sig">TXST</td><td>Texture Set</td></tr>
+          <tr><td class="sig">MICN</td><td>Menu Icon</td><td class="sig">SCPT</td><td>Script</td></tr>
+          <tr><td class="sig">IDLE</td><td>Idle Animation</td><td class="sig">ANIO</td><td>Animated Object</td></tr>
+          <tr><td class="sig">TES4</td><td>Plugin Info</td><td class="sig"></td><td></td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="block" id="status">
+      <h2><span class="idx">09</span> This Project's Coverage</h2>
+      <p class="lede">
+        Grounded directly in the current source, not aspirational: what <code>native/src/esm</code>
+        actually parses, and which <code>base_type</code>s <code>GamebryoObjectRegistry</code> has a
+        real factory for.
+      </p>
+      <div class="card">
+        <table class="status-table">
+          <tr><th>Signature</th><th>State</th><th>Detail</th></tr>
+          <tr><td class="sig">WRLD / CELL / REFR / LAND / LTEX</td><td><span class="pill good">Parsed</span></td><td>Explicitly handled by the ESM reader &mdash; the whole world-streaming and cell-loading pipeline runs on these five.</td></tr>
+          <tr><td class="sig">LIGH</td><td><span class="pill good">Parsed + Registered</span></td><td>Explicitly parsed by the ESM reader, and <code>object_registry.gd</code> has a dedicated <code>_build_light()</code> factory.</td></tr>
+          <tr><td class="sig">DOOR / CONT / ACTI / FURN</td><td><span class="pill good">Registered</span></td><td>Not individually parsed at the ESM-record level &mdash; instead the base record's raw 4-char signature flows through generically as <code>base_type</code>, and these four have dedicated factories in <code>_register_defaults()</code>.</td></tr>
+          <tr><td class="sig">SCOL</td><td><span class="pill good">Registered</span></td><td>Has its own <code>_build_scol()</code> factory &mdash; confirmed present in this project's real data despite the appendix-table gap noted above.</td></tr>
+          <tr><td class="sig">STAT / everything else with a MODL</td><td><span class="pill warn">Generic fallback</span></td><td>Any base record with no registered factory but a resolvable Model path becomes a plain <code>GamebryoVisual</code> &mdash; visually correct, but with none of the type-specific behavior (destructible stages, container inventories, door teleports) that a real factory would add.</td></tr>
+          <tr><td class="sig">NPC_ / CREA / ACHR / ACRE</td><td><span class="pill none">Unimplemented</span></td><td>No actor system at all: no AI, no dialogue, no factions, no combat. A placed NPC/Creature reference has no MODL of its own, so it fails even the generic-visual fallback and is silently skipped by <code>build()</code>.</td></tr>
+          <tr><td class="sig">LVLN / LVLC / LVLI</td><td><span class="pill none">Unimplemented</span></td><td>No leveled-list resolution logic exists &mdash; moot until actors/items themselves are real.</td></tr>
+          <tr><td class="sig">QUST / DIAL / INFO / FACT / PACK</td><td><span class="pill none">Unimplemented</span></td><td>No quest state machine, no dialogue tree traversal, no faction reputation tracking, no AI packages.</td></tr>
+          <tr><td class="sig">WEAP / ARMO / AMMO / ALCH / everything under Items</td><td><span class="pill none">Unimplemented</span></td><td>No inventory system exists to hold them yet &mdash; a prerequisite this shares with the actor gap above.</td></tr>
+          <tr><td class="sig">TACT / TERM / TREE / GRAS / MSTT / PWAT / CLMT / WTHR / ECZN</td><td><span class="pill none">Unimplemented</span></td><td>Real WorldObject subtypes with no registered factory yet &mdash; each would fall through to the generic-visual path today if it happens to carry a MODL, or be silently skipped if not.</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <footer class="doc-foot">
+      Compiled 2026-08-21 for the New Vegas Godot port. Sources: fopdoc's FalloutNV Records
+      reference (automated capture, spot-verify before relying on it exhaustively); 47 saved
+      GECK Wiki pages under <code>enginedocs/GeckWiki/</code> (Category: Objects, WorldObjects,
+      Actor&nbsp;Data, Miscellaneous, Leveled&nbsp;Lists, and their linked articles); this
+      repository's own <code>native/src/esm</code> and <code>project/gamebryo/object_registry.gd</code>.
+    </footer>
+  </main>
+</div>

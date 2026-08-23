@@ -1,0 +1,329 @@
+<title>Mojave Save Architecture</title>
+<style>
+:root {
+  --bg: #EDEDE1;
+  --surface: #E3E3D4;
+  --surface-2: #D8D8C6;
+  --ink: #1E2823;
+  --ink-soft: #4C584F;
+  --ink-faint: #79806f;
+  --accent: #8A5A2B;
+  --accent-2: #2B5C6B;
+  --rule: #C6C6B2;
+  --code-bg: #DEDECE;
+  --real: #2B5C6B;
+  --real-bg: #DCE7E9;
+  --proposed: #6B4C8A;
+  --proposed-bg: #E7DFF0;
+  --warn: #9C6B12;
+  --warn-bg: #F2E3C2;
+  --shadow: 0 1px 2px rgba(30,40,35,0.08), 0 6px 20px rgba(30,40,35,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+    --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+    --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+    --real: #6BB2C2; --real-bg: #16292D;
+    --proposed: #B79BE0; --proposed-bg: #241A33;
+    --warn: #E0B45C; --warn-bg: #35290F;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171A; --surface: #172023; --surface-2: #1D2A2D;
+  --ink: #DCE6E1; --ink-soft: #9AACA5; --ink-faint: #66766f;
+  --accent: #D9A441; --accent-2: #6BB2C2; --rule: #2B3B3E; --code-bg: #0E1517;
+  --real: #6BB2C2; --real-bg: #16292D;
+  --proposed: #B79BE0; --proposed-bg: #241A33;
+  --warn: #E0B45C; --warn-bg: #35290F;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.35);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px; line-height: 1.65;
+}
+h1, h2, h3, h4 {
+  font-family: "Bahnschrift", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  text-wrap: balance; color: var(--ink); margin: 0;
+}
+code, .mono { font-family: ui-monospace, "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace; }
+a { color: var(--accent-2); }
+a:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { max-width: 900px; margin: 0 auto; padding: 56px 28px 120px; }
+@media (max-width: 640px) { .wrap { padding: 40px 18px 100px; } }
+
+.hero { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.hero .kicker {
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+}
+.hero h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; max-width: 18ch; }
+.hero .dek {
+  font-family: ui-sans-serif, sans-serif; text-transform: none; letter-spacing: normal;
+  color: var(--ink-soft); max-width: 70ch; margin-top: 14px; font-size: 16px;
+}
+.hero .companion {
+  margin-top: 16px; font-size: 13.5px; color: var(--ink-faint);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+
+section.block { margin-bottom: 48px; }
+section.block > h2 {
+  font-size: 20px; padding-bottom: 9px; border-bottom: 2px solid var(--accent);
+  margin-bottom: 16px; display: flex; align-items: baseline; gap: 10px;
+}
+section.block > h2 .idx { color: var(--accent); font-family: ui-monospace, monospace; font-size: 14px; }
+section.block h3 {
+  font-size: 15px; text-transform: none; letter-spacing: normal; font-weight: 700;
+  margin: 20px 0 8px; color: var(--ink);
+}
+p { margin: 10px 0; max-width: 70ch; }
+strong { color: var(--ink); }
+.cls {
+  font-family: ui-monospace, monospace; font-size: 0.92em; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px; background: var(--code-bg); color: var(--accent-2);
+  white-space: nowrap;
+}
+
+/* Confidence banner */
+.confidence {
+  display: flex; gap: 16px; align-items: flex-start;
+  background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: 8px; padding: 18px 22px; margin: 0 0 40px; box-shadow: var(--shadow);
+}
+.confidence .mark {
+  font-family: ui-monospace, monospace; font-weight: 700; font-size: 12px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--warn);
+  white-space: nowrap; padding-top: 2px;
+}
+.confidence p { margin: 0; font-size: 14.5px; color: var(--ink-soft); max-width: none; }
+.confidence p strong { color: var(--ink); }
+.confidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+@media (max-width: 600px) { .confidence-grid { grid-template-columns: 1fr; } }
+.conf-item { font-size: 13px; padding: 8px 12px; border-radius: 5px; background: var(--surface); }
+.conf-item .lvl { font-weight: 700; font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+.conf-item.high .lvl { color: var(--real); }
+.conf-item.low .lvl { color: var(--warn); }
+
+.tree-panel, .code-panel {
+  background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 22px; margin: 16px 0; overflow-x: auto; box-shadow: var(--shadow);
+}
+.tree-panel pre, .code-panel pre {
+  margin: 0; font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13.2px; line-height: 1.65; white-space: pre;
+}
+.tree-panel .tag { color: var(--accent-2); font-weight: 700; }
+.tree-panel .payload { color: var(--ink-faint); }
+.tree-panel .hl { color: var(--real); font-weight: 700; }
+
+table.xtable { width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0; }
+table.xtable th {
+  text-align: left; font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 8px 12px 8px 0; border-bottom: 2px solid var(--accent);
+}
+table.xtable td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.xtable td:first-child { color: var(--accent-2); font-weight: 600; white-space: nowrap; }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--surface);
+  padding: 16px 20px; border-radius: 0 6px 6px 0; font-size: 15px; color: var(--ink-soft);
+  margin: 18px 0; box-shadow: var(--shadow);
+}
+.callout strong { color: var(--ink); }
+
+/* real vs proposed panels */
+.rp-panel { border-radius: 8px; padding: 20px 22px; margin: 16px 0; box-shadow: var(--shadow); }
+.rp-panel.real { background: var(--real-bg); border: 1px solid color-mix(in srgb, var(--real) 35%, transparent); }
+.rp-panel.proposed { background: var(--proposed-bg); border: 1px solid color-mix(in srgb, var(--proposed) 35%, transparent); }
+.rp-panel .rp-head {
+  font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;
+}
+.rp-panel.real .rp-head { color: var(--real); }
+.rp-panel.proposed .rp-head { color: var(--proposed); }
+.rp-panel p:first-of-type { margin-top: 0; }
+.rp-panel p { font-size: 14.5px; color: var(--ink-soft); }
+.rp-panel p strong { color: var(--ink); }
+
+/* keep/drop table */
+table.keepdrop { width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0; }
+table.keepdrop th {
+  text-align: left; font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+  font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 8px 12px 8px 0; border-bottom: 2px solid var(--accent);
+}
+table.keepdrop td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; font-size: 14px; }
+table.keepdrop td.verdict { font-weight: 700; white-space: nowrap; }
+table.keepdrop td.verdict.keep { color: var(--real); }
+table.keepdrop td.verdict.drop { color: var(--warn); }
+
+footer.doc-foot {
+  border-top: 1px solid var(--rule); margin-top: 56px; padding-top: 18px;
+  color: var(--ink-faint); font-size: 13px;
+}
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="kicker">Architecture Notes</div>
+    <h1>Mojave Save Architecture</h1>
+    <p class="dek">
+      What Gamebryo/FNV actually saves, why it's organized the way it is, and what a Godot-native
+      equivalent should keep versus deliberately not reproduce.
+    </p>
+    <p class="companion">Fifth of five companion documents, alongside the Mojave Data Model,
+    Class Hierarchy, Script Interpreter, and Build Plan.</p>
+  </div>
+
+  <div class="confidence">
+    <span class="mark">Sourcing note</span>
+    <div>
+      <p>
+        Unlike the other four documents, there's no fopdoc-equivalent authoritative spec for the
+        <code>.fos</code> save format, and nothing was found saved locally either. What follows is
+        recalled community/tooling knowledge (FO3Edit's save handling, Wrye Bash's save editor,
+        scattered NVSE-plugin notes) &mdash; not verified against a primary source or real save bytes
+        this session. Read the architecture-level claims with real confidence; read exact field
+        layouts as "probably roughly right," not gospel.
+      </p>
+      <div class="confidence-grid">
+        <div class="conf-item high"><span class="lvl">High confidence</span> &mdash; the delta/changeform architecture, the reason it exists, the broad category list (header, plugin list, changeforms, global tables, created forms)</div>
+        <div class="conf-item low"><span class="lvl">Low confidence</span> &mdash; exact byte offsets, precise change-flag bit meanings, per-category blob ordering</div>
+      </div>
+    </div>
+  </div>
+
+  <section class="block">
+    <h2><span class="idx">01</span> The core idea: a diff, not a snapshot</h2>
+    <p>
+      A Gamebryo save is not a copy of the world. The full Mojave &mdash; every rock, every NPC,
+      every container's default loot &mdash; already exists, fully specified, in
+      <code>FalloutNV.esm</code> and its DLC masters. The save file only records what's
+      <strong>different</strong> from that baseline for whichever objects actually changed. An
+      untouched filing cabinet in a cell you never visited isn't in your save at all &mdash; the
+      engine re-derives it from the ESM every time that cell loads.
+    </p>
+    <p>
+      This is why Bethesda saves stay a manageable size despite the game world being enormous, and
+      it's the load-bearing design constraint that shapes everything else about the format.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">02</span> What's actually in one</h2>
+    <div class="tree-panel">
+      <pre><span class="tag">Header</span>          <span class="payload">player name, level, location, playtime, screenshot thumbnail, engine version</span>
+<span class="tag">Plugin list</span>     <span class="payload">every active ESM/ESP, in load order -- FormIDs are load-order-relative</span>
+<span class="hl">Changeforms</span>     <span class="hl">FormID + change-type bitmask + only the changed category data -- the actual payload</span>
+<span class="tag">Global data</span>    <span class="payload">quest stages, global variable values, per-script local variable values,
+                player stats/perks/reputation, active temporary magic effects</span>
+<span class="tag">Created forms</span>  <span class="payload">objects that never existed in any ESM, generated at runtime -- fully
+                serialized, since there's no baseline to diff against</span></pre>
+    </div>
+    <table class="xtable">
+      <tr><th>Piece</th><th>Why it exists</th></tr>
+      <tr><td>Changeforms</td><td>One entry per Reference/Actor/Quest whose state diverged from its ESM baseline. A looted container's changeform records its new inventory; an unopened one has no entry and regenerates from the ESM's own item list on load.</td></tr>
+      <tr><td>Plugin list</td><td>FormIDs only mean anything relative to a specific load order &mdash; a save can't resolve correctly against a different plugin set without this, which is also the source of the classic "missing master" load warning.</td></tr>
+      <tr><td>Created forms</td><td>Get a fresh, save-only FormID (the <code>FF</code>-prefix convention) and are stored in full, since there's genuinely nothing in any ESM to diff against.</td></tr>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">03</span> How loading reconciles it</h2>
+    <p>
+      At load time: parse the plugin list and validate it against the currently active data set
+      (this is the actual mechanism behind "this save requires Dead Money" type warnings). Then, for
+      every object the game actually needs: the ESM/DLC-master data supplies the baseline, and if a
+      changeform exists for that FormID, its fields patch the baseline in place. Created forms are
+      simply materialized fresh from their own fully-serialized record. Nothing is ever
+      reconstructed by replaying a change log &mdash; each changeform is itself already the final
+      state, not a delta-of-deltas.
+    </p>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">04</span> Does needing real multi-master loading change this?</h2>
+    <p>
+      Partly, and it's worth being precise about which part. Rendering DLC content correctly at all
+      &mdash; not just saves &mdash; already requires real load-order-relative FormID resolution: a
+      later-loaded master can override a base-game record by reusing its FormID under a different
+      origin index. That's unavoidable infrastructure regardless of whether a save system exists.
+    </p>
+    <div class="two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="rp-panel real">
+        <div class="rp-head">Changes as a result</div>
+        <p>Using real FormIDs as save keys stops being "extra work to avoid" &mdash; once multi-master
+        resolution exists for DLC, it's the natural, already-available identity to key a save entry
+        on. No reason to invent a second ID scheme.</p>
+      </div>
+      <div class="rp-panel proposed">
+        <div class="rp-head">What doesn't change</div>
+        <p>The delta <em>idea</em> is separate from FormID identity. Reproducing Bethesda's specific
+        bit-packed change-flag categories and per-category blob layout is still not worth doing
+        &mdash; that's a 2010-era space optimization for a binary format nobody needs
+        byte-compatibility with.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">05</span> Keep vs. drop for a Godot-native design</h2>
+    <table class="keepdrop">
+      <tr><th>Idea</th><th></th><th>Why</th></tr>
+      <tr><td>Delta/sparse storage &mdash; only save what changed</td><td class="verdict keep">KEEP</td><td>Same reason it mattered for Bethesda: serializing every placed object's full state every save would be enormous and slow in Godot too.</td></tr>
+      <tr><td>FormID as the save key</td><td class="verdict keep">KEEP</td><td>Free once real multi-master resolution exists for DLC &mdash; no reason to duplicate identity schemes.</td></tr>
+      <tr><td>Recording the active plugin/DLC set in the save header</td><td class="verdict keep">KEEP</td><td>Enables the same "you're missing content this save needs" validation, essentially free given load-order tracking is already required.</td></tr>
+      <tr><td>Bit-packed change-flag categories</td><td class="verdict drop">DROP</td><td>A binary-format space optimization; a Godot <code>Dictionary</code>'s own sparse key presence already tells you what changed, no bitmask needed.</td></tr>
+      <tr><td>Byte-compatible <code>.fos</code> layout</td><td class="verdict drop">DROP</td><td>No value in matching Bethesda's file format bit-for-bit &mdash; nothing reads this save but this project's own engine.</td></tr>
+      <tr><td>Per-category blob ordering / fixed offsets</td><td class="verdict drop">DROP</td><td>An artifact of a hand-packed binary format; Godot's own serialization (typed Dictionary, Resource, JSON) doesn't need it.</td></tr>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2><span class="idx">06</span> A sketch, tied to the other four documents</h2>
+    <p>
+      Mapped onto what's already been designed: the "what changed" fields per object aren't
+      abstract &mdash; they're exactly the fields the Class Hierarchy and Script Interpreter
+      documents already identified as mutable state.
+    </p>
+    <div class="code-panel">
+      <pre>SaveState (Resource)
+  plugin_list: Array[String]          <span class="cm" style="color:var(--ink-faint)"># active masters, in load order -- the validation-at-load piece</span>
+  player_data: Dictionary             <span class="cm" style="color:var(--ink-faint)"># stats, perks, position, inventory</span>
+  changed_references: Dictionary      <span class="cm" style="color:var(--ink-faint)"># FormID -> { position?, health?, inventory?, disabled?, ... }</span>
+                                       <span class="cm" style="color:var(--ink-faint)"># only present for a GamebryoReference that actually diverged</span>
+  quest_states: Dictionary            <span class="cm" style="color:var(--ink-faint)"># FormID -> { stage, local_vars }</span>
+                                       <span class="cm" style="color:var(--ink-faint)"># the Quest Resource's own runtime state, from the Class Hierarchy doc</span>
+  script_locals: Dictionary           <span class="cm" style="color:var(--ink-faint)"># FormID -> { var_name: value }</span>
+                                       <span class="cm" style="color:var(--ink-faint)"># per-instance ExecutionContext state, from the Interpreter doc</span>
+  created_forms: Array[Dictionary]    <span class="cm" style="color:var(--ink-faint)"># fully-serialized, runtime-only objects -- no baseline to diff against</span></pre>
+    </div>
+    <p>
+      An entry only exists in <code>changed_references</code> at all if something about that
+      Reference actually diverged from its ESM baseline &mdash; sparse by construction, the same
+      property the changeform system has, without needing its binary encoding. A
+      <code>GamebryoActor</code>'s own local script variables (the Calling-Reference Contract from
+      the Build Plan doc) are exactly what <code>script_locals</code> persists per FormID; a Quest
+      <code>Resource</code>'s stage and variables are exactly what <code>quest_states</code>
+      persists. Nothing here needs a new concept &mdash; it's the same object model already designed,
+      with a save/load boundary drawn around whichever fields are actually mutable at runtime.
+    </p>
+  </section>
+
+  <footer class="doc-foot">
+    Local design notes, not published. Companion to <code>nv_data_model_reference.html</code>,
+    <code>nv_class_hierarchy.html</code>, <code>nv_script_interpreter_design.html</code>, and
+    <code>nv_build_plan.html</code>. Sourcing is recalled community/tooling knowledge, not verified
+    against a primary spec or real save bytes &mdash; see the sourcing note above before treating any
+    specific field layout as settled.
+  </footer>
+</div>
