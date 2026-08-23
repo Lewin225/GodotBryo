@@ -62,12 +62,29 @@ is genuinely from scratch, not extending existing partial support.
    `NiSkinInstance`/bone-hierarchy support — that's the harder, later part of Phase 3,
    deliberately still deferred; this only extracts rigid single/multi-node transform
    tracks.
-3. **Playback mechanism, decided not assumed:** compare a lightweight custom
-   interpolator (manual per-frame `Transform3D` lerp/slerp between keyframes) against
-   reusing Godot's `AnimationPlayer`/`AnimationLibrary` for this single-node case
-   before picking one — a full `AnimationPlayer` pipeline may or may not be worth
-   standing up this early versus when real skeletal animation lands later in this
-   phase.
+3. ✅ **Playback mechanism, decided not assumed: Godot's native `Animation`/
+   `AnimationPlayer`, not a hand-rolled interpolator.** Checked the real API surface
+   directly via the vendored `godot-cpp` headers before deciding (`animation.hpp`,
+   `animation_player.hpp`, `animation_library.hpp`), not from memory. Real tradeoff
+   found: Godot's typed `TYPE_POSITION_3D`/`TYPE_ROTATION_3D`/`TYPE_SCALE_3D` tracks
+   only support a fixed interpolation set (`NEAREST`/`LINEAR`/`CUBIC`/`LINEAR_ANGLE`/
+   `CUBIC_ANGLE`) — `CUBIC` derives tangents from neighboring keys (Catmull-Rom-style),
+   not the explicit forward/backward Hermite tangents our `QUADRATIC_KEY` data
+   carries, and there's no native equivalent for `TBC_KEY` at all. That's a real
+   accuracy gap, not a rounding error — quadratic interpolation is the *majority* case
+   for real rotation/scale data (see step 1's own census). A `Bezier`-track hybrid
+   (exact per-key tangent handles exist for `TYPE_BEZIER`, converted from our Hermite
+   tangents via the standard cubic-Hermite↔cubic-Bezier equivalence) would close that
+   gap but costs real complexity — Bezier tracks are scalar-only (3 tracks per Vector3
+   channel), no quaternion-rotation equivalent at all, and per-channel track-type
+   branching logic. Decided to start with native typed tracks (`CUBIC` standing in for
+   both `QUADRATIC` and `TBC`) and revisit the Bezier hybrid only if a specific real
+   animated object is confirmed to look visibly wrong in play — not preemptively, per
+   this project's own "verify, don't assume" discipline. The deciding factor: native
+   tracks get the *entire* `AnimationPlayer` machinery for free (looping modes,
+   `animation_finished`, scrubbing) and are the same system Phase 3's later skeletal
+   animation work will need anyway, so this also avoids building a second, throwaway
+   playback system now.
 4. **Wire `activate()`:** a non-teleporting door with animation data plays its open
    animation instead of returning `{}`. Determine the real open/closed/opening/closing
    state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
