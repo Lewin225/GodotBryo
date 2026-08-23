@@ -40,6 +40,7 @@ const INTERACT_REACH_METERS := 2.5
 
 var cell_loader: CellLoader
 var world_streamer: WorldStreamer
+var script_engine: ScriptEngine
 var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 var _sun: DirectionalLight3D
@@ -80,6 +81,7 @@ var _pending_door_spawn: Dictionary = {}
 func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
+	script_engine = $ScriptEngine
 	_cell_label = $DebugHud/CellLabel
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
@@ -89,7 +91,16 @@ func _ready() -> void:
 	cell_loader.load_completed.connect(_on_load_completed)
 	await get_tree().process_frame # let CellLoader's own _ready() open the ESM
 
-	# Reuse CellLoader's already-open EsmReader rather than opening a second one.
+	# Reuse CellLoader's already-open EsmReader rather than opening a second
+	# one -- same convention _apply_cell_lighting() below already uses.
+	# Wired into both real object_registry.gd instances (interior + exterior)
+	# here, once, rather than each loader reaching for it itself -- neither
+	# CellLoader nor WorldStreamer has any reason to know a ScriptEngine
+	# exists at all otherwise (phases/5/00-script-interpreter-foundation.md).
+	script_engine.esm = cell_loader.esm
+	cell_loader.registry.script_engine = script_engine
+	world_streamer.registry.script_engine = script_engine
+
 	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
 		push_error("game.gd: default cell not found: " + DEFAULT_CELL_EDITOR_ID)

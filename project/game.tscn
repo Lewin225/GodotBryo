@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
 [ext_resource type="Script" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
+[ext_resource type="Script" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 dof_blur_far_distance = 271.22
@@ -51,6 +52,9 @@ cell_editor_id = "GSDocMitchellHouse"
 script = ExtResource("4_worldstreamer")
 use_terrain3d = true
 terrain3d_debug_dump_grid = Vector2i(-18, 0)
+
+[node name="ScriptEngine" type="Node" parent="."]
+script = ExtResource("7_scriptengine")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)

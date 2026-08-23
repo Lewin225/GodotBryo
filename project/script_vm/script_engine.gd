@@ -41,10 +41,27 @@ func _process(delta: float) -> void:
 
 ## Parses (or reuses the cached parse of) `script_form_id`'s real SCTX and
 ## attaches a fresh ScriptExecutionContext to `node`. Call once when a
-## scripted Dynamic node is constructed (object_registry.gd's own factories
-## are the natural call site -- not wired in yet this pass, a real,
-## deliberate integration step left for the next milestone so this class
-## can be tested standalone first).
+## scripted Dynamic node is constructed -- `GamebryoObjectRegistry._finalize()`
+## is the real call site (every construction path, threaded or not, funnels
+## through it -- see that function's own doc comment).
+##
+## Dispatches a real "OnLoad" block immediately, if the script defines one
+## -- real language semantics (confirmed via nv_script_interpreter_design.md's
+## own real block-type census, OnLoad ranked #5 by usage): it fires once,
+## the moment a reference is loaded into the world, which construction time
+## *is* for this project's own Dynamic-object model. Deliberately NOT
+## dispatching "OnActivate" here or anywhere yet -- game.gd's interact
+## raycast still calls a Dynamic type's own activate() directly,
+## unconditionally. A real script's OnActivate might not want that (a real,
+## confirmed example: GSDocMitchellDoorScript's own bare `activate` call is
+## exactly how a scripted door opts BACK into the engine's default
+## open/close behavior -- meaning right now we run that default
+## unconditionally for every door, scripted or not, which is only
+## coincidentally correct for doors whose whole script is "just call
+## activate"). Wiring OnActivate for real needs the interpreter to
+## propagate a script-triggered activate() call's own outcome (Dictionary)
+## back out through dispatch_event(), which doesn't exist yet -- a real,
+## deliberately separate follow-up, not squeezed in here.
 func register_scripted_node(node: Node, script_form_id: int) -> void:
 	if script_form_id == 0 or esm == null:
 		return
@@ -58,6 +75,8 @@ func register_scripted_node(node: Node, script_form_id: int) -> void:
 	_node_interpreter[node] = interpreter
 	if interpreter.has_block("GameMode") or interpreter.has_block("MenuMode"):
 		_game_mode_nodes.append(node)
+	if interpreter.has_block("OnLoad"):
+		dispatch_event(node, "OnLoad")
 
 func unregister_scripted_node(node: Node) -> void:
 	_contexts.erase(node)

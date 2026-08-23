@@ -60,6 +60,20 @@ func _ready() -> void:
 	# top of the tree should be the lowest-precedence op: ||
 	check(cond["kind"] == "binop" and cond["op"] == "||", "top-level op is '||' (lowest precedence)")
 
+	print("--- stray reserved keyword (real, shipped data) ---")
+	# GSBrokenSMGScript's own real GameMode block: one "if", two "endif"s --
+	# a real authoring mismatch that evidently still shipped. Confirmed this
+	# session via the full script_engine_integration test: without this
+	# fix, the stray endif parsed as a zero-arg call to a function literally
+	# named "endif".
+	var stray_source := "BEGIN GameMode\nif (x == 1)\n\tSet y to 1\nendif\nendif\nEND\n"
+	var stray_program := parse(stray_source)
+	var stray_stmts: Array = stray_program["blocks"][0]["stmts"]
+	check(stray_stmts.size() == 2, "two top-level statements: the if, and the stray endif (got %d)" % stray_stmts.size())
+	if stray_stmts.size() == 2:
+		check(stray_stmts[0]["kind"] == "if", "first statement is the real if")
+		check(stray_stmts[1]["kind"] == "noop", "stray endif parses as a noop, never a call named 'endif'")
+
 	_finish()
 
 func _finish() -> void:
