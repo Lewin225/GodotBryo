@@ -45,13 +45,18 @@ var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redun
 var _sun: DirectionalLight3D
 var _world_environment: WorldEnvironment
 
-# Rendering-issues list #2/#5: F3-toggled debug stats overlay (DebugStats.gd)
-# -- engine frame stats plus streaming/resource-cache state, refreshed on a
-# throttled interval (not every frame -- string building isn't free) and
-# only while actually visible.
-var _stats_label: Label
-const STATS_REFRESH_INTERVAL_SEC := 0.25
-var _stats_refresh_timer := 0.0
+# DebugStats.gd's own F3 overlay moved to a real editor debugger panel
+# (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
+# duplicated.
+#
+# F3 (freed up above) now toggles this instead: what the interact raycast
+# is currently looking at, by node name + GamebryoReference's own
+# editor_description (base_type/editor_id/form_ids/model, already built
+# in _finalize() for every real placement) -- built to make it fast to
+# identify which real DOOR/asset a given piece of world geometry actually
+# is while walking around in Play, instead of hunting for it blind
+# through ESM data (e.g. tracking down a specific bugged door instance).
+var _look_at_label: Label
 
 # Standalone .tres files (not inline .tscn sub-resources) so each is
 # independently editable/previewable in the editor -- WorldEnvironment
@@ -76,7 +81,7 @@ func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
 	_cell_label = $DebugHud/CellLabel
-	_stats_label = $DebugHud/StatsLabel
+	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
@@ -126,14 +131,11 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 ## needs this function to change -- it just needs to expose the same
 ## contract (an `activate() -> Dictionary` callable, per DoorNode's own
 ## established pattern in project/gamebryo/door_node.gd).
-func _process(delta: float) -> void:
-	if Input.is_action_just_pressed("toggle_stats") and _stats_label != null:
-		_stats_label.visible = not _stats_label.visible
-	if _stats_label != null and _stats_label.visible:
-		_stats_refresh_timer -= delta
-		if _stats_refresh_timer <= 0.0:
-			_stats_refresh_timer = STATS_REFRESH_INTERVAL_SEC
-			_stats_label.text = DebugStats.build_report(cell_loader, world_streamer, _find_character_body(self))
+func _process(_delta: float) -> void:
+	if Input.is_action_just_pressed("toggle_stats") and _look_at_label != null:
+		_look_at_label.visible = not _look_at_label.visible
+	if _look_at_label != null and _look_at_label.visible:
+		_update_look_at_label()
 	if world_streamer != null and world_streamer.is_active():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
@@ -143,28 +145,60 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("interact"):
 		_try_interact()
 
-func _try_interact() -> void:
+## Shared by _try_interact() and _update_look_at_label() -- the same
+## reach/gesture raycast, run either on an actual interact press or every
+## frame just to see what's being looked at. Returns {} if nothing usable
+## was hit, else { "collider": Object, "target": Object } -- `target` is
+## `collider` itself, or (for a Dynamic type's real collision, which lands
+## on its internal GamebryoCollisionBody child, not the GamebryoReference
+## itself -- enginedocs/nv_class_hierarchy.md: composed, not inherited)
+## the resolved owner_ref.
+func _interact_raycast() -> Dictionary:
 	var player := _find_character_body(self)
 	if player == null or not ("CAMERA" in player) or player.CAMERA == null:
-		return
+		return {}
 	var camera: Camera3D = player.CAMERA
 	var from: Vector3 = camera.global_position
 	var to: Vector3 = from - camera.global_transform.basis.z * INTERACT_REACH_METERS
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if result.is_empty():
-		return
+		return {}
 	var collider: Object = result.get("collider")
 	if collider == null:
-		return
-	# A hit on a Dynamic type's real collision lands on its internal
-	# GamebryoCollisionBody child, not the GamebryoReference itself
-	# (enginedocs/nv_class_hierarchy.md: GamebryoReference is Node3D, not
-	# StaticBody3D -- collision is composed, not inherited) -- resolve up to
-	# the real reference before checking for activate().
+		return {}
 	var target: Object = collider
 	if collider is GamebryoCollisionBody:
 		target = collider.owner_ref
+	return { "collider": collider, "target": target }
+
+## F3-toggled (see _process()). Reuses _interact_raycast() unconditionally
+## every frame while visible -- one raycast is cheap, and this is a
+## debug-only feature. `target.editor_description` (built once in
+## GamebryoObjectRegistry._finalize() for every real placement -- base_type,
+## editor_id, base/refr form_id, and model path when there is one) is
+## already exactly the information needed to identify a specific real
+## asset by eye instead of guessing which ESM record it is; this just
+## displays it, no new data plumbing.
+func _update_look_at_label() -> void:
+	var hit := _interact_raycast()
+	if hit.is_empty():
+		_look_at_label.text = ""
+		return
+	var collider: Object = hit["collider"]
+	var target: Object = hit["target"]
+	var text := "hit: %s" % String(collider.name)
+	if target != collider and target != null:
+		text += "\nowner: %s" % String(target.name)
+	if target != null and "editor_description" in target:
+		text += "\n" + String(target.editor_description)
+	_look_at_label.text = text
+
+func _try_interact() -> void:
+	var hit := _interact_raycast()
+	if hit.is_empty():
+		return
+	var target: Object = hit["target"]
 	if target == null or not target.has_method("activate"):
 		return
 	var outcome: Dictionary = target.activate()
@@ -175,9 +209,16 @@ func _try_interact() -> void:
 	var dest_wrld_form_id: int = cell_loader.esm.get_cell_worldspace(dest_cell_form_id)
 	if dest_wrld_form_id == -1:
 		# Interior destination -- CellLoader's existing single-active-cell
-		# path. Tear down any exterior streaming first: only one of
-		# CellLoader/WorldStreamer is ever "where the player is" at a time.
-		world_streamer.deactivate()
+		# path. Only one of CellLoader/WorldStreamer is ever "where the
+		# player is" at a time, but PAUSE the exterior streaming rather than
+		# deactivate() it -- this game's RAM budget has no reason to pay
+		# activate()'s full re-stream/re-texture cost on every single door
+		# back outside (a real, measured multi-second stall per door) the
+		# way the original Xbox 360 port's 512MB constraint would have
+		# forced. See WorldStreamer.set_paused()'s own doc comment for what
+		# "paused" actually has to cover (RenderingServer AND PhysicsServer,
+		# not just Node visibility).
+		world_streamer.set_paused(true)
 		_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
 		cell_loader.load_cell(dest_cell_form_id)
 	else:
