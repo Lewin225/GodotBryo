@@ -213,19 +213,32 @@ is genuinely from scratch, not extending existing partial support.
    real raycast-through-the-collider check passes end to end through the real
    `CellLoader` → `object_registry.gd` path. Full regression suite at the same baseline
    as before this step.
-8. **Wire `activate()`:** a non-teleporting door with animation data plays its open
-   animation instead of returning `{}`. Determine the real open/closed/opening/closing
-   state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
-   against real data, referenced but not fully specified in
-   `enginedocs/GeckWiki/scripting/txt/Scripting for Beginners - GECK.txt`'s own
-   `GetOpenState == 3 ; Closed` example) so re-activating a door mid-swing or already
-   open does the right thing, matching the real `AutoClosingDoor` example script's own
-   behavior rather than guessing. State is kept in-memory on `DoorNode` only — no
-   persistence; that's save/load's job, out of scope here.
+8. ✅ **Wire `activate()`.** A non-teleporting door now toggles a real `is_open: bool`
+   (in-memory only, no persistence — save/load's job) and plays the matching real
+   animation via its `AnimationPlayer` child, as a side effect before returning `{}` —
+   `game.gd`'s own `outcome.is_empty() -> return` needed no changes at all, "nothing
+   happens" was always about destination data, not visuals. The exact
+   open/closed/opening/closing state VALUES (`GetOpenState`'s own enum) weren't needed
+   in the end — real data found via `enginedocs/GeckWiki/scripting/txt/Useful Scripts -
+   GECK.txt`'s own `AutoClosingDoor` example script confirms the shape that actually
+   matters: `OnActivate` calls the engine's own default `Activate`, and `GetOpenState`'s
+   documented values (1 = Open, 3 = Closed, 4 = Closing) confirm a door genuinely
+   tracks real state across activations — i.e. **toggle each call**, not "play once."
+   Defaults closed, confirmed against the real DLC04 shack door's own animation data:
+   `Open` starts at identity rotation, `Close` ends within ~0.5° of identity (a small
+   authored settle/overshoot, not an exact match, but close enough to confirm
+   identity/unanimated == closed for this door). Does NOT attempt a clean mid-swing
+   reversal — re-activating while still animating just switches to the other animation
+   via Godot's own default blend, a real, deliberate simplification, not silently
+   claimed as exact. `tests/test_door_activate.gd` extended: `NVCraftsmanHomeDoor`
+   starts closed, toggles open on `activate()` (only if its own model actually has
+   animation data — checked via `AnimationPlayer` presence, not assumed), toggles back
+   closed on a second call.
 9. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
    unmodified — teleport and animated-swing are two different code paths that only
    share the `activate()` entry point and the `GamebryoCollisionBody`/`owner_ref`
-   resolution already built for it.
+   resolution already built for it. ✅ Confirmed: full regression suite at the same
+   baseline as before this step.
 
 ### Part B — GECK feature parity (lower priority, not blocking)
 
@@ -265,10 +278,14 @@ is genuinely from scratch, not extending existing partial support.
 ## Acceptance criteria
 
 - [ ] A real non-teleporting door visibly swings open on interact, in real play (not
-      just a headless test).
+      just a headless test) — headless-verified (toggle logic, animation keyframe
+      values); not yet confirmed via `game.gd`'s actual interact raycast in a live
+      Play session.
 - [ ] Re-activating an already-open door produces the correct real behavior (closes,
-      or whatever GetOpenState's real states dictate) — confirmed against real data,
-      not guessed.
-- [ ] `tests/test_door_activate.tscn` (teleport case) still passes unmodified.
+      or whatever GetOpenState's real states dictate) — confirmed via
+      `AutoClosingDoor`'s own real script (toggle-per-activation, not "play once");
+      the visible in-play result of that toggle is still unconfirmed (same caveat as
+      above).
+- [x] `tests/test_door_activate.tscn` (teleport case) still passes unmodified.
 - [ ] Open/close sounds audible in real play for at least one door that has them.
-- [ ] Full existing regression suite has no new failures.
+- [x] Full existing regression suite has no new failures.
