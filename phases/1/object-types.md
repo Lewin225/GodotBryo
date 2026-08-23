@@ -5,6 +5,15 @@ Parent: [Phase 1](README.md) · Companion to [architecture.md](architecture.md)
 [00-interior-cell-loader.md](00-interior-cell-loader.md)/[01-object-type-registry.md](01-object-type-registry.md)
 are where these get implemented)
 
+**What "Placement status" measures, in every table below:** whether the type resolves
+its `REFR` to the right base record and places the right mesh at the right transform —
+Phase 1's own bar, stated in the paragraph below. It does **not** mean
+gameplay-functional. Pickup, inventory, equipping, consuming, reading, opening, locking,
+usable state — none of that exists for anything in this doc yet, for any type, and none
+of it is supposed to until later phases (inventory/equipment is Phase 7/8 per
+[ROADMAP.md](../../ROADMAP.md)). "Done" means "correctly placed as a mesh," full stop —
+nothing more.
+
 Every record type a `REFR` (or `ACHR`/`ACRE` for actors) can point to via its `NAME`
 subrecord, per the [fopdoc REFR reference list](https://tes5edit.github.io/fopdoc/FalloutNV/Records/REFR.html)
 — the authoritative source for this table (accessible, unlike UESP which 403s from
@@ -20,7 +29,7 @@ anything, needs to happen beyond placing a mesh.
 
 ## Tier 0 — proven
 
-| Type | Name | Status |
+| Type | Name | Placement status |
 |---|---|---|
 | `STAT` | Static | **Done.** Full pipeline proven end-to-end in [0.2](../0/02-esm-parser.md)/[0.5](../0/05-integration-tool.md), 15 real objects round-tripped. |
 
@@ -42,7 +51,7 @@ to the generic structural fallback (`GamebryoVisual`, keyed on MODL presence alo
 a base_type whitelist) — confirmed intentional via `_register_defaults()`'s own comment
 in `object_registry.gd`, not an oversight.
 
-| Type | Name | Notes | Status |
+| Type | Name | Notes | Placement status |
 |---|---|---|---|
 | `FURN` | Furniture | Idle-animation furniture (chairs, workbenches). Mesh-only for Phase 1. | Done |
 | `CONT` | Container | Openable containers. Mesh-only; inventory contents out of scope. | Done |
@@ -66,13 +75,13 @@ in `object_registry.gd`, not an oversight.
 
 ## Tier 2 — needs new Godot-side work
 
-| Type | Name | What's new | Status |
+| Type | Name | What's new | Placement status |
 |---|---|---|---|
 | `LIGH` | Light | Has `MODL` for a fixture mesh (confirmed) **plus** a `DATA` subrecord, decoded into a real `OmniLight3D`/`SpotLight3D` in `object_registry.gd`. `DATA` layout confirmed via fopdoc: `Time (int32)`, `Radius (uint32)`, `Color (rgba)`, `Flags (uint32)`, `Falloff Exponent (float32)`, `FOV (float32)`, `Value (uint32)`, `Weight (float32)`. `Flags`' spot-vs-point bit is decoded (`kLightFlagSpot`/`LightData::is_spot()`, see [phases/1/03-light-sources.md](03-light-sources.md)). Benchmark is correctly-placed light sources, not 1:1 falloff-curve fidelity. | Done |
 
 ## Composite — needs one extra unpacking step
 
-| Type | Name | Mechanism | Status |
+| Type | Name | Mechanism | Placement status |
 |---|---|---|---|
 | `SCOL` | Static Collection | Confirmed via fopdoc: bundles multiple `STAT` refs in one record. Each part = `ONAM` (FormID of a `STAT`) + `DATA` (its own position/rotation/scale, local to the `SCOL`). A `REFR` placing a `SCOL` expands into N STAT placements, composing the `SCOL` part's local transform with the outer `REFR`'s transform (`object_registry.gd`'s `_build_scol()`). Same STAT mesh pipeline underneath. | Done |
 
