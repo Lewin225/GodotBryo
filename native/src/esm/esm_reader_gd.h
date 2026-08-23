@@ -93,6 +93,7 @@ public:
 	// bool, "off_by_default": bool }, or an empty Dictionary if the FormID
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
+	Dictionary get_item_data(int64_t item_form_id) const;
 
 	// esm::EsmFile::get_cell_lighting_data() -- a CELL's own XCLL ("Lighting")
 	// subrecord: per-cell authored ambient/directional/fog data. Empty

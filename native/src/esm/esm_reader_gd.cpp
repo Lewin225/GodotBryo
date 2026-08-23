@@ -49,6 +49,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
 	ClassDB::bind_method(D_METHOD("get_all_script_form_ids"), &EsmReader::get_all_script_form_ids);
@@ -354,6 +355,21 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
+	return out;
+}
+
+Dictionary EsmReader::get_item_data(int64_t item_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto item = file_.get_item_data(static_cast<uint32_t>(item_form_id));
+		if (!item) return out;
+		out["full_name"] = String(item->full_name.c_str());
+		out["value"] = item->value;
+		out["weight"] = item->weight;
+		out["inventory_icon"] = String(item->inventory_icon.c_str());
+		out["message_icon"] = String(item->message_icon.c_str());
+	} catch (const std::exception &e) { last_error_ = String(e.what()); }
 	return out;
 }
 
