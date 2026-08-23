@@ -151,6 +151,24 @@ func _parse_statement() -> Dictionary:
 			return { "kind": "noop" }
 	return _parse_call_statement()
 
+## Real, shipped data forced this: real scripts write "else if" as TWO
+## words (confirmed: 182/2576 real scripts, ~7% -- e.g.
+## `vMojaveExpressBoxSCRIPT`'s own real `OnLoad` block), equivalent to a
+## single-word "elseif", not "else" followed by a genuinely nested `if`
+## statement. Getting this wrong is not cosmetic: treating a two-word
+## "else if" as a real else-block whose body happens to start with an
+## unrelated `if` swallows every statement up to the NEXT real "endif" --
+## which, once that inner if's own "endif" satisfies it, is however many
+## blocks later the parser next stumbles on the word "endif" for any
+## reason, silently merging entire unrelated Begin/End blocks into the
+## wrong one (confirmed directly: a whole script's real OnActivate/
+## GameMode/MenuMode content got merged into its own OnLoad body this way,
+## which is why a completely unrelated real-play report -- a ShowMessage
+## from what should have been an OnActivate call -- turned out to fire from
+## OnLoad instead). Disambiguated here by whether "if" follows "else"
+## on the SAME line (no NEWLINE token between) -- matches every real
+## sample found this session; a newline before "if" still means a genuine
+## nested if as the else-block's own first statement.
 func _parse_if() -> Dictionary:
 	var branches := []
 	var else_stmts: Array = []
@@ -163,7 +181,9 @@ func _parse_if() -> Dictionary:
 	# the token just before that to know which branch we're continuing --
 	# simplest robust way given the shared ender list is to look back one.
 	var last_ender := str(_tokens[_pos - 1]["value"]).to_lower() if _pos > 0 else ""
-	while last_ender == "elseif":
+	while last_ender == "elseif" or (last_ender == "else" and _ident_is(_peek(), "if")):
+		if last_ender == "else":
+			_advance() # the "if" half of a two-word "else if"
 		var elseif_cond := _parse_expr()
 		_skip_newlines()
 		var elseif_stmts := _parse_statements_until(_IF_ENDERS)
