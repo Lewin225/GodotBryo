@@ -69,6 +69,30 @@ func _ready() -> void:
 	ScriptInterpreter.new(cmp_program, registry).run_block("GameMode", cmp_ctx)
 	check(cmp_ctx.get_local("z") == 2, "String-vs-int == never crashes, resolves to the else branch (got %s)" % str(cmp_ctx.get_local("z")))
 
+	print("--- ScriptInterpreter/IsActionRef: 'player' resolves to the real player Node ---")
+	# Real GECK global keyword (ScriptInterpreter's own "name" case) --
+	# confirmed necessary this session: GSBrokenSMGScript's real OnActivate
+	# body is `if IsActionRef player / ShowMessage ...`, and without this,
+	# "player" stays an unresolved String forever, so IsActionRef can never
+	# be true no matter who actually activated it.
+	var fake_player := Node.new()
+	add_child(fake_player)
+	var player_ctx := ScriptExecutionContext.new(null)
+	player_ctx.action_ref = fake_player
+	player_ctx.player_node = fake_player
+	var player_source := "BEGIN OnActivate\nif (IsActionRef player)\n\tSet z to 1\nelse\n\tSet z to 2\nendif\nEND\n"
+	var player_program := ScriptParser.new(ScriptLexer.new(player_source).tokenize()).parse()
+	ScriptInterpreter.new(player_program, registry).run_block("OnActivate", player_ctx)
+	check(player_ctx.get_local("z") == 1, "IsActionRef player is true when action_ref IS the real player Node (got %s)" % str(player_ctx.get_local("z")))
+
+	var other_ctx := ScriptExecutionContext.new(null)
+	other_ctx.action_ref = Node.new()
+	other_ctx.player_node = fake_player
+	ScriptInterpreter.new(player_program, registry).run_block("OnActivate", other_ctx)
+	check(other_ctx.get_local("z") == 2, "IsActionRef player is false when action_ref is a DIFFERENT Node (got %s)" % str(other_ctx.get_local("z")))
+	other_ctx.action_ref.free()
+	fake_player.queue_free()
+
 	print("--- ScriptEngine: end-to-end via a real script from the ESM ---")
 	_test_script_engine()
 

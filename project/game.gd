@@ -100,6 +100,7 @@ func _ready() -> void:
 	script_engine.esm = cell_loader.esm
 	cell_loader.registry.script_engine = script_engine
 	world_streamer.registry.script_engine = script_engine
+	script_engine.player_node = _find_character_body(self) # real GECK "player" keyword -- see ScriptEngine's own doc comment
 
 	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
@@ -206,12 +207,36 @@ func _update_look_at_label() -> void:
 		text += "\n" + String(target.editor_description)
 	_look_at_label.text = text
 
+## Dynamic types split into two real interact shapes right now: DoorNode
+## (the only real has_method("activate") case) still always calls its own
+## activate() directly, unconditionally -- this project's own known,
+## documented gap (phases/5/00-script-interpreter-foundation.md): a real
+## scripted door's default open/close behavior should be gated BEHIND its
+## own script explicitly calling `activate` (confirmed against
+## GSDocMitchellDoorScript's own real body), not run unconditionally the
+## way it is today. Fixing that needs dispatch_event() to propagate a
+## script-triggered activate() call's own outcome (the teleport-destination
+## Dictionary) back out to this caller, which doesn't exist yet -- real,
+## deliberately separate follow-up, not touched here.
+##
+## Everything else scripted (CONT/ACTI/etc, which have no activate() method
+## at all) gets real OnActivate dispatch instead -- confirmed real and
+## necessary via GSBrokenSMGScript, a real ACTI in GSDocMitchellHouse whose
+## whole OnActivate body (ShowMessage) never ran at all before this,
+## since nothing called target.activate() for a type that doesn't have one.
+## Mutually exclusive with the door branch on purpose: this doesn't touch
+## door behavior at all, sidestepping the outcome-propagation gap above
+## entirely for this real, narrower fix.
 func _try_interact() -> void:
 	var hit := _interact_raycast()
 	if hit.is_empty():
 		return
 	var target: Object = hit["target"]
-	if target == null or not target.has_method("activate"):
+	if target == null:
+		return
+	if not target.has_method("activate"):
+		if script_engine != null and script_engine.is_scripted(target):
+			script_engine.dispatch_event(target, "OnActivate", _find_character_body(self))
 		return
 	var outcome: Dictionary = target.activate()
 	if outcome.is_empty():

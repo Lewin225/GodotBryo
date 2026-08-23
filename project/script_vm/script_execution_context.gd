@@ -13,6 +13,14 @@ extends RefCounted
 
 var calling_reference: Node = null
 var action_ref: Node = null
+## The real player character, if one exists (set by ScriptEngine.dispatch_event()
+## from its own player_node -- real GECK's "player" is a global keyword
+## resolving to the actual player reference, distinct from action_ref: a
+## script triggered by an NPC's OnTriggerEnter, say, has a real action_ref
+## that ISN'T the player at all). Null in any context with no live player
+## (most tests, @tool viewers) -- "player" then just stays an unresolved
+## name, same as any other reference this interpreter can't look up yet.
+var player_node: Node = null
 var locals: Dictionary = {} # name (lowercased) -> int/float/Node/null
 
 func _init(reference: Node = null) -> void:
@@ -26,6 +34,28 @@ static func is_truthy(value: Variant) -> bool:
 	if value is Node:
 		return true
 	return bool(value)
+
+## Shared by ScriptInterpreter's own `==`/`!=` binop AND any registered
+## function that compares a caller-supplied value against a live reference
+## (IsActionRef, ...) -- real Gamebryo/GECK has exactly three value types
+## (int/float/ref) and its compiler rejects a type-mismatched comparison
+## outright, so a real script never actually compares across incompatible
+## types. This interpreter can transiently produce one anyway (a "name"
+## AST node standing in for an unresolved `ref` as a plain String --
+## script_parser.gd's own doc comment), and GDScript's own `==`/`!=` throw
+## for genuinely incompatible Variant type PAIRS -- confirmed directly this
+## session for both String-vs-int and String-vs-Object ("Invalid operands"),
+## not just returning false the way a safe runtime fallback should. This
+## degrades to "not equal" instead, matching how a real Gamebryo runtime
+## would never even reach this comparison in valid compiled code.
+static func safe_equal(a: Variant, b: Variant) -> bool:
+	if typeof(a) == typeof(b):
+		return a == b
+	var a_numeric := typeof(a) == TYPE_INT or typeof(a) == TYPE_FLOAT
+	var b_numeric := typeof(b) == TYPE_INT or typeof(b) == TYPE_FLOAT
+	if a_numeric and b_numeric:
+		return float(a) == float(b)
+	return false
 
 func get_local(name: String) -> Variant:
 	return locals.get(name.to_lower())
