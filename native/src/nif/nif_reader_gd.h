@@ -59,6 +59,11 @@ public:
 	// that scene lighting should not affect this shape.
 	bool is_unlit(int index) const;
 	Transform3D get_transform(int index) const;
+	// Index into get_scene_nodes() for this shape's own node, or -1 if
+	// parented directly under the NIF's root — see nif_types.h's
+	// SubMesh::owning_node_index doc comment. Only meaningful for
+	// Dynamic-path resolution.
+	int get_submesh_owning_node_index(int index) const;
 
 	// Writes a self-contained .gltf for the currently loaded mesh (see
 	// gltf_export.h) — the smoke-test deliverable for this task.
@@ -100,6 +105,15 @@ public:
 	//     are Vector3.
 	//   quat_key: { "time": float, "value": Quaternion, "interp": int }
 	Array get_animation_sequences() const;
+
+	// phases/3/00-door-completion.md follow-up: general node-graph
+	// preservation (nif_types.h's SceneNode doc comment) — every non-root
+	// NiAVObject in the file, for resolving a named node (animation
+	// target_node_name, or any future lookup) to a real placement. Array of
+	// Dictionary: { "name": String, "parent_index": int (-1 if parented
+	// directly under the NIF's root), "transform": Transform3D (LOCAL to
+	// the immediate parent — NOT flattened to root, unlike get_transform()) }.
+	Array get_scene_nodes() const;
 
 private:
 	nif::Mesh mesh_;
