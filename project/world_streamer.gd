@@ -169,6 +169,22 @@ var diagnostic_terrain_ms: Array = [] # TEMP DIAGNOSTIC
 var diagnostic_resolve_wall_ms: Array = [] # TEMP DIAGNOSTIC -- includes checkout-wait + task-poll wall time, not just the task's own CPU time
 var diagnostic_find_exterior_cell_us := 0 # TEMP DIAGNOSTIC -- _start_tile_load()'s own find_exterior_cell() cost, main-thread, unthreaded
 
+## True while streaming is paused (see set_paused()) -- resident state (tiles,
+## batches, terrain, texture pool) stays fully intact, just hidden and
+## physically inert, instead of being freed the way deactivate() does. Exists
+## for the interior-transition case: door-triggered CellLoader.load_cell()
+## calls used to deactivate() WorldStreamer entirely, meaning every real door
+## back out to the same exterior spot paid the full activate() cost again --
+## Terrain3DTexturePool re-resolving/re-normalizing every real ground texture
+## from scratch, every resident tile re-streamed -- a real, measured multi-
+## second stall per door, not a design choice this game's own RAM budget
+## needs (unlike the original Xbox 360 port's 512MB constraint). See
+## set_paused()'s own comment for what "hidden and physically inert" actually
+## requires -- Node visibility alone does NOT cover this project's own
+## RID-based DirectGeometryBatch geometry or Terrain3D's own internal
+## PhysicsServer3D collision body, neither of which is reachable by toggling
+## a parent Node3D's `visible`.
+var _paused := false
 var _active_wrld_form_id: int = -1 # -1 == inactive
 var _generation := 0 # bumped on every activate()/deactivate() -- invalidates stale in-flight tile streams
 var _resident: Dictionary = {} # Vector2i grid coord -> built tile root Node3D
@@ -216,6 +232,7 @@ func _ready() -> void:
 ## camera already is. A no-op if already active for this exact worldspace.
 func activate(wrld_form_id: int) -> void:
 	if _active_wrld_form_id == wrld_form_id:
+		set_paused(false) # resumes cleanly if this worldspace was left paused (see set_paused()) -- a real no-op if it wasn't
 		return
 	deactivate()
 	_active_wrld_form_id = wrld_form_id
@@ -246,6 +263,8 @@ func deactivate() -> void:
 	if _active_wrld_form_id == -1:
 		return
 	_active_wrld_form_id = -1
+	_paused = false # a fresh activate() later must start unpaused/visible -- everything below is about to be freed anyway, this just keeps is_paused()/visible from reporting stale state after a full teardown
+	visible = true
 	_generation += 1 # invalidates any in-flight tile/persistent-root streams
 	_current_cell_form_id_cache = 0
 	_no_cell_cache.clear() # per-worldspace -- a coord empty here says nothing about whichever worldspace activates next
@@ -275,8 +294,85 @@ func deactivate() -> void:
 func is_active() -> bool:
 	return _active_wrld_form_id != -1
 
+## True while streaming is paused for THIS worldspace -- see set_paused().
+## False when fully inactive too (is_active() covers that case for a caller
+## wanting to distinguish "inactive" from "active but paused").
+func is_paused() -> bool:
+	return _paused
+
+## Freezes (or resumes) streaming without freeing anything -- see _paused's
+## own doc comment for why this exists instead of deactivate()/activate().
+## A no-op if already in the requested state, or if fully inactive (nothing
+## to pause/resume).
+##
+## Pausing must reach three separate layers, not just the Node tree's own
+## `visible` flag, each for its own real reason (worked out from how each
+## piece of resident geometry is actually implemented, not assumed covered
+## by one flag):
+##  1. `visible = false` on this node IS enough for every ordinary Node-based
+##     visual (MeshInstance3D/VisualInstance3D) -- Godot's own visibility
+##     inheritance toggles the underlying RenderingServer instance RID
+##     automatically as an ancestor's `visible` changes.
+##  2. It does NOT reach `DirectGeometryBatch` (phases/2/09) -- that manages
+##     raw RenderingServer MultiMesh RIDs directly, with no Node3D wrapping
+##     them to inherit visibility from at all. Needs its own set_enabled(false).
+##  3. It does NOT reach ANY PhysicsServer3D body regardless of whether it's
+##     Node-based or not -- collision stays live in the physics world
+##     independent of node visibility/process state. Node-based REFR
+##     collision (StaticBody3D/CollisionShape3D under each tile/persistent
+##     root) needs CellStreamBuilder.set_collision_disabled(); Terrain3D's own
+##     heightmap collision is its own internal PhysicsServer3D body, reachable
+##     only via Terrain3D.set_collision_mode(Terrain3DCollision.DISABLED) --
+##     confirmed by reading native/terrain3d/src/terrain_3d_collision.cpp,
+##     not assumed: DISABLED actually destroys the static body's PhysicsServer3D
+##     presence (is_enabled() == mode > DISABLED), not just a soft flag.
+## Without all three, resuming would look fine visually while the player
+## could still be blocked by (or standing on) invisible exterior collision
+## while indoors -- a real, silent gameplay bug, not just a rendering glitch.
+func set_paused(p: bool) -> void:
+	if p == _paused or _active_wrld_form_id == -1:
+		return
+	_paused = p
+	visible = not p
+	for coord in _resident:
+		CellStreamBuilder.set_collision_disabled(_resident[coord], p)
+		if _resident_batches.has(coord):
+			_resident_batches[coord].set_enabled(not p)
+	if _persistent_root != null:
+		CellStreamBuilder.set_collision_disabled(_persistent_root, p)
+	if _persistent_batch != null:
+		_persistent_batch.set_enabled(not p)
+	if _terrain3d != null:
+		_terrain3d.set_collision_mode(Terrain3DCollision.DISABLED if p else Terrain3DCollision.DYNAMIC_GAME)
+	if not p:
+		# Resuming: re-check residency once immediately (matches activate()'s
+		# own "don't wait for the next timer tick" reasoning) -- nothing
+		# should actually need streaming since no world-space position moved
+		# while paused, but a caller (game.gd's _do_exterior_transition())
+		# awaits streaming_settled unconditionally on every exterior door,
+		# same as the fresh-activate() case, so this must still be the thing
+		# that fires it back on immediately when there's genuinely nothing to do.
+		_check_streaming()
+		# Real bug found in real play: set_paused(false) is called SYNCHRONOUSLY
+		# from activate() (see its own "already active" branch), which itself is
+		# called synchronously (not awaited) by game.gd's _do_exterior_transition()
+		# BEFORE it reaches its own `await world_streamer.streaming_settled` line.
+		# When _check_streaming() above finds nothing actually needs streaming
+		# (the common case here -- the resident set from before pausing is still
+		# valid, nothing moved in world-space while indoors), calling
+		# _maybe_emit_settled() directly emits the signal immediately, with zero
+		# listeners connected yet -- the emission is simply lost, and the
+		# caller's await never wakes up, leaving the player frozen forever.
+		# Every OTHER _maybe_emit_settled() call site is safe because it runs
+		# inside a coroutine that has already crossed a real await (a queued
+		# frame, a WorkerThreadPool poll) by the time it fires -- this is the
+		# only synchronous path to it. call_deferred() pushes the check to the
+		# end of the current frame, after _do_exterior_transition()'s await has
+		# already registered its listener.
+		call_deferred("_maybe_emit_settled")
+
 func _process(delta: float) -> void:
-	if _active_wrld_form_id == -1:
+	if _active_wrld_form_id == -1 or _paused:
 		return
 	_check_timer -= delta
 	if _check_timer > 0.0:
@@ -369,6 +465,7 @@ func _check_streaming() -> void:
 					_resident_batches[coord].free_all()
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
+				print("WorldStreamer: tile %s upgrading to full_detail (dx=%d dy=%d)" % [coord, dx, dy]) # TEMP DIAGNOSTIC -- 2026-08-23 missing-building investigation
 				_enqueue_tile_load(coord, true)
 			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and not _within_radius(dx, dy, RADIUS_UNLOAD_FULL):
 				# The reverse case -- a full-detail tile the camera has since
@@ -572,6 +669,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	_resident[coord] = tile_root
 	_resident_batches[coord] = batch
 	_resident_full_detail[coord] = full_detail
+	print("WorldStreamer: tile %s resident, full_detail=%s" % [coord, full_detail]) # TEMP DIAGNOSTIC -- 2026-08-23 missing-building investigation, see object_registry.gd's own SCOL print
 	_maybe_emit_settled()
 
 func _stream_persistent_root() -> void:
