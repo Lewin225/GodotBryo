@@ -87,6 +87,15 @@ struct ReferencePlacement {
 	std::string base_type; // 4-char tag of the NAME-referenced record, e.g. "STAT"
 	std::string base_editor_id; // base record's EDID, if present
 	std::string model_path; // base record's MODL, relative to Data/Meshes/ (no "meshes\" prefix); empty if none
+
+	// phases/5/00-script-interpreter-foundation.md: base record's own SCRI
+	// subrecord (the attached SCPT's FormID), 0 if the base record has
+	// none -- confirmed real and common via a real-data census (e.g. 992 of
+	// 1143 real ACTI records carry one). Only read for get_cell_references()
+	// (interactive/Dynamic placements); get_scol_parts() leaves this 0 --
+	// SCOL parts are always STAT, which can never carry a script.
+	uint32_t script_form_id = 0;
+
 	float position[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;
@@ -280,6 +289,55 @@ struct LandData {
 	// being a caller-specific axis remap. Size kLandGridSize*kLandGridSize*3,
 	// row-major, empty if the cell has none.
 	std::vector<uint8_t> vertex_normals_raw;
+};
+
+// phases/5/00-script-interpreter-foundation.md: a SCPT record's real data.
+// enginedocs/nv_script_interpreter_design.md's central finding (verified
+// against a full scan of all 11,483 real SCPT records in FalloutNV.esm):
+// SCTX (the original, human-readable GECK source text) is present and
+// complete on every single one -- this project parses/interprets SCTX
+// directly and never decodes SCDA (the compiled bytecode), a deliberate
+// choice, not a gap.
+//
+// SCHR layout confirmed via fopdoc's SCHR page, cross-checked against real
+// bytes (VMS18CompanionFreezerExitSCRIPT's own SCHR/SCDA: compiled_size
+// field reads 0x9c/156, which matches that same record's real SCDA
+// subrecord size exactly): Unused(4), RefCount(u32), CompiledSize(u32),
+// VariableCount(u32), Type(u16), Flags(u16) -- 20 bytes. Only `script_type`
+// (Type) is kept; RefCount/CompiledSize/VariableCount/Flags describe the
+// SCDA bytecode this project deliberately never touches.
+//
+// script_type real values: 0 = Object (confirmed directly against real
+// data -- every sampled OnTriggerEnter/OnActivate-style script reads 0).
+// Quest/Effect's real values aren't yet confirmed against data since this
+// milestone only exercises Object scripts -- left as the raw uint16 rather
+// than guessed, decode the rest when Quest/Effect scripts are actually
+// needed.
+struct ScriptLocalVar {
+	std::string name; // SCVR
+	uint32_t index = 0; // SLSD's own Index field -- this local's slot number
+};
+
+struct ScriptData {
+	std::string editor_id;
+	std::string source_text; // SCTX, verbatim
+	uint16_t script_type = 0; // SCHR's Type field; 0 = Object, confirmed
+	std::vector<ScriptLocalVar> locals; // SLSD+SCVR pairs, in file order
+
+	// SCRO: FormIDs the compiler already resolved for every named
+	// reference/quest/global the script text mentions -- Bethesda's own
+	// pre-resolved symbol table (nv_script_interpreter_design.md's
+	// "load-bearing finding"), real and present, but SCRV (which of these
+	// maps to which local `ref` slot) is a real, deliberate gap: real data
+	// shows SCRV's own count doesn't always match SCRO's 1:1 (one real
+	// sample carried a single SCRV against eight SCRO entries), so the
+	// exact pairing rule isn't confirmed and isn't guessed here. The
+	// interpreter falls back to resolving identifiers against a live
+	// editor-ID lookup instead (this project already has that machinery --
+	// find_cell_by_editor_id() and friends), same as
+	// nv_script_interpreter_design.md's own pipeline note allows for names
+	// "the compiler's own table didn't cover."
+	std::vector<uint32_t> referenced_form_ids; // SCRO, in file order
 };
 
 } // namespace esm

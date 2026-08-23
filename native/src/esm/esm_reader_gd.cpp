@@ -18,6 +18,7 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["position"] = Vector3(pl.position[0], pl.position[1], pl.position[2]);
 	d["rotation"] = Vector3(pl.rotation[0], pl.rotation[1], pl.rotation[2]);
 	d["scale"] = pl.scale;
+	d["script_form_id"] = static_cast<int64_t>(pl.script_form_id);
 	// phases/2/12-distant-object-lod.md: real per-REFR gate for whether the
 	// game renders a distant-LOD variant of this placement at all -- always
 	// false for SCOL parts (get_scol_parts()), which have no REFR record of
@@ -48,6 +49,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
+	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
@@ -333,6 +335,40 @@ Dictionary EsmReader::get_cell_lighting_data(int64_t cell_form_id) const {
 		out["directional_fade"] = lighting->directional_fade;
 		out["fog_clip_distance"] = lighting->fog_clip_distance;
 		out["fog_power"] = lighting->fog_power;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_script_data(int64_t scpt_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto script = file_.get_script_data(static_cast<uint32_t>(scpt_form_id));
+		if (!script) {
+			return out;
+		}
+		out["editor_id"] = String(script->editor_id.c_str());
+		out["source_text"] = String(script->source_text.c_str());
+		out["script_type"] = static_cast<int64_t>(script->script_type);
+
+		Array locals;
+		for (const auto &var : script->locals) {
+			Dictionary d;
+			d["name"] = String(var.name.c_str());
+			d["index"] = static_cast<int64_t>(var.index);
+			locals.push_back(d);
+		}
+		out["locals"] = locals;
+
+		PackedInt64Array refs;
+		for (uint32_t form_id : script->referenced_form_ids) {
+			refs.push_back(static_cast<int64_t>(form_id));
+		}
+		out["referenced_form_ids"] = refs;
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
