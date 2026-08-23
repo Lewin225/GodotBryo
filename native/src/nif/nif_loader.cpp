@@ -470,7 +470,11 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			sub.indices.push_back(t.p2);
 		}
 
-		sub.no_lighting = dynamic_cast<nifly::BSShaderNoLightingProperty *>(nif.GetShader(shape)) != nullptr;
+		nifly::NiShader *shader = nif.GetShader(shape);
+		sub.no_lighting = dynamic_cast<nifly::BSShaderNoLightingProperty *>(shader) != nullptr;
+		if (nifly::BSShaderProperty *bs_shader = dynamic_cast<nifly::BSShaderProperty *>(shader)) {
+			sub.double_sided = bs_shader->IsDoubleSided();
+		}
 
 		std::string tex;
 		nif.GetTextureSlot(shape, tex, 0); // slot 0: diffuse/base

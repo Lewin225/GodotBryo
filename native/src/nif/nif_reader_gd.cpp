@@ -28,6 +28,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_glow_texture_path", "index"), &NifReader::get_glow_texture_path);
 	ClassDB::bind_method(D_METHOD("get_alpha_info", "index"), &NifReader::get_alpha_info);
 	ClassDB::bind_method(D_METHOD("is_unlit", "index"), &NifReader::is_unlit);
+	ClassDB::bind_method(D_METHOD("is_double_sided", "index"), &NifReader::is_double_sided);
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
 	ClassDB::bind_method(D_METHOD("get_submesh_owning_node_index", "index"), &NifReader::get_submesh_owning_node_index);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
@@ -169,6 +170,11 @@ Dictionary NifReader::get_alpha_info(int index) const {
 bool NifReader::is_unlit(int index) const {
 	const nif::SubMesh *s = submesh(index);
 	return s ? s->no_lighting : false;
+}
+
+bool NifReader::is_double_sided(int index) const {
+	const nif::SubMesh *s = submesh(index);
+	return s ? s->double_sided : false;
 }
 
 Transform3D NifReader::get_transform(int index) const {

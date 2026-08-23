@@ -55,6 +55,20 @@ struct SubMesh {
 	// a lit gray instead of a clean fade.
 	bool no_lighting = false;
 
+	// BSShaderProperty::IsDoubleSided() -- real per-shape shaderFlags2 bit
+	// (niftools SLSF2_DOUBLE_SIDED, confirmed via nifly's own
+	// BSShaderProperty::IsDoubleSided() implementation: shaderFlags2 &
+	// (1<<4)). Bethesda's own signal that backface culling should be
+	// disabled for this shape -- additive/glow "cookie" billboards
+	// (effects/ambient/*.nif light-shaft planes) are the common real case,
+	// though not every one of them actually ships this bit set (confirmed
+	// via alpha_survey against IndFXLightRays01.nif's real data: flags2=0,
+	// i.e. genuinely single-sided per Bethesda's own authored data -- this
+	// field just makes the ones that DO ship it correctly double-sided,
+	// where previously every shape was hard-culled to CULL_BACK regardless
+	// of what the NIF actually specified).
+	bool double_sided = false;
+
 	// NiAlphaProperty, if present on this shape — controls whether the
 	// render mesh should be alpha-blended/alpha-tested rather than treated
 	// as fully opaque (foliage, fences, glass, hair). threshold is already

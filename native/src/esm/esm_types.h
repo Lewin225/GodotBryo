@@ -148,6 +148,28 @@ struct LightData {
 	bool off_by_default() const { return (flags & kLightFlagOffByDefault) != 0; }
 };
 
+// CELL.XCLL ("Lighting") -- confirmed layout via fopdoc's CELL page: 40
+// bytes -- Ambient Color(rgba), Directional Color(rgba), Fog Color(rgba),
+// Fog Near(f32), Fog Far(f32), Directional Rotation XY(i32), Directional
+// Rotation Z(i32), Directional Fade(f32), Fog Clip Distance(f32), Fog
+// Power(f32). Only interior CELLs carry XCLL in practice (exterior cells
+// inherit worldspace-level lighting); std::nullopt is the real, common case
+// for exterior/unlit cells, not an error. Directional Color/rotation/fade
+// and fog fields are read but not currently consumed by the GDScript side
+// (ambient is the only piece wired into interior_environment.tres so far).
+struct CellLightingData {
+	uint8_t ambient_color[4] = { 0, 0, 0, 0 };
+	uint8_t directional_color[4] = { 0, 0, 0, 0 };
+	uint8_t fog_color[4] = { 0, 0, 0, 0 };
+	float fog_near = 0.0f;
+	float fog_far = 0.0f;
+	int32_t directional_rotation_xy = 0;
+	int32_t directional_rotation_z = 0;
+	float directional_fade = 0.0f;
+	float fog_clip_distance = 0.0f;
+	float fog_power = 0.0f;
+};
+
 // DOOR.FNAM (real values confirmed via fopdoc's DOOR page): a uint8, one
 // unnamed/unconfirmed bit (0x01) plus these four. NOT the same set as the
 // GECK Wiki's DOOR dialog checkboxes -- "Quest Item" and "Random Anim

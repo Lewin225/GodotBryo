@@ -205,10 +205,26 @@ func load_nif(model_path: String) -> NifReader:
 		return _nif_cache[model_path]
 	var found := resolve_bytes("meshes\\" + model_path)
 	var nif: NifReader = null
-	if not found.is_empty():
+	if found.is_empty():
+		# Real bug report (2026-08-23): a placement can go permanently
+		# missing -- geometry AND collision, consistent even standing right
+		# next to it -- with zero signal why, because a failure here caches
+		# `null` under model_path exactly like a real NifReader (see this
+		# function's own return path below), and GamebryoResolverPool.
+		# merge_from() then propagates that null into every other pooled
+		# worker context forever. This warning is the only way to tell "not
+		# found in any BSA" apart from "found, but NifReader.load() rejected
+		# it" apart from "genuinely has no model" (that last case never
+		# reaches this function at all -- callers already check
+		# placement.model != "" first) after the fact, instead of guessing
+		# offline.
+		push_warning("GamebryoMeshResolver: %s not found in any BSA (meshes\\%s)" % [model_path, model_path])
+	else:
 		var candidate := NifReader.new()
 		if candidate.load(found["data"]):
 			nif = candidate
+		else:
+			push_warning("GamebryoMeshResolver: %s found in %s but NifReader.load() failed to parse it" % [model_path, found["bsa"]])
 	_nif_cache[model_path] = nif
 	return nif
 
@@ -264,10 +280,18 @@ func _load_image(tex_path: String, alpha_safe: bool = false) -> Image:
 		return _image_cache[key]
 	var img: Image = null
 	var found := resolve_bytes(tex_path)
-	if not found.is_empty():
+	if found.is_empty():
+		# Same permanent-null-cache concern as load_nif()'s own comment --
+		# a texture that fails here silently leaves whatever used it with no
+		# diffuse/normal/glow, cached that way for the rest of the session.
+		push_warning("GamebryoMeshResolver: %s not found in any BSA" % tex_path)
+	else:
 		var candidate := Image.new()
-		if candidate.load_dds_from_buffer(found["data"]) == OK:
+		var err := candidate.load_dds_from_buffer(found["data"])
+		if err == OK:
 			img = candidate
+		else:
+			push_warning("GamebryoMeshResolver: %s found in %s but failed to decode (err %d)" % [tex_path, found["bsa"], err])
 	# Only DXT1 needs the decompress -- DXT3/DXT5 alpha reaches the GPU
 	# intact (confirmed in the same render census). Verified (2026-08-21,
 	# Godot 4.7.1, _diag_decompress_mips.gd): decompress() preserves the
@@ -392,6 +416,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"alpha_info": alpha_info,
 			"has_vertex_colors": nif.get_colors(i).size() > 0,
 			"is_unlit": nif.is_unlit(i),
+			"double_sided": nif.is_double_sided(i),
 			"diffuse_image": _load_image(tex_path, needs_alpha),
 			"normal_image": _load_image(normal_path),
 			"glow_image": _load_image(glow_path),
@@ -1030,12 +1055,13 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 	var alpha: Dictionary = e["alpha_info"]
 	var has_vertex_colors: bool = e["has_vertex_colors"]
 	var is_unlit: bool = e["is_unlit"]
+	var double_sided: bool = e.get("double_sided", false)
 
 	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
 		return null
-	var key := "%s|%s|%s|%s|%s|%.4f|%d|%s|%s" % [tex_path, normal_path, glow_path,
+	var key := "%s|%s|%s|%s|%s|%.4f|%d|%s|%s|%s" % [tex_path, normal_path, glow_path,
 			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
-			float(alpha.get("threshold", 0.5)), int(alpha.get("blend_func", 0)), has_vertex_colors, is_unlit]
+			float(alpha.get("threshold", 0.5)), int(alpha.get("blend_func", 0)), has_vertex_colors, is_unlit, double_sided]
 	if _material_cache.has(key):
 		material_cache_hits += 1
 		return _material_cache[key]
@@ -1044,9 +1070,42 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	var have_content := false
 
-	if is_unlit:
+	# is_unlit (BSShaderNoLightingProperty) covers two real, visually opposite
+	# use cases that share one shader block type -- distinguished here by the
+	# real blend function (already parsed, not a new signal): kMultiply/kMix
+	# soft shadow/AO decals (phases/2/06-vertex-color-transparency.md --
+	# NVCraftsmanFireplace's shadow blob, confirmed src=ZERO dst=SRC_COLOR)
+	# genuinely need SHADING_MODE_UNSHADED, or normal ambient/directional
+	# light washes their dark gradient out to flat gray. kAdd additive glow
+	# "cookie" billboards (IndFXLightRays*.nif light-shaft effects, confirmed
+	# src=SRC_ALPHA dst=ONE) are the opposite problem: fully unshaded renders
+	# them at flat full texture brightness regardless of the room's actual
+	# light level -- reported overbright in Doc Mitchell's house. Found by
+	# hand in interior_viewer.gd's material inspector (not derived from NIF
+	# data -- a tuned visual-match fix, same as INTERACT_REACH_METERS is):
+	# leaving these normally shaded (so real omnilights modulate their
+	# brightness instead of a flat unlit blast), disabling ambient/GI
+	# contribution specifically (so SDFGI/flat ambient doesn't ALSO uniformly
+	# boost them on top of that), and capping albedo alpha at 0.75 (further
+	# reining in the additive stack) together matched the original game's
+	# look in play.
+	var is_additive_glow := is_unlit and bool(alpha.get("blend_enabled", false)) and int(alpha.get("blend_func", 0)) == 1 # BlendFunc::kAdd
+	if is_unlit and not is_additive_glow:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		have_content = true
+	elif is_additive_glow:
+		mat.disable_ambient_light = true
+		mat.albedo_color.a = 0.75
+		have_content = true
+
+	# BSShaderProperty::IsDoubleSided() (nif_loader.cpp) -- real per-shape
+	# shaderFlags2 bit, previously not read at all (every shape was hard-
+	# culled to Godot's CULL_BACK default regardless of what the NIF actually
+	# specified). Doesn't force `have_content` -- a double-sided flag alone
+	# on an otherwise textureless/vertex-colorless/alpha-less shape isn't
+	# something this pipeline renders anyway (see the early-return above).
+	if double_sided:
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 	if has_vertex_colors:
 		mat.vertex_color_use_as_albedo = true

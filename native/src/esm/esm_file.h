@@ -159,6 +159,13 @@ public:
 	// resolve_refr_xtel() already does for a REFR's offset.
 	std::optional<uint32_t> get_cell_worldspace(uint32_t cell_form_id) const;
 
+	// Reads a CELL's own XCLL ("Lighting") subrecord -- per-cell authored
+	// ambient/directional/fog data, distinct from the flat global ambient
+	// this codebase currently applies via interior_environment.tres.
+	// std::nullopt if the FormID isn't a CELL, or is a CELL with no XCLL (a
+	// real, common case for exterior cells).
+	std::optional<CellLightingData> get_cell_lighting_data(uint32_t cell_form_id) const;
+
 	// A worldspace's own "persistent" cell — the Construction Set's bucket
 	// for always-loaded references (quest markers, fast-travel triggers, LOD
 	// imposters, and — confirmed directly — every exterior-facing building

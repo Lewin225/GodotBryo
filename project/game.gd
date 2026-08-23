@@ -110,6 +110,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	# WorldStreamer/_do_exterior_transition() instead), so every successful
 	# load_completed here means "the player is now indoors."
 	_set_exterior_environment(false)
+	_apply_cell_lighting(cell_form_id)
 	_update_cell_hud(cell_form_id)
 
 	var spawn := {}
@@ -284,6 +285,27 @@ func _set_exterior_environment(is_exterior: bool) -> void:
 		_sun.visible = is_exterior
 	if _world_environment != null:
 		_world_environment.environment = EXTERIOR_ENVIRONMENT if is_exterior else INTERIOR_ENVIRONMENT
+
+## CELL.XCLL's own per-cell authored ambient color, layered on top of the
+## shared INTERIOR_ENVIRONMENT.tres baseline (energy/tonemap/SDFGI/SSAO/etc
+## all stay exactly as hand-tuned there -- only ambient_light_color is
+## overridden). Duplicates the base resource per load rather than mutating
+## INTERIOR_ENVIRONMENT itself, which stays the shared, editor-tunable
+## fallback for any cell with no XCLL (a real, common case -- e.g. exterior
+## cells, or an interior cell whose designer never touched the lighting tab)
+## -- get_cell_lighting_data() returns {} for those, and this just leaves
+## INTERIOR_ENVIRONMENT itself assigned, same as before this feature existed.
+## Only called for interior (CellLoader) loads -- WorldStreamer's exterior
+## cells use EXTERIOR_ENVIRONMENT's own flat sky-driven lighting instead.
+func _apply_cell_lighting(cell_form_id: int) -> void:
+	if _world_environment == null or cell_loader == null:
+		return
+	var lighting: Dictionary = cell_loader.esm.get_cell_lighting_data(cell_form_id)
+	if lighting.is_empty():
+		return
+	var env: Environment = INTERIOR_ENVIRONMENT.duplicate()
+	env.ambient_light_color = lighting["ambient_color"]
+	_world_environment.environment = env
 
 ## Debug HUD: current cell's own EditorID, plus its worldspace grid
 ## coordinate when it's an exterior cell (get_exterior_cell_grid() returns
