@@ -1,8 +1,14 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://ksj3xfbw8aua"]
 
-[ext_resource type="Script" path="res://addons/script_viewer/script_viewer.gd" id="1"]
+[ext_resource type="Script" uid="uid://c8de63xqfgfx8" path="res://addons/script_viewer/script_viewer.gd" id="1"]
 
-[node name="ScriptViewer" type="Control"]
+[sub_resource type="CodeHighlighter" id="CodeHighlighter_bd2f1"]
+number_color = Color(0.81960785, 0.6039216, 0.4, 1)
+symbol_color = Color(0.7764706, 0.47058824, 0.8666667, 1)
+function_color = Color(0.38039216, 0.6862745, 0.9372549, 1)
+member_variable_color = Color(0.8980392, 0.7529412, 0.48235294, 1)
+
+[node name="ScriptViewer" type="Control" unique_id=428219123]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -13,47 +19,52 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1")
 
-[node name="HSplit" type="HSplitContainer" parent="."]
+[node name="HSplit" type="HSplitContainer" parent="." unique_id=8164584]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+split_offsets = PackedInt32Array(260)
 split_offset = 260
 
-[node name="Left" type="VBoxContainer" parent="HSplit"]
+[node name="Left" type="VBoxContainer" parent="HSplit" unique_id=1257807151]
 custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SearchEdit" type="LineEdit" parent="HSplit/Left"]
+[node name="SearchEdit" type="LineEdit" parent="HSplit/Left" unique_id=1932529238]
 layout_mode = 2
 placeholder_text = "Search scripts by editor ID..."
 
-[node name="ScriptList" type="ItemList" parent="HSplit/Left"]
+[node name="ScriptList" type="ItemList" parent="HSplit/Left" unique_id=1378804648]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Right" type="VBoxContainer" parent="HSplit"]
+[node name="Right" type="VBoxContainer" parent="HSplit" unique_id=1146167433]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="SummaryLabel" type="Label" parent="HSplit/Right"]
+[node name="SummaryLabel" type="Label" parent="HSplit/Right" unique_id=504817944]
 layout_mode = 2
 text = "Select a script on the left."
 autowrap_mode = 2
 
-[node name="SourceDisplay" type="CodeEdit" parent="HSplit/Right"]
+[node name="SourceDisplay" type="CodeEdit" parent="HSplit/Right" unique_id=523135001]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.862745, 0.87451, 0.894118, 1)
+theme_override_colors/font_readonly_color = Color(0.862745, 0.87451, 0.894118, 1)
 theme_override_font_sizes/font_size = 14
-gutters_draw_line_numbers = true
 editable = false
 minimap_draw = true
+syntax_highlighter = SubResource("CodeHighlighter_bd2f1")
+symbol_lookup_on_click = true
+gutters_draw_line_numbers = true
 
-[node name="StatusLabel" type="Label" parent="HSplit/Right"]
+[node name="StatusLabel" type="Label" parent="HSplit/Right" unique_id=1994770633]
 layout_mode = 2
-text = "Loading real script list from FalloutNV.esm..."
+text = "2576 real scripts loaded from FalloutNV.esm"
 autowrap_mode = 2

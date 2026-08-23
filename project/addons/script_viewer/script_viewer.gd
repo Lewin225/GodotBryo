@@ -34,6 +34,10 @@ const REGISTRY_SCRIPT_PATH := "res://script_vm/script_function_registry.gd"
 
 const COLOR_KNOWN := Color("#7ec699") # implemented -- registered in script_function_registry.gd
 const COLOR_UNKNOWN := Color("#e06c75") # real, per script_function_registry.gd's own doc comment: evaluates to 0/false at runtime, not a guess
+const COLOR_NUMBER := Color("c0c13eff") # warm, high-contrast number color for the dark editor theme
+const COLOR_FUNCTION := Color("#61afef")
+const COLOR_MEMBER_VARIABLE := Color("#e5c07b")
+const COLOR_SYMBOL := Color("#c678dd")
 
 @onready var _search_edit: LineEdit = $HSplit/Left/SearchEdit
 @onready var _script_list: ItemList = $HSplit/Left/ScriptList
@@ -53,6 +57,10 @@ func _ready() -> void:
 		return # editor tooling only -- see this file's own doc comment
 	_function_registry = ScriptFunctionRegistry.new()
 	_highlighter = CodeHighlighter.new()
+	_highlighter.number_color = COLOR_NUMBER
+	_highlighter.function_color = COLOR_FUNCTION
+	_highlighter.member_variable_color = COLOR_MEMBER_VARIABLE
+	_highlighter.symbol_color = COLOR_SYMBOL
 	_source_display.syntax_highlighter = _highlighter
 	_source_display.editable = false
 	_source_display.gutters_draw_line_numbers = true
