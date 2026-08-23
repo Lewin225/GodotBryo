@@ -81,6 +81,12 @@ project/
   addons/terrain_3d/       — Terrain3D addon files (bin/ gitignored, rebuild locally)
   tests/                   — real, self-checking Godot test scenes (see below)
   *_viewer.gd/.tscn        — @tool editor-mode inspection scenes (see below)
+  _diag/                   — throwaway one-off diagnostic scenes (a single visual/
+                             GPU/shader spot-check, not a reusable tool) -- same
+                             "fine to leave uncommitted, fine to commit if it lingers"
+                             convention as native/tools/, just GDScript-side
+  _repro/                  — throwaway minimal repro scenes for one specific bug
+                             investigation, same convention as _diag/
   bin/                     — nv_engine GDExtension build output (gitignored)
 phases/                    — per-phase task docs with real acceptance criteria
 enginedocs/                — reference notes on file formats / engine behavior
