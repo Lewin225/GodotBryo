@@ -14,7 +14,7 @@ Physical (non-teleporting) doors use a dedicated "Animated" model variant (confi
 real and distinct in `FalloutNV.esm` — e.g. `NVCraftsmanRmDoorAnimated.NIF` vs plain
 `NVCraftsmanRmDoor.NIF`) carrying rigid single-node `NiControllerManager`/
 `NiControllerSequence`/`NiTransformInterpolator`/`NiTransformData` keyframe data — no
-bone hierarchy, so it doesn't need `Skeleton3D` support to land. It's also a real,
-currently-blocking gap: `DoorNode.activate()` only handles the teleport case today, so
-a non-teleporting door does nothing on interact and can gate off map areas. See
-[00-door-completion.md](00-door-completion.md).
+bone hierarchy, so it doesn't need `Skeleton3D` support to land. **Done** — see
+[00-door-completion.md](00-door-completion.md): `DoorNode.activate()` now plays real
+animation, Open/Close/Loop sounds, and DOOR flags for non-teleporting doors, with a
+mid-swing reactivation debounce.

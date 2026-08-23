@@ -47,7 +47,7 @@ task files.
 | 2.11 | Exterior cell lookup index — fix `find_exterior_cell()`'s real O(worldspace) scan cost using the ESM's own block/sub-block structure (found to be 81% of tile-streaming settle time) | [11-exterior-cell-lookup-index.md](11-exterior-cell-lookup-index.md) |
 | 2.12 | Distant object LOD — Bethesda's own `_lod.nif` paired-mesh convention, gated by the real "Visible When Distant" REFR flag, via Godot's `visibility_range_begin/end` | [12-distant-object-lod.md](12-distant-object-lod.md) |
 | 2.13 | Terrain3D integration — implementation in progress, real bugs found/fixed live; region-based clipmap terrain replacing per-cell `GamebryoTerrainBuilder`. Its control-map texturing (2-layer max) is being superseded by 2.14 | [13-terrain3d-integration.md](13-terrain3d-integration.md) |
-| 2.14 | Native multi-layer terrain texture blending — implemented and verified in real play, replacing Terrain3D's 2-texture control map with a real 7-layer format matching FNV's own `BTXT`/`ATXT`/`VTXT` data, keeping Terrain3D's mesh/LOD/streaming/collision. VCLR/VNML still unimplemented | [14-native-terrain-texture-blend.md](14-native-terrain-texture-blend.md) |
+| 2.14 | Native multi-layer terrain texture blending — implemented and verified in real play, replacing Terrain3D's 2-texture control map with a real 7-layer format matching FNV's own `BTXT`/`ATXT`/`VTXT` data, keeping Terrain3D's mesh/LOD/streaming/collision. VCLR/VNML also landed | [14-native-terrain-texture-blend.md](14-native-terrain-texture-blend.md) |
 
 ## Open issues (parked, not yet investigated)
 
@@ -57,17 +57,14 @@ task files.
   fake exterior light/scenery) hasn't been looked at. Parked at the user's request to
   keep interior work unblocked — pick up next once resumed.
 
-- **Per-cell lighting/tint data.** The interior sky/ambient fix (game.gd's
-  `_set_exterior_environment()`) currently uses one flat, hand-picked ambient
-  color/energy for every interior cell. Bethesda CELL records carry their own
-  lighting subrecord (commonly `XCLL` for interior cells — ambient color, directional/
-  "sun" color, fog color/near/far, directional rotation — and FNV additionally has
-  `LGTM` "Lighting Template" records some cells reference instead of authoring their
-  own) that the real game actually varies per cell. Not read or parsed anywhere yet —
-  worth checking what's actually present in real cell data (byte-level, not assumed
-  from documentation alone, per this project's own established discipline) before
-  deciding whether to read it through and drive `_set_exterior_environment()`'s
-  interior branch from real per-cell values instead of the current flat constant.
+- ~~**Per-cell lighting/tint data.**~~ **Done.** `EsmFile::get_cell_lighting_data()`
+  parses the real `CELL.XCLL` subrecord (ambient/directional/fog color, fog near/far,
+  directional rotation/fade, fog clip/power — confirmed byte-level against real cell
+  data, not assumed from documentation), and `game.gd`'s `_apply_cell_lighting()` now
+  overrides the shared `interior_environment.tres` baseline's ambient color per cell on
+  load. `LGTM` "Lighting Template" records (some cells reference one instead of
+  authoring their own `XCLL`) are still unhandled — a real, narrower follow-up if a
+  cell with no `XCLL` but a real `LGTM` reference turns out to matter in practice.
 
 ## Why these three, and why now
 

@@ -58,7 +58,7 @@ which only needs correctly-placed geometry.
 
 | Type | Name | What's new | Status |
 |---|---|---|---|
-| `LIGH` | Light | Has `MODL` for a fixture mesh (confirmed) **plus** a `DATA` subrecord that needs to become a real `OmniLight3D`/`SpotLight3D`. `DATA` layout confirmed via fopdoc: `Time (int32)`, `Radius (uint32)`, `Color (rgba)`, `Flags (uint32)`, `Falloff Exponent (float32)`, `FOV (float32)`, `Value (uint32)`, `Weight (float32)`. `Flags` almost certainly includes a spot-vs-point bit — not yet decoded. Benchmark is correctly-placed light sources, not 1:1 falloff-curve fidelity. | Not started |
+| `LIGH` | Light | Has `MODL` for a fixture mesh (confirmed) **plus** a `DATA` subrecord, decoded into a real `OmniLight3D`/`SpotLight3D` in `object_registry.gd`. `DATA` layout confirmed via fopdoc: `Time (int32)`, `Radius (uint32)`, `Color (rgba)`, `Flags (uint32)`, `Falloff Exponent (float32)`, `FOV (float32)`, `Value (uint32)`, `Weight (float32)`. `Flags`' spot-vs-point bit is decoded (`kLightFlagSpot`/`LightData::is_spot()`, see [phases/1/03-light-sources.md](03-light-sources.md)). Benchmark is correctly-placed light sources, not 1:1 falloff-curve fidelity. | Done |
 
 ## Composite — needs one extra unpacking step
 
