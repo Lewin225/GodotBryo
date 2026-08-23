@@ -341,7 +341,26 @@ func _construct_scol(result: Dictionary) -> Node3D:
 		var child := construct_from_resolved(part_result, null)
 		if child != null:
 			anchor.add_child(child)
-	return _finalize(anchor, result["placement"])
+	var parts: Array = result.get("parts", [])
+	var placement: Dictionary = result["placement"]
+	if anchor.get_child_count() != parts.size():
+		push_warning("GamebryoObjectRegistry: SCOL %s built %d/%d parts as real children (the rest resolved to 'skip' -- see each part's own base_type/model)" % [
+			placement.get("editor_id", "0x%X" % int(placement.get("refr_form_id", 0))), anchor.get_child_count(), parts.size(),
+		])
+	var finalized := _finalize(anchor, placement)
+	# Real bug report (2026-08-23): a real, load-successful SCOL building
+	# reported "missing" (no geometry, no collision) standing right next to
+	# it -- load_nif()/_load_image()'s own new failure logging fired zero
+	# times for it, ruling out a resolve failure. This is the other half of
+	# that investigation: confirms whether the anchor actually ended up in
+	# the world where the SCOL's own REFR position says it should be, vs
+	# some other bug (a transform composition error, a Terrain3D/occlusion
+	# issue, etc.) putting real, successfully-built geometry somewhere the
+	# player never sees it.
+	print("GamebryoObjectRegistry: SCOL %s finalized at local pos %s, %d/%d real children" % [
+		finalized.name, finalized.transform.origin, anchor.get_child_count(), parts.size(),
+	])
+	return finalized
 
 ## The RID-based construct path for a structural-fallback placement --
 ## resolves the placement's own world transform and feeds `batch` directly.

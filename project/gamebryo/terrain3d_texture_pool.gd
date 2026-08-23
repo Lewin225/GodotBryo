@@ -61,6 +61,7 @@ const TOTAL_SLOTS := 128
 
 var _terrain: Terrain3D
 var _slot_by_texture: Dictionary = {} # Texture2D -> int slot
+var _debug_name_by_slot: Dictionary = {} # int slot -> the real texture path passed as `debug_name`, for the World Streaming debug tab's texture list (world_streaming_debug_tab.gd) -- not used by assignment logic itself
 var _pink_slot := -1 # -1 until a real overflow actually happens
 var _overflow_warned: Dictionary = {} # Texture2D -> true, warn once per distinct overflowed texture
 
@@ -174,6 +175,7 @@ func get_slot(tex: Texture2D, debug_name: String = "", normal_tex: Texture2D = n
 	_terrain.assets.set_texture(TOTAL_SLOTS - 1, asset)
 	var id: int = _terrain.assets.get_texture_list().size() - 1
 	_slot_by_texture[tex] = id
+	_debug_name_by_slot[id] = debug_name if debug_name != "" else "(unnamed)"
 	return id
 
 ## Real bug found in real play: Terrain3DAssets::_update_texture_files()
@@ -421,3 +423,15 @@ func _ensure_pink_slot() -> int:
 ## used by the assignment logic itself.
 func used_slot_count() -> int:
 	return _slot_by_texture.size()
+
+## Every real ground texture currently resolved into this pool, as
+## { "slot": int, "name": String } sorted by slot -- for the World Streaming
+## debug tab (world_streaming_debug_tab.gd), not used by assignment logic
+## itself. Excludes the reserved default (slot 0, see _reserve_default_slot())
+## and the pink overflow fallback -- neither is a real ground texture.
+func get_debug_texture_list() -> Array:
+	var out: Array = []
+	for slot in _debug_name_by_slot:
+		out.append({ "slot": slot, "name": _debug_name_by_slot[slot] })
+	out.sort_custom(func(a, b): return a["slot"] < b["slot"])
+	return out
