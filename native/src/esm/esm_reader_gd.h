@@ -130,6 +130,12 @@ public:
 	// esm::EsmFile::resolve_ltex_texture_path). Empty string if unresolved.
 	String resolve_ltex_texture_path(int64_t ltex_form_id) const;
 
+	// Same LTEX -> TXST resolution, real TX01 normal/bump map path instead
+	// of TX00 diffuse — see esm::EsmFile::resolve_ltex_normal_texture_path.
+	// Empty string if unresolved (a real, common case: not every real
+	// ground texture has one).
+	String resolve_ltex_normal_texture_path(int64_t ltex_form_id) const;
+
 	// phases/1/05-integration.md addition: a cell's full child-record type
 	// census (record type -> count), not just the REFR subset
 	// get_cell_references() resolves. Lets a caller demonstrate that

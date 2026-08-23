@@ -121,7 +121,17 @@ func _reserve_default_slot() -> void:
 ## _get_texture_from_image()), which never sets resource_path. Every real
 ## overflow warning this pool has ever logged named an empty string, silently
 ## useless for tracking down which real texture actually overflowed.
-func get_slot(tex: Texture2D, debug_name: String = "") -> int:
+##
+## `normal_tex` (optional, real TX01 normal/bump map -- see
+## _resolve_to_slot()'s own comment): real bug found via a live-play report
+## ("not seeing any normal detail on the terrain") -- this pool only ever set
+## the albedo texture on each Terrain3DTextureAsset, never a normal map, so
+## every real ground texture fell back to Terrain3D's own auto-generated flat
+## default (confirmed in a real DEBUG-level log capture: "ID N normal texture
+## is null. Creating a new one."). Only used the first time a given `tex` is
+## seen (matching the albedo cache-by-diffuse-texture keying below) -- a real
+## ground texture's normal map doesn't change slot-to-slot.
+func get_slot(tex: Texture2D, debug_name: String = "", normal_tex: Texture2D = null) -> int:
 	if tex == null:
 		return _ensure_pink_slot()
 	if _slot_by_texture.has(tex):
@@ -134,6 +144,18 @@ func get_slot(tex: Texture2D, debug_name: String = "") -> int:
 	var asset := Terrain3DTextureAsset.new()
 	asset.set_name("slot_%d" % _terrain.assets.get_texture_list().size())
 	asset.set_albedo_texture(_normalize_texture(tex, debug_name))
+	if normal_tex != null:
+		asset.set_normal_texture(_normalize_normal_texture(normal_tex, debug_name))
+		# Real live-play report ("normals are so subtle I can't see them"):
+		# Terrain3DTextureAsset.normal_depth defaults to 0.5 (its own generic
+		# range is 0.0-2.0) -- a reasonable default for arbitrary third-party
+		# texture packs, but real Bethesda ground normal maps read visually
+		# weak at that strength. Doubled as a real, reversible tuning value,
+		# not a guess about wrong data -- if bumps still look wrong (not just
+		# weak) at this strength, the real next suspect is the DirectX-vs-
+		# OpenGL green-channel question _normalize_normal_texture() already
+		# flags as unverified, not this multiplier.
+		asset.set_normal_depth(1.0)
 	# Real bug, same one reported against the old GamebryoTerrainBuilder
 	# renderer: ground textures looked "far too scaled up." Terrain3D's own
 	# Terrain3DTextureAsset.uv_scale defaults to 0.1 (uv = world_position *
@@ -176,6 +198,10 @@ func get_slot(tex: Texture2D, debug_name: String = "") -> int:
 ## upscaling, the less lossy direction).
 const CANONICAL_SIZE := 512
 const CANONICAL_FORMAT := Image.FORMAT_DXT1 # BC1 -- this project's own confirmed real ground-texture format, phases/0/04-dds-texture-import.md
+## Deliberately uncompressed -- see _normalize_normal_texture()'s own comment
+## for the real bug (content-dependent DXT1/DXT5 selection breaking
+## Terrain3DAssets' cross-texture format validation) this format choice fixes.
+const CANONICAL_NORMAL_FORMAT := Image.FORMAT_RGBA8
 
 ## Resizes/reformats `tex` to this pool's fixed canonical size/format/mipmap
 ## state if it doesn't already match, so it can never trigger the real
@@ -261,6 +287,95 @@ func _normalize_texture(tex: Texture2D, debug_name: String = "") -> Texture2D:
 	if img.get_format() != CANONICAL_FORMAT or img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE) or not img.has_mipmaps():
 		push_warning("Terrain3DTexturePool: %s normalized to unexpected state (format=%d size=%s mipmaps=%s), using pink placeholder" % [debug_name, img.get_format(), img.get_size(), img.has_mipmaps()])
 		return _build_pink_texture()
+	return ImageTexture.create_from_image(img)
+
+## Real fix for a live-play report ("not seeing any normal detail on the
+## terrain"): this pool never assigned a per-texture normal map at all before
+## this, so every real ground texture fell back to Terrain3D's own
+## auto-generated flat default. Mirrors _normalize_texture()'s own
+## error-checked normalize pipeline, but targets uncompressed
+## CANONICAL_NORMAL_FORMAT (RGBA8), NOT a block-compressed format.
+##
+## Real bug found via a live-play report right after this first shipped
+## compressing to BC3/DXT5: Terrain3DAssets::_update_texture_files()
+## validates ALL real normal textures share the exact same format, but (like
+## _normalize_texture()'s own albedo compression) Image.compress(COMPRESS_S3TC)
+## picks DXT1 vs DXT5 based on the SOURCE image's own alpha-byte content, not
+## a fixed choice -- different real normal maps' alpha channels (Bethesda
+## sometimes stores extra data there, sometimes leaves it uniformly opaque)
+## produced DIFFERENT compressed formats across different real textures. And
+## because Terrain3DAssets::_update_texture_files() clears the ALBEDO array
+## unconditionally BEFORE validating the normal array, then returns early on
+## ANY mismatch without rebuilding anything, one inconsistent normal-map
+## format broke the ENTIRE terrain (not just its own slot) -- "solid white
+## everywhere," not a localized corruption. Fixed by never compressing normal
+## maps at all: RGBA8 has no content-dependent format ambiguity, so every
+## real normal texture this pool ever produces is guaranteed byte-identical
+## in format, full stop. Real cost: ~1MB/texture uncompressed vs
+## ~256KB/texture as DXT5 -- real, but small next to a ~63-texture real
+## worldspace need, and correctness here matters far more than the VRAM.
+##
+## Deliberately does NOT attempt a DirectX-vs-OpenGL green-channel flip.
+## Bethesda's normal maps are real, confirmed DirectX-convention (green
+## channel down); Terrain3D's own shader decode (sample_terrain_layer() in
+## main.glsl) expects the OpenGL convention (green up) real third-party PBR
+## texture packs normally ship in, its typical real use case. Whether that
+## mismatch actually matters visually is UNVERIFIED here -- the exact same
+## open caveat mesh_resolver.gd's own regular-mesh normal-map wiring already
+## carries (see its own comment), not resolved there either. If real terrain
+## bump detail looks inverted/wrong in play, this is the first thing to
+## check, not assumed correct just because it compiles.
+func _normalize_normal_texture(tex: Texture2D, debug_name: String = "") -> Texture2D:
+	var img := tex.get_image()
+	if img == null:
+		push_warning("Terrain3DTexturePool: %s has no accessible normal-map Image data, using Terrain3D's flat default instead" % debug_name)
+		return null
+	# No "already matches canonical, return unchanged" early exit here (unlike
+	# _normalize_texture()'s own albedo path) -- the real alpha-channel force
+	# below (see this function's own comment) must always run, since a
+	# real source DDS's own untouched alpha content is exactly the bug this
+	# exists to fix, regardless of whether its size/format/mipmap state
+	# already happens to match.
+	if img.is_compressed():
+		if img.decompress() != OK:
+			push_warning("Terrain3DTexturePool: %s normal map failed to decompress, using Terrain3D's flat default instead" % debug_name)
+			return null
+	if img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE):
+		img.resize(CANONICAL_SIZE, CANONICAL_SIZE, Image.INTERPOLATE_LANCZOS)
+	img.convert(Image.FORMAT_RGBA8)
+	# Real bug found via a live-play report ("the ground looks very wet"):
+	# main.glsl's sample_terrain_layer() treats a sampled normal texture's
+	# ALPHA channel directly as roughness (`nrm.a = clamp(nrm.a + ..., 0, 1)`).
+	# Bethesda's real normal-map alpha channel has no verified equivalent
+	# meaning here (unlike R/G, which really do encode the normal's X/Y) --
+	# passing it through raw produced widespread low-roughness (shiny/"wet")
+	# terrain wherever that real alpha data happened Commit to be low. Forced to
+	# fully rough (255) instead of guessing at a real remap with no verified
+	# real data to check it against -- real per-texture roughness variation,
+	# if ever wanted, has its own already-exposed lever
+	# (Terrain3DTextureAsset.roughness / _texture_roughness_mod_array), no
+	# need to lean on an unverified guess about Bethesda's own alpha
+	# convention. Raw byte manipulation (get_data()/set_data()), not
+	# per-pixel get_pixel()/set_pixel() -- real perf difference at
+	# 512x512x~63 real textures during import.
+	var raw := img.get_data()
+	for i in range(3, raw.size(), 4):
+		raw[i] = 255
+	# Real bug found here: get_data() already includes mip-level bytes if the
+	# image has mipmaps at this point (confirmed directly -- the reported
+	# byte count matched the standard mip-chain sum ratio, 4/3x the base
+	# level alone), so passing a hardcoded `false` for use_mipmaps here
+	# mismatched the real buffer size and made this call fail outright,
+	# silently leaving the alpha channel un-forced (the actual reason the
+	# "wet" look didn't go away the first time around). img.has_mipmaps()
+	# tracks whichever is actually true instead of assuming either way.
+	img.set_data(img.get_width(), img.get_height(), img.has_mipmaps(), Image.FORMAT_RGBA8, raw)
+	if img.generate_mipmaps() != OK:
+		push_warning("Terrain3DTexturePool: %s normal map failed to generate mipmaps, using Terrain3D's flat default instead" % debug_name)
+		return null
+	if img.get_format() != CANONICAL_NORMAL_FORMAT or img.get_size() != Vector2i(CANONICAL_SIZE, CANONICAL_SIZE) or not img.has_mipmaps():
+		push_warning("Terrain3DTexturePool: %s normal map normalized to unexpected state (format=%d size=%s mipmaps=%s), using Terrain3D's flat default instead" % [debug_name, img.get_format(), img.get_size(), img.has_mipmaps()])
+		return null
 	return ImageTexture.create_from_image(img)
 
 ## Shared by the pink fallback and the slot-31 NaN-collision guard below --

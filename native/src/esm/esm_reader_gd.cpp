@@ -57,6 +57,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("resolve_refr_xtel", "refr_form_id"), &EsmReader::resolve_refr_xtel);
 	ClassDB::bind_method(D_METHOD("get_door_destination", "door_refr_form_id"), &EsmReader::get_door_destination);
 	ClassDB::bind_method(D_METHOD("resolve_ltex_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_texture_path);
+	ClassDB::bind_method(D_METHOD("resolve_ltex_normal_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_normal_texture_path);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
 }
 
@@ -463,6 +464,18 @@ String EsmReader::resolve_ltex_texture_path(int64_t ltex_form_id) const {
 	}
 	try {
 		return String(file_.resolve_ltex_texture_path(static_cast<uint32_t>(ltex_form_id)).c_str());
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return String();
+	}
+}
+
+String EsmReader::resolve_ltex_normal_texture_path(int64_t ltex_form_id) const {
+	if (!opened_) {
+		return String();
+	}
+	try {
+		return String(file_.resolve_ltex_normal_texture_path(static_cast<uint32_t>(ltex_form_id)).c_str());
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 		return String();

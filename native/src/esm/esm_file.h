@@ -184,6 +184,15 @@ public:
 	// doesn't resolve all the way through.
 	std::string resolve_ltex_texture_path(uint32_t ltex_form_id) const;
 
+	// Same LTEX -> TXST resolution as resolve_ltex_texture_path(), but reads
+	// TX01 (real normal/bump map path) instead of TX00 (diffuse). Bethesda's
+	// own TXST texture-set convention (TX00=diffuse, TX01=normal, TX02=glow,
+	// TX03=height, TX04=environment, TX05=environment mask -- see
+	// phases/0/04-dds-texture-import.md's own real-format census, which
+	// already confirmed real normal maps in this game are BC3/DXT5). Empty
+	// string if the FormID doesn't resolve, or the real TXST has no TX01.
+	std::string resolve_ltex_normal_texture_path(uint32_t ltex_form_id) const;
+
 private:
 	std::FILE *file_ = nullptr;
 	long file_size_ = 0;
