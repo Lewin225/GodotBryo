@@ -567,10 +567,21 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 			push_error("populate_dynamic_children: scene_nodes has a parent_index cycle -- %d node(s) left unattached" % remaining)
 			break
 
+	# owning_node_index == -1 means "attached directly to the NIF's root" --
+	# `parent` IS this tree's own root-equivalent (scene_nodes never
+	# contains an entry for the file's own root, by design; see SceneNode's
+	# doc comment), never built[0], which is just the block-index-order
+	# FIRST scene node -- an arbitrary, unrelated node whenever one exists
+	# at all. A real, previously-shipped bug: the -1 case used built[0] as
+	# a fallback meant only for the (much rarer) truly-empty-scene_nodes
+	# case, silently misplacing anything legitimately root-attached
+	# whenever the NIF ALSO had other scene nodes -- confirmed via real
+	# visual inspection in nif_viewer.tscn (a door's collision showing up
+	# offset from its mesh).
 	var i := 0
 	for entry in geometry["mesh_entries"]:
 		var owning: int = nif.get_submesh_owning_node_index(i)
-		var mesh_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else (built[0] if not built.is_empty() else parent)
+		var mesh_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else parent
 		var mi := MeshInstance3D.new()
 		mi.name = ("sub%d_%s" % [i, nif.get_submesh_name(i)]).validate_node_name()
 		mi.mesh = entry["mesh"]
@@ -587,19 +598,38 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 	# share one body, same as populate_collision_children()'s existing
 	# convention.
 	var bodies_by_owner: Dictionary = {}
+	var owner_local: Dictionary = {} # owning_node_index -> its Node3D's own transform relative to `parent`
 	for entry in geometry["shape_entries"]:
 		var owning: int = entry.get("owning_node_index", -1)
 		if not bodies_by_owner.has(owning):
-			var shape_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else (built[0] if not built.is_empty() else parent)
+			var shape_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else parent
 			var body := GamebryoCollisionBody.new()
 			body.name = "CollisionBody" if bodies_by_owner.is_empty() else "CollisionBody%d" % bodies_by_owner.size()
 			body.owner_ref = parent # the logical object this collider represents, not its immediate Node3D parent -- same convention as populate_collision_children()
 			shape_parent.add_child(body)
 			bodies_by_owner[owning] = body
+			# shape_parent is already inside the tree (the earlier attach
+			# loop ran unconditionally for every scene_nodes entry), so its
+			# global_transform is valid here. Dividing out parent's own
+			# global_transform cancels any ancestor prefix above `parent`
+			# itself (e.g. a viewer's own axis-fix wrapper), leaving
+			# exactly shape_parent's transform AS SEEN FROM `parent` --
+			# the same frame entry["transform"] (native's flattened-to-
+			# NIF-root value) is expressed in.
+			owner_local[owning] = parent.global_transform.affine_inverse() * shape_parent.global_transform
 		var col := CollisionShape3D.new()
 		col.name = String(entry.get("name", "collision"))
 		col.shape = entry["shape"]
-		col.transform = entry["transform"]
+		# entry["transform"] is flattened all the way to the NIF's root
+		# (native's flatten_via_scene_nodes()) -- but col's real parent
+		# (via `body`, which carries no offset of its own) is shape_parent,
+		# which ALREADY supplies everything up to and including that same
+		# node via ordinary Node3D composition. Applying the full
+		# root-relative transform on top double-composes it -- a real bug,
+		# not a NIF-authoring quirk: confirmed visually (a door's collision
+		# sitting offset from its own mesh by roughly the door's own
+		# width, in nif_viewer.tscn) before this fix.
+		col.transform = owner_local[owning].affine_inverse() * entry["transform"]
 		bodies_by_owner[owning].add_child(col)
 
 	return built
