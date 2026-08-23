@@ -33,7 +33,8 @@ extends Node3D
 	"Custom",
 	"Door - Animated (DLC04 Shack)",
 	"Elevator - Silo (complex)",
-	"Door - Static/Teleport (Craftsman)"
+	"Door - Static/Teleport (Craftsman)",
+	"Light - Chandelier (NiAmbientLight)"
 ) var preset: String = "Door - Animated (DLC04 Shack)"
 
 ## Only read when preset == "Custom". MODL-style relative path, no
@@ -52,6 +53,14 @@ const PRESET_PATHS := {
 	"Door - Animated (DLC04 Shack)": "dlc04\\architecture\\backwoodshacks\\dlc04shackdooranim01.nif",
 	"Elevator - Silo (complex)": "nvdlc04\\dungeons\\silo\\silo_elevator\\nvdlc04_silo-elevator-shaft.nif",
 	"Door - Static/Teleport (Craftsman)": "dungeons\\nv_craftsmanhomesinterior\\nvcraftsmanrmdoor.nif",
+	# scene_nodes covers every NiAVObject, not just render shapes -- this
+	# NiAmbientLight ('object0') shows up as a real, named node like any
+	# other, confirmed via native/tools/light_survey.cpp (throwaway, not
+	# committed) scanning for a real NiLight-bearing NIF rather than
+	# guessing one. No Light3D is actually built from it yet (nif_loader.cpp
+	# doesn't extract light data at all) -- this is here to inspect the
+	# node graph, not to render the light.
+	"Light - Chandelier (NiAmbientLight)": "dungeons\\caves\\lamplight\\lamplightchandelier.nif",
 }
 
 func _ready() -> void:
