@@ -97,6 +97,12 @@ public:
 	// FormID isn't a SCPT.
 	Dictionary get_script_data(int64_t scpt_form_id) const;
 
+	// Every SCPT record's own FormID in the file, in file order -- for
+	// whole-corpus survey tooling (phases/5's own real-data parser
+	// coverage pass), not a hot runtime path. Mirrors
+	// get_record_type_histogram()'s own for_each_record() walk.
+	PackedInt64Array get_all_script_form_ids() const;
+
 	// phases/1/04-exterior-cell-terrain.md additions:
 
 	// { "form_id": int } or {} if not found.

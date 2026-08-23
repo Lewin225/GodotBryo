@@ -77,7 +77,7 @@ func parse() -> Dictionary:
 	_skip_newlines()
 	if _ident_is(_peek(), "scn") or _ident_is(_peek(), "scriptname"):
 		_advance()
-		result["script_name"] = String(_advance()["value"])
+		result["script_name"] = str(_advance()["value"])
 	_skip_newlines()
 
 	while not _at_eof():
@@ -85,7 +85,7 @@ func parse() -> Dictionary:
 		if tok["kind"] != ScriptLexer.Kind.IDENT:
 			_advance() # stray token at top level -- skip rather than abort the whole parse
 			continue
-		var lower := String(tok["value"]).to_lower()
+		var lower := str(tok["value"]).to_lower()
 		if lower in _DECL_TYPES:
 			result["declarations"].append(_parse_declaration())
 		elif lower == "begin":
@@ -96,15 +96,15 @@ func parse() -> Dictionary:
 	return result
 
 func _parse_declaration() -> Dictionary:
-	var type_name := String(_advance()["value"]).to_lower()
-	var var_name := String(_advance()["value"])
+	var type_name := str(_advance()["value"]).to_lower()
+	var var_name := str(_advance()["value"])
 	_declared_names[var_name.to_lower()] = true
 	_skip_to_newline()
 	return { "type": type_name, "name": var_name }
 
 func _parse_block() -> Dictionary:
 	_advance() # "begin"
-	var blocktype := String(_advance()["value"])
+	var blocktype := str(_advance()["value"])
 	var params := []
 	while not _at_newline() and not _at_eof():
 		params.append(_advance()["value"])
@@ -120,7 +120,7 @@ func _parse_statements_until(enders: Array) -> Array:
 	_skip_newlines()
 	while not _at_eof():
 		var tok: Dictionary = _peek()
-		if tok["kind"] == ScriptLexer.Kind.IDENT and String(tok["value"]).to_lower() in enders:
+		if tok["kind"] == ScriptLexer.Kind.IDENT and str(tok["value"]).to_lower() in enders:
 			_advance()
 			break
 		stmts.append(_parse_statement())
@@ -130,7 +130,7 @@ func _parse_statements_until(enders: Array) -> Array:
 func _parse_statement() -> Dictionary:
 	var tok: Dictionary = _peek()
 	if tok["kind"] == ScriptLexer.Kind.IDENT:
-		var lower := String(tok["value"]).to_lower()
+		var lower := str(tok["value"]).to_lower()
 		if lower == "if":
 			return _parse_if()
 		if lower == "set":
@@ -148,13 +148,13 @@ func _parse_if() -> Dictionary:
 	# _parse_statements_until() consumed whichever ender matched; re-inspect
 	# the token just before that to know which branch we're continuing --
 	# simplest robust way given the shared ender list is to look back one.
-	var last_ender := String(_tokens[_pos - 1]["value"]).to_lower() if _pos > 0 else ""
+	var last_ender := str(_tokens[_pos - 1]["value"]).to_lower() if _pos > 0 else ""
 	while last_ender == "elseif":
 		var elseif_cond := _parse_expr()
 		_skip_newlines()
 		var elseif_stmts := _parse_statements_until(_IF_ENDERS)
 		branches.append({ "cond": elseif_cond, "stmts": elseif_stmts })
-		last_ender = String(_tokens[_pos - 1]["value"]).to_lower() if _pos > 0 else ""
+		last_ender = str(_tokens[_pos - 1]["value"]).to_lower() if _pos > 0 else ""
 	if last_ender == "else":
 		_skip_newlines()
 		else_stmts = _parse_statements_until(["endif"])
@@ -186,18 +186,18 @@ func _parse_call_statement() -> Dictionary:
 ## Parses `[Ident "."] Ident` -- either a plain name or a reference-prefixed
 ## one -- returning { "reference": String or "", "name": String }.
 func _parse_call_head() -> Dictionary:
-	var first := String(_advance()["value"])
+	var first := str(_advance()["value"])
 	if _peek()["kind"] == ScriptLexer.Kind.OP and _peek()["value"] == ".":
 		_advance()
-		var name := String(_advance()["value"])
+		var name := str(_advance()["value"])
 		return { "reference": first, "name": name }
 	return { "reference": "", "name": first }
 
 func _parse_dotted_name() -> String:
-	var name := String(_advance()["value"])
+	var name := str(_advance()["value"])
 	while _peek()["kind"] == ScriptLexer.Kind.OP and _peek()["value"] == ".":
 		_advance()
-		name += "." + String(_advance()["value"])
+		name += "." + str(_advance()["value"])
 	return name
 
 ## A single argument atom for a greedily-consumed call-statement argument
@@ -221,7 +221,7 @@ func _parse_expr(min_prec: int = 0) -> Dictionary:
 		var prec: int = _BINOP_PRECEDENCE[tok["value"]]
 		if prec < min_prec:
 			break
-		var op := String(_advance()["value"])
+		var op := str(_advance()["value"])
 		var right := _parse_expr(prec + 1)
 		left = { "kind": "binop", "op": op, "left": left, "right": right }
 	return left
@@ -313,4 +313,4 @@ func _skip_to_newline() -> void:
 		_advance()
 
 func _ident_is(tok: Dictionary, text: String) -> bool:
-	return tok["kind"] == ScriptLexer.Kind.IDENT and String(tok["value"]).to_lower() == text
+	return tok["kind"] == ScriptLexer.Kind.IDENT and str(tok["value"]).to_lower() == text

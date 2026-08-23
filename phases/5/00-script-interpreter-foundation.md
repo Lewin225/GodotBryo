@@ -86,6 +86,33 @@ session, and confirms at least one real `ACTI` REFR in `GSDocMitchellHouse` reso
   script instance, runs `GameMode`/`MenuMode` blocks every frame via its own `_process()`, exposes
   `dispatch_event(node, block_type, action_ref)` for event-gated blocks.
 
+## Whole-corpus real-data survey
+
+`test_script_corpus_survey.gd` lexes and parses every real `SCPT.SCTX` in `FalloutNV.esm` (2,576
+scripts — the base game only, not the DLC `.esm`s the design doc's "11,483" figure counted across)
+and reports a real function-call-name histogram plus any structural anomaly. This surfaced two
+real bugs the four hand-picked-sample tests above didn't catch:
+
+1. **Real editor IDs can start with a digit** (`1EWatchControlScript`, confirmed real data) — the
+   lexer's original digit-vs-letter dispatch committed to a NUMBER token before checking whether a
+   letter immediately followed with no gap, splitting the identifier into a stray number token plus
+   a separate trailing identifier. Fixed: `_read_number_or_ident()` now scans the whole
+   `[0-9 . letter _]` run first and decides NUMBER vs. IDENT from what it actually contains.
+2. **`String(token["value"])` crashes whenever a token's value is a non-string type** (an `int`/
+   `float` from a NUMBER token) — GDScript's `String()` type constructor is stricter than the
+   global `str()` function about which Variant types it accepts. Every such call site in
+   `script_parser.gd` now uses `str()` instead.
+
+Both were real crashes (`SCRIPT ERROR: Invalid call. Nonexistent 'String' constructor.`) that
+would have taken down the whole interpreter on real, unremarkable game data — exactly the kind of
+gap a small hand-picked sample can't surface. Post-fix: 2,576/2,576 real scripts parse without
+error (two harmless "unrecognized character" lexer warnings for a stray backtick in one script's
+comment, correctly skipped rather than crashing). The real function-call histogram (`GetDead`,
+`ShowMessage`, `SetStage`, `AddScriptPackage`, `SetObjectiveDisplayed`, ... all in the hundreds of
+real call sites) is the actual next-priority list once inventory/quest/faction/AI systems exist to
+back them — closely matching, and now measured rather than grep-estimated against, the design
+doc's own "Tier 1" ranking.
+
 ## Tests (`project/tests/`)
 
 `test_script_esm.gd`, `test_script_lexer.gd`, `test_script_parser.gd` (including the full real
@@ -130,5 +157,7 @@ list, narrowed further to what's actually runnable today:
 - [x] An unimplemented function call never crashes the interpreter.
 - [x] `Enable`/`Disable`/`Activate` correctly call into this project's own existing systems.
 - [x] Full existing regression suite has no new failures.
+- [x] Lexer/parser proven against the ENTIRE base-game script corpus (2,576 real scripts), not
+      just a hand-picked sample — found and fixed two real crashes a small sample missed.
 - [ ] A real script actually observed running correctly in play (needs the object_registry.gd
       integration step from Explicit non-goals first — out of scope for this milestone).
