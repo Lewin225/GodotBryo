@@ -82,6 +82,15 @@ func screenshot(root: Node3D, out_name: String) -> void:
 		var save_err := img.save_png(out_path)
 		check(save_err == OK, "saved screenshot to " + out_path)
 
+func _first_placement_of_type(esm: EsmReader, cell_editor_id: String, type_tag: String) -> Dictionary:
+	var cell: Dictionary = esm.find_cell_by_editor_id(cell_editor_id)
+	if cell.is_empty():
+		return {}
+	for placement in esm.get_cell_references(int(cell["form_id"])):
+		if String(placement.get("base_type", "")) == type_tag:
+			return placement
+	return {}
+
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 
@@ -139,9 +148,9 @@ func _ready() -> void:
 	# notes) but now build as LightNode via a real light, not a mesh.
 	check(by_class.get("LightNode", 0) == 25, "all 25 LIGH refs became LightNode (got %d)" % by_class.get("LightNode", 0))
 	# Structural fallback, exercised by real unregistered types (WEAP/ARMO/
-	# ALCH/MSTT), not a contrived one — see object_registry.gd.
+	# ALCH), not a contrived one — see object_registry.gd.
 	check(by_class.get("GamebryoVisual", 0) > 0,
-			"unregistered-but-visual types (WEAP/ARMO/ALCH/MSTT/...) rendered via the structural fallback (got %d)" % by_class.get("GamebryoVisual", 0))
+			"unregistered-but-visual types (WEAP/ARMO/ALCH/...) rendered via the structural fallback (got %d)" % by_class.get("GamebryoVisual", 0))
 	# SOUN has no MODL — genuinely unhandled, should be skipped, not crash.
 	check(skipped_types.get("SOUN", 0) == 2, "SOUN (no mesh) skipped cleanly (got %d)" % skipped_types.get("SOUN", 0))
 
@@ -173,6 +182,29 @@ func _ready() -> void:
 		registry.register("DOOR", func(p, r): return registry._build_door(p, r))
 		var restored_node := registry.build(door_placement)
 		check(restored_node is DoorNode, "DOOR resolves to DoorNode again after re-registering")
+
+	# Real shipped placements, found by an ESM census rather than invented
+	# dictionaries: TACT and TERM share HooverDamIntPowerPlant01b; MSTT is
+	# in HooverDamIntPowerPlant01. These must be typed Nodes on CellLoader's
+	# synchronous build() path, never generic GamebryoVisual fallback.
+	print("=== TACT / TERM / MSTT typed-node registry dispatch ===")
+	var dynamic_fixtures := [
+		{ "cell": "HooverDamIntPowerPlant01", "type": "MSTT", "class": "MovableStaticNode" },
+		{ "cell": "HooverDamIntPowerPlant01b", "type": "TACT", "class": "TalkingActivatorNode" },
+		{ "cell": "HooverDamIntPowerPlant01b", "type": "TERM", "class": "TerminalNode" },
+	]
+	for fixture in dynamic_fixtures:
+		var type_tag: String = fixture["type"]
+		var placement := _first_placement_of_type(esm, fixture["cell"], type_tag)
+		check(not placement.is_empty(), "found a real %s placement in %s" % [type_tag, fixture["cell"]])
+		if placement.is_empty():
+			continue
+		var node := registry.build(placement)
+		check(node != null, "real %s placement builds a Node" % type_tag)
+		if node != null:
+			var cls: String = String(node.get_script().get_global_name()) if node.get_script() else node.get_class()
+			check(cls == fixture["class"], "real %s placement builds %s (got %s)" % [type_tag, fixture["class"], cls])
+			node.free()
 
 	# --- SCOL: SLGoldMine01INT has 3 real SCOL refs. ---
 	print("=== SLGoldMine01INT (SCOL unpacking) ===")
