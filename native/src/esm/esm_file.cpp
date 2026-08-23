@@ -509,6 +509,9 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 					pl.base_editor_id = s.as_string();
 				} else if (s.type == "MODL") {
 					pl.model_path = s.as_string();
+				} else if (s.type == "SCRI" && s.size >= 4) {
+					util::ByteReader sr(s.data, s.size);
+					pl.script_form_id = sr.read_u32();
 				}
 			}
 		}
@@ -628,6 +631,52 @@ std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_fo
 		return lighting;
 	}
 	return std::nullopt;
+}
+
+std::optional<ScriptData> EsmFile::get_script_data(uint32_t scpt_form_id) const {
+	auto record = find_record_by_form_id(scpt_form_id);
+	if (!record || record->type != "SCPT") {
+		return std::nullopt;
+	}
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	ScriptData script;
+	// SLSD/SCVR arrive as real adjacent pairs (confirmed against real data:
+	// every SLSD is immediately followed by its own SCVR) -- read the
+	// pending SLSD's index and pair it with the next SCVR encountered.
+	bool have_pending_slsd = false;
+	uint32_t pending_slsd_index = 0;
+
+	for (const auto &s : subs) {
+		if (s.type == "EDID") {
+			script.editor_id = s.as_string();
+		} else if (s.type == "SCHR" && s.size >= 20) {
+			util::ByteReader sr(s.data, s.size);
+			sr.skip(4); // Unused
+			sr.read_u32(); // RefCount -- unused, describes SCDA
+			sr.read_u32(); // CompiledSize -- unused, describes SCDA
+			sr.read_u32(); // VariableCount -- unused, re-derived from real SLSD/SCVR pairs instead
+			script.script_type = sr.read_u16();
+			// Flags -- unused, describes SCDA
+		} else if (s.type == "SCTX") {
+			script.source_text = s.as_string();
+		} else if (s.type == "SLSD" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pending_slsd_index = sr.read_u32();
+			have_pending_slsd = true;
+		} else if (s.type == "SCVR") {
+			ScriptLocalVar var;
+			var.name = s.as_string();
+			var.index = have_pending_slsd ? pending_slsd_index : 0;
+			script.locals.push_back(std::move(var));
+			have_pending_slsd = false;
+		} else if (s.type == "SCRO" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			script.referenced_form_ids.push_back(sr.read_u32());
+		}
+	}
+	return script;
 }
 
 std::optional<RecordInfo> EsmFile::find_worldspace_by_editor_id(const std::string &editor_id) const {

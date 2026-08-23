@@ -92,6 +92,11 @@ public:
 	// Dictionary if the CELL has no XCLL (real for exterior cells).
 	Dictionary get_cell_lighting_data(int64_t cell_form_id) const;
 
+	// esm::EsmFile::get_script_data() -- a SCPT record's source text, local
+	// variable table, and referenced FormIDs. Empty Dictionary if the
+	// FormID isn't a SCPT.
+	Dictionary get_script_data(int64_t scpt_form_id) const;
+
 	// phases/1/04-exterior-cell-terrain.md additions:
 
 	// { "form_id": int } or {} if not found.

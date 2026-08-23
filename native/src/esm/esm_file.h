@@ -159,6 +159,12 @@ public:
 	// resolve_refr_xtel() already does for a REFR's offset.
 	std::optional<uint32_t> get_cell_worldspace(uint32_t cell_form_id) const;
 
+	// phases/5/00-script-interpreter-foundation.md: reads a SCPT record's
+	// real data (source text, locals, referenced FormIDs) -- see
+	// ScriptData's own doc comment for why this never touches SCDA.
+	// std::nullopt if the FormID isn't a SCPT.
+	std::optional<ScriptData> get_script_data(uint32_t scpt_form_id) const;
+
 	// Reads a CELL's own XCLL ("Lighting") subrecord -- per-cell authored
 	// ambient/directional/fog data, distinct from the flat global ambient
 	// this codebase currently applies via interior_environment.tres.
