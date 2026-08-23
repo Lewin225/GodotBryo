@@ -15,28 +15,24 @@ extends RefCounted
 ## only knowable in general by knowing the function (there are ~488 of
 ## them). This parser only knows the arity of the handful of functions
 ## KNOWN_ARITIES lists (the same small set script_function_registry.gd
-## actually implements) -- an unknown function used INSIDE an expression
-## (an if/set operand) is parsed as zero-arg, and a bare call STATEMENT
-## (line "FuncName arg1 arg2" on its own) greedily consumes every
-## identifier/number/string atom to end-of-line as an argument. Both are
-## real, deliberate approximations: the statement-level case is right for
-## the overwhelmingly common "one call per line" real-script shape; the
-## expression-level case can misparse a real unknown function that takes
-## arguments inside an if/set (logged via push_warning when it happens, not
+## actually implements). A bare call STATEMENT (line "FuncName arg1 arg2" on
+## its own) greedily consumes every identifier/number/string atom to
+## end-of-line as an argument -- right for the overwhelmingly common
+## "one call per line" real-script shape, real deliberate approximation
+## (logged via push_warning if it runs out of expected tokens, never
 ## silently wrong).
 ##
-## A related, real consequence of the same "undeclared bare identifier ==
-## function call" heuristic (see `_parse_ident_primary()`): a bare
-## reference/editor-ID literal used as an ARGUMENT (e.g. `MoveTo
-## SomeMarkerEDID`) is indistinguishable, at parse time, from a genuine
-## zero-arg call to an unimplemented function -- confirmed against a real
-## script this session (`VLCSafetyTrigger01SCRIPT`'s own
-## `VHDLegateCampGateDestinationMarker` marker argument logs as an
-## "unimplemented function" the same way an actual missing function would).
-## Harmless for this milestone (still evaluates to 0, still doesn't crash),
-## but real -- disambiguating call-head position from argument position
-## (or resolving via SCRO, once that's wired in) is a follow-up, not fixed
-## here.
+## An unprefixed, undeclared identifier reached as an expression PRIMARY
+## (an if/set operand, or an argument to some other call -- see
+## `_parse_ident_primary()`) parses as a real `{"kind": "name", "name": ...}`
+## node -- a raw reference/editor-ID literal, resolved by whichever function
+## actually receives it (most read it as a plain name string, like
+## `ShowMessage`'s own MESG editor-ID lookup; some as a live reference
+## lookup, like `IsActionRef`'s). This was originally the same "treat it as
+## a phantom zero-arg call" heuristic call-head position uses, but real data
+## proved that wrong for primary position specifically: `ShowMessage
+## GSBrokenSMGMsg` needs the literal name `GSBrokenSMGMsg`, not a swallowed
+## 0 from calling a nonexistent function named that.
 const KNOWN_ARITIES := {
 	"getactionref": 0,
 	"isactionref": 1,
@@ -280,20 +276,23 @@ func _parse_ident_primary() -> Dictionary:
 	var lower_name := String(call["name"]).to_lower()
 	var arity: int = KNOWN_ARITIES.get(lower_name, -1)
 	if arity == -1:
-		# Unknown function used inside an expression -- see this file's own
-		# top doc comment. GECK requires every variable to be declared
-		# before use (real language rule, design doc's Variables section),
-		# so an unprefixed identifier that ISN'T one of this script's own
-		# declared locals can only be a function call the real compiler
-		# validated at build time -- treated as a real, zero-arg
-		# unimplemented call (logged, evaluates to 0) rather than a bare
-		# variable read (which would silently and wrongly resolve to null
-		# instead of surfacing that the function isn't implemented yet).
+		# An identifier reached as an expression PRIMARY (an if/set operand,
+		# or an argument to some other call) -- distinct from one reached as
+		# a bare STATEMENT's own head (_parse_call_statement(), which always
+		# treats it as a real call, correctly, since a bare statement line
+		# IS call syntax). Real, confirmed data settled this: an unprefixed,
+		# undeclared identifier in PRIMARY position is overwhelmingly a
+		# reference/editor-ID name being passed as an argument (`ShowMessage
+		# GSBrokenSMGMsg`, `IsActionRef player`, `MoveTo SomeMarkerEDID`),
+		# not a nested zero-arg call -- treating it as a phantom
+		# "unimplemented function" call (the previous behavior) actively
+		# broke real functions like ShowMessage, which need the literal name
+		# itself, not a swallowed 0. A declared local still reads its own
+		# value, per the language's real variable-declaration rule (design
+		# doc's Variables section).
 		if String(call["reference"]) == "" and _declared_names.has(String(call["name"]).to_lower()):
 			return { "kind": "var", "name": call["name"] }
-		call["args"] = []
-		call["kind"] = "call"
-		return call
+		return { "kind": "name", "name": call["name"] }
 	var args := []
 	for i in range(arity):
 		if _at_newline() or _at_eof():

@@ -16,8 +16,12 @@ extends RefCounted
 ## section) with the same non-crashing spirit for a missing function.
 
 var _functions := {} # lowercased name -> Callable
-
 var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam the log every frame
+
+## Set externally (ScriptEngine propagates its own esm whenever it's
+## assigned) -- null-safe everywhere it's used below, since a registry can
+## exist before an EsmReader is available (e.g. a bare unit test).
+var esm: EsmReader = null
 
 func _init() -> void:
 	_register_defaults()
@@ -85,8 +89,39 @@ func _register_defaults() -> void:
 
 	register("GetActionRef", func(_a, ctx: ScriptExecutionContext):
 		return ctx.action_ref)
+		
 
 	register("Unlock", func(_a, _c):
 		# Real, deliberate gap: no lock/key state exists on any Dynamic type
 		# yet (DoorNode/ContainerNode have no `is_locked` field today).
 		return 0)
+
+	register("ShowMessage", func(a: Array, _c):
+		# Real argument shape confirmed against real data (GSBrokenSMGScript's
+		# own `ShowMessage GSBrokenSMGMsg`): a bare MESG editor-ID name, not a
+		# FormID -- resolved via get_message_by_editor_id(), which reads the
+		# real MESG.FULL (title)/MESG.DESC (body) subrecords.
+		#
+		# No in-game message-box/menu UI exists in this project yet. Real,
+		# per user direction: use the OS's own native alert dialog
+		# (OS.alert()) as a stand-in -- genuinely shows the real message
+		# text, just not through in-game UI. Two real consequences worth
+		# being explicit about: OS.alert() is blocking/modal (freezes the
+		# whole game loop, GameMode ticking included, until dismissed --
+		# unlike the real engine's own non-blocking, frame-persistent
+		# message box), and it returns void -- no button index at all, so a
+		# MESG with real button choices (like GSBrokenSMGMsg's own two ITXT
+		# entries) only ever shows as a single OK dialog. GetButtonPressed
+		# stays genuinely unimplementable through this mechanism -- there's
+		# no button result to report back, not a gap this function could
+		# close even partially.
+		if a.is_empty() or esm == null:
+			return 0
+		var editor_id := String(a[0])
+		var msg: Dictionary = esm.get_message_by_editor_id(editor_id)
+		if msg.is_empty():
+			push_warning("ScriptFunctionRegistry: ShowMessage -- no MESG found for editor ID '%s'" % editor_id)
+			return 0
+		var title: String = msg.get("title", "")
+		OS.alert(String(msg.get("text", "")), title if title != "" else editor_id)
+		return 1)
