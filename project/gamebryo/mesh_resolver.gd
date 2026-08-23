@@ -365,6 +365,20 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 				or bool(alpha_info.get("test_enabled", false))
 		mesh_entries.append({
 			"cache_key": "%s#%d" % [model_path, i],
+			# phases/3/00-door-completion.md follow-up: the TRUE native
+			# NifReader submesh index, threaded through explicitly rather
+			# than re-derived from a loop counter downstream -- a real,
+			# confirmed bug otherwise: once ANY submesh is skipped here
+			# (the EditorMarker case right above is the common one), every
+			# entry after it in this array no longer lines up with its own
+			# original index, silently misattaching owning_node_index/name
+			# lookups in populate_dynamic_children() to the WRONG submesh
+			# (confirmed against real data: IndDoorSmAnim01.NIF's doorframe
+			# submesh (#3) got attached under its file's EditorMarker's own
+			# owning node (#2's) instead of its own, because the build loop
+			# assumed position-in-array == native index once #2 was
+			# filtered out).
+			"submesh_index": i,
 			"positions": nif.get_positions(i),
 			"normals": nif.get_normals(i),
 			"uvs": nif.get_uvs(i),
@@ -465,7 +479,7 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 			if mat != null:
 				mesh.surface_set_material(0, mat)
 			_mesh_cache[mesh_key] = mesh
-		mesh_entries.append({ "mesh": mesh, "transform": e["transform"] })
+		mesh_entries.append({ "mesh": mesh, "transform": e["transform"], "submesh_index": e["submesh_index"] })
 	return mesh_entries
 
 ## Builds every MeshInstance3D child (one per NIF submesh, with resolved
@@ -497,17 +511,21 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 	if geometry.is_empty():
 		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
 	var lod_entries: Array = geometry.get("lod_mesh_entries", [])
-	var i := 0
 	for entry in geometry["mesh_entries"]:
 		var mi := MeshInstance3D.new()
-		mi.name = "sub%d" % i
+		# entry["submesh_index"], not a loop counter -- a skipped submesh
+		# (EditorMarker etc, see resolve_raw_geometry()'s own doc comment
+		# on "submesh_index") would otherwise silently relabel every
+		# following entry. Purely cosmetic here (no owning_node_index
+		# lookup on the Static path), but a wrong label is still a real
+		# debugging trap -- confirmed the hard way on the Dynamic path.
+		mi.name = "sub%d" % int(entry["submesh_index"])
 		mi.mesh = entry["mesh"]
 		mi.transform = entry["transform"]
 		if not lod_entries.is_empty():
 			_apply_lod_visibility_range(mi, true)
 		parent.add_child(mi)
-		i += 1
-	i = 0
+	var i := 0
 	for entry in lod_entries:
 		var mi := MeshInstance3D.new()
 		mi.name = "lod%d" % i
@@ -603,15 +621,28 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 	# whenever the NIF ALSO had other scene nodes -- confirmed via real
 	# visual inspection in nif_viewer.tscn (a door's collision showing up
 	# offset from its mesh).
-	var i := 0
+	# A REAL, CONFIRMED bug lived here: this used to look up owning_node_index/
+	# name via a loop COUNTER over geometry["mesh_entries"], assuming
+	# position-in-array == the native NifReader submesh index. That's only
+	# true when nothing upstream was ever skipped -- but resolve_raw_geometry()
+	# skips EditorMarker submeshes (a real, common case), so any submesh
+	# AFTER a skipped one silently got the WRONG owning node and name.
+	# Confirmed against real data: IndDoorSmAnim01.NIF (a real DOOR model,
+	# REPCONNTopToMidDoor among others) has an EditorMarker as submesh #2 —
+	# its real doorframe (#3) was misattached under submesh #2's own
+	# (EditorMarker's) owning node instead of its own, visibly misplacing
+	# the frame relative to the door leaf/doorway. Fixed by using each
+	# entry's own `submesh_index` (threaded through explicitly since
+	# resolve_raw_geometry(), see that function's own doc comment) instead
+	# of a counter.
 	for entry in geometry["mesh_entries"]:
-		var owning: int = nif.get_submesh_owning_node_index(i)
+		var submesh_index: int = entry["submesh_index"]
+		var owning: int = nif.get_submesh_owning_node_index(submesh_index)
 		var mesh_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else parent
 		var mi := MeshInstance3D.new()
-		mi.name = ("sub%d_%s" % [i, nif.get_submesh_name(i)]).validate_node_name()
+		mi.name = ("sub%d_%s" % [submesh_index, nif.get_submesh_name(submesh_index)]).validate_node_name()
 		mi.mesh = entry["mesh"]
 		mesh_parent.add_child(mi)
-		i += 1
 
 	# Real hierarchy for collision too -- see this function's own doc
 	# comment. Grouped by owning_node_index rather than one single body:
