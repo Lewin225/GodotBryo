@@ -18,3 +18,10 @@ bone hierarchy, so it doesn't need `Skeleton3D` support to land. **Done** — se
 [00-door-completion.md](00-door-completion.md): `DoorNode.activate()` now plays real
 animation, Open/Close/Loop sounds, and DOOR flags for non-teleporting doors, with a
 mid-swing reactivation debounce.
+
+## Sub-tasks
+
+| # | Task | File |
+|---|------|------|
+| 3.0 | Door completion — real swing animation, sounds, flags | [00-door-completion.md](00-door-completion.md) |
+| 3.1 | Dynamic object types — full status table (Node type per Dynamic base record type, real-data-verified) | [01-dynamic-object-types.md](01-dynamic-object-types.md) |
