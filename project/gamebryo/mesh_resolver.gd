@@ -529,15 +529,30 @@ func _apply_lod_visibility_range(mi: MeshInstance3D, is_full_detail: bool) -> vo
 ##
 ## `geometry` (optional): see populate_mesh_children()'s own doc comment —
 ## same pre-built-data-sharing purpose.
+##
+## CollisionShape3D children go under a GamebryoCollisionBody child of
+## `parent`, not `parent` directly (enginedocs/nv_class_hierarchy.md:
+## GamebryoReference is Node3D now, not StaticBody3D, so `parent` has no
+## physics body of its own to hang shapes off — composition adds one here,
+## lazily, only when there's at least one real shape to attach). A raycast
+## hit resolves to this body as `collider`; callers walk `collider.owner_ref`
+## to reach `parent` (see game.gd's interact raycast).
 func populate_collision_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
 	if geometry.is_empty():
 		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
-	for entry in geometry["shape_entries"]:
+	var shape_entries: Array = geometry["shape_entries"]
+	if shape_entries.is_empty():
+		return
+	var body := GamebryoCollisionBody.new()
+	body.name = "CollisionBody"
+	body.owner_ref = parent
+	parent.add_child(body)
+	for entry in shape_entries:
 		var col := CollisionShape3D.new()
 		col.name = String(entry.get("name", "collision"))
 		col.shape = entry["shape"]
 		col.transform = entry["transform"]
-		parent.add_child(col)
+		body.add_child(col)
 
 func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
 	var pos_flat: PackedFloat32Array = e["positions"]
