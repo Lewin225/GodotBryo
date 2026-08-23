@@ -145,6 +145,26 @@ list, narrowed further to what's actually runnable today:
   (`Let`/arrays/strings/`ForEach`).** All real, all logged as gaps at the exact point they'd
   matter (see the class/function doc comments), none guessed at.
 
+## Editor tooling: `script_viewer.gd`/`.tscn`
+
+A read-only, editor-only script inspector (same "open the scene, no Play needed" convention as
+`nif_viewer.gd`/`interior_viewer.gd`): search/browse every real script by editor ID, see its actual
+`SCTX` source with every function call color-coded by whether `script_function_registry.gd`
+implements it, Ctrl+Click an implemented call to jump straight to its registration
+(`EditorInterface.edit_script()`). Reuses the exact same lex/parse/registry pipeline
+`script_engine.gd` runs at real game time — never a parallel bespoke text scan that could silently
+drift from what the interpreter actually does, and never writes anything (no save path exists at
+all here, not even disabled).
+
+Required a small, real lexer/parser extension: every token now carries `start`/`end` (absolute
+source character offsets), and `ScriptParser._parse_call_head()` threads a call's own
+`name_start`/`name_end` onto its AST node — needed to map a parsed call back to the exact on-screen
+text span to highlight/link, not used by parsing or interpretation themselves. Verified against
+the full 2,576-script corpus (still 0 crashes) plus a dedicated `test_script_viewer.gd` exercising
+span collection, BBCode construction, and registration-line lookup headlessly (the tool's own
+UI/`EditorInterface` pieces only make sense inside a running editor, so the test calls the
+underlying pure functions directly, bypassing the `Engine.is_editor_hint()`-gated `_ready()`).
+
 ## Acceptance criteria
 
 - [x] `get_script_data()` matches real, hand-verified ESM bytes for a real script.
