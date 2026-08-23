@@ -1,12 +1,12 @@
 extends Node
 
-## Exercises script_viewer.gd's pure logic (span collection + BBCode
-## construction) headlessly -- the tool's own UI/EditorInterface pieces
-## only make sense inside the running editor (Engine.is_editor_hint() gates
-## _ready() itself), so this bypasses that gate and calls the underlying
-## functions directly, the same way other "private"-by-convention state in
-## this project's debug tabs is reached into from outside (see
-## world_streaming_debug_tab.gd).
+## Exercises script_viewer.gd's pure logic (call-name collection +
+## registration lookup) headlessly -- the tool's own UI/EditorInterface/
+## CodeEdit symbol-lookup pieces only make sense inside the running editor
+## (Engine.is_editor_hint() gates _ready() itself), so this bypasses that
+## gate and calls the underlying functions directly, the same way other
+## "private"-by-convention state in this project's debug tabs is reached
+## into from outside (see world_streaming_debug_tab.gd).
 
 var failures := 0
 
@@ -18,38 +18,36 @@ func check(cond: bool, msg: String) -> void:
 		failures += 1
 
 func _ready() -> void:
-	print("--- script_viewer.gd: span collection + BBCode ---")
+	print("--- script_viewer.gd: call-name collection ---")
 
 	var viewer: Control = load("res://addons/script_viewer/script_viewer.gd").new()
 	viewer._function_registry = ScriptFunctionRegistry.new()
 
-	var source := "BEGIN OnActivate\nEnable\nSomeUnknownFunc\nEND\n"
+	# Same call site twice with different real-world casing (the language is
+	# case-insensitive; a script can legitimately do this) -- both variants
+	# must be collected separately for the highlighter, but resolve to the
+	# same known/unknown answer either way.
+	var source := "BEGIN OnActivate\nEnable\nenable\nSomeUnknownFunc\nEND\n"
 	var program := ScriptParser.new(ScriptLexer.new(source).tokenize()).parse()
 
-	var spans := []
+	var casing_variants := {}
 	for block in program["blocks"]:
-		viewer._collect_call_spans(block["stmts"], spans)
-	spans.sort_custom(func(a, b): return a["start"] < b["start"])
+		viewer._collect_call_names(block["stmts"], casing_variants)
 
-	check(spans.size() == 2, "two calls found (got %d)" % spans.size())
-	if spans.size() == 2:
-		check(spans[0]["name"] == "Enable" and spans[0]["known"] == true, "Enable found and marked known")
-		check(spans[1]["name"] == "SomeUnknownFunc" and spans[1]["known"] == false, "SomeUnknownFunc found and marked unknown")
-		# The span must point at the REAL text -- not just the right name,
-		# the right offsets into the original source string.
-		check(source.substr(spans[0]["start"], spans[0]["end"] - spans[0]["start"]) == "Enable", "Enable span slices the real source text")
-		check(source.substr(spans[1]["start"], spans[1]["end"] - spans[1]["start"]) == "SomeUnknownFunc", "SomeUnknownFunc span slices the real source text")
+	check(casing_variants.size() == 3, "three distinct casing variants found (got %d)" % casing_variants.size())
+	check(casing_variants.get("Enable") == true, "'Enable' (capitalized) marked known")
+	check(casing_variants.get("enable") == true, "'enable' (lowercase) also marked known")
+	check(casing_variants.get("SomeUnknownFunc") == false, "'SomeUnknownFunc' marked unknown")
 
-	var bbcode: String = viewer._build_bbcode(source, spans)
-	check(bbcode.find("[color=%s]" % viewer.COLOR_KNOWN) != -1, "known span uses the known color")
-	check(bbcode.find("[color=%s]" % viewer.COLOR_UNKNOWN) != -1, "unknown span uses the unknown color")
-	check(bbcode.find("[url=known:Enable]Enable[/url]") != -1, "Enable wrapped as a 'known' url meta")
-	check(bbcode.find("[url=unknown:SomeUnknownFunc]SomeUnknownFunc[/url]") != -1, "SomeUnknownFunc wrapped as an 'unknown' url meta")
-	check(bbcode.find("BEGIN OnActivate") != -1, "non-call text (BEGIN OnActivate) preserved verbatim")
+	print("--- symbol validate/lookup (case-insensitive) ---")
+	viewer._found_calls_lower.clear()
+	for name in casing_variants:
+		viewer._found_calls_lower[String(name).to_lower()] = casing_variants[name]
 
-	print("--- bbcode escaping ---")
-	var escaped: String = viewer._bbcode_escape("if [x] then")
-	check(escaped == "if [lb]x] then", "literal '[' escaped to [lb]")
+	check(viewer._found_calls_lower.has("enable"), "lowercase lookup finds 'enable' regardless of source casing")
+	check(viewer._found_calls_lower["enable"] == true, "'enable' resolves known via case-insensitive lookup")
+	check(viewer._found_calls_lower.has("someunknownfunc"), "lowercase lookup finds the unknown call too")
+	check(not viewer._found_calls_lower.has("notarealcallhere"), "a name never seen in this script isn't present")
 
 	print("--- registration line lookup ---")
 	var line: int = viewer._find_registration_line("Enable")

@@ -174,13 +174,21 @@ docked as a real top-tab-row screen (alongside 2D/3D/Script/AssetLib) via
 convention) but needed no logic changes — the plugin is a thin wrapper around the exact same
 Control that already existed.
 
-Required a small, real lexer/parser extension: every token now carries `start`/`end` (absolute
-source character offsets), and `ScriptParser._parse_call_head()` threads a call's own
-`name_start`/`name_end` onto its AST node — needed to map a parsed call back to the exact on-screen
-text span to highlight/link, not used by parsing or interpretation themselves. Verified against
-the full 2,576-script corpus (still 0 crashes) plus a dedicated `test_script_viewer.gd` exercising
-span collection, BBCode construction, and registration-line lookup headlessly (the tool's own
-UI/`EditorInterface` pieces only make sense inside a running editor, so the test calls the
+**Second correction, same tool**: `SourceDisplay` started as a `RichTextLabel` with hand-built
+BBCode spans (needing exact source character offsets threaded through the lexer/parser just to
+wrap the right substring in `[color]`/`[url]` tags) and a `meta_clicked` handler manually checking
+`Input.is_key_pressed(KEY_CTRL)`. Switched to `CodeEdit` instead — it ships the exact UX this tool
+needs natively: `symbol_lookup_on_click` handles Ctrl-gating, word-boundary detection, and
+hover-underline feedback all on its own (`symbol_validate`/`symbol_lookup` signals), and a
+`CodeHighlighter` colors by keyword text, not by position, so the source offset plumbing turned out
+to be unnecessary and was reverted out of the lexer/parser (kept `start`/`end` on lexer tokens
+themselves — cheap, general, real potential future use for e.g. a debugger mapping a breakpoint
+line to source — but dropped the parser's now-dead `name_start`/`name_end`, which existed only for
+this). `_source_display.editable = false` keeps it genuinely read-only. Verified against the full
+2,576-script corpus (still 0 crashes) plus `test_script_viewer.gd` exercising call-name collection
+(including same-script, different-casing call sites — real, since the language is
+case-insensitive) and registration-line lookup headlessly (the tool's own UI/`EditorInterface`/
+`CodeEdit` symbol-lookup pieces only make sense inside a running editor, so the test calls the
 underlying pure functions directly, bypassing the `Engine.is_editor_hint()`-gated `_ready()`).
 
 ## Acceptance criteria

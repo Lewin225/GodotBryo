@@ -44,10 +44,10 @@ func _peek_char() -> String:
 
 ## Every returned token also carries "start"/"end" (absolute character
 ## offsets into the original source string) -- not needed by the parser's
-## own control flow, but load-bearing for script_viewer.gd's read-only
-## editor tool: mapping a parsed AST call node back to its exact on-screen
-## span is how unimplemented-function highlighting/ctrl-click navigation
-## finds the right text to annotate.
+## own control flow, but cheap, general position metadata worth keeping on
+## the token itself (e.g. for a future debugger mapping a breakpoint line
+## back to source) rather than re-deriving it later from token text alone,
+## which can't disambiguate repeated identical tokens.
 func _next_token() -> Dictionary:
 	_skip_whitespace_and_comments()
 	var start := _pos

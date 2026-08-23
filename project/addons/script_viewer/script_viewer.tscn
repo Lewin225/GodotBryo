@@ -45,14 +45,13 @@ layout_mode = 2
 text = "Select a script on the left."
 autowrap_mode = 2
 
-[node name="SourceDisplay" type="RichTextLabel" parent="HSplit/Right"]
+[node name="SourceDisplay" type="CodeEdit" parent="HSplit/Right"]
 layout_mode = 2
 size_flags_vertical = 3
-bbcode_enabled = true
-scroll_active = true
-selection_enabled = true
-theme_override_fonts/normal_font = null
-theme_override_font_sizes/normal_font_size = 14
+theme_override_font_sizes/font_size = 14
+gutters_draw_line_numbers = true
+editable = false
+minimap_draw = true
 
 [node name="StatusLabel" type="Label" parent="HSplit/Right"]
 layout_mode = 2
