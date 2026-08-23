@@ -193,6 +193,28 @@ public:
 	// string if the FormID doesn't resolve, or the real TXST has no TX01.
 	std::string resolve_ltex_normal_texture_path(uint32_t ltex_form_id) const;
 
+	// General-purpose, not tied to any one caller (DOOR's own SNAM/ANAM/
+	// BNAM today, deliberately kept generic for future callers -- ambient
+	// sound markers, weapon/footstep sound sets, anything else that
+	// references a SOUN record by FormID). Resolves via SOUN.FNAM, the
+	// subrecord confirmed via fopdoc to hold the actual filename. Path is
+	// relative to Data/Sound/ with no "sound\" prefix stored in the file —
+	// same convention as MODL/LTEX texture paths, caller prepends it before
+	// a BSA lookup. Empty string if the FormID doesn't resolve to a SOUN
+	// record, or that SOUN has no FNAM.
+	std::string resolve_soun_filename(uint32_t soun_form_id) const;
+
+	// phases/3/00-door-completion.md Part B: DOOR.SNAM/ANAM/BNAM (each
+	// already resolved through resolve_soun_filename() above) + FNAM
+	// (flags) — see DoorData's own doc comment in esm_types.h for what
+	// each field means and the real, deliberate gap for animated-door
+	// sound (baked into the NIF, not read here). std::nullopt if the
+	// FormID doesn't resolve to a DOOR record; a real DOOR record always
+	// returns a value (all-default fields if it genuinely has none of
+	// these subrecords — a real, valid, common case, not the same as "not
+	// found").
+	std::optional<DoorData> get_door_data(uint32_t door_form_id) const;
+
 private:
 	std::FILE *file_ = nullptr;
 	long file_size_ = 0;

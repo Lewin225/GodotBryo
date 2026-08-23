@@ -58,6 +58,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_door_destination", "door_refr_form_id"), &EsmReader::get_door_destination);
 	ClassDB::bind_method(D_METHOD("resolve_ltex_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_texture_path);
 	ClassDB::bind_method(D_METHOD("resolve_ltex_normal_texture_path", "ltex_form_id"), &EsmReader::resolve_ltex_normal_texture_path);
+	ClassDB::bind_method(D_METHOD("resolve_soun_filename", "soun_form_id"), &EsmReader::resolve_soun_filename);
+	ClassDB::bind_method(D_METHOD("get_door_data", "door_form_id"), &EsmReader::get_door_data);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
 }
 
@@ -480,6 +482,42 @@ String EsmReader::resolve_ltex_normal_texture_path(int64_t ltex_form_id) const {
 		last_error_ = String(e.what());
 		return String();
 	}
+}
+
+String EsmReader::resolve_soun_filename(int64_t soun_form_id) const {
+	if (!opened_) {
+		return String();
+	}
+	try {
+		return String(file_.resolve_soun_filename(static_cast<uint32_t>(soun_form_id)).c_str());
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return String();
+	}
+}
+
+Dictionary EsmReader::get_door_data(int64_t door_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto door = file_.get_door_data(static_cast<uint32_t>(door_form_id));
+		if (!door) {
+			return out;
+		}
+		out["open_sound_path"] = String(door->open_sound_path.c_str());
+		out["close_sound_path"] = String(door->close_sound_path.c_str());
+		out["loop_sound_path"] = String(door->loop_sound_path.c_str());
+		out["flags"] = static_cast<int64_t>(door->flags);
+		out["is_automatic_door"] = door->is_automatic_door();
+		out["is_hidden"] = door->is_hidden();
+		out["is_minimal_use"] = door->is_minimal_use();
+		out["is_sliding_door"] = door->is_sliding_door();
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
 }
 
 Dictionary EsmReader::get_cell_child_type_counts(int64_t cell_form_id) const {

@@ -178,6 +178,11 @@ is genuinely from scratch, not extending existing partial support.
    full length, a plausible door swing) — visual confirmation in the actual editor
    (select `AnimationPlayer`, use its own bottom-panel scrubber) is the next real step,
    not yet done here.
+
+   Real play (step 7) confirmed direction/axis were correct, but reported the NIF-
+   authored speed as reading slightly slow — fixed with `player.speed_scale = 1.25`, a
+   flat playback-rate multiplier (not a re-timed curve), applied to every
+   `AnimationPlayer` this function builds.
 7. ✅ **Wire into `object_registry.gd`.** Gated on step 6's editor playback check as
    planned — confirmed correct (animation direction and rotation axis right; the
    collision-offset bug and the `built[0]` fallback bug found and fixed during that
@@ -242,22 +247,57 @@ is genuinely from scratch, not extending existing partial support.
 
 ### Part B — GECK feature parity (lower priority, not blocking)
 
-8. **Open/Close/Loop sounds:** extract the real sound-reference subrecords from a
-   `DOOR` record (verify the actual subrecord tags against real bytes — don't assume
-   from memory), play via `AudioStreamPlayer3D` on activate()/animation-complete.
-9. **Flags** — extract the record's flag bitfield and wire what can actually do
-   something today, while explicitly documenting (not silently dropping) what can't
-   yet:
-   - **Quest Item** — bookkeeping only for now; no despawn-prevention system exists.
-   - **Sliding Door** — no navmesh system exists yet, so "skip navmesh obstacle
-     generation" is a no-op today; store the flag, don't implement the behavior yet.
-   - **Hidden** — no local-map UI exists yet; same caveat.
-   - **Automatic Door** — real and implementable now: auto-teleport within
-     `fAutoDoorActivateDistance` (a real `GMST`), needs a proximity check somewhere in
-     the interact/streaming loop.
-   - **Minimal Use** — needs AI/pathing (NPC shortcut suppression) to exist first; not
-     implementable yet.
-10. **Random-destination list** — explicitly deferred, not attempted here. GECK's own
+10. ✅ **Open/Close/Loop sounds.** Real subrecord tags confirmed via fopdoc (not
+    assumed): `DOOR.SNAM`/`ANAM`/`BNAM` (each a `SOUN` FormID), resolved through a
+    NEW, deliberately generic `EsmFile::resolve_soun_filename()` (`SOUN.FNAM`) — not
+    door-specific, per direct instruction, so any future sound need (ambient markers,
+    weapon/footstep sets) reuses it. Real format-feasibility confirmed before writing
+    playback code: FNV's own door sounds are plain `.wav`, not the Xbox-only `.xwm`
+    some other Bethesda titles use — Godot's `AudioStreamWAV.load_from_buffer()`
+    decodes them natively, no third-party decoder needed. `GamebryoMeshResolver.load_sound()`
+    (generic, cached, mirrors `load_texture()`) + `DoorNode.apply_door_data()` build
+    real `AudioStreamPlayer3D` children (`OpenSound`/`CloseSound`/`LoopSound`, present
+    only when that DOOR record actually sets that sound), wired into `_toggle_swing()`
+    alongside the animation. Real, important scope note found via the GECK Wiki's own
+    Door page (not assumed): **animated doors typically bake Open/Close sound into the
+    NIF itself via `NiTextKeyExtraData` instead of these ESM fields** ("only put
+    Open/Close sounds on a baseform that is static... common reason for the double
+    sound bug in the vanilla game") — `NiTextKeyExtraData` is NOT parsed here (unscoped
+    native work), so an animated door plays no sound through this path, a deliberate
+    gap matching real GECK guidance, not a bug. Confirmed end-to-end against a real
+    static door with real sound data (`NVHooverDamTowerDoorInterior`, `0x175c30`): real
+    2.15s decoded audio stream plays on `activate()`.
+
+    **A real behavior gap found and fixed while wiring this in:** `_toggle_swing()`
+    previously returned early (never toggling `is_open` at all) when a door had no
+    `AnimationPlayer` — meaning a real, sound-only static door would never register as
+    open. Fixed: `is_open` now always toggles regardless of whether there's an
+    animation or sound to show it (open/closed is real game-logic state, not a label
+    for whichever clip last played); animation/sound playback are each independently
+    skipped only when that specific thing doesn't exist. `test_door_activate.gd`'s own
+    assertion updated to match and re-verified.
+11. 🟡 **Flags** — extracted via `esm::DoorData`/`FNAM` (real bit values confirmed via
+    fopdoc), stored on `DoorNode` regardless of whether the system each one needs
+    exists yet:
+    - **Automatic Door** (`is_automatic_door`) — extracted and stored; the
+      auto-teleport-within-`fAutoDoorActivateDistance` BEHAVIOR is NOT wired up yet
+      (needs a proximity check somewhere in the interact/streaming loop) — real,
+      implementable, explicitly left for a follow-up, not attempted alongside this step.
+    - **Sliding Door** (`is_sliding_door`) — stored; no navmesh system exists yet, so
+      "skip navmesh obstacle generation" is a no-op today.
+    - **Hidden** (`is_hidden`) — stored; no local-map UI exists yet.
+    - **Minimal Use** (`is_minimal_use`) — stored; needs AI/pathing (NPC shortcut
+      suppression) to exist first.
+    - **Quest Item** — deliberately NOT extracted. A real, if minor, scope
+      finding: it's on the GECK Wiki's own DOOR dialog, but its real fopdoc-confirmed
+      `FNAM` layout has only 5 bits (one unnamed/unconfirmed + the four above) — Quest
+      Item isn't one of them. Almost certainly a generic record-header flag shared
+      across many record types (not DOOR-specific), but its real bit position was
+      never confirmed against fopdoc (no page found), so this stays unextracted rather
+      than guessed — a verification gap, not the "no consuming system yet" gap the
+      other four share (it would've been bookkeeping-only either way, per the original
+      scoping here).
+12. **Random-destination list** — explicitly deferred, not attempted here. GECK's own
    documented semantics ("resolved once, then persisted across saves") can't be
    correctly implemented without real save/load
    (`enginedocs/nv_save_architecture.html`). At most, parse and store the candidate

@@ -195,6 +195,10 @@ func _resolve_door(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictio
 	var refr_form_id := int(placement.get("refr_form_id", 0))
 	visual["kind"] = "door"
 	visual["destination"] = ctx.esm.get_door_destination(refr_form_id)
+	# phases/3/00-door-completion.md Part B: sounds + flags, resolved once
+	# here (same reasoning as destination above) rather than lazily.
+	var base_form_id := int(placement.get("base_form_id", 0))
+	visual["door_data"] = ctx.esm.get_door_data(base_form_id)
 	return visual
 
 ## Parts always resolve as if full_detail=true, regardless of the SCOL
@@ -307,6 +311,7 @@ func _construct_door(result: Dictionary) -> Node3D:
 	node = _finalize(node, result["placement"])
 	if node is DoorNode:
 		node.apply_destination(result.get("destination", {}))
+		node.apply_door_data(resolver, result.get("door_data", {}))
 	return node
 
 func _construct_marker(result: Dictionary) -> Node3D:
@@ -411,6 +416,11 @@ func _build_door(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> 
 	var node := _instantiate_dynamic(DoorNode, placement, mesh_resolver)
 	if node is DoorNode:
 		node.resolve_destination(esm)
+		# phases/3/00-door-completion.md Part B: same real sounds/flags
+		# _construct_door() (the threaded path) resolves -- see that
+		# function's own doc comment on why DOOR can't have this on only
+		# one of its two construction paths.
+		node.apply_door_data(mesh_resolver, esm.get_door_data(int(placement.get("base_form_id", 0))))
 	return node
 
 ## Dynamic-object counterpart to _instantiate_visual() (same signature) —

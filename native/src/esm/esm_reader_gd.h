@@ -136,6 +136,20 @@ public:
 	// ground texture has one).
 	String resolve_ltex_normal_texture_path(int64_t ltex_form_id) const;
 
+	// General-purpose SOUN FormID -> Sound/-relative filename (no "sound\"
+	// prefix — same convention as MODL/LTEX). NOT door-specific — see
+	// esm::EsmFile::resolve_soun_filename(). Empty string if unresolved.
+	String resolve_soun_filename(int64_t soun_form_id) const;
+
+	// phases/3/00-door-completion.md Part B: { "open_sound_path": String,
+	// "close_sound_path": String, "loop_sound_path": String (each already
+	// resolved through resolve_soun_filename(), "" if that DOOR record
+	// doesn't set it), "flags": int, "is_automatic_door": bool,
+	// "is_hidden": bool, "is_minimal_use": bool, "is_sliding_door": bool }
+	// — see esm::DoorData's own doc comment in esm_types.h. {} only if the
+	// FormID isn't a real DOOR record at all.
+	Dictionary get_door_data(int64_t door_form_id) const;
+
 	// phases/1/05-integration.md addition: a cell's full child-record type
 	// census (record type -> count), not just the REFR subset
 	// get_cell_references() resolves. Lets a caller demonstrate that

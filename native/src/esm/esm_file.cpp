@@ -959,4 +959,52 @@ std::string EsmFile::resolve_ltex_normal_texture_path(uint32_t ltex_form_id) con
 	return resolve_ltex_txst_slot(*this, ltex_form_id, "TX01");
 }
 
+std::string EsmFile::resolve_soun_filename(uint32_t soun_form_id) const {
+	if (soun_form_id == 0) {
+		return "";
+	}
+	auto soun = find_record_by_form_id(soun_form_id);
+	if (!soun || soun->type != "SOUN") {
+		return "";
+	}
+	std::vector<uint8_t> data = read_record_data(*soun);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "FNAM") {
+			return s.as_string();
+		}
+	}
+	return "";
+}
+
+std::optional<DoorData> EsmFile::get_door_data(uint32_t door_form_id) const {
+	auto record = find_record_by_form_id(door_form_id);
+	if (!record || record->type != "DOOR") {
+		return std::nullopt;
+	}
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	uint32_t snam = 0, anam = 0, bnam = 0;
+	DoorData door;
+	for (const auto &s : subs) {
+		if (s.type == "SNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			snam = sr.read_u32();
+		} else if (s.type == "ANAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			anam = sr.read_u32();
+		} else if (s.type == "BNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			bnam = sr.read_u32();
+		} else if (s.type == "FNAM" && s.size >= 1) {
+			door.flags = s.data[0];
+		}
+	}
+	door.open_sound_path = resolve_soun_filename(snam);
+	door.close_sound_path = resolve_soun_filename(anam);
+	door.loop_sound_path = resolve_soun_filename(bnam);
+	return door;
+}
+
 } // namespace esm
