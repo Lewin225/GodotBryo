@@ -37,6 +37,15 @@ func apply_destination(dest: Dictionary) -> void:
 		dest_position = dest["dest_position"]
 		dest_rotation = dest["dest_rotation"]
 
+## phases/3/00-door-completion.md step 8: whether this non-teleporting door
+## is currently open. In-memory only -- no persistence, that's save/load's
+## job, out of scope here. Defaults closed -- confirmed against the real
+## DLC04 shack door: its "Open" track starts at identity rotation and its
+## "Close" track ends within ~0.5 degrees of identity (a small physical
+## settle/overshoot in the authored animation, not an exact match, but
+## close enough to confirm "identity/unanimated == closed" for this door).
+var is_open: bool = false
+
 ## Step 4 of phases/2/07-runtime-cell-loader.md: the interaction entry
 ## point. DoorNode's real collision shapes live on an internal
 ## GamebryoCollisionBody CHILD (populate_collision_children(), called
@@ -51,7 +60,11 @@ func apply_destination(dest: Dictionary) -> void:
 ## Returns { "dest_cell_form_id": int, "dest_position": Vector3,
 ## "dest_rotation": Vector3 } or {} if this door doesn't teleport (a plain
 ## swinging door -- a real, valid case, not an error the caller needs to
-## handle specially beyond "nothing happens").
+## handle specially beyond "nothing happens"). A non-teleporting door with
+## real animation data (phases/3/00-door-completion.md step 6) still plays
+## its swing as a SIDE EFFECT of this call before returning {} -- callers
+## (game.gd's own `outcome.is_empty() -> return`) don't need to change at
+## all, "nothing happens" was always about destination data, not visuals.
 ##
 ## Deliberately a plain function returning data, not a signal, and does NOT
 ## call CellLoader.load_cell() itself -- DoorNode has no idea a CellLoader
@@ -61,10 +74,40 @@ func apply_destination(dest: Dictionary) -> void:
 ## CellLoader.load_cell(result.dest_cell_form_id), then reposition the
 ## player to dest_position/dest_rotation once load_completed fires.
 func activate() -> Dictionary:
-	if not has_destination:
-		return {}
-	return {
-		"dest_cell_form_id": dest_cell_form_id,
-		"dest_position": dest_position,
-		"dest_rotation": dest_rotation,
-	}
+	if has_destination:
+		return {
+			"dest_cell_form_id": dest_cell_form_id,
+			"dest_position": dest_position,
+			"dest_rotation": dest_rotation,
+		}
+	_toggle_swing()
+	return {}
+
+## Toggles open<->closed and plays the matching real animation
+## (populate_animation_player(), step 6) -- confirmed against the real
+## `AutoClosingDoor` example script
+## (enginedocs/GeckWiki/scripting/txt/Useful Scripts - GECK.txt):
+## `OnActivate` calls the engine's own default `Activate`, and
+## `GetOpenState`'s own documented values (1 = Open, 3 = Closed, 4 =
+## Closing) confirm a door genuinely tracks real open/closed state across
+## activations, not "play once and stop" -- toggling each call is the
+## real behavior, not a guess.
+##
+## Does NOT attempt a clean mid-swing reversal (seeking the other
+## animation to a mirrored playback position) -- a real, deliberate
+## simplification: re-activating while still animating just switches to
+## the other animation via Godot's own default blend. Silently a no-op
+## for a door with no animation data at all (a real, valid case -- see
+## ROADMAP.md's own originally-flagged gap this whole phase exists to
+## close) or whose sequences aren't named "Open"/"Close" (confirmed the
+## real, standard naming on every door checked so far, but not
+## exhaustively censused across every DOOR NIF in the game).
+func _toggle_swing() -> void:
+	var player := get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if player == null:
+		return
+	var anim_name := "Close" if is_open else "Open"
+	if not player.has_animation(anim_name):
+		return
+	player.play(anim_name)
+	is_open = not is_open
