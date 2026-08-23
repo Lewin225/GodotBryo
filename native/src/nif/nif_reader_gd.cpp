@@ -29,10 +29,12 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_alpha_info", "index"), &NifReader::get_alpha_info);
 	ClassDB::bind_method(D_METHOD("is_unlit", "index"), &NifReader::is_unlit);
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
+	ClassDB::bind_method(D_METHOD("get_submesh_owning_node_index", "index"), &NifReader::get_submesh_owning_node_index);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
 	ClassDB::bind_method(D_METHOD("has_collision_data"), &NifReader::has_collision_data);
 	ClassDB::bind_method(D_METHOD("get_animation_sequences"), &NifReader::get_animation_sequences);
+	ClassDB::bind_method(D_METHOD("get_scene_nodes"), &NifReader::get_scene_nodes);
 }
 
 bool NifReader::load(const PackedByteArray &bytes) {
@@ -184,6 +186,11 @@ Transform3D NifReader::get_transform(int index) const {
 	return Transform3D(basis, origin);
 }
 
+int NifReader::get_submesh_owning_node_index(int index) const {
+	const nif::SubMesh *s = submesh(index);
+	return s ? s->owning_node_index : -1;
+}
+
 namespace {
 const char *collision_kind_name(nif::CollisionShapeKind kind) {
 	switch (kind) {
@@ -284,6 +291,28 @@ Array NifReader::get_animation_sequences() const {
 	return out;
 }
 
+Array NifReader::get_scene_nodes() const {
+	Array out;
+	if (!loaded_) {
+		return out;
+	}
+	for (const nif::SceneNode &node : mesh_.scene_nodes) {
+		Dictionary d;
+		d["name"] = String(node.name.c_str());
+		d["parent_index"] = node.parent_index;
+		const float *r = node.rotation;
+		float scale = node.scale;
+		Basis basis(
+				r[0] * scale, r[1] * scale, r[2] * scale,
+				r[3] * scale, r[4] * scale, r[5] * scale,
+				r[6] * scale, r[7] * scale, r[8] * scale);
+		Vector3 origin(node.translation[0], node.translation[1], node.translation[2]);
+		d["transform"] = Transform3D(basis, origin);
+		out.push_back(d);
+	}
+	return out;
+}
+
 Array NifReader::get_collision_shapes() const {
 	Array out;
 	if (!loaded_) {
@@ -293,6 +322,7 @@ Array NifReader::get_collision_shapes() const {
 		Dictionary d;
 		d["kind"] = String(collision_kind_name(cs.kind));
 		d["name"] = String(cs.node_name.c_str());
+		d["owning_node_index"] = cs.owning_node_index;
 
 		const float *r = cs.rotation;
 		Basis basis(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);

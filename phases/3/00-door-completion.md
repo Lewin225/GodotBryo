@@ -85,7 +85,34 @@ is genuinely from scratch, not extending existing partial support.
    `animation_finished`, scrubbing) and are the same system Phase 3's later skeletal
    animation work will need anyway, so this also avoids building a second, throwaway
    playback system now.
-4. **Wire `activate()`:** a non-teleporting door with animation data plays its open
+4. ✅ **General node-graph preservation (`SceneNode`), additive infrastructure for
+   Dynamic objects.** Per direct user request generalizing this past animation ("why
+   not preserve the whole graph... anything targeting a NiNode should be able to find
+   it in the future"): `nif::Mesh::scene_nodes` now records the NIF's full node graph
+   (one entry per non-root `NiAVObject`, both `NiNode` and leaf `NiShape` blocks alike
+   — a `target_node_name` can legitimately name either) with LOCAL (not
+   flattened-to-root) transforms and a `parent_index` chain, plus an
+   `owning_node_index` on `SubMesh`/`CollisionShape` pointing back into it. Zero change
+   to Static content's existing flattened `SubMesh.transform`/`CollisionShape`
+   transform fields — this is purely additive, read only by the (not yet written)
+   Dynamic-path tree builder. Exposed to GDScript via
+   `NifReader.get_scene_nodes()`/`get_submesh_owning_node_index()`. Verified end-to-end
+   against real data: the door case resolves its animation track's
+   `target_node_name` ('DLC04ShackDoor02') to an exact real scene-node entry, with the
+   render mesh's `owning_node_index` correctly pointing one level below that pivot
+   node (`DLC04ShackDoor02:1`) — proving both that a real animated node is
+   independently addressable and that collision/mesh geometry can be correctly
+   parented under it via ordinary Godot `Node3D` composition once the tree builder
+   exists. The 179-submesh silo elevator NIF also resolves a valid `owning_node_index`
+   for every single submesh — confirms the general case, not just door's shallow
+   3-node graph. Full regression suite unaffected (`test_door_activate.tscn` passes
+   unmodified; only the two pre-existing, unrelated failures remain).
+5. **Build the Dynamic-path tree** in `mesh_resolver.gd`: for Dynamic types, walk
+   `scene_nodes` to build a real `Node3D` per entry (parented per `parent_index`,
+   local transform — Godot composes automatically), then parent each submesh's
+   `MeshInstance3D` and `GamebryoCollisionBody` under the correct node via
+   `owning_node_index`, instead of the single flattened transform Static content uses.
+6. **Wire `activate()`:** a non-teleporting door with animation data plays its open
    animation instead of returning `{}`. Determine the real open/closed/opening/closing
    state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
    against real data, referenced but not fully specified in
@@ -93,17 +120,17 @@ is genuinely from scratch, not extending existing partial support.
    `GetOpenState == 3 ; Closed` example) so re-activating a door mid-swing or already
    open does the right thing, matching the real `AutoClosingDoor` example script's own
    behavior rather than guessing.
-5. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
+7. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
    unmodified — teleport and animated-swing are two different code paths that only
    share the `activate()` entry point and the `GamebryoCollisionBody`/`owner_ref`
    resolution already built for it.
 
 ### Part B — GECK feature parity (lower priority, not blocking)
 
-6. **Open/Close/Loop sounds:** extract the real sound-reference subrecords from a
+8. **Open/Close/Loop sounds:** extract the real sound-reference subrecords from a
    `DOOR` record (verify the actual subrecord tags against real bytes — don't assume
    from memory), play via `AudioStreamPlayer3D` on activate()/animation-complete.
-7. **Flags** — extract the record's flag bitfield and wire what can actually do
+9. **Flags** — extract the record's flag bitfield and wire what can actually do
    something today, while explicitly documenting (not silently dropping) what can't
    yet:
    - **Quest Item** — bookkeeping only for now; no despawn-prevention system exists.
@@ -115,7 +142,7 @@ is genuinely from scratch, not extending existing partial support.
      the interact/streaming loop.
    - **Minimal Use** — needs AI/pathing (NPC shortcut suppression) to exist first; not
      implementable yet.
-8. **Random-destination list** — explicitly deferred, not attempted here. GECK's own
+10. **Random-destination list** — explicitly deferred, not attempted here. GECK's own
    documented semantics ("resolved once, then persisted across saves") can't be
    correctly implemented without real save/load
    (`enginedocs/nv_save_architecture.html`). At most, parse and store the candidate

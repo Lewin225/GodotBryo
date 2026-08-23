@@ -93,6 +93,13 @@ struct SubMesh {
 	float translation[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[9] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 	float scale = 1.0f;
+
+	// Index into Mesh::scene_nodes for this shape's own NiAVObject, or -1
+	// if it's parented directly under the NIF's root (see SceneNode's own
+	// doc comment). Only meaningful for Dynamic objects — Static content's
+	// resolver never looks at this and keeps using the flattened transform
+	// above unchanged.
+	int32_t owning_node_index = -1;
 };
 
 // One extracted bhk* collision shape (phases/1/02-collision-extraction.md).
@@ -133,6 +140,11 @@ struct CollisionShape {
 	float point_a[3] = { 0.0f, 0.0f, 0.0f };
 	float point_b[3] = { 0.0f, 0.0f, 0.0f };
 	float capsule_radius = 0.0f;
+
+	// Index into Mesh::scene_nodes for the NiAVObject collision was found
+	// on (`av` in the extraction loop), or -1 if it's the NIF's root —
+	// same convention as SubMesh::owning_node_index.
+	int32_t owning_node_index = -1;
 };
 
 // phases/3/00-door-completion.md, Part A: how one keyframe's value should
@@ -250,6 +262,41 @@ struct AnimationSequence {
 	std::vector<AnimationTrack> tracks;
 };
 
+// General (not animation-specific) preservation of the NIF's own node
+// graph — additive infrastructure for Dynamic objects (see
+// enginedocs/nv_class_hierarchy.md's Dynamic/Static split), so any future
+// feature that needs to resolve a named NiNode/NiShape to a real placement
+// in the scene can look it up, not just animation's target_node_name (the
+// first consumer, but deliberately not the only reason this exists — a
+// direct user request generalized this past animation).  Static content's
+// resolver never touches this and keeps using SubMesh/CollisionShape's own
+// flattened-to-root transform unchanged.
+//
+// One entry per non-root NiAVObject in the file (both NiNode and NiShape/
+// leaf blocks alike, since a target name can legitimately name either) —
+// the same population flatten_to_root()'s own parent-walk already
+// traverses. The NIF's root block itself is deliberately excluded
+// (parent_index == -1 for a node whose real parent IS the root), matching
+// flatten_to_root's own root-transform-exclusion policy — see that
+// function's doc comment in nif_loader.cpp for why (some Bethesda kit NIFs
+// bake a stray nonzero rotation onto their root that must never apply).
+struct SceneNode {
+	std::string name;
+	int32_t parent_index = -1; // index into Mesh::scene_nodes, or -1 if parented directly under the NIF's root
+
+	// LOCAL transform relative to the immediate parent (GetTransformToParent()
+	// as authored) — deliberately NOT flattened to root, unlike SubMesh/
+	// CollisionShape's own transform fields. Godot's own Node3D parent-child
+	// composition reconstructs the flattened result at runtime; storing it
+	// pre-flattened here would lose the ability for an intermediate node to
+	// animate independently of its children (exactly the case an animated
+	// hinge/elevator-car node needs). Rotation is row-major 3x3, same
+	// convention as SubMesh's.
+	float translation[3] = { 0.0f, 0.0f, 0.0f };
+	float rotation[9] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+	float scale = 1.0f;
+};
+
 struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
@@ -291,6 +338,11 @@ struct Mesh {
 	// object pose) and NiBSplineCompTransformInterpolator (confirmed zero
 	// occurrences in real FNV content, not assumed absent).
 	std::vector<AnimationSequence> animation_sequences;
+
+	// General node-graph preservation for Dynamic objects — see SceneNode's
+	// own doc comment. Empty is a valid, common state (most Static content
+	// never populates this at all; only the Dynamic-path resolver reads it).
+	std::vector<SceneNode> scene_nodes;
 };
 
 } // namespace nif

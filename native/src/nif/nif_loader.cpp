@@ -9,6 +9,7 @@
 
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace nif {
 
@@ -90,6 +91,28 @@ void flatten_transform(const nifly::MatTransform &t, CollisionShape &out) {
 	out.rotation[6] = t.rotation[2].x;
 	out.rotation[7] = t.rotation[2].y;
 	out.rotation[8] = t.rotation[2].z;
+}
+
+// SceneNode's own transform is deliberately LOCAL (relative to its
+// immediate parent), unlike SubMesh/CollisionShape's flatten_transform
+// overloads above which write an already-flattened-to-root transform —
+// different semantics despite the identical field layout, kept as a
+// distinctly-named function so the two are never confused for
+// interchangeable.
+void write_local_transform(const nifly::MatTransform &t, SceneNode &out) {
+	out.translation[0] = t.translation.x * units::kGamebryoUnitsToMeters;
+	out.translation[1] = t.translation.y * units::kGamebryoUnitsToMeters;
+	out.translation[2] = t.translation.z * units::kGamebryoUnitsToMeters;
+	out.rotation[0] = t.rotation[0].x;
+	out.rotation[1] = t.rotation[0].y;
+	out.rotation[2] = t.rotation[0].z;
+	out.rotation[3] = t.rotation[1].x;
+	out.rotation[4] = t.rotation[1].y;
+	out.rotation[5] = t.rotation[1].z;
+	out.rotation[6] = t.rotation[2].x;
+	out.rotation[7] = t.rotation[2].y;
+	out.rotation[8] = t.rotation[2].z;
+	out.scale = t.scale;
 }
 
 // bhkRigidBodyT (the "T" == has its own Transform variant) carries a real
@@ -325,6 +348,42 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	Mesh mesh;
 	mesh.nif_version = nif.GetHeader().GetVersion().GetVersionInfo();
 
+	// General node-graph preservation (SceneNode's own doc comment in
+	// nif_types.h) — built first so the submesh/collision loops below can
+	// fill in owning_node_index as they go. Two passes: the first assigns
+	// every non-root NiAVObject a scene_nodes slot (in block-index order)
+	// and records a pointer -> index map; the second fills in each entry's
+	// parent_index/local transform. GetParentNode() itself is the same
+	// proven-but-O(n)-per-call traversal flatten_to_root() already relies
+	// on elsewhere in this file (see its own doc comment) — that cost is
+	// already accepted here, unchanged. What the map buys is resolving a
+	// parent NiAVObject* to ITS scene_nodes index in O(1), instead of a
+	// second nested block search on top of that.
+	uint32_t num_blocks = nif.GetHeader().GetNumBlocks();
+	std::unordered_map<nifly::NiAVObject *, int32_t> scene_node_index;
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
+		if (!av || !nif.GetParentNode(av)) {
+			continue; // not an NiAVObject, or is the file's own root
+		}
+		scene_node_index[av] = static_cast<int32_t>(mesh.scene_nodes.size());
+		SceneNode node;
+		node.name = av->name.get();
+		mesh.scene_nodes.push_back(std::move(node));
+	}
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
+		auto it = av ? scene_node_index.find(av) : scene_node_index.end();
+		if (it == scene_node_index.end()) {
+			continue;
+		}
+		SceneNode &node = mesh.scene_nodes[it->second];
+		write_local_transform(av->GetTransformToParent(), node);
+		nifly::NiNode *parent = nif.GetParentNode(av);
+		auto parent_it = scene_node_index.find(parent);
+		node.parent_index = (parent_it != scene_node_index.end()) ? parent_it->second : -1;
+	}
+
 	for (nifly::NiShape *shape : nif.GetShapes()) {
 		const std::vector<nifly::Vector3> *verts = nif.GetVertsForShape(shape);
 		if (!verts || verts->empty()) {
@@ -431,6 +490,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		}
 
 		flatten_transform(flatten_to_root(nif, shape), sub);
+		{
+			auto node_it = scene_node_index.find(shape);
+			sub.owning_node_index = (node_it != scene_node_index.end()) ? node_it->second : -1;
+		}
 
 		mesh.submeshes.push_back(std::move(sub));
 	}
@@ -440,7 +503,6 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// parent NiNode rather than the visible mesh itself) looking for a
 	// non-empty collisionRef, then follow
 	// NiAVObject -> bhkCollisionObject -> bhkRigidBody -> bhkShape.
-	uint32_t num_blocks = nif.GetHeader().GetNumBlocks();
 	for (uint32_t i = 0; i < num_blocks; ++i) {
 		nifly::NiAVObject *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
 		if (!av || av->collisionRef.IsEmpty()) {
@@ -467,6 +529,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			continue; // unhandled shape type (composite/phantom) — not needed for Phase 1
 		}
 		cs.node_name = av->name.get();
+		{
+			auto node_it = scene_node_index.find(av);
+			cs.owning_node_index = (node_it != scene_node_index.end()) ? node_it->second : -1;
+		}
 		// The rigid body's own translation/rotation is innermost — it maps
 		// the raw collision-shape data into the AV node's local frame,
 		// before the AV's own transform-to-root is applied on top.
