@@ -18,6 +18,14 @@ var _main_control: Control
 
 func _enter_tree() -> void:
 	_main_control = ScriptViewerScene.instantiate()
+	# The main screen container is a VBoxContainer -- a plain Control child
+	# only takes its minimum content size there unless it's told to expand
+	# and fill (confirmed real: without this it rendered as a ~75px sliver
+	# pinned to the top instead of filling the screen). Set here, not just
+	# on the scene's own root node, so this holds regardless of what the
+	# .tscn itself has saved.
+	_main_control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_main_control.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	get_editor_interface().get_editor_main_screen().add_child(_main_control)
 	_make_visible(false)
 
