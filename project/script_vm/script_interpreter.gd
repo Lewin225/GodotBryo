@@ -66,6 +66,15 @@ func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 			return expr["value"]
 		"var":
 			return ctx.get_local(String(expr["name"]))
+		"name":
+			# A raw reference/editor-ID literal (script_parser.gd's own doc
+			# comment on _parse_ident_primary()) -- evaluates to its own
+			# literal text. Whichever function receives it (ShowMessage's
+			# MESG lookup, IsActionRef's reference name, ...) decides what
+			# that name actually means; the interpreter itself has no
+			# global editor-id -> Node/Resource registry to resolve it
+			# through, a real, deliberate gap noted elsewhere in this file.
+			return String(expr["name"])
 		"unary":
 			return -_to_number(_eval(expr["operand"], ctx))
 		"binop":
@@ -90,13 +99,35 @@ func _eval_binop(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 		"%": return fmod(_to_number(l), _to_number(r)) if _to_number(r) != 0 else 0.0
 		# Real language rule (design doc's Boolean coercion section):
 		# comparisons always yield exactly 1 or 0.
-		"==": return 1 if l == r else 0
-		"!=": return 1 if l != r else 0
+		"==": return 1 if _safe_equal(l, r) else 0
+		"!=": return 0 if _safe_equal(l, r) else 1
 		">": return 1 if _to_number(l) > _to_number(r) else 0
 		"<": return 1 if _to_number(l) < _to_number(r) else 0
 		">=": return 1 if _to_number(l) >= _to_number(r) else 0
 		"<=": return 1 if _to_number(l) <= _to_number(r) else 0
 	return null
+
+## Real Gamebryo/GECK has exactly three value types (int/float/ref -- design
+## doc's Variables section) and a real script's `==`/`!=` only ever compares
+## same-category values; the real compiler would reject a type-mismatched
+## comparison outright, so it never happens in valid shipped scripts. The
+## only reason this interpreter can even observe a String-vs-number
+## comparison is its own "name" AST node (script_parser.gd's own doc
+## comment) standing in for an unresolved `ref` as a plain GDScript String
+## -- a real implementation gap, not something Gamebryo itself does. GDScript's
+## own `==` throws for genuinely incompatible Variant type pairs (confirmed:
+## String vs int raises "Invalid operands", it does not just return false)
+## instead of the C-like "different types, therefore unequal" a real runtime
+## would fall back to here -- this exists to keep this interpreter matching
+## that fallback rather than crashing on real, otherwise-valid scripts.
+func _safe_equal(a: Variant, b: Variant) -> bool:
+	if typeof(a) == typeof(b):
+		return a == b
+	var a_numeric := typeof(a) == TYPE_INT or typeof(a) == TYPE_FLOAT
+	var b_numeric := typeof(b) == TYPE_INT or typeof(b) == TYPE_FLOAT
+	if a_numeric and b_numeric:
+		return float(a) == float(b)
+	return false
 
 func _to_number(value: Variant) -> float:
 	if value == null:

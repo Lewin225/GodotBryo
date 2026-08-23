@@ -200,6 +200,54 @@ list, narrowed further to what's actually runnable today:
   (`Let`/arrays/strings/`ForEach`).** All real, all logged as gaps at the exact point they'd
   matter (see the class/function doc comments), none guessed at.
 
+## First real function backed by a system: `ShowMessage`
+
+`GSBrokenSMGScript`'s own real `ShowMessage GSBrokenSMGMsg` call is the actual starting point.
+Building it required a real, general parser fix first, not just a new registry entry:
+
+**The argument problem.** `ShowMessage`'s real argument is a bare `MESG` editor-ID name
+(`GSBrokenSMGMsg`), not a `FormID`. The parser's existing "undeclared bare identifier == phantom
+zero-arg call" heuristic (from the earlier corpus-survey pass) meant that argument evaluated to `0`
+(logged as "unimplemented function 'GSBrokenSMGMsg'") instead of the literal name `ShowMessage`
+actually needs. Real Gamebryo/GECK never has this ambiguity — every value is `int`/`float`/`ref`,
+and a bare identifier argument always compiles to a `ref`; the compiler would reject anything else.
+Fixed by making `_parse_ident_primary()` return a real `{"kind": "name", ...}` node for an
+undeclared, unprefixed identifier in *expression/argument* position (an if/set operand, or an
+argument to another call) — evaluates to its own literal text. Statement-HEAD position
+(`_parse_call_statement()`) is untouched and still correctly treats a bare line as a real call.
+
+**The comparison problem this exposed.** Once unresolved names could carry into a real `==`/`!=`
+comparison against a number (a real script pattern, e.g. `if (Button == 1)` elsewhere), GDScript's
+own `==` operator turned out to *throw* for genuinely incompatible Variant type pairs like
+`String`/`int` (`"Invalid operands 'String' and 'int' in operator '=='"`) rather than just
+returning `false` the way a C-like fallback would. Real Gamebryo never has this comparison in a
+valid script either (a `ref`-vs-number type mismatch wouldn't compile), so there's no "correct"
+answer to defer to — the fix (`ScriptInterpreter._safe_equal()`) makes `==`/`!=` degrade to "not
+equal" for incompatible dynamic types instead of crashing, matching how a runtime encountering this
+impossible-in-valid-code situation should behave.
+
+**The function itself.** Native `EsmFile::get_message_by_editor_id()` (mirroring
+`find_stat_by_editor_id()`'s existing linear-scan-by-EditorID pattern) reads `MESG.FULL`
+(title)/`MESG.DESC` (body) — verified against `GSBrokenSMGMsg`'s real bytes
+(`form_id 0x105233`, title "Broken 9mm Submachine Gun", body starting "This 9mm submachine gun is
+broken..."). `ShowMessage` (`script_function_registry.gd`) resolves the message and calls
+`OS.alert(text, title)` — a real, user-directed choice: no in-game message-box UI exists yet, so
+the OS's own native alert dialog stands in. Two honest limitations recorded where they live:
+`OS.alert()` is blocking/modal (confirmed directly this session — freezes the whole game loop,
+`GameMode` ticking included, until dismissed, when a real display is available; safely fails open
+with no display, e.g. this session's own headless test runs), and it returns `void` — no button
+index, so `GetButtonPressed` stays genuinely unimplementable through this mechanism, not a partial
+gap this closes.
+
+**Deliberately not exercised in the automated test suite**: calling `ShowMessage` for real (which
+was in an earlier draft of `test_script_interpreter.gd`). Confirmed directly this session that
+`OS.alert()`'s blocking behavior is environment-dependent — the same call completed instantly in
+one headless run and genuinely hung a later one once a real display was available (an active
+editor/Play session), which makes an automated test non-deterministic and hang-prone through no
+fault of the code under test. `get_message_by_editor_id()`'s own real-data resolution (the actual
+risk surface) is covered headlessly in `test_script_esm.gd` instead; `OS.alert()` itself is a
+one-line stdlib call with nothing of ours left to verify.
+
 ## Editor tooling: `addons/script_viewer/` (a real `EditorPlugin`, not just an open scene)
 
 A read-only script inspector: search/browse every real script by editor ID, see its actual `SCTX`
@@ -263,6 +311,10 @@ underlying pure functions directly, bypassing the `Engine.is_editor_hint()`-gate
 - [x] Real scripts register, resolve locals, and dispatch `OnLoad`/`GameMode` through the actual
       live construction path (`object_registry.gd`'s `_finalize()`), verified via a real
       `game.tscn` headless boot loading `GSDocMitchellHouse` and `test_script_engine_integration.gd`.
+- [x] A real function backed by a real system, not a stub: `ShowMessage` resolves a real `MESG`
+      record and shows its actual text (`OS.alert()`) — found and fixed two real bugs
+      (`_parse_ident_primary()`'s call-vs-name ambiguity, `==`'s Variant type-mismatch crash) along
+      the way, neither caught by any earlier test.
 - [ ] A real script observed running correctly in interactive play, not just a headless boot (needs
       a human to actually walk into the cell and watch — the headless boot only confirms it doesn't
       crash and dispatches on schedule, not that the visible behavior is right).

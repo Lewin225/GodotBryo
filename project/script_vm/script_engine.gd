@@ -22,7 +22,10 @@ extends Node
 ## parsed NIFs -- re-parsing identical SCTX per placement would be pure
 ## waste at real-game script-reuse scale.
 
-var esm: EsmReader
+var esm: EsmReader:
+	set(value):
+		esm = value
+		function_registry.esm = value # ShowMessage's own MESG lookup needs this too
 var function_registry: ScriptFunctionRegistry
 
 var _interpreter_cache: Dictionary = {} # scpt_form_id (int) -> ScriptInterpreter

@@ -41,6 +41,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_record_type_histogram"), &EsmReader::get_record_type_histogram);
 	ClassDB::bind_method(D_METHOD("find_first_stat_model"), &EsmReader::find_first_stat_model);
 	ClassDB::bind_method(D_METHOD("find_stat_by_editor_id", "editor_id"), &EsmReader::find_stat_by_editor_id);
+	ClassDB::bind_method(D_METHOD("get_message_by_editor_id", "editor_id"), &EsmReader::get_message_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
@@ -174,6 +175,44 @@ Dictionary EsmReader::find_stat_by_editor_id(const String &editor_id) const {
 				found["form_id"] = static_cast<int64_t>(r.form_id);
 				found["editor_id"] = String(edid.c_str());
 				found["model"] = String(model.c_str());
+			}
+		});
+		return found;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return out;
+	}
+}
+
+Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	std::string target = editor_id.utf8().get_data();
+	try {
+		Dictionary found;
+		file_.for_each_record([&](const esm::RecordInfo &r) {
+			if (!found.is_empty() || r.type != "MESG") {
+				return;
+			}
+			std::vector<uint8_t> data = file_.read_record_data(r);
+			std::vector<esm::Subrecord> subs = esm::EsmFile::parse_subrecords(data);
+			std::string edid, title, text;
+			for (const auto &s : subs) {
+				if (s.type == "EDID") {
+					edid = s.as_string();
+				} else if (s.type == "FULL") {
+					title = s.as_string();
+				} else if (s.type == "DESC") {
+					text = s.as_string();
+				}
+			}
+			if (edid == target) {
+				found["form_id"] = static_cast<int64_t>(r.form_id);
+				found["editor_id"] = String(edid.c_str());
+				found["title"] = String(title.c_str());
+				found["text"] = String(text.c_str());
 			}
 		});
 		return found;

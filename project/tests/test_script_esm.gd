@@ -53,6 +53,19 @@ func _ready() -> void:
 				break
 		check(any_scripted, "at least one REFR in GSDocMitchellHouse resolves a non-zero script_form_id")
 
+	print("--- MESG (real ShowMessage argument -- an editor ID, not a FormID) ---")
+	# GSBrokenSMGScript's own real `ShowMessage GSBrokenSMGMsg` call --
+	# hand-verified this session via a native scratch tool against the
+	# actual ESM bytes.
+	var msg: Dictionary = reader.get_message_by_editor_id("GSBrokenSMGMsg")
+	check(not msg.is_empty(), "GSBrokenSMGMsg resolved")
+	if not msg.is_empty():
+		check(int(msg["form_id"]) == 0x105233, "form_id matches (0x105233)")
+		check(String(msg["title"]) == "Broken 9mm Submachine Gun", "title (MESG.FULL) matches")
+		check(String(msg["text"]).begins_with("This 9mm submachine gun is broken"), "text (MESG.DESC) matches")
+	var missing_msg: Dictionary = reader.get_message_by_editor_id("DefinitelyNotARealMessage")
+	check(missing_msg.is_empty(), "a nonexistent MESG editor ID resolves empty, not a crash")
+
 	_finish()
 
 func _finish() -> void:
