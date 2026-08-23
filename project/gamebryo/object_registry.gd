@@ -539,7 +539,7 @@ func _build_light(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) ->
 func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 	if light_data.is_empty():
 		return
-	var radius: float = max(float(light_data.get("radius", 5.0)), 0.1)
+	var radius: float = max(float(light_data.get("radius", 5.0)), 0.1) * 2.0
 	var color: Color = light_data.get("color", Color.WHITE)
 	var is_spot: bool = light_data.get("is_spot", false)
 
@@ -554,14 +554,17 @@ func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 		# not an exact match.
 		spot.spot_angle = clamp(float(light_data.get("fov_degrees", 90.0)) * 0.5, 1.0, 89.0)
 		spot.spot_range = radius
+		spot.spot_attenuation = 2.0
 		light = spot
 	else:
 		light = OmniLight3D.new()
 		light.omni_range = radius
+		light.omni_attenuation = 2.0
 
-	light.name = "Light"
+	light.name = "SpotLight3D" if is_spot else "OmniLight3D"
 	light.light_color = color
-	light.light_energy = 3.0 # approximate — see phases/1/03-light-sources.md
+	light.light_energy = 2.1 # 30% below the previous approximate value; see phases/1/03-light-sources.md
+	light.shadow_enabled = true
 	light.visible = not bool(light_data.get("off_by_default", false))
 	node.add_child(light)
 
