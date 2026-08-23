@@ -377,8 +377,9 @@ func _build_door(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> 
 	return node
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see
-## MarkerNode's doc comment) — the inherited StaticBody3D has no shape
-## attached, so it's inert. marker_kind is the model's own basename, the
+## MarkerNode's doc comment) — GamebryoReference is Node3D, so it has no
+## physics body at all unless a GamebryoCollisionBody child is composed in,
+## and MarkerNode never does. marker_kind is the model's own basename, the
 ## only real distinguishing signal Bethesda left; future dedicated behavior
 ## (e.g. an Audio marker -> AudioStreamPlayer3D) keys off it here.
 func _build_marker(placement: Dictionary) -> Node3D:

@@ -90,7 +90,15 @@ func check_collision_scale_sanity(built_nodes: Array) -> void:
 		if not have_render or render_aabb.size.length() < 0.01:
 			continue
 
+		# CollisionShape3D children sit under a GamebryoCollisionBody child of
+		# `node`, not `node` directly (GamebryoReference is Node3D, not
+		# StaticBody3D -- see enginedocs/nv_class_hierarchy.md) -- collect
+		# from both `node`'s own children and, one level deeper, that body's.
+		var shape_candidates: Array = node.get_children().duplicate()
 		for c in node.get_children():
+			if c is GamebryoCollisionBody:
+				shape_candidates.append_array(c.get_children())
+		for c in shape_candidates:
 			if not (c is CollisionShape3D):
 				continue
 			if String(c.name).contains("fallback"):

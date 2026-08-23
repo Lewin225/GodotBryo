@@ -38,12 +38,15 @@ func apply_destination(dest: Dictionary) -> void:
 		dest_rotation = dest["dest_rotation"]
 
 ## Step 4 of phases/2/07-runtime-cell-loader.md: the interaction entry
-## point. DoorNode is already a real StaticBody3D (via GamebryoReference)
-## with real collision shapes (populate_collision_children(), called during
-## _build_door()) -- a normal Godot 3D raycast against it (e.g.
-## PhysicsDirectSpaceState3D.intersect_ray()) already returns this node as
-## `collider` with zero extra plumbing. Call activate() once a caller's own
-## raycast/interaction code has confirmed the hit collider `is DoorNode`.
+## point. DoorNode's real collision shapes live on an internal
+## GamebryoCollisionBody CHILD (populate_collision_children(), called
+## during _build_door() -- see enginedocs/nv_class_hierarchy.md:
+## GamebryoReference is Node3D, not StaticBody3D, so collision is composed,
+## not inherited). A normal Godot 3D raycast (e.g.
+## PhysicsDirectSpaceState3D.intersect_ray()) against this door returns
+## that CollisionBody as `collider`, not this node -- callers resolve
+## `collider.owner_ref` to reach the real DoorNode (see game.gd's interact
+## raycast) before calling activate() on it.
 ##
 ## Returns { "dest_cell_form_id": int, "dest_position": Vector3,
 ## "dest_rotation": Vector3 } or {} if this door doesn't teleport (a plain

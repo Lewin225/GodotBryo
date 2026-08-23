@@ -132,7 +132,16 @@ func _ready() -> void:
 		check(not result.is_empty(), "raycast toward the door's own collision volume hit something")
 		if not result.is_empty():
 			print("  raycast hit: ", result.get("collider"))
-			check(result["collider"] == door, "raycast collider IS the DoorNode itself -- no extra plumbing needed")
+			# GamebryoReference is Node3D, not StaticBody3D (see
+			# enginedocs/nv_class_hierarchy.md) -- the door's real collision
+			# lives on an internal GamebryoCollisionBody child, so the
+			# raycast collider is that body, not the DoorNode itself. A
+			# caller resolves collider.owner_ref to reach the door (see
+			# game.gd's interact raycast).
+			var collider: Object = result["collider"]
+			check(collider is GamebryoCollisionBody, "raycast collider is the door's composed GamebryoCollisionBody")
+			if collider is GamebryoCollisionBody:
+				check(collider.owner_ref == door, "collider.owner_ref resolves back to the real DoorNode")
 
 	# activate() -- the actual interaction entry point a caller would call
 	# once it's confirmed `hit_collider is DoorNode`.

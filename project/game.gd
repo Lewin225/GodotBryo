@@ -155,9 +155,19 @@ func _try_interact() -> void:
 	if result.is_empty():
 		return
 	var collider: Object = result.get("collider")
-	if collider == null or not collider.has_method("activate"):
+	if collider == null:
 		return
-	var outcome: Dictionary = collider.activate()
+	# A hit on a Dynamic type's real collision lands on its internal
+	# GamebryoCollisionBody child, not the GamebryoReference itself
+	# (enginedocs/nv_class_hierarchy.md: GamebryoReference is Node3D, not
+	# StaticBody3D -- collision is composed, not inherited) -- resolve up to
+	# the real reference before checking for activate().
+	var target: Object = collider
+	if collider is GamebryoCollisionBody:
+		target = collider.owner_ref
+	if target == null or not target.has_method("activate"):
+		return
+	var outcome: Dictionary = target.activate()
 	if outcome.is_empty():
 		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
 

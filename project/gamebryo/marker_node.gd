@@ -10,8 +10,10 @@ extends GamebryoObject
 ## own internal names are just the model filename repeated -- the model
 ## filename is the only identifying signal Bethesda actually left. Kept as a
 ## real node (GamebryoObject: identity + transform, no mesh, no collision --
-## inherited StaticBody3D has no shape attached) rather than discarded, so
-## future work can key off marker_kind to build real typed behavior (e.g. an
+## GamebryoReference is Node3D, so no physics body at all unless a
+## composed GamebryoCollisionBody child is added, and MarkerNode never adds
+## one) rather than discarded, so future work can key off marker_kind to
+## build real typed behavior (e.g. an
 ## Audio marker becoming an AudioStreamPlayer3D-driven node) without needing
 ## to touch placement/registry plumbing again.
 
