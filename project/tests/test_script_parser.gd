@@ -60,6 +60,26 @@ func _ready() -> void:
 	# top of the tree should be the lowest-precedence op: ||
 	check(cond["kind"] == "binop" and cond["op"] == "||", "top-level op is '||' (lowest precedence)")
 
+	print("--- two-word 'else if' (real, shipped data -- 182/2576 real scripts) ---")
+	# Real, confirmed necessary: vMojaveExpressBoxSCRIPT's own real OnLoad
+	# block writes "else if" as two words. Without this, the parser treated
+	# it as an else-block whose body happened to start with an unrelated if
+	# statement, swallowing every subsequent statement (including entire
+	# other Begin/End blocks) up to whatever "endif" it stumbled on next --
+	# confirmed directly this session via a real-play report (a ShowMessage
+	# meant for OnActivate firing from OnLoad instead, because OnActivate's
+	# whole body had been merged into OnLoad's).
+	var else_if_source := "BEGIN OnLoad\nif (bFlag == 1)\n\tSet x to 1\nelse if (bFlag == 0)\n\tSet x to 2\nendif\nEND\nBEGIN OnActivate\n\tShowMessage SomeMsg\nEND\n"
+	var else_if_program := parse(else_if_source)
+	check(else_if_program["blocks"].size() == 2, "two real, separate blocks parsed (got %d)" % else_if_program["blocks"].size())
+	if else_if_program["blocks"].size() == 2:
+		check(String(else_if_program["blocks"][0]["blocktype"]) == "OnLoad", "first block is OnLoad")
+		check(String(else_if_program["blocks"][1]["blocktype"]) == "OnActivate", "second block is a real, separate OnActivate -- not swallowed into OnLoad")
+		var on_load_stmts: Array = else_if_program["blocks"][0]["stmts"]
+		check(on_load_stmts.size() == 1, "OnLoad has exactly one statement: the if/else-if (got %d)" % on_load_stmts.size())
+		if on_load_stmts.size() == 1:
+			check(on_load_stmts[0]["branches"].size() == 2, "'else if' parsed as a second real branch, not a nested if inside an else block (got %d branches)" % on_load_stmts[0]["branches"].size())
+
 	print("--- stray reserved keyword (real, shipped data) ---")
 	# GSBrokenSMGScript's own real GameMode block: one "if", two "endif"s --
 	# a real authoring mismatch that evidently still shipped. Confirmed this

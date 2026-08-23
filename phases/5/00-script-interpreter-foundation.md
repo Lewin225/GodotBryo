@@ -317,6 +317,33 @@ exposure as the two fixed bugs even though nobody had hit it yet. Fixed to `str(
 like — `str()` is; reach for `str()`, never `String()`/`bool()`, when converting an arbitrary
 runtime-evaluated script value (as opposed to a parser-guaranteed-String AST field).
 
+## A real, high-value parser bug: two-word `else if`
+
+Traced from a genuinely confusing real-play report: entering the exterior world through Doc
+Mitchell's door showed the Mojave Express dropbox's real "first discovery" `ShowMessage` — despite
+never activating any dropbox. Investigation initially (wrongly) assumed the message's real script
+(`vMojaveExpressBoxSCRIPT`) must be firing via `OnActivate` from a real interact; the user correctly
+pushed back (they hadn't activated anything, didn't even know where the dropbox was), which led to
+actually dumping the parsed AST rather than continuing to guess.
+
+Real root cause, found that way: `vMojaveExpressBoxSCRIPT`'s own real `OnLoad` block writes `else
+if` as **two words** (`else if bFlag == 0`), not the single-word `elseif` this parser recognized.
+The parser treated it as a genuine `else` block whose body happened to start with an unrelated `if`
+statement — which then consumed every subsequent statement, including the script's entire separate
+`OnActivate`/`GameMode`/`MenuMode` blocks, up to whatever `endif` it next stumbled on. Confirmed
+directly by dumping the parsed block list before the fix: `OnLoad` alone, one block, with `OnActivate`'s
+real `ShowMessage vMojaveExpressFirstMessage` buried dozens of statements deep inside it — exactly
+why it fired the moment `OnLoad` auto-dispatched on door-exit instead of on a real activation.
+
+**Real scale**: 182 of 2,576 real base-game scripts (~7%) use two-word `else if` at least once —
+a common, valid, real authoring style, not a typo. Fixed in `_parse_if()`: after an `else`, check
+whether `if` follows on the **same line** (no `NEWLINE` token between) — if so, treat it exactly
+like a single-word `elseif` (parse another conditioned branch, keep the chain going); a newline
+before `if` still means a genuine nested `if` as the else-block's own first statement, unaffected.
+Verified directly against `vMojaveExpressBoxSCRIPT`: now parses its real 4 separate blocks
+(`OnLoad`/`OnActivate`/`GameMode`/`MenuMode`) correctly instead of 1 merged one. Corpus survey still
+0 crashes across all 2,576 real scripts; full test suite unaffected.
+
 ## Editor tooling: `addons/script_viewer/` (a real `EditorPlugin`, not just an open scene)
 
 A read-only script inspector: search/browse every real script by editor ID, see its actual `SCTX`
