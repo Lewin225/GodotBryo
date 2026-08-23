@@ -50,6 +50,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
+	ClassDB::bind_method(D_METHOD("get_all_script_form_ids"), &EsmReader::get_all_script_form_ids);
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
@@ -369,6 +370,23 @@ Dictionary EsmReader::get_script_data(int64_t scpt_form_id) const {
 			refs.push_back(static_cast<int64_t>(form_id));
 		}
 		out["referenced_form_ids"] = refs;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+PackedInt64Array EsmReader::get_all_script_form_ids() const {
+	PackedInt64Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		file_.for_each_record([&](const esm::RecordInfo &r) {
+			if (r.type == "SCPT") {
+				out.push_back(static_cast<int64_t>(r.form_id));
+			}
+		});
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

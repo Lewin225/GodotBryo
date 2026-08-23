@@ -57,11 +57,15 @@ func _next_token() -> Dictionary:
 	if c == "\"":
 		return _read_string()
 
-	if c.is_valid_int() or (c == "." and _pos + 1 < _len and _text[_pos + 1].is_valid_int()):
-		return _read_number()
-
-	if c.to_upper() != c.to_lower() or c == "_":
-		return _read_ident()
+	# Real data forced this to be one combined scan, not "digit -> number,
+	# letter -> ident" dispatched up front: real editor IDs can start with a
+	# digit (confirmed against FalloutNV.esm -- `1EWatchControlScript`), so
+	# a leading "1" can't be committed to NUMBER before seeing whether a
+	# letter follows it with no gap. _read_number_or_ident() scans the
+	# whole run first and decides after.
+	if c.is_valid_int() or c == "_" or c.to_upper() != c.to_lower() or \
+			(c == "." and _pos + 1 < _len and _text[_pos + 1].is_valid_int()):
+		return _read_number_or_ident()
 
 	for op in _TWO_CHAR_OPS:
 		if _pos + op.length() <= _len and _text.substr(_pos, op.length()) == op:
@@ -103,26 +107,29 @@ func _read_string() -> Dictionary:
 	_pos += 1 # closing quote, if present -- an unterminated string just runs to EOF, no crash
 	return { "kind": Kind.STRING, "value": out, "line": start_line }
 
-func _read_number() -> Dictionary:
+## Scans the maximal run of [0-9 . letter _] starting here, then decides
+## NUMBER vs. IDENT from what the run actually contained -- see the call
+## site's own comment for why this can't be decided from the first
+## character alone.
+func _read_number_or_ident() -> Dictionary:
 	var start_line := _line
 	var start := _pos
 	var is_float := false
-	while _pos < _len and (_text[_pos].is_valid_int() or _text[_pos] == "."):
-		if _text[_pos] == ".":
-			is_float = true
-		_pos += 1
-	var raw := _text.substr(start, _pos - start)
-	var value: Variant = float(raw) if is_float else int(raw)
-	return { "kind": Kind.NUMBER, "value": value, "line": start_line }
-
-func _read_ident() -> Dictionary:
-	var start_line := _line
-	var start := _pos
+	var has_letter := false
 	while _pos < _len:
 		var c := _text[_pos]
-		if c.to_upper() != c.to_lower() or c == "_" or c.is_valid_int():
+		if c.is_valid_int():
+			_pos += 1
+		elif c == "." and not is_float and not has_letter:
+			is_float = true
+			_pos += 1
+		elif c.to_upper() != c.to_lower() or c == "_":
+			has_letter = true
 			_pos += 1
 		else:
 			break
 	var raw := _text.substr(start, _pos - start)
-	return { "kind": Kind.IDENT, "value": raw, "line": start_line }
+	if has_letter or raw == "" or raw == ".":
+		return { "kind": Kind.IDENT, "value": raw, "line": start_line }
+	var value: Variant = float(raw) if is_float else int(raw)
+	return { "kind": Kind.NUMBER, "value": value, "line": start_line }

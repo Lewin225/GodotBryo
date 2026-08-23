@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_script_corpus_survey.gd" id="1"]
+
+[node name="TestScriptCorpusSurvey" type="Node"]
+script = ExtResource("1")
