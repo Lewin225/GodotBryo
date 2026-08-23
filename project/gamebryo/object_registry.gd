@@ -81,7 +81,8 @@ func build(placement: Dictionary) -> Node3D:
 ##               same recursion build()'s own _build_scol() already does)
 ##   "light"  -- { placement, geometry (may be {} -- a meshless light rig,
 ##               the common case per phases/1/03), light_data }
-##   "visual" -- { placement, type_tag (one of CONT/ACTI/FURN, or "" for the
+##   "visual" -- { placement, type_tag (one of CONT/ACTI/FURN/TACT/TERM/MSTT,
+##               or "" for the
 ##               structural-fallback/GamebryoVisual case), geometry,
 ##               lod_geometry (optional, phases/2/12-distant-object-lod.md
 ##               step 4 -- only present for a VWD-flagged placement with a
@@ -117,7 +118,7 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_
 			return _resolve_scol(placement, ctx)
 		"LIGH":
 			return _resolve_light(placement, ctx)
-		"CONT", "ACTI", "FURN":
+		"CONT", "ACTI", "FURN", "TACT", "TERM", "MSTT":
 			return _resolve_visual(placement, ctx, type_tag)
 		_:
 			if String(placement.get("model", "")) != "":
@@ -262,6 +263,12 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 					return _construct_visual(ActivatorNode, result)
 				"FURN":
 					return _construct_visual(FurnitureNode, result)
+				"TACT":
+					return _construct_visual(TalkingActivatorNode, result)
+				"TERM":
+					return _construct_visual(TerminalNode, result)
+				"MSTT":
+					return _construct_visual(MovableStaticNode, result)
 				_: # structural fallback
 					if batch != null:
 						_construct_direct(result, batch)
@@ -390,10 +397,13 @@ func _register_defaults() -> void:
 	register("CONT", func(p, r): return _instantiate_visual(ContainerNode, p, r))
 	register("ACTI", func(p, r): return _instantiate_visual(ActivatorNode, p, r))
 	register("FURN", func(p, r): return _instantiate_visual(FurnitureNode, p, r))
+	register("TACT", func(p, r): return _instantiate_visual(TalkingActivatorNode, p, r))
+	register("TERM", func(p, r): return _instantiate_visual(TerminalNode, p, r))
+	register("MSTT", func(p, r): return _instantiate_visual(MovableStaticNode, p, r))
 	register("SCOL", func(p, r): return _build_scol(p, r))
 	register("LIGH", func(p, r): return _build_light(p, r))
-	# Every other Tier 1 type (WEAP/ARMO/AMMO/BOOK/KEYM/ALCH/NOTE/TREE/MSTT/
-	# TACT/TERM/CCRD/IMOD/CMNY) is deliberately NOT registered — they share
+	# Every other Tier 1 type (WEAP/ARMO/AMMO/BOOK/KEYM/ALCH/NOTE/TREE/CCRD/
+	# IMOD/CMNY) is deliberately NOT registered — they share
 	# the plain GamebryoVisual shape (confirmed identical EDID/OBND/MODL
 	# structure per phases/1/architecture.md's evidence table) and fall
 	# through to build()'s structural fallback tier. This exercises that

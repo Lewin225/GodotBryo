@@ -14,6 +14,12 @@ func check(cond: bool, msg: String) -> void:
 		print("  FAIL ", msg)
 		failures += 1
 
+func _first_placement_of_type_by_cell_form_id(esm: EsmReader, cell_form_id: int, type_tag: String) -> Dictionary:
+	for placement in esm.get_cell_references(cell_form_id):
+		if String(placement.get("base_type", "")) == type_tag:
+			return placement
+	return {}
+
 func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
@@ -56,6 +62,35 @@ func _ready() -> void:
 	for r in results:
 		if r["kind"] == "door":
 			check(r.has("destination"), "door result carries a destination key (possibly empty for a non-teleporting door)")
+
+	# These are real *exterior* placements, located by a native ESM census:
+	# TACT in cell 0x31E2A; TERM and a mesh-bearing MSTT in WastelandNV's
+	# persistent cell (0x846EA). Verify WorldStreamer's resolve/commit path
+	# keeps their type tag and produces a typed Node instead of batching them.
+	print("=== TACT / TERM / MSTT threaded resolve and construct ===")
+	var dynamic_fixtures := [
+		{ "cell_form_id": 0x846EA, "type": "MSTT", "class": "MovableStaticNode" },
+		{ "cell_form_id": 0x31E2A, "type": "TACT", "class": "TalkingActivatorNode" },
+		{ "cell_form_id": 0x846EA, "type": "TERM", "class": "TerminalNode" },
+	]
+	for fixture in dynamic_fixtures:
+		var type_tag: String = fixture["type"]
+		var cell_form_id: int = fixture["cell_form_id"]
+		var placement := _first_placement_of_type_by_cell_form_id(esm, cell_form_id, type_tag)
+		check(not placement.is_empty(), "found a real exterior %s placement in cell 0x%X" % [type_tag, cell_form_id])
+		if placement.is_empty():
+			continue
+		var result: Dictionary = registry.resolve_placement(placement, ctx)
+		check(result.get("kind", "") == "visual" and result.get("type_tag", "") == type_tag,
+				"real %s resolves as kind=visual with its type tag (got kind=%s, type_tag=%s)" % [type_tag, result.get("kind", ""), result.get("type_tag", "")])
+		if result.get("kind", "") != "visual":
+			continue
+		var node := registry.construct_from_resolved(result, DirectGeometryBatch.new())
+		check(node != null, "real %s construct result remains a Node even with a batch available" % type_tag)
+		if node != null:
+			var cls: String = String(node.get_script().get_global_name()) if node.get_script() else node.get_class()
+			check(cls == fixture["class"], "real %s threaded construct builds %s (got %s)" % [type_tag, fixture["class"], cls])
+			node.free()
 
 	print("=== SCOL recursion (SLGoldMine01INT) ===")
 	var scol_cell: Dictionary = esm.find_cell_by_editor_id("SLGoldMine01INT")
@@ -166,7 +201,8 @@ func _ready() -> void:
 	check(construct_by_class.get("FurnitureNode", 0) == 14, "all 14 furniture became FurnitureNode (got %d)" % construct_by_class.get("FurnitureNode", 0))
 	check(construct_by_class.get("LightNode", 0) == 25, "all 25 lights became LightNode (got %d)" % construct_by_class.get("LightNode", 0))
 	check(construct_by_class.get("MarkerNode", 0) == 9, "all 9 markers became MarkerNode (got %d)" % construct_by_class.get("MarkerNode", 0))
-	check(construct_by_class.get("GamebryoVisual", 0) == 360, "all 360 structural-fallback placements became GamebryoVisual (got %d)" % construct_by_class.get("GamebryoVisual", 0))
+	check(construct_by_class.get("MovableStaticNode", 0) == 8, "all 8 movable statics became MovableStaticNode (got %d)" % construct_by_class.get("MovableStaticNode", 0))
+	check(construct_by_class.get("GamebryoVisual", 0) == 352, "all 352 structural-fallback placements became GamebryoVisual (got %d)" % construct_by_class.get("GamebryoVisual", 0))
 
 	for r in results:
 		if r["kind"] == "door":
@@ -187,12 +223,12 @@ func _ready() -> void:
 				routed_to_batch += 1
 			else:
 				routed_to_node += 1
-	check(routed_to_batch == 360, "all 360 structural-fallback placements routed to the batch (no Node) when one is given (got %d)" % routed_to_batch)
+	check(routed_to_batch == 352, "all 352 structural-fallback placements routed to the batch (no Node) when one is given (got %d)" % routed_to_batch)
 	check(routed_to_node == 0, "none of them fell back to a Node once a batch was supplied (got %d)" % routed_to_node)
 	# get_batched_placement_count() counts mesh ENTRIES (one placement can
 	# have several submeshes), not placements -- just confirm it's nonzero
-	# and at least the placement count, not an exact 360.
-	check(batch.get_batched_placement_count() >= 360, "the batch recorded at least one mesh entry per routed placement (got %d for 360 placements)" % batch.get_batched_placement_count())
+	# and at least the placement count, not an exact 352.
+	check(batch.get_batched_placement_count() >= 352, "the batch recorded at least one mesh entry per routed placement (got %d for 352 placements)" % batch.get_batched_placement_count())
 	batch.free_all()
 
 	print("=======================")

@@ -59,9 +59,9 @@ registering in both `GamebryoObjectRegistry._register_defaults()` and
 
 | Type | Name | Real SCRI usage | Why Dynamic | Proposed node type | Status |
 |---|---|---|---|---|---|
-| `TACT` | Talking Activator | 18/87 | Script + dialogue/Voice Type | `TalkingActivatorNode` | Not started |
-| `TERM` | Terminal | 20/344 | Script (menu tree, per-item result scripts) | `TerminalNode` | Not started |
-| `MSTT` | Movable Static | 0/241 | **No script ever** — Dynamic purely because Havok can reposition it per-instance at runtime (real edge case: proves Dynamic needs "or," not "and") | `MovableStaticNode` | Not started |
+| `TACT` | Talking Activator | 18/87 | Script + dialogue/Voice Type | `TalkingActivatorNode` | Node done (mesh-only); script execution blocked on Phase 5 |
+| `TERM` | Terminal | 20/344 | Script (menu tree, per-item result scripts) | `TerminalNode` | Node done (mesh-only); terminal-menu behavior not started; script execution blocked on Phase 5 |
+| `MSTT` | Movable Static | 0/241 | **No script ever** — Dynamic purely because Havok can reposition it per-instance at runtime (real edge case: proves Dynamic needs "or," not "and") | `MovableStaticNode` | Node done (mesh-only); Havok movement not started |
 
 ### Item branch — needs the dual in-world/in-inventory shape, not a bespoke Node per type
 
