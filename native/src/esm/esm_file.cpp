@@ -913,13 +913,17 @@ std::optional<LandData> EsmFile::get_land_data(const RecordInfo &land) const {
 	return out;
 }
 
-std::string EsmFile::resolve_ltex_texture_path(uint32_t ltex_form_id) const {
-	auto ltex = find_record_by_form_id(ltex_form_id);
+namespace {
+// Shared by resolve_ltex_texture_path()/resolve_ltex_normal_texture_path():
+// LTEX -> TNAM -> TXST -> the requested texture-slot subrecord (TX00 diffuse,
+// TX01 normal, ...). Returns "" if any step doesn't resolve.
+std::string resolve_ltex_txst_slot(const EsmFile &f, uint32_t ltex_form_id, const char *txst_slot) {
+	auto ltex = f.find_record_by_form_id(ltex_form_id);
 	if (!ltex || ltex->type != "LTEX") {
 		return "";
 	}
-	std::vector<uint8_t> ltex_data = read_record_data(*ltex);
-	std::vector<Subrecord> ltex_subs = parse_subrecords(ltex_data);
+	std::vector<uint8_t> ltex_data = f.read_record_data(*ltex);
+	std::vector<Subrecord> ltex_subs = EsmFile::parse_subrecords(ltex_data);
 	uint32_t txst_id = 0;
 	for (const auto &s : ltex_subs) {
 		if (s.type == "TNAM" && s.size >= 4) {
@@ -932,18 +936,27 @@ std::string EsmFile::resolve_ltex_texture_path(uint32_t ltex_form_id) const {
 		return "";
 	}
 
-	auto txst = find_record_by_form_id(txst_id);
+	auto txst = f.find_record_by_form_id(txst_id);
 	if (!txst || txst->type != "TXST") {
 		return "";
 	}
-	std::vector<uint8_t> txst_data = read_record_data(*txst);
-	std::vector<Subrecord> txst_subs = parse_subrecords(txst_data);
+	std::vector<uint8_t> txst_data = f.read_record_data(*txst);
+	std::vector<Subrecord> txst_subs = EsmFile::parse_subrecords(txst_data);
 	for (const auto &s : txst_subs) {
-		if (s.type == "TX00") {
+		if (s.type == txst_slot) {
 			return s.as_string();
 		}
 	}
 	return "";
+}
+} // namespace
+
+std::string EsmFile::resolve_ltex_texture_path(uint32_t ltex_form_id) const {
+	return resolve_ltex_txst_slot(*this, ltex_form_id, "TX00");
+}
+
+std::string EsmFile::resolve_ltex_normal_texture_path(uint32_t ltex_form_id) const {
+	return resolve_ltex_txst_slot(*this, ltex_form_id, "TX01");
 }
 
 } // namespace esm

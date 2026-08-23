@@ -554,4 +554,10 @@ func _resolve_to_slot(ltex_id: int) -> int:
 	var tex := resolver.load_texture("textures\\" + tex_path)
 	if tex == null:
 		return -1
-	return texture_pool.get_slot(tex, tex_path)
+	# Real TX01 normal/bump map -- see Terrain3DTexturePool.get_slot()'s own
+	# comment on why this pool needs it now. A real, common case for this to
+	# be "" (not every real ground texture has one); resolver.load_texture()
+	# already returns null for an empty/unresolvable path.
+	var normal_path := esm.resolve_ltex_normal_texture_path(ltex_id)
+	var normal_tex := resolver.load_texture("textures\\" + normal_path) if normal_path != "" else null
+	return texture_pool.get_slot(tex, tex_path, normal_tex)
