@@ -47,6 +47,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
@@ -308,6 +309,30 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		out["fov_degrees"] = light->fov_degrees;
 		out["is_spot"] = light->is_spot();
 		out["off_by_default"] = light->off_by_default();
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_cell_lighting_data(int64_t cell_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto lighting = file_.get_cell_lighting_data(static_cast<uint32_t>(cell_form_id));
+		if (!lighting) {
+			return out;
+		}
+		out["ambient_color"] = Color(lighting->ambient_color[0] / 255.0f, lighting->ambient_color[1] / 255.0f, lighting->ambient_color[2] / 255.0f, 1.0f);
+		out["directional_color"] = Color(lighting->directional_color[0] / 255.0f, lighting->directional_color[1] / 255.0f, lighting->directional_color[2] / 255.0f, 1.0f);
+		out["fog_color"] = Color(lighting->fog_color[0] / 255.0f, lighting->fog_color[1] / 255.0f, lighting->fog_color[2] / 255.0f, 1.0f);
+		out["fog_near"] = lighting->fog_near;
+		out["fog_far"] = lighting->fog_far;
+		out["directional_fade"] = lighting->directional_fade;
+		out["fog_clip_distance"] = lighting->fog_clip_distance;
+		out["fog_power"] = lighting->fog_power;
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

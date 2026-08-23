@@ -67,6 +67,21 @@ func _ready() -> void:
 		print("  compressed_size: ", compressed.get("compressed_size"), " decompressed_size: ", compressed.get("decompressed_size"))
 		check(int(compressed.get("decompressed_size")) > int(compressed.get("compressed_size")), "decompressed size is larger than compressed size")
 
+	print("--- CELL.XCLL (per-cell lighting) ---")
+	var cell: Dictionary = reader.find_cell_by_editor_id("GSDocMitchellHouse")
+	check(not cell.is_empty(), "found GSDocMitchellHouse")
+	if not cell.is_empty():
+		var lighting: Dictionary = reader.get_cell_lighting_data(int(cell["form_id"]))
+		check(not lighting.is_empty(), "GSDocMitchellHouse has an XCLL subrecord")
+		if not lighting.is_empty():
+			var ambient: Color = lighting["ambient_color"]
+			print("  ambient_color: ", ambient)
+			# Confirmed via a real scratch dump against this exact cell earlier
+			# this task: raw XCLL ambient bytes (47, 70, 69, 0).
+			check(is_equal_approx(ambient.r, 47.0 / 255.0), "ambient.r matches known real XCLL byte value (47)")
+			check(is_equal_approx(ambient.g, 70.0 / 255.0), "ambient.g matches known real XCLL byte value (70)")
+			check(is_equal_approx(ambient.b, 69.0 / 255.0), "ambient.b matches known real XCLL byte value (69)")
+
 	_finish()
 
 func _finish() -> void:

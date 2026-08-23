@@ -595,6 +595,41 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 	return std::nullopt;
 }
 
+std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_form_id) const {
+	auto record = find_record_by_form_id(cell_form_id);
+	if (!record || record->type != "CELL") {
+		return std::nullopt;
+	}
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	for (const auto &s : subs) {
+		if (s.type != "XCLL" || s.size < 40) {
+			continue;
+		}
+		util::ByteReader sr(s.data, s.size);
+		CellLightingData lighting;
+		for (int i = 0; i < 4; ++i) {
+			lighting.ambient_color[i] = sr.read_u8();
+		}
+		for (int i = 0; i < 4; ++i) {
+			lighting.directional_color[i] = sr.read_u8();
+		}
+		for (int i = 0; i < 4; ++i) {
+			lighting.fog_color[i] = sr.read_u8();
+		}
+		lighting.fog_near = read_f32(sr);
+		lighting.fog_far = read_f32(sr);
+		lighting.directional_rotation_xy = static_cast<int32_t>(sr.read_u32());
+		lighting.directional_rotation_z = static_cast<int32_t>(sr.read_u32());
+		lighting.directional_fade = read_f32(sr);
+		lighting.fog_clip_distance = read_f32(sr);
+		lighting.fog_power = read_f32(sr);
+		return lighting;
+	}
+	return std::nullopt;
+}
+
 std::optional<RecordInfo> EsmFile::find_worldspace_by_editor_id(const std::string &editor_id) const {
 	std::optional<RecordInfo> found;
 	for_each_record([&](const RecordInfo &r) {

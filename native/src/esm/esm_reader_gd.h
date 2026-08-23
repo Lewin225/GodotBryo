@@ -87,6 +87,11 @@ public:
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
 
+	// esm::EsmFile::get_cell_lighting_data() -- a CELL's own XCLL ("Lighting")
+	// subrecord: per-cell authored ambient/directional/fog data. Empty
+	// Dictionary if the CELL has no XCLL (real for exterior cells).
+	Dictionary get_cell_lighting_data(int64_t cell_form_id) const;
+
 	// phases/1/04-exterior-cell-terrain.md additions:
 
 	// { "form_id": int } or {} if not found.
