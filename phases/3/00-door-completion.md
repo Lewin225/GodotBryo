@@ -232,13 +232,23 @@ is genuinely from scratch, not extending existing partial support.
    Defaults closed, confirmed against the real DLC04 shack door's own animation data:
    `Open` starts at identity rotation, `Close` ends within ~0.5° of identity (a small
    authored settle/overshoot, not an exact match, but close enough to confirm
-   identity/unanimated == closed for this door). Does NOT attempt a clean mid-swing
-   reversal — re-activating while still animating just switches to the other animation
-   via Godot's own default blend, a real, deliberate simplification, not silently
-   claimed as exact. `tests/test_door_activate.gd` extended: `NVCraftsmanHomeDoor`
-   starts closed, toggles open on `activate()` (only if its own model actually has
-   animation data — checked via `AnimationPlayer` presence, not assumed), toggles back
-   closed on a second call.
+   identity/unanimated == closed for this door). `tests/test_door_activate.gd`
+   extended: `NVCraftsmanHomeDoor` starts closed, toggles open on `activate()` (only if
+   its own model actually has animation data — checked via `AnimationPlayer` presence,
+   not assumed), toggles back closed on a second call.
+
+   **Real play found a genuine glitch, fixed:** re-activating mid-swing switched to the
+   other animation via Godot's own default (instant) blend — a visible interrupt-
+   before-finishing snap, not a clean reversal. `_toggle_swing()` now ignores an
+   activation entirely (no state/sound/animation change) while its `AnimationPlayer` is
+   still playing — a door mid-swing just doesn't respond again until it settles,
+   matching real door behavior, not "restart from wherever it currently is" (would need
+   seeking the other animation to a mirrored playback position — real complexity for a
+   polish detail, deliberately not attempted) or "queue the next toggle" (needs its own
+   completion-callback state). Confirmed real: `NVCraftsmanHomeDoor` really does carry
+   animation data (discovered via this exact fix — an immediate second `activate()` call
+   is now provably ignored, `test_door_activate.gd` extended to assert it, then confirms
+   a further call after `animation_finished` correctly toggles back).
 9. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
    unmodified — teleport and animated-swing are two different code paths that only
    share the `activate()` entry point and the `GamebryoCollisionBody`/`owner_ref`

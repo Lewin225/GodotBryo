@@ -168,8 +168,22 @@ func _ready() -> void:
 		check(non_tele.is_open == false, "non-teleporting door starts closed")
 		check(non_tele.activate().is_empty(), "activate() on a non-teleporting door returns {} cleanly")
 		check(non_tele.is_open == true, "activate() toggles is_open even with no animation/sound to show it")
-		non_tele.activate()
-		check(non_tele.is_open == false, "a second activate() toggles back to closed")
+
+		# Real behavior found in play: reactivating while still mid-swing
+		# snapped to the other animation's pose instead of finishing the
+		# current motion -- _toggle_swing() now ignores an activation
+		# entirely while its AnimationPlayer is still playing.
+		var player := non_tele.get_node_or_null("AnimationPlayer") as AnimationPlayer
+		if player != null:
+			check(player.is_playing(), "door's own animation is still playing right after activate()")
+			non_tele.activate() # same frame, no time elapsed -- must be ignored, not toggled
+			check(non_tele.is_open == true, "activate() mid-swing is ignored, not toggled")
+			await player.animation_finished
+			non_tele.activate()
+			check(non_tele.is_open == false, "activate() once the door has settled toggles back to closed")
+		else:
+			non_tele.activate() # no animation at all -- nothing to debounce against, toggles freely
+			check(non_tele.is_open == false, "a second activate() toggles back to closed (no animation to debounce against)")
 
 	print("=======================")
 	if failures == 0:

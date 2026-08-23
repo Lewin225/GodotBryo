@@ -162,27 +162,37 @@ func activate() -> Dictionary:
 ## activations, not "play once and stop" -- toggling each call is the
 ## real behavior, not a guess.
 ##
-## Does NOT attempt a clean mid-swing reversal (seeking the other
-## animation to a mirrored playback position) -- a real, deliberate
-## simplification: re-activating while still animating just switches to
-## the other animation via Godot's own default blend.
+## Ignores the activation entirely (no state/sound/animation change at
+## all) while the door is still mid-swing from the previous one -- real
+## play confirmed switching Animations mid-playback snaps to the new
+## track's pose instead of finishing the current motion, a visibly janky
+## interrupt-before-finishing glitch, not a clean reversal. A door that's
+## busy finishing its current swing just doesn't respond to interaction
+## again yet, matching how a real door behaves; this is deliberately NOT
+## "restart from wherever it currently is" (would need seeking the other
+## animation to a mirrored playback position, real complexity for a
+## polish detail) or "queue the next toggle for when this one finishes"
+## (would need a completion callback and its own state).
 ##
-## `is_open` itself ALWAYS toggles, regardless of whether this door has an
-## animation or sound to show it -- open/closed is a real game-logic state
-## (e.g. a future "is this door passable" check), not merely a label for
-## "whichever clip most recently played". A door with neither (a real,
-## common case -- see ROADMAP.md's own originally-flagged gap this whole
-## phase exists to close, and Part B's own sound-baked-into-the-NIF gap for
-## animated doors) still toggles silently/invisibly, which is correct, not
-## a bug: nothing to render is a rendering gap, not a state gap. Animation
-## playback is additionally skipped if this door's sequences aren't named
-## "Open"/"Close" (confirmed the real, standard naming on every door
-## checked so far, but not exhaustively censused across every DOOR NIF in
-## the game).
+## `is_open` itself ALWAYS toggles once an activation is actually
+## accepted, regardless of whether this door has an animation or sound to
+## show it -- open/closed is a real game-logic state (e.g. a future "is
+## this door passable" check), not merely a label for "whichever clip
+## most recently played". A door with neither (a real, common case -- see
+## ROADMAP.md's own originally-flagged gap this whole phase exists to
+## close, and Part B's own sound-baked-into-the-NIF gap for animated
+## doors) still toggles silently/invisibly on every activation (nothing
+## to be "mid-swing" on), which is correct, not a bug: nothing to render
+## is a rendering gap, not a state gap. Animation playback is additionally
+## skipped if this door's sequences aren't named "Open"/"Close" (confirmed
+## the real, standard naming on every door checked so far, but not
+## exhaustively censused across every DOOR NIF in the game).
 func _toggle_swing() -> void:
+	var player := get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if player != null and player.is_playing():
+		return # still finishing the last swing -- see this function's own doc comment
 	var opening := not is_open
 	var anim_name := "Open" if opening else "Close"
-	var player := get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if player != null and player.has_animation(anim_name):
 		player.play(anim_name)
 	_play_sound("OpenSound" if opening else "CloseSound")
