@@ -85,7 +85,14 @@ func _register_defaults() -> void:
 	register("IsActionRef", func(a: Array, ctx: ScriptExecutionContext):
 		if a.is_empty() or ctx.action_ref == null:
 			return 0
-		return 1 if a[0] == ctx.action_ref else 0)
+		# safe_equal(), not a raw ==: a[0] is very often a "name" node's own
+		# literal String (an unresolved editor-ID like "player" -- this
+		# interpreter has no global editor-id -> Node registry to resolve it
+		# through yet), and GDScript's own == throws for a String-vs-Object
+		# comparison rather than just returning false (confirmed directly
+		# this session) -- would otherwise crash the very first real
+		# `IsActionRef player` this project's own real data uses.
+		return 1 if ScriptExecutionContext.safe_equal(a[0], ctx.action_ref) else 0)
 
 	register("GetActionRef", func(_a, ctx: ScriptExecutionContext):
 		return ctx.action_ref)

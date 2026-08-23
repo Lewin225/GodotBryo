@@ -26,6 +26,12 @@ var esm: EsmReader:
 	set(value):
 		esm = value
 		function_registry.esm = value # ShowMessage's own MESG lookup needs this too
+
+## Set by game.gd (the one real caller with an actual player Node) --
+## propagated onto every dispatched ScriptExecutionContext so "player" (a
+## real GECK global keyword, see ScriptInterpreter's own "name" case)
+## resolves to something real instead of staying an unresolved name.
+var player_node: Node = null
 var function_registry: ScriptFunctionRegistry
 
 var _interpreter_cache: Dictionary = {} # scpt_form_id (int) -> ScriptInterpreter
@@ -99,6 +105,7 @@ func dispatch_event(node: Node, block_type: String, action_ref: Node = null) -> 
 		return
 	var ctx: ScriptExecutionContext = _contexts[node]
 	ctx.action_ref = action_ref
+	ctx.player_node = player_node
 	var interpreter: ScriptInterpreter = _node_interpreter.get(node)
 	if interpreter != null:
 		interpreter.run_block(block_type, ctx)

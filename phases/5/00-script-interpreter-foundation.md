@@ -248,6 +248,50 @@ fault of the code under test. `get_message_by_editor_id()`'s own real-data resol
 risk surface) is covered headlessly in `test_script_esm.gd` instead; `OS.alert()` itself is a
 one-line stdlib call with nothing of ours left to verify.
 
+## `OnActivate` dispatch for non-door Dynamic types, and the real `player` keyword
+
+Reported directly against real play: pressing E on `GSBrokenSMG` (a real `ACTI` in
+`GSDocMitchellHouse`) did nothing — because `game.gd`'s `_try_interact()` only ever calls
+`target.activate()` directly, and `DoorNode` is the only real type with one. `OnActivate` never ran
+for anything else, script or no script.
+
+Fixed scoped narrowly, sidestepping the door outcome-propagation gap entirely: `_try_interact()`
+now dispatches `OnActivate` via `ScriptEngine` for any scripted target that does **not** have its
+own `activate()` — mutually exclusive with the door branch, so door behavior is completely
+untouched (still calls `activate()` directly, unconditionally, same real gap as before). This is
+real and sufficient for every non-door Dynamic type (`CONT`/`ACTI`/`FURN`/`TACT`/`TERM`/`MSTT`),
+which never had any interact path at all before this, script or otherwise.
+
+**Two more real bugs found chasing this end-to-end, both from the same root cause**: once
+`ShowMessage`'s argument fix let unresolved names carry real values into comparisons, `IsActionRef
+player` (real code in `GSBrokenSMGScript`'s own `OnActivate`) hit the exact same GDScript
+`String`-vs-`Object` `==` crash the earlier `String`-vs-`int` fix didn't cover — confirmed directly
+(`"Invalid operands 'String' and 'Object'"`), and worse, the crash left the test process hung
+rather than exiting, since nothing downstream of the crash point ran. Fixed by promoting
+`_safe_equal()` from `ScriptInterpreter` to a shared `ScriptExecutionContext.safe_equal()` static
+(the natural home — already hosts `is_truthy()`, the same kind of script-value-semantics helper),
+used by both the interpreter's own `==`/`!=` and `IsActionRef`'s registered function.
+
+Second: even with that fixed, `IsActionRef player` would still always resolve false, because
+`"player"` just stayed an unresolved name string — this interpreter has no way to know it's
+supposed to mean anything special. Real Gamebryo/GECK treats `player` as a genuine global keyword,
+always resolving to the actual player reference — distinct from `ScriptExecutionContext.action_ref`
+(whichever reference triggered the *current* event, which isn't always the player — an NPC's own
+`OnTriggerEnter` might not be). Fixed: `ScriptEngine.player_node` (set once by `game.gd` from its
+own `_find_character_body()`) propagates onto every dispatched context's new `player_node` field;
+`ScriptInterpreter`'s `"name"` case special-cases the literal keyword `player` (case-insensitive) to
+resolve it instead of returning the raw string. This is the one and only GECK keyword this
+interpreter special-cases — every other bare reference still stays an unresolved name, a real,
+documented, unchanged gap.
+
+**Deliberately not exercised via the real interact path in the automated test suite** — same
+`OS.alert()` hang-risk reasoning as `ShowMessage` itself: driving a real raycast interact against
+`GSBrokenSMG` would genuinely trigger `ShowMessage` (now that `IsActionRef player` can actually
+resolve true), which is exactly the non-deterministic blocking behavior already ruled out of
+automated tests. `test_script_interpreter.gd` covers `player_node`/`action_ref` resolution directly
+against a synthetic script instead — real coverage of the resolution logic without touching
+`OS.alert()`.
+
 ## Editor tooling: `addons/script_viewer/` (a real `EditorPlugin`, not just an open scene)
 
 A read-only script inspector: search/browse every real script by editor ID, see its actual `SCTX`
@@ -315,7 +359,13 @@ underlying pure functions directly, bypassing the `Engine.is_editor_hint()`-gate
       record and shows its actual text (`OS.alert()`) — found and fixed two real bugs
       (`_parse_ident_primary()`'s call-vs-name ambiguity, `==`'s Variant type-mismatch crash) along
       the way, neither caught by any earlier test.
+- [x] `OnActivate` dispatch for every non-door Dynamic type (`CONT`/`ACTI`/`FURN`/`TACT`/`TERM`/
+      `MSTT`) — reported directly against real play (pressing E on `GSBrokenSMG` did nothing),
+      fixed scoped narrowly to sidestep the door outcome-propagation gap entirely (still open,
+      door-specific, see "Explicit non-goals").
+- [x] The real `player` GECK keyword resolves to the actual player character, not an unresolved
+      name — the one and only such keyword this interpreter special-cases.
 - [ ] A real script observed running correctly in interactive play, not just a headless boot (needs
-      a human to actually walk into the cell and watch — the headless boot only confirms it doesn't
-      crash and dispatches on schedule, not that the visible behavior is right).
-- [ ] `OnActivate` dispatch (needs the outcome-propagation gap in "Explicit non-goals" solved first).
+      a human to actually walk into the cell, press E on `GSBrokenSMG`, and confirm the real
+      `ShowMessage` dialog actually appears — everything upstream of that is now verified, but the
+      final "does it actually work when you play it" step is real and still open).
