@@ -24,7 +24,7 @@ anything, needs to happen beyond placing a mesh.
 |---|---|---|
 | `STAT` | Static | **Done.** Full pipeline proven end-to-end in [0.2](../0/02-esm-parser.md)/[0.5](../0/05-integration-tool.md), 15 real objects round-tripped. |
 
-## Tier 1 — same mechanism as STAT, not yet exercised
+## Tier 1 — same mechanism as STAT
 
 Each of these has its own `EDID`+`MODL` pair in its own record body (not a reference
 to a STAT — see the architecture discussion in this phase's planning). Resolving them
@@ -32,27 +32,37 @@ is the same code as STAT with the type filter widened; the interactive/gameplay
 behavior each implies (openable, usable, lootable, ...) is out of scope for Phase 1,
 which only needs correctly-placed geometry.
 
+**All done**, confirmed against `object_registry.gd`'s real three-tier dispatch
+(`build()`/`resolve_placement()`): `DOOR`/`CONT`/`ACTI`/`FURN`/`SCOL`/`LIGH` get an
+explicit registered factory (`ContainerNode`/`ActivatorNode`/`FurnitureNode` are typed
+`GamebryoVisual` subclasses with zero extra fields today — real extension points per
+`architecture.md`'s "typed node vs. generic node" rule, not yet exercised beyond
+placement); every other type below is deliberately *not* registered and falls through
+to the generic structural fallback (`GamebryoVisual`, keyed on MODL presence alone, not
+a base_type whitelist) — confirmed intentional via `_register_defaults()`'s own comment
+in `object_registry.gd`, not an oversight.
+
 | Type | Name | Notes | Status |
 |---|---|---|---|
-| `FURN` | Furniture | Idle-animation furniture (chairs, workbenches). Mesh-only for Phase 1. | Not started |
-| `CONT` | Container | Openable containers. Mesh-only; inventory contents out of scope. | Not started |
-| `ACTI` | Activator | Generic interactable (levers, switches, radios). Mesh-only. | Not started |
-| `DOOR` | Door | Mesh-only; teleport/open behavior out of scope. | Not started |
-| `MISC` | Misc. Item | Loose world items. | Not started |
-| `WEAP` | Weapon | World-placed weapon pickups. | Not started |
-| `ARMO` | Armor | World-placed armor pickups. | Not started |
-| `AMMO` | Ammunition | World-placed ammo pickups. | Not started |
-| `BOOK` | Book/Magazine | | Not started |
-| `KEYM` | Key | | Not started |
-| `ALCH` | Consumable (chem/food/drink) | | Not started |
-| `NOTE` | Note/Holotape | | Not started |
-| `TREE` | Tree | Static-equivalent; no special vegetation-system dependency at the REFR level (that's `GRAS`, see below). | Not started |
-| `MSTT` | Moveable Static | Physics-movable static (barrels, signs). Physics/movability out of scope for Phase 1 — treat identically to STAT. | Not started |
-| `TACT` | Talking Activator | `ACTI` + sound/dialogue trigger. Mesh-only for Phase 1. | Not started |
-| `TERM` | Terminal | Computer terminal. Mesh-only; UI/hacking out of scope. | Not started |
-| `CCRD` | Caravan Card | World-placed pickup, moderate confidence on MODL presence (standard item pattern). | Not started |
-| `IMOD` | Item Mod (weapon attachment) | World-placed pickup, moderate confidence (standard item pattern). | Not started |
-| `CMNY` | Money (caps) | World-placed pickup, moderate confidence (standard item pattern). | Not started |
+| `FURN` | Furniture | Idle-animation furniture (chairs, workbenches). Mesh-only for Phase 1. | Done |
+| `CONT` | Container | Openable containers. Mesh-only; inventory contents out of scope. | Done |
+| `ACTI` | Activator | Generic interactable (levers, switches, radios). Mesh-only. | Done |
+| `DOOR` | Door | Mesh-only for Phase 1's own bar; teleport/open/animation/sound behavior landed in Phase 3 ([00-door-completion.md](../3/00-door-completion.md)). | Done |
+| `MISC` | Misc. Item | Loose world items. | Done |
+| `WEAP` | Weapon | World-placed weapon pickups. | Done |
+| `ARMO` | Armor | World-placed armor pickups. | Done |
+| `AMMO` | Ammunition | World-placed ammo pickups. | Done |
+| `BOOK` | Book/Magazine | | Done |
+| `KEYM` | Key | | Done |
+| `ALCH` | Consumable (chem/food/drink) | | Done |
+| `NOTE` | Note/Holotape | | Done |
+| `TREE` | Tree | Static-equivalent; no special vegetation-system dependency at the REFR level (that's `GRAS`, see below). | Done |
+| `MSTT` | Moveable Static | Physics-movable static (barrels, signs). Physics/movability out of scope for Phase 1 — treat identically to STAT. | Done |
+| `TACT` | Talking Activator | `ACTI` + sound/dialogue trigger. Mesh-only for Phase 1. | Done |
+| `TERM` | Terminal | Computer terminal. Mesh-only; UI/hacking out of scope. | Done |
+| `CCRD` | Caravan Card | World-placed pickup, moderate confidence on MODL presence (standard item pattern). | Done |
+| `IMOD` | Item Mod (weapon attachment) | World-placed pickup, moderate confidence (standard item pattern). | Done |
+| `CMNY` | Money (caps) | World-placed pickup, moderate confidence (standard item pattern). | Done |
 
 ## Tier 2 — needs new Godot-side work
 
@@ -64,7 +74,7 @@ which only needs correctly-placed geometry.
 
 | Type | Name | Mechanism | Status |
 |---|---|---|---|
-| `SCOL` | Static Collection | Confirmed via fopdoc: bundles multiple `STAT` refs in one record. Each part = `ONAM` (FormID of a `STAT`) + `DATA` (its own position/rotation/scale, local to the `SCOL`). A `REFR` placing a `SCOL` needs to expand into N STAT placements, composing the `SCOL` part's local transform with the outer `REFR`'s transform. Same STAT mesh pipeline underneath — just an extra unpacking step before we get there. | Not started |
+| `SCOL` | Static Collection | Confirmed via fopdoc: bundles multiple `STAT` refs in one record. Each part = `ONAM` (FormID of a `STAT`) + `DATA` (its own position/rotation/scale, local to the `SCOL`). A `REFR` placing a `SCOL` expands into N STAT placements, composing the `SCOL` part's local transform with the outer `REFR`'s transform (`object_registry.gd`'s `_build_scol()`). Same STAT mesh pipeline underneath. | Done |
 
 ## Out of scope for Phase 1 (explicit, not oversights)
 
