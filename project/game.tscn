@@ -24,6 +24,17 @@ radius = 0.4
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fc0e3"]
 radius = 0.4
 
+[sub_resource type="GDScript" id="GDScript_yryqu"]
+script/source = "extends Window
+
+
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta: float) -> void:
+	if Input.is_action_just_released(\"ui_home\"):
+		visible = !visible
+"
+
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
 
 [sub_resource type="Theme" id="Theme_ggi80"]
@@ -72,6 +83,7 @@ shape = SubResource("CapsuleShape3D_fc0e3")
 oversampling_override = 1.0
 initial_position = 5
 size = Vector2i(784, 466)
+script = SubResource("GDScript_yryqu")
 
 [node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
 visible = false
