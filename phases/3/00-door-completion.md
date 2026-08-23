@@ -134,15 +134,46 @@ is genuinely from scratch, not extending existing partial support.
    regression suite's exact position/AABB assertions (`test_world_streamer.tscn`/
    `test_door_activate.tscn`/`test_collision.tscn` all pass at the same baseline as
    before this change).
-6. **Wire `activate()`:** a non-teleporting door with animation data plays its open
+6. ✅ **Build a real `AnimationPlayer` from `animation_sequences`, scoped to "see it and
+   play it," not yet wired into `object_registry.gd`/`DoorNode` (deliberately deferred
+   — see step 7).** `GamebryoMeshResolver.populate_animation_player(parent, nif, built)`
+   (new, next to `populate_dynamic_children()`) builds one `Animation` per sequence
+   (named exactly as authored — `"Open"`/`"Close"`), targeting the real nodes
+   `populate_dynamic_children()` already placed via `NodePath`, using native typed
+   `TYPE_POSITION_3D`/`TYPE_ROTATION_3D`/`TYPE_SCALE_3D` tracks per the Option 1
+   decision in step 3. Quaternion-keyed tracks map straight across; per-axis (XYZ)
+   rotation tracks — the real complication, since a real door's x/y/z key counts and
+   times can all differ (confirmed: x=1 y=1 z=3 for the DLC04 shack door) while Godot
+   wants one combined `Quaternion` per key — are resampled at the union of every
+   axis's own key times (each axis linearly interpolated, not its own authored
+   type) and combined via `Basis.from_euler(_, EULER_ORDER_XYZ)`. That specific Euler
+   composition order is **not verified against a primary NIF-format spec** (nifly only
+   stores these curves, never evaluates them — no reference implementation anywhere in
+   this codebase to check against) — flagged in `populate_animation_player()`'s own doc
+   comment, not silently assumed; the acceptance test below is also this assumption's
+   real verification. Wired into `nif_viewer.gd` (called right after
+   `populate_dynamic_children()`): the door's real "Open"/"Close" animations and the
+   silo elevator's 7 sequences (mixed quaternion/position/scale tracks, up to 262 keys
+   on one track) all build without error, confirmed headless (real key values dumped
+   and sanity-checked: the door's `Open` track runs identity → ~90° about Z over its
+   full length, a plausible door swing) — visual confirmation in the actual editor
+   (select `AnimationPlayer`, use its own bottom-panel scrubber) is the next real step,
+   not yet done here.
+7. **Wire into `object_registry.gd`:** switch `DoorNode`'s factory from the flattened
+   `populate_mesh_children()`/`populate_collision_children()` to
+   `populate_dynamic_children()` + `populate_animation_player()`, once step 6's visual
+   playback is confirmed correct in the editor — explicitly gated on that, not done
+   speculatively alongside it.
+8. **Wire `activate()`:** a non-teleporting door with animation data plays its open
    animation instead of returning `{}`. Determine the real open/closed/opening/closing
    state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
    against real data, referenced but not fully specified in
    `enginedocs/GeckWiki/scripting/txt/Scripting for Beginners - GECK.txt`'s own
    `GetOpenState == 3 ; Closed` example) so re-activating a door mid-swing or already
    open does the right thing, matching the real `AutoClosingDoor` example script's own
-   behavior rather than guessing.
-7. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
+   behavior rather than guessing. State is kept in-memory on `DoorNode` only — no
+   persistence; that's save/load's job, out of scope here.
+9. **Regression:** `tests/test_door_activate.tscn` (the teleport case) must pass
    unmodified — teleport and animated-swing are two different code paths that only
    share the `activate()` entry point and the `GamebryoCollisionBody`/`owner_ref`
    resolution already built for it.
