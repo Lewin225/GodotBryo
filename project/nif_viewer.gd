@@ -110,12 +110,13 @@ func _do_load() -> void:
 	_add_child(self, nif_root)
 
 	var geometry := resolver.build_geometry_entries(resolver.resolve_raw_geometry(nif, model_path))
-	resolver.populate_dynamic_children(nif_root, nif, model_path, geometry)
+	var built := resolver.populate_dynamic_children(nif_root, nif, model_path, geometry)
+	resolver.populate_animation_player(nif_root, nif, built)
 	if not show_collision:
 		for body in _collision_bodies(nif_root):
 			body.free()
 	if Engine.is_editor_hint():
-		_own_recursive(nif_root) # populate_dynamic_children() adds its own children directly, bypassing _add_child()
+		_own_recursive(nif_root) # populate_dynamic_children()/populate_animation_player() add their own children directly, bypassing _add_child()
 
 	_print_report(model_path, nif)
 

@@ -604,6 +604,162 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 
 	return built
 
+## phases/3/00-door-completion.md step 6 prep: builds a real AnimationPlayer
+## as a child of `parent`, with one Animation per NifReader.get_animation_
+## sequences() entry (named exactly as authored, e.g. "Open"/"Close"),
+## targeting the real nodes `built` (populate_dynamic_children()'s own
+## return value) already placed — Option 1 from that phase doc's own
+## research: native typed TYPE_POSITION_3D/TYPE_ROTATION_3D/TYPE_SCALE_3D
+## tracks, playable with zero extra code via Godot's own AnimationPlayer
+## editor panel (select the node, the bottom panel lists every animation).
+## Returns null if the NIF has no animation data at all (the common case).
+##
+## Per-track interpolation is decided per KEY's own recorded type (see
+## nif_types.h's KeyInterpolation), using the FIRST key as representative
+## (Godot's Animation track interpolation is a per-TRACK setting, not
+## per-key — a real, if rare, loss of fidelity for a track whose keys mix
+## interpolation types, no different in kind from the CUBIC-standing-in-for-
+## QUADRATIC-and-TBC approximation this project already accepted, see this
+## function's own doc comment further down):
+##   none/constant -> NEAREST, linear -> LINEAR, quadratic/tbc -> CUBIC.
+##
+## Quaternion-keyed tracks map straight onto TYPE_ROTATION_3D (Godot wants
+## exactly what NiTransformData's quaternionKeys already are). Per-axis
+## (XYZ) rotation tracks are the real complication: real data confirmed
+## x/y/z key COUNTS and TIMES can all differ (e.g. a real door: x=1 y=1
+## z=3 keys) yet Godot's TYPE_ROTATION_3D wants one Quaternion per
+## keyframe, not three independent curves — resampled here at the union of
+## every axis's own key times, each axis's SOURCE value linearly
+## interpolated at that time (not its own authored interpolation type —
+## a second, smaller approximation on top of the per-track one above,
+## since combining three curves with three different authored
+## interpolation types into one sampled point has no single "correct"
+## per-key type to assign anyway), then combined via
+## Basis.from_euler(Vector3(x,y,z), EULER_ORDER_XYZ) -- Godot's own named
+## XYZ order, matching NiKeyType's own "XYZ_ROTATION_KEY" name, but NOT
+## independently verified against a primary NIF-format spec (nifly itself
+## only stores these curves, never composes/evaluates them -- no reference
+## implementation to check against in this codebase). Flagged, not silently
+## assumed: verify by actually playing a real per-axis-keyed animation
+## (the door case) in the editor and confirming it swings the way real
+## gameplay footage does -- exactly the acceptance test this feature's own
+## phase step already calls for.
+func populate_animation_player(parent: Node3D, nif: NifReader, built: Array) -> AnimationPlayer:
+	var sequences: Array = nif.get_animation_sequences()
+	if sequences.is_empty() or built.is_empty():
+		return null
+
+	var name_to_index: Dictionary = {}
+	var scene_node_entries: Array = nif.get_scene_nodes()
+	for i in scene_node_entries.size():
+		name_to_index[String(scene_node_entries[i]["name"])] = i
+
+	var player := AnimationPlayer.new()
+	player.name = "AnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..") # `parent` itself -- every NodePath below is parent.get_path_to(...)
+
+	var library := AnimationLibrary.new()
+	for seq in sequences:
+		var anim := Animation.new()
+		anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
+		match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
+			0: anim.loop_mode = Animation.LOOP_LINEAR
+			_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
+
+		for track in seq["tracks"]:
+			var target_name: String = track["target_node_name"]
+			if not name_to_index.has(target_name):
+				continue # target isn't one of THIS NIF's own scene_nodes -- a real, if unexpected, case; skip rather than crash
+			var target_node: Node3D = built[name_to_index[target_name]]
+			var node_path: NodePath = parent.get_path_to(target_node)
+
+			if bool(track["has_quaternion_keys"]):
+				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(idx, node_path)
+				var keys: Array = track["quaternion_keys"]
+				anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
+				for k in keys:
+					anim.track_insert_key(idx, float(k["time"]), k["value"])
+			elif bool(track["has_axis_keys"]):
+				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(idx, node_path)
+				anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR) # resampled below -- see this function's own doc comment
+				for sample in _resample_axis_rotation(track["x_rotation_keys"], track["y_rotation_keys"], track["z_rotation_keys"]):
+					anim.track_insert_key(idx, sample["time"], sample["quat"])
+
+			var translation_keys: Array = track["translation_keys"]
+			if not translation_keys.is_empty():
+				var idx := anim.add_track(Animation.TYPE_POSITION_3D)
+				anim.track_set_path(idx, node_path)
+				anim.track_set_interpolation_type(idx, _godot_interp(int(translation_keys[0]["interp"])))
+				for k in translation_keys:
+					anim.track_insert_key(idx, float(k["time"]), k["value"])
+
+			var scale_keys: Array = track["scale_keys"]
+			if not scale_keys.is_empty():
+				var idx := anim.add_track(Animation.TYPE_SCALE_3D)
+				anim.track_set_path(idx, node_path)
+				anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
+				for k in scale_keys:
+					anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
+
+		library.add_animation(String(seq["name"]), anim)
+	player.add_animation_library("", library)
+	return player
+
+## nif::KeyInterpolation (0=none/1=linear/2=quadratic/3=tbc/4=constant) ->
+## Godot's own Animation.InterpolationType. See populate_animation_player()'s
+## own doc comment for why quadratic/tbc both collapse to CUBIC.
+func _godot_interp(nif_interp: int) -> int:
+	match nif_interp:
+		1: return Animation.INTERPOLATION_LINEAR
+		2, 3: return Animation.INTERPOLATION_CUBIC
+		_: return Animation.INTERPOLATION_NEAREST # 0=none, 4=constant
+
+## See populate_animation_player()'s own doc comment for the real
+## misaligned-key-time problem this resamples around, and the unverified
+## EULER_ORDER_XYZ composition assumption. Each axis is linearly
+## interpolated at every OTHER axis's key times too (not just its own),
+## since Godot's single combined Quaternion track needs one shared sample
+## grid — this is a real precision loss on top of nif_loader.cpp's own
+## per-key tangent data, deliberately accepted per this project's existing
+## "CUBIC approximates QUADRATIC/TBC" precedent.
+func _resample_axis_rotation(x_keys: Array, y_keys: Array, z_keys: Array) -> Array:
+	var times: Dictionary = {} # used as an ordered set (Godot Dictionaries preserve insertion order; sorted explicitly below anyway)
+	for k in x_keys: times[float(k["time"])] = true
+	for k in y_keys: times[float(k["time"])] = true
+	for k in z_keys: times[float(k["time"])] = true
+	if times.is_empty():
+		return []
+	var sorted_times: Array = times.keys()
+	sorted_times.sort()
+
+	var out: Array = []
+	for t in sorted_times:
+		var euler := Vector3(_eval_float_keys_linear(x_keys, t), _eval_float_keys_linear(y_keys, t), _eval_float_keys_linear(z_keys, t))
+		out.append({ "time": t, "quat": Quaternion(Basis.from_euler(euler, EULER_ORDER_XYZ)) })
+	return out
+
+## Linear-interpolated value of a nif::FloatKey array at time `t` (clamped
+## at the ends, matching Animation.LOOP_NONE's own hold-last-value
+## behavior). Empty `keys` (an axis that never animates at all -- a real,
+## common case) returns 0.0, not an error.
+func _eval_float_keys_linear(keys: Array, t: float) -> float:
+	if keys.is_empty():
+		return 0.0
+	if t <= float(keys[0]["time"]):
+		return float(keys[0]["value"])
+	if t >= float(keys[keys.size() - 1]["time"]):
+		return float(keys[keys.size() - 1]["value"])
+	for i in range(keys.size() - 1):
+		var t0 := float(keys[i]["time"])
+		var t1 := float(keys[i + 1]["time"])
+		if t >= t0 and t <= t1:
+			var u := (t - t0) / (t1 - t0) if t1 > t0 else 0.0
+			return lerpf(float(keys[i]["value"]), float(keys[i + 1]["value"]), u)
+	return float(keys[keys.size() - 1]["value"]) # unreachable given the bounds checks above, kept as a safe fallback
+
 ## phases/2/12-distant-object-lod.md, step 8: the real (single-sourced, not
 ## duplicated across GDScript/C++) configurable crossover distance and
 ## hysteresis margin, defaulting to the same placeholder values step 6/7
