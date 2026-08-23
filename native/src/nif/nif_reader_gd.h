@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
@@ -75,6 +76,30 @@ public:
 	// (a non-empty collisionRef), independent of whether get_collision_shapes()
 	// could actually extract it — see nif_types.h's Mesh::has_collision_data.
 	bool has_collision_data() const { return mesh_.has_collision_data; }
+
+	// phases/3/00-door-completion.md, Part A: rigid single-node transform
+	// animation (NiControllerManager/NiControllerSequence) — see
+	// nif_types.h's own AnimationSequence/AnimationTrack doc comments for
+	// the real-data census that scoped this. Every Array of Dictionary,
+	// mirroring the source struct fields directly:
+	//   sequence: { "name": String, "cycle_type": int (0=loop/1=reverse/
+	//     2=clamp), "start_time": float, "stop_time": float,
+	//     "tracks": Array of track }
+	//   track: { "target_node_name": String, "has_quaternion_keys": bool,
+	//     "quaternion_keys": Array of quat_key, "has_axis_keys": bool,
+	//     "x_rotation_keys"/"y_rotation_keys"/"z_rotation_keys": Array of
+	//     float_key (radians), "translation_keys": Array of vec3_key
+	//     (meters), "scale_keys": Array of float_key (relative multiplier) }
+	//   float_key: { "time": float, "value": float, "forward": float,
+	//     "backward": float, "tension": float, "bias": float,
+	//     "continuity": float, "interp": int } — interp is
+	//     nif::KeyInterpolation as a plain int (0=none/1=linear/
+	//     2=quadratic/3=tbc/4=constant); forward/backward only meaningful
+	//     when interp==2, tension/bias/continuity only when interp==3.
+	//   vec3_key: same shape as float_key but "value"/"forward"/"backward"
+	//     are Vector3.
+	//   quat_key: { "time": float, "value": Quaternion, "interp": int }
+	Array get_animation_sequences() const;
 
 private:
 	nif::Mesh mesh_;

@@ -31,16 +31,37 @@ is genuinely from scratch, not extending existing partial support.
 
 ### Part A — animated door playback (the real blocker)
 
-1. **Confirm scope against real data before writing a parser.** Sample how many real
-   `DOOR` placements across `FalloutNV.esm` + DLC actually use an "Animated" model
-   variant vs. a plain one, and confirm the exact NIF block chain nifly exposes for
-   them (`NiControllerManager` → `NiControllerSequence` → `NiTransformInterpolator` →
-   `NiTransformData`) against a real sample — don't assume the chain shape from the
-   block names alone.
-2. **Native parsing** (`nif_loader.cpp`): extract keyframe time + transform samples
-   for the single animated node a door's swing uses. Explicitly no
-   `NiSkinInstance`/bone-hierarchy support needed here — that's the harder, later part
-   of Phase 3, deliberately deferred.
+1. ✅ **Confirm scope against real data before writing a parser.** Done via
+   `native/tools/anim_survey.cpp` (real, not committed — throwaway research tooling,
+   same convention as `alpha_survey.cpp`): censused all 1,153 `NiControllerManager`-
+   bearing NIFs / 31,012 controlled links across `FalloutNV.esm` + DLC, not just doors.
+   Confirmed the chain (`NiControllerManager` → `NiControllerSequence` →
+   `NiTransformInterpolator` → `NiTransformData`) directly, and confirmed the door-only
+   sample would have under-scoped the real work badly: doors use only linear
+   interpolation and per-axis (XYZ) rotation with no translation/scale, while the real
+   population is dominated by **quadratic (Hermite) interpolation** for rotation
+   (12,691 quadratic vs. 1,703 linear keys) and scale (9,761 vs. 74), and both
+   quaternion-keyed and per-axis rotation representations occur (571 real quaternion
+   cases). `NiFloatInterpolator`/`NiBoolInterpolator`/`NiBoolTimelineInterpolator`/
+   `NiPoint3Interpolator` targets confirmed to be particle/visibility/color animation,
+   correctly excluded. `NiBSplineCompTransformInterpolator` (compressed) confirmed
+   **zero** real occurrences, not assumed absent.
+2. ✅ **Native parsing** (`nif_types.h`/`nif_loader.cpp`): general-purpose extraction —
+   `nif::Mesh::animation_sequences`, each a named `AnimationSequence` (cycle type,
+   start/stop time) holding any number of `AnimationTrack`s (target node name +
+   quaternion and/or per-axis rotation keys + translation keys (meters,
+   `kGamebryoUnitsToMeters` applied at the true source) + scale keys), each key
+   carrying full fidelity (time, value, forward/backward tangents, TBC
+   tension/bias/continuity, interpolation type) — not just linear/door-shaped data.
+   Exposed to GDScript via `NifReader.get_animation_sequences()`. Verified end-to-end
+   through the real GDExtension binding against both the door case (matches the
+   census exactly: pure axis rotation, linear, no translation/scale) and a real
+   32-track, 7-sequence silo elevator NIF (quadratic rotation/scale, hundreds of
+   linear translation keys, many simultaneously-animated nodes in one sequence) — the
+   general case, not just the narrow one. Full regression suite unaffected. No
+   `NiSkinInstance`/bone-hierarchy support — that's the harder, later part of Phase 3,
+   deliberately still deferred; this only extracts rigid single/multi-node transform
+   tracks.
 3. **Playback mechanism, decided not assumed:** compare a lightweight custom
    interpolator (manual per-frame `Transform3D` lerp/slerp between keyframes) against
    reusing Godot's `AnimationPlayer`/`AnimationLibrary` for this single-node case

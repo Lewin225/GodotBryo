@@ -5,6 +5,7 @@
 #include <NifFile.hpp>
 #include <Geometry.hpp>
 #include <bhk.hpp>
+#include <Animation.hpp>
 
 #include <sstream>
 #include <stdexcept>
@@ -149,6 +150,112 @@ nifly::bhkShape *unwrap_shape(const nifly::NifFile &nif, nifly::bhkShape *shape)
 		shape = nif.GetHeader().GetBlock<nifly::bhkShape>(mopp->shapeRef);
 	}
 	return nullptr;
+}
+
+// phases/3/00-door-completion.md, Part A: niftools' NiKeyType -> this
+// codebase's own KeyInterpolation. A plain 1:1 mapping, kept as a named
+// function rather than inlined at every call site so the "which enum
+// values exist" question has exactly one answer in this file.
+KeyInterpolation map_key_interpolation(nifly::NiKeyType t) {
+	switch (t) {
+		case nifly::LINEAR_KEY: return KeyInterpolation::kLinear;
+		case nifly::QUADRATIC_KEY: return KeyInterpolation::kQuadratic;
+		case nifly::TBC_KEY: return KeyInterpolation::kTbc;
+		case nifly::CONST_KEY: return KeyInterpolation::kConstant;
+		case nifly::XYZ_ROTATION_KEY: // never appears on an individual key's own type -- that value only appears on NiTransformData::rotationType itself, selecting the per-axis representation (see extract_track below). Falls through to kNone defensively, not silently misclassified as a real curve type.
+		case nifly::NO_INTERP:
+		default: return KeyInterpolation::kNone;
+	}
+}
+
+std::vector<FloatKey> extract_float_keys(const nifly::NiAnimationKeyGroup<float> &group) {
+	std::vector<FloatKey> out;
+	uint32_t n = group.GetNumKeys();
+	out.reserve(n);
+	for (uint32_t i = 0; i < n; ++i) {
+		nifly::NiAnimationKey<float> k = group.GetKey(static_cast<int>(i));
+		FloatKey fk;
+		fk.time = k.time;
+		fk.value = k.value;
+		fk.forward = k.forward;
+		fk.backward = k.backward;
+		fk.tension = k.tbc.tension;
+		fk.bias = k.tbc.bias;
+		fk.continuity = k.tbc.continuity;
+		fk.interp = map_key_interpolation(k.type);
+		out.push_back(fk);
+	}
+	return out;
+}
+
+// Translation keys specifically — the one key type that needs the
+// Gamebryo-units-to-meters conversion applied (units.h: "applied at the
+// true source... not per-consumer"). Rotation (both quaternion and
+// per-axis) and scale carry no unit conversion — see units.h's own scope
+// note ("only applies to positions/vertex coordinates").
+std::vector<Vector3Key> extract_translation_keys(const nifly::NiAnimationKeyGroup<nifly::Vector3> &group) {
+	std::vector<Vector3Key> out;
+	uint32_t n = group.GetNumKeys();
+	out.reserve(n);
+	for (uint32_t i = 0; i < n; ++i) {
+		nifly::NiAnimationKey<nifly::Vector3> k = group.GetKey(static_cast<int>(i));
+		Vector3Key vk;
+		vk.time = k.time;
+		vk.value[0] = k.value.x * units::kGamebryoUnitsToMeters;
+		vk.value[1] = k.value.y * units::kGamebryoUnitsToMeters;
+		vk.value[2] = k.value.z * units::kGamebryoUnitsToMeters;
+		vk.forward[0] = k.forward.x * units::kGamebryoUnitsToMeters;
+		vk.forward[1] = k.forward.y * units::kGamebryoUnitsToMeters;
+		vk.forward[2] = k.forward.z * units::kGamebryoUnitsToMeters;
+		vk.backward[0] = k.backward.x * units::kGamebryoUnitsToMeters;
+		vk.backward[1] = k.backward.y * units::kGamebryoUnitsToMeters;
+		vk.backward[2] = k.backward.z * units::kGamebryoUnitsToMeters;
+		vk.tension = k.tbc.tension;
+		vk.bias = k.tbc.bias;
+		vk.continuity = k.tbc.continuity;
+		vk.interp = map_key_interpolation(k.type);
+		out.push_back(vk);
+	}
+	return out;
+}
+
+// Builds one AnimationTrack from a resolved NiTransformData — the shared
+// body for every ControllerLink whose interpolator is a NiTransformInterpolator
+// (or a subclass, e.g. BSRotAccumTransfInterpolator — dynamic_cast at the
+// call site already covers that). `rotationType == XYZ_ROTATION_KEY`
+// (confirmed the dominant real case — see nif_types.h's own doc comment)
+// selects the per-axis representation; any other rotationType with real
+// quaternion keys present selects that instead. Neither is assumed present
+// — a track can legitimately have zero rotation keys of either kind (a
+// pure translation/scale track, e.g. a real elevator car).
+AnimationTrack extract_track(const std::string &target_node_name, nifly::NiTransformData *td) {
+	AnimationTrack track;
+	track.target_node_name = target_node_name;
+
+	if (!td->quaternionKeys.empty()) {
+		track.has_quaternion_keys = true;
+		track.quaternion_keys.reserve(td->quaternionKeys.size());
+		for (const auto &k : td->quaternionKeys) {
+			QuatKey qk;
+			qk.time = k.time;
+			qk.value[0] = k.value.x;
+			qk.value[1] = k.value.y;
+			qk.value[2] = k.value.z;
+			qk.value[3] = k.value.w;
+			qk.interp = map_key_interpolation(k.type);
+			track.quaternion_keys.push_back(qk);
+		}
+	}
+	if (td->rotationType == nifly::XYZ_ROTATION_KEY &&
+			(td->xRotations.GetNumKeys() > 0 || td->yRotations.GetNumKeys() > 0 || td->zRotations.GetNumKeys() > 0)) {
+		track.has_axis_keys = true;
+		track.x_rotation_keys = extract_float_keys(td->xRotations);
+		track.y_rotation_keys = extract_float_keys(td->yRotations);
+		track.z_rotation_keys = extract_float_keys(td->zRotations);
+	}
+	track.translation_keys = extract_translation_keys(td->translations);
+	track.scale_keys = extract_float_keys(td->scales);
+	return track;
 }
 
 // Extracts one CollisionShape from a resolved bhkShape, or leaves kind ==
@@ -365,6 +472,58 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		// before the AV's own transform-to-root is applied on top.
 		flatten_transform(flatten_to_root(nif, av).ComposeTransforms(rigid_body_transform(body)), cs);
 		mesh.collision_shapes.push_back(std::move(cs));
+	}
+
+	// phases/3/00-door-completion.md, Part A: rigid single-node transform
+	// animation. Walks every top-level block for a NiControllerManager the
+	// same way collision extraction above walks for a collisionRef, rather
+	// than assuming exactly one — real NIFs weren't checked to guarantee
+	// only one, and this costs nothing extra to get right. Deliberately
+	// stops at NiTransformInterpolator/NiTransformData (see nif_types.h's
+	// own doc comment for the real-data census that scoped this) — every
+	// other interpolator type a ControllerLink can reference
+	// (NiFloatInterpolator, NiBoolInterpolator, NiPoint3Interpolator, ...)
+	// is silently skipped per-link, not per-file, so a sequence that mixes
+	// real transform tracks with particle/visibility tracks (confirmed
+	// real — e.g. a door-adjacent dust-blast effect NIF) still yields
+	// exactly the transform tracks that matter here.
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *manager = nif.GetHeader().GetBlock<nifly::NiControllerManager>(i);
+		if (!manager) {
+			continue;
+		}
+		for (auto &seq_ref : manager->controllerSequenceRefs) {
+			auto *seq = nif.GetHeader().GetBlock<nifly::NiControllerSequence>(seq_ref);
+			if (!seq) {
+				continue;
+			}
+			AnimationSequence sequence;
+			sequence.name = seq->name.get();
+			sequence.start_time = seq->startTime;
+			sequence.stop_time = seq->stopTime;
+			switch (seq->cycleType) {
+				case nifly::CYCLE_LOOP: sequence.cycle_type = SequenceCycleType::kLoop; break;
+				case nifly::CYCLE_REVERSE: sequence.cycle_type = SequenceCycleType::kReverse; break;
+				case nifly::CYCLE_CLAMP:
+				default: sequence.cycle_type = SequenceCycleType::kClamp; break;
+			}
+			for (auto &link : seq->controlledBlocks) {
+				auto *interp = nif.GetHeader().GetBlock<nifly::NiInterpolator>(link.interpolatorRef);
+				if (!interp) {
+					continue;
+				}
+				auto *xform_interp = dynamic_cast<nifly::NiTransformInterpolator *>(interp);
+				if (!xform_interp) {
+					continue; // a real, common case (particle/visibility/color track on the same sequence) -- not an error
+				}
+				auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
+				if (!td) {
+					continue; // NiTransformInterpolator with no data block -- confirmed possible in real data, an empty/no-op track
+				}
+				sequence.tracks.push_back(extract_track(link.nodeName.get(), td));
+			}
+			mesh.animation_sequences.push_back(std::move(sequence));
+		}
 	}
 
 	return mesh;

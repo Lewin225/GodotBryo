@@ -135,6 +135,121 @@ struct CollisionShape {
 	float capsule_radius = 0.0f;
 };
 
+// phases/3/00-door-completion.md, Part A: how one keyframe's value should
+// be interpolated toward the NEXT keyframe. Mirrors niftools' own NiKeyType
+// enum (LINEAR_KEY/QUADRATIC_KEY/TBC_KEY/CONST_KEY/NO_INTERP), sourced
+// against a real census of every animated NIF in FalloutNV.esm + DLC
+// (native/tools/anim_survey.cpp) rather than assumed: kQuadratic is the
+// MAJORITY case for real rotation/scale data (12,691 quadratic vs 1,703
+// linear rotation keys; 9,761 vs 74 for scale), not an edge case a
+// linear-only reader could safely ignore. kTbc is real but rare. XYZ
+// per-axis rotation keys (a separate representation from quaternion keys,
+// selected by NiTransformData::rotationType — see AnimationTrack below)
+// use this same enum for each axis independently.
+enum class KeyInterpolation {
+	kNone,      // NO_INTERP -- effectively a single static value, no curve
+	kLinear,
+	kQuadratic, // Hermite -- forward/backward tangents are meaningful
+	kTbc,       // Kochanek-Bartels -- tension/bias/continuity are meaningful
+	kConstant,  // CONST_KEY -- holds `value` until the next key, no blending
+};
+
+// One float-valued keyframe (scale, or one axis of a per-axis rotation
+// track). forward/backward/tension/bias/continuity are only meaningful
+// when `interp` is kQuadratic/kTbc respectively — carried regardless so a
+// future evaluator doesn't need to re-read the source NIF to get them.
+struct FloatKey {
+	float time = 0.0f;
+	float value = 0.0f;
+	float forward = 0.0f;
+	float backward = 0.0f;
+	float tension = 0.0f;
+	float bias = 0.0f;
+	float continuity = 0.0f;
+	KeyInterpolation interp = KeyInterpolation::kNone;
+};
+
+// One translation keyframe. `value`/`forward`/`backward` are already in
+// meters (units::kGamebryoUnitsToMeters applied at extraction, same as
+// every other position value this codebase hands back — see units.h) —
+// not raw Gamebryo units.
+struct Vector3Key {
+	float time = 0.0f;
+	float value[3] = { 0.0f, 0.0f, 0.0f };
+	float forward[3] = { 0.0f, 0.0f, 0.0f };
+	float backward[3] = { 0.0f, 0.0f, 0.0f };
+	float tension = 0.0f;
+	float bias = 0.0f;
+	float continuity = 0.0f;
+	KeyInterpolation interp = KeyInterpolation::kNone;
+};
+
+// One quaternion-rotation keyframe (x, y, z, w). Real data (571 non-empty
+// cases in the same census) shows quaternion keys are always authored as
+// kNone/kLinear in practice — never quadratic/TBC — but `interp` is still
+// carried rather than assumed, since nifly's own key template supports all
+// four for any value type and this project's own discipline is to not
+// assume from a sample.
+struct QuatKey {
+	float time = 0.0f;
+	float value[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	KeyInterpolation interp = KeyInterpolation::kNone;
+};
+
+// One ControllerLink -> NiTransformInterpolator -> NiTransformData, fully
+// extracted. `target_node_name` is this NIF's own scene-graph node name
+// the track drives (ControllerLink::nodeName — confirmed a direct string
+// in FNV-version NIFs via real data, not an offset into a NiStringPalette;
+// that alternate encoding only applies to NIF versions older than this
+// game ships, per ControllerLink::Sync's own version gating in
+// nifly/include/Animation.hpp). Deliberately NOT correlated to a specific
+// SubMesh here — a target node is commonly a wrapping NiNode with several
+// child shapes under it, not a single shape itself, so that correlation is
+// left to whoever wires real playback (phases/3/00-door-completion.md's
+// own Part A steps 3-4), not assumed at parse time.
+//
+// Rotation is stored in whichever representation the source NIF actually
+// used — has_quaternion_keys and has_axis_keys are independent, not
+// mutually exclusive by construction (real data confirms both occur, never
+// checked to be exclusive), though in practice every real sample checked
+// so far uses exactly one or neither (a translation/scale-only track, e.g.
+// a real elevator car: pure translation, no rotation at all).
+struct AnimationTrack {
+	std::string target_node_name;
+
+	bool has_quaternion_keys = false;
+	std::vector<QuatKey> quaternion_keys;
+
+	bool has_axis_keys = false;
+	std::vector<FloatKey> x_rotation_keys; // radians -- standard NIF convention, same as every other rotation value in this codebase
+	std::vector<FloatKey> y_rotation_keys;
+	std::vector<FloatKey> z_rotation_keys;
+
+	std::vector<Vector3Key> translation_keys; // meters
+	std::vector<FloatKey> scale_keys;         // relative multiplier, no unit conversion (same convention as REFR XSCL/SCOL part scale — see units.h)
+};
+
+// Mirrors niftools' CycleType enum. Real doors/cabinets use kClamp (play
+// once, hold the end pose) — confirmed via the same census, not assumed.
+enum class SequenceCycleType {
+	kLoop,
+	kReverse,
+	kClamp,
+};
+
+// One named animation clip (NiControllerSequence) — e.g. a door's "Open"/
+// "Close", an elevator's "Forward"/"Backward". May drive many target nodes
+// at once: a real complex mechanism's single sequence commonly animates
+// dozens of nodes together (confirmed directly — a real silo elevator
+// shaft's "Forward" sequence alone has 20+ tracked nodes), not just one.
+struct AnimationSequence {
+	std::string name;
+	SequenceCycleType cycle_type = SequenceCycleType::kClamp;
+	float start_time = 0.0f;
+	float stop_time = 0.0f;
+	std::vector<AnimationTrack> tracks;
+};
+
 struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
@@ -157,6 +272,25 @@ struct Mesh {
 	// for the "confirm which NIF version FNV ships" step without needing a
 	// separate inspection tool.
 	std::string nif_version;
+
+	// phases/3/00-door-completion.md, Part A step 1-2: rigid single-node
+	// transform animation (NiControllerManager/NiControllerSequence), NOT
+	// skeletal (no NiSkinInstance/bone weighting read here — that's later,
+	// harder Phase 3 work, deliberately deferred). Scoped against a real
+	// census across every animated NIF in FalloutNV.esm + DLC (1,153 files,
+	// 31,012 controlled links, native/tools/anim_survey.cpp), not just
+	// door content — doors alone would have under-scoped this badly: they
+	// happen to use only linear/XYZ-axis rotation with no translation or
+	// scale, while the real population is dominated by QUADRATIC (Hermite)
+	// interpolation for rotation (12,691 quadratic vs 1,703 linear) and
+	// scale (9,761 vs 74), and both quaternion-keyed (571 real cases) and
+	// per-axis rotation representations appear. Deliberately excludes
+	// NiFloatInterpolator/NiBoolInterpolator/NiBoolTimelineInterpolator/
+	// NiPoint3Interpolator targets (confirmed via the same census to be
+	// particle-system/visibility/color animation, a different concern from
+	// object pose) and NiBSplineCompTransformInterpolator (confirmed zero
+	// occurrences in real FNV content, not assumed absent).
+	std::vector<AnimationSequence> animation_sequences;
 };
 
 } // namespace nif
