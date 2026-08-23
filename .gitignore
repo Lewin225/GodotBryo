@@ -16,9 +16,14 @@ project/addons/terrain_3d/bin/
 *.os
 *.obj
 .sconsign.dblite
-native/tools/dump_object
-native/tools/dump_object_output/
-native/tools/terrain_census
+# native/tools/ compiled binaries are always extensionless (source is
+# always .cpp/.h/.hpp/.sh) -- ignore everything there except real source,
+# so a new one-off diagnostic tool's binary never needs its own line here.
+native/tools/*
+!native/tools/*.cpp
+!native/tools/*.h
+!native/tools/*.hpp
+!native/tools/*.sh
 
 # Godot editor artifacts
 .godot/
