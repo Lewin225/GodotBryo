@@ -160,18 +160,14 @@ func _ready() -> void:
 	if non_tele != null:
 		check(not non_tele.has_destination, "non-teleporting door correctly has_destination=false")
 
-		# phases/3/00-door-completion.md step 8: activate() also toggles
-		# is_open and plays a real animation, when this door's own model
-		# has one -- not every non-teleporting door does (see step 4's own
-		# real-data census), so this checks whatever actually got built
-		# rather than assuming NVCraftsmanHomeDoor's specific model does.
-		# Checked BEFORE any activate() call below, which would otherwise
-		# already have flipped is_open once.
-		var had_player: bool = non_tele.get_node_or_null("AnimationPlayer") != null
+		# phases/3/00-door-completion.md step 8: activate() always toggles
+		# is_open -- open/closed is real game-logic state, not merely a
+		# label for whichever animation clip most recently played, so it
+		# toggles even for a door with no animation/sound to show it (a
+		# real, common case -- see step 4's own real-data census).
 		check(non_tele.is_open == false, "non-teleporting door starts closed")
-
 		check(non_tele.activate().is_empty(), "activate() on a non-teleporting door returns {} cleanly")
-		check(non_tele.is_open == had_player, "activate() toggles is_open only when there's a real animation to play")
+		check(non_tele.is_open == true, "activate() toggles is_open even with no animation/sound to show it")
 		non_tele.activate()
 		check(non_tele.is_open == false, "a second activate() toggles back to closed")
 

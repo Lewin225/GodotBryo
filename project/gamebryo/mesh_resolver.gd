@@ -290,6 +290,31 @@ func _load_image(tex_path: String, alpha_safe: bool = false) -> Image:
 func load_texture(tex_path: String) -> ImageTexture:
 	return _get_texture_from_image(tex_path, _load_image(tex_path))
 
+## General-purpose, not tied to any one caller -- DOOR's Open/Close/Loop
+## sounds today (phases/3/00-door-completion.md Part B), but this resolves
+## ANY Sound/-relative path (EsmReader.resolve_soun_filename()'s own
+## output, or any future caller's), same BSA-priority search everything
+## else uses. `sound_path` has no "sound\" prefix (same convention as
+## MODL/LTEX) -- added here. Cached by path, same reasoning as
+## _texture_cache (a handful of real sounds -- door creaks, footsteps --
+## get reused across many placements). Confirmed real-format feasibility
+## directly: FNV's own DOOR sounds are plain .wav (not the Xbox-only .xwm
+## some other Bethesda titles use), which Godot's own
+## AudioStreamWAV.load_from_buffer() decodes natively -- no third-party
+## decoder needed. Returns null if not found in any BSA or unparseable.
+var _sound_cache := {} # sound_path -> AudioStreamWAV or null
+func load_sound(sound_path: String) -> AudioStreamWAV:
+	if sound_path == "":
+		return null
+	if _sound_cache.has(sound_path):
+		return _sound_cache[sound_path]
+	var found := resolve_bytes("sound\\" + sound_path)
+	var stream: AudioStreamWAV = null
+	if not found.is_empty():
+		stream = AudioStreamWAV.load_from_buffer(found["data"])
+	_sound_cache[sound_path] = stream
+	return stream
+
 ## phases/2/10-threaded-streaming-workers.md: the resolve-only counterpart
 ## to build_geometry_entries() below -- pulls every piece of data a
 ## placement's mesh/collision needs (vertex arrays, texture paths, decoded
@@ -714,6 +739,12 @@ func populate_animation_player(parent: Node3D, nif: NifReader, built: Array) -> 
 	player.name = "AnimationPlayer"
 	parent.add_child(player)
 	player.root_node = NodePath("..") # `parent` itself -- every NodePath below is parent.get_path_to(...)
+	# Real NIF-authored playback speed reads slightly slow in practice
+	# (user observation, real play) -- a flat 25% speedup, not a re-timed
+	# curve; cheap, reversible, and correct in the specific dimension that
+	# was actually flagged as off (nothing about direction/axis/keyframe
+	# values was wrong, see phases/3/00-door-completion.md step 6/8).
+	player.speed_scale = 1.25
 
 	var library := AnimationLibrary.new()
 	for seq in sequences:

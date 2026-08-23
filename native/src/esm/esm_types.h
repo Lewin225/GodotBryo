@@ -148,6 +148,43 @@ struct LightData {
 	bool off_by_default() const { return (flags & kLightFlagOffByDefault) != 0; }
 };
 
+// DOOR.FNAM (real values confirmed via fopdoc's DOOR page): a uint8, one
+// unnamed/unconfirmed bit (0x01) plus these four. NOT the same set as the
+// GECK Wiki's DOOR dialog checkboxes -- "Quest Item" and "Random Anim
+// Start" are shown there too, but aren't in FNAM at all (almost certainly
+// generic record-header flags shared across many record types, not
+// DOOR-specific -- unconfirmed bit position, deliberately not guessed;
+// see DoorData's own doc comment).
+constexpr uint32_t kDoorFlagAutomaticDoor = 0x02;
+constexpr uint32_t kDoorFlagHidden = 0x04;
+constexpr uint32_t kDoorFlagMinimalUse = 0x08;
+constexpr uint32_t kDoorFlagSlidingDoor = 0x10;
+
+// phases/3/00-door-completion.md Part B: DOOR.SNAM/ANAM/BNAM (Open/Close/
+// Loop sound, each a SOUN FormID -- confirmed via fopdoc's DOOR page) and
+// FNAM (flags). Sound paths are already resolved through SOUN.FNAM (see
+// EsmFile::resolve_soun_filename(), a general-purpose lookup, not DOOR-
+// specific) to a real Sound/-relative path, or "" if that DOOR record
+// doesn't set that particular sound -- a real, common, valid case per
+// GECK Wiki's own DOOR page: animated doors typically carry their
+// open/close sound baked into the NIF itself via NiTextKeyExtraData
+// instead of these ESM fields ("only put Open/Close sounds on a baseform
+// that is static... this is a common reason for the double sound bug in
+// the vanilla game") -- NOT extracted here (NiTextKeyExtraData parsing is
+// unscoped native work), a real, deliberate gap, not a bug, when an
+// animated door plays no sound through this path.
+struct DoorData {
+	std::string open_sound_path;
+	std::string close_sound_path;
+	std::string loop_sound_path;
+	uint32_t flags = 0;
+
+	bool is_automatic_door() const { return (flags & kDoorFlagAutomaticDoor) != 0; }
+	bool is_hidden() const { return (flags & kDoorFlagHidden) != 0; }
+	bool is_minimal_use() const { return (flags & kDoorFlagMinimalUse) != 0; }
+	bool is_sliding_door() const { return (flags & kDoorFlagSlidingDoor) != 0; }
+};
+
 // LAND's heightmap + per-quadrant base ground texture (phases/1/04-exterior-cell-terrain.md).
 // VHGT: one float32 offset + a 33x33 row-major grid of int8 deltas, each
 // unit = 8 Gamebryo units (per GECK wiki) — NOT pre-converted to meters
