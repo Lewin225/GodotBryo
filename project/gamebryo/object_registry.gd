@@ -10,6 +10,14 @@ var resolver: GamebryoMeshResolver
 var esm: EsmReader
 var _factories := {} # String -> Callable(Dictionary, GamebryoMeshResolver) -> Node3D
 
+## Optional (null by default -- every @tool viewer and most test_*.tscn
+## scenes construct a GamebryoObjectRegistry with no ScriptEngine at all,
+## and that stays a real, valid, non-error configuration). When set (by
+## game.gd, the only real runtime entry point that has one), _finalize()
+## registers every placement with a real, non-zero script_form_id --
+## phases/5/00-script-interpreter-foundation.md's actual live-game wiring.
+var script_engine: ScriptEngine = null
+
 func _init(mesh_resolver: GamebryoMeshResolver, esm_reader: EsmReader) -> void:
 	resolver = mesh_resolver
 	esm = esm_reader
@@ -601,4 +609,9 @@ func _finalize(node: Node3D, placement: Dictionary) -> Node3D:
 	if node is GamebryoObject:
 		node.editor_id = editor_id
 		node.record_type = String(placement.get("base_type", ""))
+
+	var script_form_id := int(placement.get("script_form_id", 0))
+	if script_engine != null and script_form_id != 0:
+		script_engine.register_scripted_node(node, script_form_id)
+
 	return node

@@ -47,6 +47,8 @@ func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> void:
 			_exec_stmts(stmt.get("else_stmts", []), ctx)
 		"call":
 			_eval(stmt, ctx) # bare call statement -- evaluated for its side effect only
+		"noop":
+			pass # a stray reserved keyword the parser skipped -- see script_parser.gd's own doc comment on _RESERVED_KEYWORDS
 
 func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> void:
 	if not target.contains("."):

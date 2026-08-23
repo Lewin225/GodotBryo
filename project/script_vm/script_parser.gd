@@ -127,6 +127,20 @@ func _parse_statements_until(enders: Array) -> Array:
 		_skip_newlines()
 	return stmts
 
+## Real, shipped data forced this: reserved block-structure keywords
+## (endif/elseif/else/end) must never fall through to being parsed as a
+## bare call statement, even when they show up somewhere no open
+## if/elseif/begin actually expects one. Confirmed against
+## GSBrokenSMGScript's own real GameMode block -- one `if`, two `endif`s
+## (a real authoring mismatch that evidently still compiled and shipped;
+## SCDA is deliberately never decoded here, so there's no way to confirm
+## what the original compiler actually did with the extra one). Without
+## this, the stray "endif" parsed as a zero-arg call to a function named
+## "endif", which then reports as a real "unimplemented function" --
+## misleading (there's no such function) rather than what it actually is:
+## a stray structural token. Logged once per parse, not silently dropped.
+const _RESERVED_KEYWORDS := ["endif", "elseif", "else", "end"]
+
 func _parse_statement() -> Dictionary:
 	var tok: Dictionary = _peek()
 	if tok["kind"] == ScriptLexer.Kind.IDENT:
@@ -135,6 +149,10 @@ func _parse_statement() -> Dictionary:
 			return _parse_if()
 		if lower == "set":
 			return _parse_set()
+		if lower in _RESERVED_KEYWORDS:
+			push_warning("ScriptParser: stray '%s' with no matching open block at line %d -- skipped" % [tok["value"], tok["line"]])
+			_advance()
+			return { "kind": "noop" }
 	return _parse_call_statement()
 
 func _parse_if() -> Dictionary:

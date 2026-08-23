@@ -121,6 +121,62 @@ precedence, if/elseif/else branching, `Enable`/`Disable` on a real Node, unimple
 non-crashing behavior, and a full `ScriptEngine` round trip against the real ESM script). All
 headless, self-checking, `ALL CHECKS PASSED`.
 
+## Live-game wiring (second milestone, same task file)
+
+`GamebryoObjectRegistry` gained an optional `script_engine: ScriptEngine` field (null by default --
+every `@tool` viewer and most `test_*.tscn` scenes construct a registry with none, and that stays a
+real, valid, non-error configuration). `_finalize()` — the one real choke point every construction
+path (`build()`'s marker/door/light/scol/visual/fallback branches, and `construct_from_resolved()`'s
+threaded-path equivalents) funnels through before returning a node — now calls
+`script_engine.register_scripted_node(node, script_form_id)` whenever both are set and the
+placement's own `script_form_id` is non-zero. `game.gd` owns the one real `ScriptEngine` for the
+whole game (a new `game.tscn` sibling node next to `CellLoader`/`WorldStreamer`), wired into both
+`cell_loader.registry` and `world_streamer.registry` after `_ready()`, sharing `cell_loader.esm`
+rather than opening a second `EsmReader`.
+
+`register_scripted_node()` also now dispatches a real `OnLoad` block immediately, if the script
+defines one — real language semantics (`OnLoad` ranks #5 by real usage in the block-type census
+above), and construction time genuinely *is* "this reference just loaded into the world" for this
+project's own Dynamic-object model. **Deliberately not** wiring `OnActivate` into `game.gd`'s
+interact raycast this pass — investigating candidate real scripts to test surfaced a genuine
+semantic gap worth understanding before touching that flow: `GSDocMitchellDoorScript` (a real
+script on a real door in `GSDocMitchellHouse`) is just `begin OnActivate / set
+DocMitchellREF.PlayerLeft to 1 / activate / end` — that bare `activate` call is exactly how a
+scripted door opts back INTO the engine's default open/close behavior. Real implication: `game.gd`
+currently calls a Dynamic type's own `activate()` unconditionally, which is only coincidentally
+correct for doors whose whole script is "just call activate" — a script with real conditional logic
+before deciding whether to call `activate` would be silently skipped today. Wiring this correctly
+needs `dispatch_event()` to propagate a script-triggered `activate()` call's own outcome (the
+Dictionary door-destination result) back out to the caller, which doesn't exist yet — a real,
+separate follow-up, not squeezed in here.
+
+**Real bug found and fixed via this integration, not caught by any earlier hand-picked-sample
+test**: `GSBrokenSMGScript` (a real prop in `GSDocMitchellHouse`) has one `if` but two `endif`s in
+its own real, shipped `GameMode` block — a real authoring mismatch (`SCDA` is deliberately never
+decoded, so there's no way to confirm what the original compiler did with the extra one, only that
+it evidently still shipped). The parser previously had no defense against a reserved block-structure
+keyword (`endif`/`elseif`/`else`/`end`) appearing where no open block expects it, so the stray
+`endif` parsed as a zero-arg call to a function literally named `endif` — misleading (logged as
+"unimplemented function 'endif'", implying a missing function, not a stray token). Fixed: these four
+keywords are now reserved in `_parse_statement()`, never fall through to
+`_parse_call_statement()`, and a stray one becomes a real `{"kind": "noop"}` AST node (logged once,
+not silently dropped). This is exactly why `test_script_engine_integration.gd` — the first test to
+actually tree-walk/execute real `GameMode` blocks against a diverse set of real scripts, not just
+parse them structurally like the corpus survey — earns its place: static parsing alone couldn't
+have surfaced this, since the bug only manifested as an actual bare-call AST node once real
+execution walked into it.
+
+New test: `test_script_engine_integration.gd` loads the real `GSDocMitchellHouse` cell through the
+real `CellLoader` (the actual production construction path, not a synthetic stand-in), confirms a
+real, known-scripted prop (`GSBrokenSMG`) gets registered with a real `ScriptEngine`, and runs
+several real `GameMode` frame ticks against whatever got registered without crashing. Also verified:
+the full existing regression suite (including `test_cell_loader`/`test_object_registry`/
+`test_world_streamer`) still passes, and a real headless boot of `game.tscn` itself loads
+`GSDocMitchellHouse` successfully with `GSBrokenSMGScript` visibly registering, warning about its
+real unimplemented functions (`GetButtonPressed`/`SetHardcore`/`MarkForDelete`), and ticking
+`GameMode` every frame — through the actual production `build()` → `stream_refs()` → `_finalize()`
+call chain, not a test harness.
+
 ## Explicit non-goals for this milestone
 
 Matches `enginedocs/nv_script_interpreter_design.md`'s own "Explicit non-goals for a first pass"
@@ -131,11 +187,10 @@ list, narrowed further to what's actually runnable today:
   in this codebase yet. Building those now would balloon this milestone into all of Phases 5–7 at
   once — grow the registry the same incremental way `object_registry.gd` already grows its own
   factory table, function by function, as the backing systems land.
-- **Wiring `ScriptEngine`/`script_form_id` into `object_registry.gd`'s actual construction paths.**
-  `script_form_id` is extracted and tested, and `ScriptEngine` is a real, tested, standalone class
-  — but no `DoorNode`/`ContainerNode`/etc. factory calls `register_scripted_node()` yet. Real,
-  deliberate: this class needed to be provably correct on its own first (see Tests above) before
-  wiring it into the live construction path where a bug would be much harder to isolate.
+- **`OnActivate` dispatch.** Done for registration/`OnLoad`/`GameMode` (see "Live-game wiring"
+  below), deliberately not for `OnActivate` — real investigation while picking a test candidate
+  surfaced a genuine outcome-propagation gap worth solving properly, not squeezed in. See that
+  section for the real script that exposed it.
 - **Piggybacking `WorldStreamer`'s own frame cadence.** The design doc's stated goal; not done
   this pass — `ScriptEngine` runs its own `_process()` instead (still one real per-frame tick, just
   not literally the same call site). Touching `world_streamer.gd` itself is deferred to the
@@ -205,5 +260,10 @@ underlying pure functions directly, bypassing the `Engine.is_editor_hint()`-gate
 - [x] Full existing regression suite has no new failures.
 - [x] Lexer/parser proven against the ENTIRE base-game script corpus (2,576 real scripts), not
       just a hand-picked sample — found and fixed two real crashes a small sample missed.
-- [ ] A real script actually observed running correctly in play (needs the object_registry.gd
-      integration step from Explicit non-goals first — out of scope for this milestone).
+- [x] Real scripts register, resolve locals, and dispatch `OnLoad`/`GameMode` through the actual
+      live construction path (`object_registry.gd`'s `_finalize()`), verified via a real
+      `game.tscn` headless boot loading `GSDocMitchellHouse` and `test_script_engine_integration.gd`.
+- [ ] A real script observed running correctly in interactive play, not just a headless boot (needs
+      a human to actually walk into the cell and watch — the headless boot only confirms it doesn't
+      crash and dispatches on schedule, not that the visible behavior is right).
+- [ ] `OnActivate` dispatch (needs the outcome-propagation gap in "Explicit non-goals" solved first).
