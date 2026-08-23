@@ -20,7 +20,7 @@ func check(cond: bool, msg: String) -> void:
 func _ready() -> void:
 	print("--- script_viewer.gd: span collection + BBCode ---")
 
-	var viewer: Control = load("res://script_viewer.gd").new()
+	var viewer: Control = load("res://addons/script_viewer/script_viewer.gd").new()
 	viewer._function_registry = ScriptFunctionRegistry.new()
 
 	var source := "BEGIN OnActivate\nEnable\nSomeUnknownFunc\nEND\n"
