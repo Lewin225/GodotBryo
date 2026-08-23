@@ -13,14 +13,14 @@ extends Node3D
 # any built node to see its real local Transform in the Inspector; click a
 # submesh to see its resolved material/texture.
 #
-# Deliberately thin: the actual hierarchy-building logic lives in
+# Deliberately thin: the actual hierarchy-building logic (mesh AND
+# collision, both parented per their real owning_node_index) lives in
 # GamebryoMeshResolver.populate_dynamic_children() (phases/3/00-door-
 # completion.md step 5) — the SAME production code a real Dynamic object
 # (a door, a lift) will be built through once something wires it in. This
 # scene exists to exercise and inspect that real code path, not a
 # parallel bespoke implementation of its own that could silently drift
-# from what ships — see populate_collision_children() below, called the
-# same way.
+# from what ships.
 #
 # Runs the exact same build in-editor and at runtime (Play): the editor
 # path additionally owns every built node (so it's selectable via a real
@@ -40,11 +40,10 @@ extends Node3D
 ## "meshes\" prefix -- e.g. "architecture\ncr\ncrgate01.nif".
 @export var custom_nif_path: String = ""
 
-## populate_collision_children() is still flattened (owning_node_index
-## isn't threaded through build_geometry_entries()'s shape_entries yet —
-## see populate_dynamic_children()'s own doc comment in mesh_resolver.gd),
-## so an animated node's collision won't visually follow it if it moves.
-## Correct in world position regardless; good enough for sanity-checking.
+## populate_dynamic_children() always builds real collision (a shipped
+## Dynamic object always wants it) — this just hides it afterward for a
+## cleaner view, purely a viewer convenience, not a parameter the
+## production function itself needs.
 @export var show_collision: bool = true
 
 @export_tool_button("Load NIF") var load_button: Callable = _do_load
@@ -103,10 +102,11 @@ func _do_load() -> void:
 
 	var geometry := resolver.build_geometry_entries(resolver.resolve_raw_geometry(nif, model_path))
 	resolver.populate_dynamic_children(nif_root, nif, model_path, geometry)
-	if show_collision:
-		resolver.populate_collision_children(nif_root, nif, model_path, geometry)
+	if not show_collision:
+		for body in _collision_bodies(nif_root):
+			body.free()
 	if Engine.is_editor_hint():
-		_own_recursive(nif_root) # populate_dynamic_children()/populate_collision_children() add their own children directly, bypassing _add_child()
+		_own_recursive(nif_root) # populate_dynamic_children() adds its own children directly, bypassing _add_child()
 
 	_print_report(model_path, nif)
 
@@ -168,4 +168,12 @@ func _mesh_instances(node: Node) -> Array:
 		out.append(node)
 	for c in node.get_children():
 		out.append_array(_mesh_instances(c))
+	return out
+
+func _collision_bodies(node: Node) -> Array:
+	var out: Array = []
+	if node is GamebryoCollisionBody:
+		out.append(node)
+	for c in node.get_children():
+		out.append_array(_collision_bodies(c))
 	return out

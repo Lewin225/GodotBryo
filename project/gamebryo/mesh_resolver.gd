@@ -406,7 +406,16 @@ func build_geometry_entries(raw: Dictionary, lod_raw: Dictionary = {}) -> Dictio
 		descriptors = _build_collision_shapes(raw["shape_entries"])
 		_collision_cache[model_path] = descriptors
 	for d in descriptors:
-		shape_entries.append({ "shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision") })
+		shape_entries.append({
+			"shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision"),
+			# phases/3/00-door-completion.md step 5: which scene_nodes entry
+			# this shape is really attached to in the source NIF (-1 if the
+			# NIF's root, or a fabricated fallback_bbox that isn't tied to
+			# any single node) -- see populate_dynamic_children()'s own doc
+			# comment for why this now flows all the way through instead of
+			# being dropped here.
+			"owning_node_index": d.get("owning_node_index", -1),
+		})
 
 	var lod_mesh_entries := _build_mesh_entries(lod_raw["mesh_entries"]) if not lod_raw.is_empty() else []
 
@@ -495,18 +504,23 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 ## owning_node_index's Node3D with an IDENTITY local transform — the owning
 ## node's own composed transform chain already reconstructs
 ## get_transform(i)'s flattened result (both walk the same NiAVObject
-## parent chain — see flatten_to_root()'s and SceneNode's own doc comments
-## in native/src/nif/nif_loader.cpp / nif_types.h), so this deliberately
-## never also applies the flattened per-submesh transform (that would
-## double it).
+## parent chain — see flatten_via_scene_nodes()'s and SceneNode's own doc
+## comments in native/src/nif/nif_loader.cpp / nif_types.h), so this
+## deliberately never also applies the flattened per-submesh transform
+## (that would double it).
 ##
-## Does NOT yet build collision hierarchically — CollisionShape's own
-## owning_node_index isn't threaded through build_geometry_entries()'s
-## shape_entries (a real, still-open gap in this step), so a caller wanting
-## collision on a Dynamic object still uses populate_collision_children()
-## as today, flattened. This means an animated node's collision will not
-## yet follow it if it moves — a known, not-yet-fixed limitation, not an
-## oversight (see phases/3/00-door-completion.md).
+## Collision is built hierarchically too, via `geometry`'s shape_entries
+## (each carrying its own owning_node_index — see build_geometry_entries()):
+## one GamebryoCollisionBody per DISTINCT owning node (not one for the
+## whole object, unlike populate_collision_children()'s always-single-body
+## convention) — a real NIF can attach separate collision shapes to
+## separate NiAVObjects (e.g. a shape on the door leaf, another on its
+## static frame), and each needs its own PhysicsServer3D body/transform.
+## An animated node's collision therefore actually follows it when it
+## moves, matching the source NIF exactly — this is the whole point of
+## Dynamic objects using this function instead of the flattened Static
+## path (see this project's own "generation of an object from a NIF should
+## be a consistent code path" principle, phases/3/00-door-completion.md).
 ##
 ## Returns the array of built Node3D, indexed exactly like
 ## NifReader.get_scene_nodes() — entry i's Node3D is the return value's
@@ -562,6 +576,31 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 		mi.mesh = entry["mesh"]
 		mesh_parent.add_child(mi)
 		i += 1
+
+	# Real hierarchy for collision too -- see this function's own doc
+	# comment. Grouped by owning_node_index rather than one single body:
+	# two shapes attached to two different NiAVObjects in the source NIF
+	# (a real case -- e.g. one shape on the door leaf, another on its
+	# frame) need two separate GamebryoCollisionBody instances, one per
+	# owning node, since a PhysicsServer3D body has exactly one transform/
+	# parent of its own; shapes sharing the same owning_node_index still
+	# share one body, same as populate_collision_children()'s existing
+	# convention.
+	var bodies_by_owner: Dictionary = {}
+	for entry in geometry["shape_entries"]:
+		var owning: int = entry.get("owning_node_index", -1)
+		if not bodies_by_owner.has(owning):
+			var shape_parent: Node3D = built[owning] if owning >= 0 and owning < built.size() else (built[0] if not built.is_empty() else parent)
+			var body := GamebryoCollisionBody.new()
+			body.name = "CollisionBody" if bodies_by_owner.is_empty() else "CollisionBody%d" % bodies_by_owner.size()
+			body.owner_ref = parent # the logical object this collider represents, not its immediate Node3D parent -- same convention as populate_collision_children()
+			shape_parent.add_child(body)
+			bodies_by_owner[owning] = body
+		var col := CollisionShape3D.new()
+		col.name = String(entry.get("name", "collision"))
+		col.shape = entry["shape"]
+		col.transform = entry["transform"]
+		bodies_by_owner[owning].add_child(col)
 
 	return built
 
@@ -956,7 +995,10 @@ func _build_collision_shapes(raw_shapes: Array) -> Array:
 				shape = fbox
 			_:
 				continue
-		out.append({ "kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", kind)) })
+		out.append({
+			"kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", kind)),
+			"owning_node_index": s.get("owning_node_index", -1), # absent (fallback_bbox) -> -1, not tied to a single node
+		})
 	return out
 
 func _expand_triangles(positions: PackedFloat32Array, indices: PackedInt32Array) -> PackedVector3Array:
