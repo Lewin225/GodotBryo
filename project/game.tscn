@@ -3,9 +3,13 @@
 [ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://cc1m2a1obsyn4" path="res://addons/fpc/character.tscn" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
+[ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
-[ext_resource type="Environment" path="res://exterior_environment.tres" id="5_exterior_env"]
-[ext_resource type="Environment" path="res://interior_environment.tres" id="6_interior_env"]
+[ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
+dof_blur_far_distance = 271.22
+dof_blur_far_transition = 2830.17
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kp17n"]
 albedo_color = Color(0.909804, 0.596078, 0, 1)
@@ -19,6 +23,11 @@ radius = 0.4
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fc0e3"]
 radius = 0.4
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
+
+[sub_resource type="Theme" id="Theme_ggi80"]
+TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
+
 [node name="Game" type="Node3D" unique_id=215906396]
 script = ExtResource("1")
 
@@ -28,14 +37,16 @@ cell_editor_id = "GSDocMitchellHouse"
 
 [node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
+use_terrain3d = true
+terrain3d_debug_dump_grid = Vector2i(-18, 0)
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
-light_energy = 0.355
 shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
-environment = ExtResource("5_exterior_env")
+environment = ExtResource("4_7jktm")
+camera_attributes = SubResource("CameraAttributesPractical_d75sj")
 
 [node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_e2o6t")]
 default_reticle = "uid://y6etiws4d5gs"
@@ -56,6 +67,148 @@ mesh = SubResource("CapsuleMesh_feb5d")
 [node name="Collision" parent="Character" index="1" unique_id=1716049046]
 shape = SubResource("CapsuleShape3D_fc0e3")
 
+[node name="Debug Tools" type="Window" parent="." unique_id=65829105]
+oversampling_override = 1.0
+initial_position = 5
+size = Vector2i(784, 466)
+
+[node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TabContainer" type="TabContainer" parent="Debug Tools" unique_id=645294600]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_ggi80")
+current_tab = 0
+drag_to_rearrange_enabled = true
+
+[node name="Scripting" type="Control" parent="Debug Tools/TabContainer" unique_id=1382890352]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="Quest" type="Control" parent="Debug Tools/TabContainer" unique_id=1803339936]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="Inventory" type="Control" parent="Debug Tools/TabContainer" unique_id=402594954]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 2
+
+[node name="CellLoader" type="Control" parent="Debug Tools/TabContainer" unique_id=655647290]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 3
+
+[node name="World Streaming" type="Control" parent="Debug Tools/TabContainer" unique_id=1916369332]
+visible = false
+layout_mode = 2
+script = ExtResource("5_worldstreamingdebug")
+metadata/_tab_index = 4
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming" unique_id=745694945]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1709561768]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1002944894]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Streaming state"
+
+[node name="StateLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=651999633]
+custom_minimum_size = Vector2(0, 130)
+layout_mode = 2
+fit_content = true
+scroll_active = false
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1832230305]
+layout_mode = 2
+
+[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=2026403959]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Load radius configuration"
+
+[node name="RadiusLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1265556442]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+fit_content = true
+scroll_active = false
+
+[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1878409308]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=697380837]
+layout_mode = 2
+text = "tiles/frame:"
+vertical_alignment = 1
+
+[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=1511312115]
+layout_mode = 2
+tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
+min_value = 1.0
+max_value = 64.0
+value = 1.0
+
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=826962062]
+layout_mode = 2
+text = "objects/frame:"
+vertical_alignment = 1
+
+[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=2118290337]
+layout_mode = 2
+tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
+min_value = 1.0
+max_value = 2000.0
+value = 1.0
+
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=940079046]
+layout_mode = 2
+
+[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=591851737]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader" unique_id=1322011602]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "World ground textures (Terrain3D texture pool)"
+
+[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader" unique_id=1757201760]
+layout_mode = 2
+
+[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=955176849]
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Envrioment" type="Control" parent="Debug Tools/TabContainer" unique_id=124391377]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 5
+
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 
 [node name="CellLabel" type="Label" parent="DebugHud" unique_id=1378421775]
@@ -69,12 +222,17 @@ theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 16
 text = "cell: —"
 
-[node name="StatsLabel" type="Label" parent="DebugHud"]
-visible = false
-offset_left = 12.0
-offset_top = 44.0
-offset_right = 512.0
-offset_bottom = 260.0
+[node name="LookAtLabel" type="Label" parent="DebugHud" unique_id=1385502697]
+anchors_preset = -1
+anchor_top = 1.0
+anchor_right = 0.99700004
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = -216.0
+offset_right = 0.45593262
+offset_bottom = -21.0
+grow_vertical = 0
+size_flags_vertical = 8
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
