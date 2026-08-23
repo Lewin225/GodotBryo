@@ -107,11 +107,22 @@ is genuinely from scratch, not extending existing partial support.
    for every single submesh — confirms the general case, not just door's shallow
    3-node graph. Full regression suite unaffected (`test_door_activate.tscn` passes
    unmodified; only the two pre-existing, unrelated failures remain).
-5. **Build the Dynamic-path tree** in `mesh_resolver.gd`: for Dynamic types, walk
-   `scene_nodes` to build a real `Node3D` per entry (parented per `parent_index`,
-   local transform — Godot composes automatically), then parent each submesh's
-   `MeshInstance3D` and `GamebryoCollisionBody` under the correct node via
-   `owning_node_index`, instead of the single flattened transform Static content uses.
+5. 🟡 **Build the Dynamic-path tree** in `mesh_resolver.gd`, mesh side done, collision
+   still open. `GamebryoMeshResolver.populate_dynamic_children()` walks `scene_nodes`
+   to build a real `Node3D` per entry (parented per `parent_index`, local transform —
+   Godot composes automatically), then parents each submesh's `MeshInstance3D` under
+   the correct node via `owning_node_index`, instead of the single flattened transform
+   Static content uses — real production code, not a one-off script, sitting right
+   next to `populate_mesh_children()`/`populate_collision_children()`. Exercised via
+   `nif_viewer.tscn` (new: an editor tool, `project/nif_viewer.gd`/`.tscn` — pick a
+   preset or a custom MODL-style path, press "Load NIF", inspect the real built
+   hierarchy in the Scene dock) against both the door case and the 180-submesh/
+   234-scene_node silo elevator, calling this exact function — not a parallel bespoke
+   copy, so the tool stays honest about what will actually ship. Collision is NOT yet
+   built hierarchically: `CollisionShape`'s own `owning_node_index` isn't threaded
+   through `build_geometry_entries()`'s `shape_entries` yet, so `activate()`'s eventual
+   animated-door case will still need that wired up before collision correctly follows
+   an animated node — tracked here, not forgotten.
 6. **Wire `activate()`:** a non-teleporting door with animation data plays its open
    animation instead of returning `{}`. Determine the real open/closed/opening/closing
    state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
