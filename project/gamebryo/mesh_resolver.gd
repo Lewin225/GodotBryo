@@ -608,15 +608,20 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 			body.owner_ref = parent # the logical object this collider represents, not its immediate Node3D parent -- same convention as populate_collision_children()
 			shape_parent.add_child(body)
 			bodies_by_owner[owning] = body
-			# shape_parent is already inside the tree (the earlier attach
-			# loop ran unconditionally for every scene_nodes entry), so its
-			# global_transform is valid here. Dividing out parent's own
-			# global_transform cancels any ancestor prefix above `parent`
-			# itself (e.g. a viewer's own axis-fix wrapper), leaving
-			# exactly shape_parent's transform AS SEEN FROM `parent` --
-			# the same frame entry["transform"] (native's flattened-to-
-			# NIF-root value) is expressed in.
-			owner_local[owning] = parent.global_transform.affine_inverse() * shape_parent.global_transform
+			# Deliberately NOT global_transform: this whole subtree is
+			# commonly built OFF-tree (every other factory in
+			# object_registry.gd builds its node fully before the caller
+			# add_child()s it into the real scene) and global_transform
+			# requires is_inside_tree() -- confirmed the hard way, a real
+			# crash the first time this ran through object_registry.gd's
+			# _instantiate_dynamic() instead of nif_viewer.gd (which
+			# happens to attach `parent` to a live tree first). Walking
+			# .transform (always LOCAL, always valid regardless of tree
+			# membership) up from shape_parent to `parent` gives the same
+			# "shape_parent as seen from parent" frame entry["transform"]
+			# (native's flattened-to-NIF-root value) is expressed in,
+			# without that dependency.
+			owner_local[owning] = _local_transform_relative_to(shape_parent, parent)
 		var col := CollisionShape3D.new()
 		col.name = String(entry.get("name", "collision"))
 		col.shape = entry["shape"]
@@ -633,6 +638,27 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 		bodies_by_owner[owning].add_child(col)
 
 	return built
+
+## `node`'s transform as seen from `ancestor` (which MUST actually be an
+## ancestor of `node` in the Node tree) -- composes only .transform (each
+## Node3D's own LOCAL value, relative to its immediate parent), never
+## global_transform, so this works identically whether or not the subtree
+## is attached to a live SceneTree yet. Godot's own composition rule is
+## child.global_transform == parent.global_transform * child.transform;
+## walking that same rule upward from `node` and stopping the instant the
+## current node's PARENT is `ancestor` (excluding ancestor's own transform)
+## gives exactly "node relative to ancestor".
+func _local_transform_relative_to(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var current: Node3D = node
+	while current != ancestor:
+		result = current.transform * result
+		var p := current.get_parent()
+		if not (p is Node3D):
+			push_error("_local_transform_relative_to: '%s' is not an ancestor of '%s'" % [ancestor.name, node.name])
+			break
+		current = p
+	return result
 
 ## phases/3/00-door-completion.md step 6 prep: builds a real AnimationPlayer
 ## as a child of `parent`, with one Animation per NifReader.get_animation_

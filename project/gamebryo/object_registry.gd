@@ -143,7 +143,16 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	if nif == null or nif.get_submesh_count() == 0:
 		return { "kind": "skip", "placement": placement }
 	var geometry := ctx.resolver.resolve_raw_geometry(nif, model) # RAW -- construct_from_resolved() builds the actual Resources, main-thread-only
-	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement }
+	# `nif` itself is worker-safe to retain (NifReader touches no
+	# RenderingServer/PhysicsServer3D API at all -- see mesh_resolver.gd's
+	# own top-of-file doc comment on which of its methods are worker-safe),
+	# same as `geometry`'s own embedded Image objects already cross this
+	# same thread boundary. Only DOOR's construct step actually reads this
+	# key back out (populate_dynamic_children()/populate_animation_player()
+	# need the real NifReader for scene_nodes/owning_node_index/
+	# animation_sequences, none of which resolve_raw_geometry() itself
+	# captures) -- every other type ignores it, cheap to carry regardless.
+	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement, "nif": nif }
 	var lod_geometry := _resolve_lod_geometry(placement, model, ctx.resolver)
 	if not lod_geometry.is_empty():
 		result["lod_geometry"] = lod_geometry
@@ -275,8 +284,27 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	resolver.populate_collision_children(node, null, "", geometry)
 	return _finalize(node, result["placement"])
 
+## phases/3/00-door-completion.md step 7: doors are Dynamic (can script,
+## and can animate -- see enginedocs/nv_class_hierarchy.md's Dynamic/Static
+## split), so this deliberately does NOT go through _construct_visual()'s
+## shared flattened-Static path the way ContainerNode/ActivatorNode/
+## FurnitureNode/the structural fallback still do. Builds the real
+## scene_nodes hierarchy (populate_dynamic_children()) and a real
+## AnimationPlayer (populate_animation_player()) instead, so a door's mesh/
+## collision genuinely follow its animated pivot node and "Open"/"Close"
+## are real, playable Animations -- both already verified visually correct
+## in nif_viewer.tscn before this was wired in here. `result["nif"]`
+## (_resolve_visual()'s own addition, see that function's doc comment) is
+## the live NifReader both new functions need directly; the RAW `geometry`
+## Dictionary alone (what _construct_visual() gets by) has no scene_nodes/
+## owning_node_index/animation_sequences in it at all.
 func _construct_door(result: Dictionary) -> Node3D:
-	var node := _construct_visual(DoorNode, result)
+	var node := DoorNode.new()
+	var nif: NifReader = result.get("nif")
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
+	var built := resolver.populate_dynamic_children(node, nif, "", geometry)
+	resolver.populate_animation_player(node, nif, built)
+	node = _finalize(node, result["placement"])
 	if node is DoorNode:
 		node.apply_destination(result.get("destination", {}))
 	return node
@@ -367,14 +395,44 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
 
-## DOOR: same shape as any other _instantiate_visual type, plus its teleport
-## destination (if any) resolved once here — phases/2/07-runtime-cell-loader.md
-## — rather than looked up lazily on interaction.
+## phases/3/00-door-completion.md step 7: DOOR is Dynamic (can script, and
+## can animate — enginedocs/nv_class_hierarchy.md's Dynamic/Static split),
+## so this builds through _instantiate_dynamic() (real scene_nodes
+## hierarchy + AnimationPlayer) rather than _instantiate_visual() (the
+## flattened Static path every other registered type still uses) — the
+## same construction _construct_door() uses on the threaded
+## resolve/construct split WorldStreamer runs at runtime, so this
+## synchronous build() path (CellLoader's @tool editor-preview, direct
+## test construction) can't silently show a different door than what
+## actually ships. Teleport destination (if any) resolved once here —
+## phases/2/07-runtime-cell-loader.md — rather than looked up lazily on
+## interaction.
 func _build_door(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
-	var node := _instantiate_visual(DoorNode, placement, mesh_resolver)
+	var node := _instantiate_dynamic(DoorNode, placement, mesh_resolver)
 	if node is DoorNode:
 		node.resolve_destination(esm)
 	return node
+
+## Dynamic-object counterpart to _instantiate_visual() (same signature) —
+## builds the real scene_nodes hierarchy + AnimationPlayer
+## (populate_dynamic_children()/populate_animation_player()) instead of the
+## flattened Static path. No LOD tier (unlike _instantiate_visual()) — a
+## real, deliberate gap: doors aren't realistically VWD-flagged/distant-LOD
+## candidates in practice, and threading _resolve_lod_geometry() through
+## the Dynamic hierarchy (which node would an LOD swap even attach under?)
+## is unscoped work this step doesn't need, not something silently dropped.
+func _instantiate_dynamic(cls, placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var model: String = placement.get("model", "")
+	if model == "":
+		return null
+	var nif := mesh_resolver.load_nif(model)
+	if nif == null or nif.get_submesh_count() == 0:
+		return null
+	var node = cls.new()
+	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
+	var built := mesh_resolver.populate_dynamic_children(node, nif, model, geometry)
+	mesh_resolver.populate_animation_player(node, nif, built)
+	return _finalize(node, placement)
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see
 ## MarkerNode's doc comment) — GamebryoReference is Node3D, so it has no
