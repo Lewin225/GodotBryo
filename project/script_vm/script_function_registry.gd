@@ -124,7 +124,14 @@ func _register_defaults() -> void:
 		# close even partially.
 		if a.is_empty() or esm == null:
 			return 0
-		var editor_id := String(a[0])
+		# str(), not String() -- GDScript's String() constructor is stricter
+		# than it looks (confirmed directly, repeatedly, this session: it
+		# throws for int/bool/other non-String Variants rather than
+		# converting them). a[0] is normally already a String (a "name"
+		# node's own literal), but a real script could pass a declared
+		# local of any type here -- str() converts anything safely instead
+		# of risking the same crash class again.
+		var editor_id := str(a[0])
 		var msg: Dictionary = esm.get_message_by_editor_id(editor_id)
 		if msg.is_empty():
 			push_warning("ScriptFunctionRegistry: ShowMessage -- no MESG found for editor ID '%s'" % editor_id)

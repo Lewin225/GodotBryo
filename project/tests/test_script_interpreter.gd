@@ -69,6 +69,24 @@ func _ready() -> void:
 	ScriptInterpreter.new(cmp_program, registry).run_block("GameMode", cmp_ctx)
 	check(cmp_ctx.get_local("z") == 2, "String-vs-int == never crashes, resolves to the else branch (got %s)" % str(cmp_ctx.get_local("z")))
 
+	print("--- ScriptExecutionContext.is_truthy(): never crashes on a name-literal (real, reported crash) ---")
+	# Real crash reported directly against play (a "SPECIAL machine" script):
+	# `is_truthy: Invalid call. Nonexistent 'bool' constructor.` -- an
+	# unresolved "name" node's own String value reached a bare `if
+	# (SomeUnresolvedRef)` truthiness check, and GDScript's own bool()
+	# constructor turned out to be just as strict as String() and == already
+	# were, throwing instead of converting.
+	check(ScriptExecutionContext.is_truthy("SomeUnresolvedRef") == true, "a non-empty String is truthy")
+	check(ScriptExecutionContext.is_truthy("") == false, "an empty String is falsy")
+	check(ScriptExecutionContext.is_truthy(0) == false, "int 0 is falsy")
+	check(ScriptExecutionContext.is_truthy(1) == true, "a non-zero int is truthy")
+	check(ScriptExecutionContext.is_truthy(0.0) == false, "float 0.0 is falsy")
+	var truthy_source := "BEGIN GameMode\nif (SomeUnresolvedRef)\n\tSet z to 1\nelse\n\tSet z to 2\nendif\nEND\n"
+	var truthy_program := ScriptParser.new(ScriptLexer.new(truthy_source).tokenize()).parse()
+	var truthy_ctx := ScriptExecutionContext.new(null)
+	ScriptInterpreter.new(truthy_program, registry).run_block("GameMode", truthy_ctx)
+	check(truthy_ctx.get_local("z") == 1, "a bare unresolved-ref condition evaluates truthy end-to-end, no crash (got %s)" % str(truthy_ctx.get_local("z")))
+
 	print("--- ScriptInterpreter/IsActionRef: 'player' resolves to the real player Node ---")
 	# Real GECK global keyword (ScriptInterpreter's own "name" case) --
 	# confirmed necessary this session: GSBrokenSMGScript's real OnActivate

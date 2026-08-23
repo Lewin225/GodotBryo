@@ -27,13 +27,26 @@ func _init(reference: Node = null) -> void:
 	calling_reference = reference
 
 ## Real language rule (design doc's Variables section): 0, including an
-## unassigned `ref`, is false; anything else is true.
+## unassigned `ref`, is false; anything else is true. Explicit per-type
+## checks, not a blind `bool(value)` cast -- confirmed directly this
+## session (a real crash in real play, "SPECIAL machine" script content):
+## GDScript's own `bool()` constructor is just as strict as `String()` and
+## `==` already turned out to be, and throws "Nonexistent 'bool'
+## constructor" for a String (a "name" AST node's own unresolved-ref
+## literal -- script_parser.gd's own doc comment) rather than the lenient
+## "any non-empty value is true" a real runtime fallback needs here.
 static func is_truthy(value: Variant) -> bool:
 	if value == null:
 		return false
 	if value is Node:
 		return true
-	return bool(value)
+	if value is String:
+		return value != ""
+	if value is int or value is float:
+		return value != 0
+	if value is bool:
+		return value
+	return true # any other real, non-null Variant this interpreter produces counts as "exists" -- see is_truthy's own doc comment
 
 ## Shared by ScriptInterpreter's own `==`/`!=` binop AND any registered
 ## function that compares a caller-supplied value against a live reference

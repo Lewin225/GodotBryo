@@ -292,6 +292,31 @@ automated tests. `test_script_interpreter.gd` covers `player_node`/`action_ref` 
 against a synthetic script instead — real coverage of the resolution logic without touching
 `OS.alert()`.
 
+## A third `String()`-family crash, and a full sweep
+
+Reported directly against real play (world loading, and the "SPECIAL machine"): `is_truthy: Invalid
+call. Nonexistent 'bool' constructor.` Same root cause as the two crashes above, a third strict
+GDScript type constructor: `bool(value)` throws for a String (a `"name"` node's own unresolved-ref
+literal reaching a bare `if (SomeUnresolvedRef)` truthiness check) instead of converting it, exactly
+the way `String()` and `==` already turned out to. Fixed: `ScriptExecutionContext.is_truthy()` now
+checks types explicitly (String/int/float/bool/Node) instead of trusting `bool()`'s conversion to be
+lenient — real language rule (0/empty/null is false, anything else is true) implemented directly
+rather than delegated to a constructor that doesn't actually behave that way.
+
+Given three real crashes from the same "strict constructor on an arbitrary runtime Variant" pattern,
+swept the rest of `project/script_vm/` and `addons/script_viewer/` for the same shape rather than
+waiting for a fourth real-play report. Every other `String()` call turned out safe on inspection —
+they all operate on AST **metadata** fields (`blocktype`/`kind`/`name`/`op`/`reference`), which the
+parser already guarantees are real Strings via `str()` (the earlier fix), or on native `EsmReader`
+binding results, which are always genuine `String` from the C++ side. The one genuine remaining risk
+found this way: `ShowMessage`'s own `String(a[0])` — `a[0]` is a runtime-**evaluated** argument
+value (any type, depending on what expression produced it), not metadata, so it had the exact same
+exposure as the two fixed bugs even though nobody had hit it yet. Fixed to `str(a[0])` preemptively.
+**The general lesson, worth keeping in mind for every future registered function**: GDScript's
+`String()`/`bool()` type constructors are not the lenient, "convert anything" operations they look
+like — `str()` is; reach for `str()`, never `String()`/`bool()`, when converting an arbitrary
+runtime-evaluated script value (as opposed to a parser-guaranteed-String AST field).
+
 ## Editor tooling: `addons/script_viewer/` (a real `EditorPlugin`, not just an open scene)
 
 A read-only script inspector: search/browse every real script by editor ID, see its actual `SCTX`
