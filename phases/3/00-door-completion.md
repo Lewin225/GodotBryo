@@ -178,11 +178,41 @@ is genuinely from scratch, not extending existing partial support.
    full length, a plausible door swing) — visual confirmation in the actual editor
    (select `AnimationPlayer`, use its own bottom-panel scrubber) is the next real step,
    not yet done here.
-7. **Wire into `object_registry.gd`:** switch `DoorNode`'s factory from the flattened
-   `populate_mesh_children()`/`populate_collision_children()` to
-   `populate_dynamic_children()` + `populate_animation_player()`, once step 6's visual
-   playback is confirmed correct in the editor — explicitly gated on that, not done
-   speculatively alongside it.
+7. ✅ **Wire into `object_registry.gd`.** Gated on step 6's editor playback check as
+   planned — confirmed correct (animation direction and rotation axis right; the
+   collision-offset bug and the `built[0]` fallback bug found and fixed during that
+   check, see step 5's own note). Two separate call chains needed the switch, not one —
+   `DOOR` has two independent construction paths in this file, easy to miss:
+   - `resolve_placement()`/`construct_from_resolved()` → `_resolve_door()`/
+     `_construct_door()`, the threaded resolve/construct split `WorldStreamer` uses at
+     runtime. `_resolve_visual()` now also stashes the live `NifReader` into
+     `result["nif"]` — worker-safe to retain (no RenderingServer/PhysicsServer3D
+     dependency, same reasoning already applied to `resolve_raw_geometry()`/`_load_image()`),
+     and necessary since `populate_dynamic_children()`/`populate_animation_player()`
+     need direct `NifReader` calls (`get_scene_nodes()`, `get_submesh_owning_node_index()`,
+     `get_animation_sequences()`) that the RAW `geometry` Dictionary alone never captured.
+   - `build()` → `_build_door()`, the synchronous path `CellLoader`'s `@tool`
+     editor-preview (and direct test construction) uses — easy to miss entirely, since
+     it doesn't touch the threaded split at all. Left un-updated, this would have
+     silently shipped a preview/runtime divergence: `CellLoader`'s editor preview
+     showing a flattened, non-animated door while `WorldStreamer` streamed a real
+     hierarchical one, exactly the kind of drift this phase's own "consistent code
+     path" principle exists to rule out. New `_instantiate_dynamic()` (`_instantiate_visual()`'s
+     Dynamic-object counterpart) is what `_build_door()` now calls instead.
+
+   **A third real bug found wiring this in** (not caught by `nif_viewer.tscn`, which
+   happens to attach its own root to a live tree before building): `populate_dynamic_children()`'s
+   collision code used `global_transform`, which requires `is_inside_tree()` — every
+   other factory in `object_registry.gd` builds its whole subtree OFF-tree before the
+   caller `add_child()`s it into the real scene, so this crashed immediately
+   (`ERROR: Condition "!is_inside_tree()" is true`) the first time it ran through
+   `_instantiate_dynamic()`. Fixed with a new `_local_transform_relative_to()` helper
+   that composes only `.transform` (always LOCAL, always valid regardless of tree
+   membership) walking up from a node to a given ancestor — confirmed identical
+   collision placement in `nif_viewer.tscn` after the fix, and `test_door_activate.tscn`'s
+   real raycast-through-the-collider check passes end to end through the real
+   `CellLoader` → `object_registry.gd` path. Full regression suite at the same baseline
+   as before this step.
 8. **Wire `activate()`:** a non-teleporting door with animation data plays its open
    animation instead of returning `{}`. Determine the real open/closed/opening/closing
    state mapping (GECK's `GetOpenState` — confirm the actual value-to-state mapping
