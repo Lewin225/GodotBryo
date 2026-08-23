@@ -134,6 +134,25 @@ is genuinely from scratch, not extending existing partial support.
    regression suite's exact position/AABB assertions (`test_world_streamer.tscn`/
    `test_door_activate.tscn`/`test_collision.tscn` all pass at the same baseline as
    before this change).
+
+   **Two real placement bugs found via visual inspection in `nif_viewer.tscn` (not
+   caught by the regression suite, since nothing exercised this function's collision
+   path before), both fixed:**
+   - `col.transform` was set to `entry["transform"]` — the shape's transform flattened
+     all the way to the NIF's root (native's `flatten_via_scene_nodes()`) — but `col`
+     is parented under its owning node's own `GamebryoCollisionBody`, which ALREADY
+     supplies everything up to that node via ordinary `Node3D` composition. Applying
+     the full root-relative transform on top double-composed it, visibly offsetting
+     the door's collision box from its own mesh by roughly the door's own width.
+     Fixed by dividing out the owning node's own transform (relative to `parent`,
+     computed via `global_transform`) before assigning `col.transform`. Confirmed
+     numerically after the fix: the collision box's world-space origin now lands
+     within millimeters of the door mesh's own AABB center.
+   - `owning_node_index == -1` (mesh/collision legitimately attached to the NIF's
+     root) fell back to `built[0]` — the block-index-order FIRST scene node, an
+     arbitrary, unrelated node whenever the NIF has more than one — instead of
+     `parent`, this tree's own root-equivalent (`scene_nodes` never contains an entry
+     for the file's own root, by design). Fixed in both the mesh and collision loops.
 6. ✅ **Build a real `AnimationPlayer` from `animation_sequences`, scoped to "see it and
    play it," not yet wired into `object_registry.gd`/`DoorNode` (deliberately deferred
    — see step 7).** `GamebryoMeshResolver.populate_animation_player(parent, nif, built)`

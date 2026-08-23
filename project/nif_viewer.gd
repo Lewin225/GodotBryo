@@ -85,7 +85,16 @@ func _own_recursive(node: Node) -> void:
 
 func _do_load() -> void:
 	if has_node("NifRoot"):
-		get_node("NifRoot").queue_free()
+		# Immediate, not queue_free() -- this function builds a new "NifRoot"
+		# right below, and queue_free()'s deferred removal doesn't free the
+		# name up in time: the new node collides with the still-pending-
+		# free old one and gets silently auto-renamed by Godot instead
+		# (confirmed real -- a saved scene with a NIF already loaded,
+		# re-triggering "Load NIF", produced a child named "@Node3D@2"
+		# instead of "NifRoot").
+		var old_root := get_node("NifRoot")
+		remove_child(old_root)
+		old_root.free()
 
 	var model_path: String = PRESET_PATHS.get(preset, custom_nif_path)
 	if model_path.is_empty():
