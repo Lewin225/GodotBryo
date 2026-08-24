@@ -6,4 +6,5 @@
 	url = https://github.com/ousnius/nifly.git
 [submodule "native/terrain3d"]
 	path = native/terrain3d
-	url = https://github.com/TokisanGames/Terrain3D.git
+	url = https://github.com/Lewin225/Terrain3D.git
+	branch = godotbryo
