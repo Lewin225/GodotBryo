@@ -9,7 +9,7 @@ extends Node3D
 # with batch=null so it builds a real Node instead of routing through
 # DirectGeometryBatch). See phases/2/12-distant-object-lod.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

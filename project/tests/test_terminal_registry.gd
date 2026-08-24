@@ -1,6 +1,6 @@
 extends Node
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const FIXTURE_CELL := "HooverDamIntPowerPlant01b"
 const FIXTURE_TERM := 0x166B56 # VHDStealthSuitTerminal
 

@@ -5,7 +5,7 @@ extends Node3D
 # pickup-able and activate()-able exactly the way a player's own
 # interaction code would use it.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

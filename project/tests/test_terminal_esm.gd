@@ -1,6 +1,6 @@
 extends Node
 
-const ESM_PATH := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm"
+const ESM_PATH := "../fresh_nv_copy/Data/FalloutNV.esm"
 var failures := 0
 
 func check(condition: bool, message: String) -> void:

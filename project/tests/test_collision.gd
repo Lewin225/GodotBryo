@@ -4,7 +4,7 @@ extends Node3D
 # Runs fully headless — PhysicsServer3D doesn't need a GPU/rendering
 # context, unlike the visual-check tests.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

@@ -3,7 +3,7 @@ extends Node3D
 # 2.12 step 2 — LOD companion path derivation. See
 # phases/2/12-distant-object-lod.md and enginedocs/lod.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

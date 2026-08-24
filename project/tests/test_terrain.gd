@@ -4,7 +4,7 @@ extends Node3D
 # test_collision.gd/test_interior_cell.gd: build Goodsprings' terrain +
 # placed objects, screenshot, quit. See phases/1/04-exterior-cell-terrain.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const OUT_DIR := "/tmp/nv_test_screenshots/" # stable, session-independent -- created fresh by make_dir_recursive_absolute() below regardless of who's running this
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const CELL_GRID_X := -17
