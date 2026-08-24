@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 [ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
+[ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -63,6 +64,8 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 
 [node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
 script = ExtResource("7_scriptengine")
+
+[node name="TerminalSession" parent="." instance=ExtResource("10_terminalsession")]
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)

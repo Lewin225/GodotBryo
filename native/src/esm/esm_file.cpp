@@ -625,6 +625,64 @@ std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 	return have_data ? std::optional<ItemData>(std::move(item)) : std::nullopt;
 }
 
+std::optional<TerminalData> EsmFile::get_terminal_data(uint32_t terminal_form_id) const {
+	auto record = find_record_by_form_id(terminal_form_id);
+	if (!record || record->type != "TERM") return std::nullopt;
+	TerminalData terminal;
+	TerminalMenuItem *current = nullptr;
+	// Subrecord views point into this buffer, so it must remain alive for the
+	// whole parse rather than being a temporary range-for expression.
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "EDID") terminal.editor_id = s.as_string();
+		else if (s.type == "FULL") terminal.full_name = s.as_string();
+		else if (s.type == "MODL") terminal.model_path = s.as_string();
+		else if (s.type == "DESC") terminal.welcome_text = s.as_string();
+		else if (s.type == "DNAM" && s.size >= 4) {
+			util::ByteReader bytes(s.data, s.size);
+			terminal.flags = bytes.read_u32();
+		}
+		else if (s.type == "ITXT") {
+			terminal.items.push_back({});
+			current = &terminal.items.back();
+			current->text = s.as_string();
+		}
+		else if (current != nullptr && s.type == "RNAM") {
+			// Real P04 submenu data has a 4-byte all-zero RNAM for its "No."
+			// item: an authored empty result, not printable text. Preserve only
+			// text-shaped RNAM here until non-zero 4-byte variants are verified.
+			if (s.size != 4) current->result_text = s.as_string();
+		}
+		else if (current != nullptr && s.type == "ANAM" && s.size >= 1) current->flags = s.data[0];
+		else if (current != nullptr && s.type == "INAM" && s.size >= 4) {
+			util::ByteReader bytes(s.data, s.size);
+			current->note_form_id = bytes.read_u32();
+		}
+		else if (current != nullptr && s.type == "TNAM" && s.size >= 4) {
+			util::ByteReader bytes(s.data, s.size);
+			current->submenu_form_id = bytes.read_u32();
+		}
+		else if (current != nullptr && s.type == "CTDA") ++current->condition_count;
+		else if (current != nullptr && s.type == "SCTX") current->script_source = s.as_string();
+	}
+	return terminal;
+}
+
+std::optional<NoteData> EsmFile::get_note_data(uint32_t note_form_id) const {
+	auto record = find_record_by_form_id(note_form_id);
+	if (!record || record->type != "NOTE") return std::nullopt;
+	NoteData note;
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "EDID") note.editor_id = s.as_string();
+		else if (s.type == "FULL") note.full_name = s.as_string();
+		else if (s.type == "TNAM") note.text = s.as_string();
+	}
+	return note;
+}
+
 std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_form_id) const {
 	auto record = find_record_by_form_id(cell_form_id);
 	if (!record || record->type != "CELL") {
