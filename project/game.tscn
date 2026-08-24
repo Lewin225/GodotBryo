@@ -286,11 +286,11 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Streaming state"
 
-[node name="StateLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=651999633]
-custom_minimum_size = Vector2(0, 130)
+[node name="StateLabel" type="TextEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=651999633]
+custom_minimum_size = Vector2(0, 220)
 layout_mode = 2
-fit_content = true
-scroll_active = false
+editable = false
+wrap_mode = 1
 
 [node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1832230305]
 layout_mode = 2
