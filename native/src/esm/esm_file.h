@@ -125,6 +125,10 @@ public:
 	// DATA subrecord.
 	std::optional<LightData> get_light_data(uint32_t light_form_id) const;
 	std::optional<ItemData> get_item_data(uint32_t item_form_id) const;
+	std::optional<GrassData> get_grass_data(uint32_t grass_form_id) const;
+	// An LTEX can link several grass definitions through repeated GNAM fields.
+	// Returns their FormIDs in authored record order, not a single guessed one.
+	std::vector<uint32_t> get_ltex_grass_form_ids(uint32_t ltex_form_id) const;
 	std::optional<TerminalData> get_terminal_data(uint32_t terminal_form_id) const;
 	std::optional<NoteData> get_note_data(uint32_t note_form_id) const;
 

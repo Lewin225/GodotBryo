@@ -16,6 +16,7 @@
 #include <NifFile.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
@@ -137,12 +138,40 @@ int main(int argc, char **argv) {
 		std::cout << "\n=== " << p << " ===\n";
 		for (auto *shape : nif.GetShapes()) {
 			std::cout << "  shape '" << shape->name.get() << "'";
+			std::vector<nifly::Vector3> verts;
+			std::vector<nifly::Triangle> tris;
+			nif.GetVertsForShape(shape, verts);
+			shape->GetTriangles(tris);
+			if (!verts.empty()) {
+				float min_x = verts[0].x, max_x = verts[0].x, min_y = verts[0].y, max_y = verts[0].y, min_z = verts[0].z, max_z = verts[0].z;
+				for (const auto &v : verts) {
+					min_x = std::min(min_x, v.x); max_x = std::max(max_x, v.x);
+					min_y = std::min(min_y, v.y); max_y = std::max(max_y, v.y);
+					min_z = std::min(min_z, v.z); max_z = std::max(max_z, v.z);
+				}
+				std::cout << " verts=" << verts.size() << " tris=" << tris.size()
+						<< " bounds=(" << min_x << "," << min_y << "," << min_z << ")..("
+						<< max_x << "," << max_y << "," << max_z << ")";
+				int vertical_face_count = 0;
+				for (const auto &tri : tris) {
+					if (tri.p1 >= verts.size() || tri.p2 >= verts.size() || tri.p3 >= verts.size()) continue;
+					const auto &a = verts[tri.p1]; const auto &b = verts[tri.p2]; const auto &c = verts[tri.p3];
+					float ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+					float vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+					float nz = ux * vy - uy * vx;
+					float len = std::sqrt((uy * vz - uz * vy) * (uy * vz - uz * vy) + (uz * vx - ux * vz) * (uz * vx - ux * vz) + nz * nz);
+					if (len > 0.001f && std::abs(nz / len) < 0.2f) ++vertical_face_count;
+				}
+				std::cout << " vertical_faces=" << vertical_face_count << "/" << tris.size();
+			}
 			nifly::NiShader *shader = nif.GetShader(shape);
 			if (shader) {
 				std::cout << " shader=" << shader->GetBlockName();
 				if (auto *bs = dynamic_cast<nifly::BSShaderProperty *>(shader))
 					std::cout << " flags1=0x" << std::hex << bs->shaderFlags1
 							  << " flags2=0x" << bs->shaderFlags2 << std::dec;
+				if (auto *grass = dynamic_cast<nifly::TallGrassShaderProperty *>(shader))
+					std::cout << " texture=" << grass->fileName.get();
 			} else {
 				std::cout << " shader=(none)";
 			}
