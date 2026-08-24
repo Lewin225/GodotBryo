@@ -39,7 +39,10 @@ FalloutNV.esm output establishes, before a parser exists:
 - `INAM` is a linked Note FormID and `TNAM` is a linked submenu TERM FormID.
   `P04CompanionFireTerminal` (`0x17B7A0`) has `TNAM 0x17B79F`; its submenu has
   real result text and item scripts. This proves submenu links are FormIDs,
-  not label-derived relationships.
+  not label-derived relationships. The root is genuinely placed twice
+  (`REFR 0x17B811` in `CELL 0x10D512`, and `REFR 0x17B9B1` in
+  `CELL 0x0DAC02`), so this is the submenu fixture rather than a dead base
+  record.
 - `RNAM` is not blindly a printable string: a 4-byte all-zero `RNAM` appears
   for a real "No." item. The parser must decode the field by verified size/
   meaning, treating the zero form as an authored empty result rather than
