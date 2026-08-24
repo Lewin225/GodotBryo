@@ -52,6 +52,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
+	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
 	ClassDB::bind_method(D_METHOD("find_placeable_by_id", "id_or_editor_id"), &EsmReader::find_placeable_by_id);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
@@ -372,6 +373,34 @@ Dictionary EsmReader::get_item_data(int64_t item_form_id) const {
 		out["weight"] = item->weight;
 		out["inventory_icon"] = String(item->inventory_icon.c_str());
 		out["message_icon"] = String(item->message_icon.c_str());
+	} catch (const std::exception &e) { last_error_ = String(e.what()); }
+	return out;
+}
+
+Dictionary EsmReader::get_terminal_data(int64_t terminal_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto terminal = file_.get_terminal_data(static_cast<uint32_t>(terminal_form_id));
+		if (!terminal) return out;
+		out["editor_id"] = String(terminal->editor_id.c_str());
+		out["full_name"] = String(terminal->full_name.c_str());
+		out["model_path"] = String(terminal->model_path.c_str());
+		out["welcome_text"] = String(terminal->welcome_text.c_str());
+		out["flags"] = static_cast<int64_t>(terminal->flags);
+		Array items;
+		for (const auto &item : terminal->items) {
+			Dictionary d;
+			d["text"] = String(item.text.c_str());
+			d["result_text"] = String(item.result_text.c_str());
+			d["note_form_id"] = static_cast<int64_t>(item.note_form_id);
+			d["submenu_form_id"] = static_cast<int64_t>(item.submenu_form_id);
+			d["flags"] = static_cast<int64_t>(item.flags);
+			d["condition_count"] = static_cast<int64_t>(item.condition_count);
+			d["script_source"] = String(item.script_source.c_str());
+			items.push_back(d);
+		}
+		out["items"] = items;
 	} catch (const std::exception &e) { last_error_ = String(e.what()); }
 	return out;
 }

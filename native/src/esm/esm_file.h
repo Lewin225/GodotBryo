@@ -125,6 +125,7 @@ public:
 	// DATA subrecord.
 	std::optional<LightData> get_light_data(uint32_t light_form_id) const;
 	std::optional<ItemData> get_item_data(uint32_t item_form_id) const;
+	std::optional<TerminalData> get_terminal_data(uint32_t terminal_form_id) const;
 
 	// phases/1/04-exterior-cell-terrain.md additions:
 
