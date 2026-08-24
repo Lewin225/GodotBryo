@@ -27,6 +27,9 @@ func _ready() -> void:
 		check(String(stealth_items[0]["result_text"]) == "Loading...", "first item result text matches")
 		check(int(stealth_items[0]["note_form_id"]) == 0x166B67, "first item INAM Note FormID matches")
 		check(int(stealth_items[0]["submenu_form_id"]) == 0, "first item has no submenu")
+		var note: Dictionary = esm.get_note_data(int(stealth_items[0]["note_form_id"]))
+		check(String(note.get("editor_id", "")) == "VHDInventoryNote01", "linked NOTE EditorID resolves by INAM FormID")
+		check(String(note.get("text", "")).begins_with("We've begun to take stock"), "linked NOTE body resolves from TNAM")
 
 	print("--- placed submenu fixture ---")
 	var root: Dictionary = esm.get_terminal_data(0x17B7A0) # P04CompanionFireTerminal
