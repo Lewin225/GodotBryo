@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://c8de63xqfgfx8" path="res://addons/script_viewer/script_viewer.gd" id="1"]
 
 [sub_resource type="CodeHighlighter" id="CodeHighlighter_bd2f1"]
-number_color = Color(0.81960785, 0.6039216, 0.4, 1)
+number_color = Color(0.7529412, 0.75686276, 0.24313726, 1)
 symbol_color = Color(0.7764706, 0.47058824, 0.8666667, 1)
 function_color = Color(0.38039216, 0.6862745, 0.9372549, 1)
 member_variable_color = Color(0.8980392, 0.7529412, 0.48235294, 1)
