@@ -37,6 +37,7 @@ var function_registry: ScriptFunctionRegistry
 var _interpreter_cache: Dictionary = {} # scpt_form_id (int) -> ScriptInterpreter
 var _contexts: Dictionary = {} # Node -> ScriptExecutionContext
 var _node_interpreter: Dictionary = {} # Node -> ScriptInterpreter, set in register_scripted_node()
+var _node_script_form_ids: Dictionary = {} # Node -> int, retained for the runtime debug inspector
 var _game_mode_nodes: Array = [] # Nodes whose script has a GameMode block -- the only ones _process() needs to visit every frame
 
 func _init() -> void:
@@ -82,6 +83,7 @@ func register_scripted_node(node: Node, script_form_id: int) -> void:
 		ctx.set_local(String(local["name"]), 0)
 	_contexts[node] = ctx
 	_node_interpreter[node] = interpreter
+	_node_script_form_ids[node] = script_form_id
 	if interpreter.has_block("GameMode") or interpreter.has_block("MenuMode"):
 		_game_mode_nodes.append(node)
 	if interpreter.has_block("OnLoad"):
@@ -90,6 +92,7 @@ func register_scripted_node(node: Node, script_form_id: int) -> void:
 func unregister_scripted_node(node: Node) -> void:
 	_contexts.erase(node)
 	_node_interpreter.erase(node)
+	_node_script_form_ids.erase(node)
 	_game_mode_nodes.erase(node)
 
 func is_scripted(node: Node) -> bool:
@@ -109,6 +112,67 @@ func dispatch_event(node: Node, block_type: String, action_ref: Node = null) -> 
 	var interpreter: ScriptInterpreter = _node_interpreter.get(node)
 	if interpreter != null:
 		interpreter.run_block(block_type, ctx)
+
+## Read-only runtime snapshot for the in-game Scripting debug tab.  Keeps
+## the tab out of the engine's private instance dictionaries, while still
+## reporting the real live contexts rather than a second parallel model.
+func get_debug_instances() -> Array:
+	var out: Array = []
+	for node in _contexts:
+		if not is_instance_valid(node):
+			continue
+		var form_id := int(_node_script_form_ids.get(node, 0))
+		var interpreter: ScriptInterpreter = _node_interpreter.get(node)
+		var ctx: ScriptExecutionContext = _contexts[node]
+		var block_names: PackedStringArray = []
+		if interpreter != null:
+			for block in interpreter.program["blocks"]:
+				block_names.append(String(block["blocktype"]))
+		out.append({
+			"node": node,
+			"node_name": node.name,
+			"script_form_id": form_id,
+			"script_name": String(interpreter.program.get("script_name", "")) if interpreter != null else "",
+			"blocks": block_names,
+			"locals": ctx.locals.duplicate(),
+			"source_text": String(esm.get_script_data(form_id).get("source_text", "")) if esm != null else "",
+		})
+	return out
+
+func get_debug_usage() -> Dictionary:
+	var local_slots := 0
+	var non_zero := 0
+	for ctx_value in _contexts.values():
+		var ctx: ScriptExecutionContext = ctx_value
+		local_slots += ctx.locals.size()
+		for value in ctx.locals.values():
+			if ScriptExecutionContext.is_truthy(value):
+				non_zero += 1
+	return { "contexts": _contexts.size(), "cached_scripts": _interpreter_cache.size(), "local_slots": local_slots, "non_zero_locals": non_zero }
+
+## Runs exactly one console statement through the production lexer, parser,
+## and interpreter.  A selected live script context retains its local state;
+## without one, the real player is the calling reference.  This is a debug
+## entry point, not a new console language.
+func run_debug_line(line: String, target: Node = null) -> Dictionary:
+	var text := line.strip_edges()
+	if text == "":
+		return { "ok": false, "message": "Enter a script statement." }
+	var source := "scn DebugConsole\nbegin GameMode\n%s\nend" % text
+	var program := ScriptParser.new(ScriptLexer.new(source).tokenize()).parse()
+	if program["blocks"].is_empty():
+		return { "ok": false, "message": "Could not parse console statement." }
+	var ctx: ScriptExecutionContext
+	if target != null and _contexts.has(target):
+		ctx = _contexts[target]
+	else:
+		ctx = ScriptExecutionContext.new(player_node)
+	ctx.player_node = player_node
+	var interpreter := ScriptInterpreter.new(program, function_registry)
+	var result: Variant = interpreter.run_block("GameMode", ctx)
+	if result is Dictionary and result.has("error"):
+		return { "ok": false, "message": String(result["error"]) }
+	return { "ok": true, "result": result, "message": "OK" }
 
 func _get_or_parse(script_form_id: int) -> ScriptInterpreter:
 	if _interpreter_cache.has(script_form_id):

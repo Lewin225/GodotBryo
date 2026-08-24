@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
 [ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 [ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
+[ext_resource type="Script" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -117,7 +118,78 @@ drag_to_rearrange_enabled = true
 
 [node name="Scripting" type="Control" parent="Debug Tools/TabContainer" unique_id=1382890352]
 layout_mode = 2
+script = ExtResource("9_scriptingdebug")
 metadata/_tab_index = 0
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 6
+
+[node name="Usage" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+layout_mode = 2
+text = "0 live contexts"
+
+[node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+layout_mode = 2
+
+[node name="Line" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Run a script line, e.g. Player.Disable"
+
+[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+layout_mode = 2
+text = "Run"
+
+[node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Output" type="TextEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit"]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit"]
+layout_mode = 2
+
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit"]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Details" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+fit_content = true
+
+[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+layout_mode = 2
+size_flags_vertical = 3
 
 [node name="Quest" type="Control" parent="Debug Tools/TabContainer" unique_id=1803339936]
 visible = false

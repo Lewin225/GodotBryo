@@ -106,6 +106,8 @@ func _ready() -> void:
 	cell_loader.registry.script_engine = script_engine
 	world_streamer.registry.script_engine = script_engine
 	script_engine.player_node = _find_character_body(self) # real GECK "player" keyword -- see ScriptEngine's own doc comment
+	script_engine.function_registry.place_at_me_handler = debug_place_at_me
+	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
 
 	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
@@ -266,6 +268,67 @@ func debug_drop_inventory_item(base_form_id: int) -> bool:
 	if node == null: return false
 	add_child(node)
 	return true
+
+## PlaceAtMe's runtime owner.  The function registry delegates here so it
+## never needs to know about active cell roots, mesh construction, or the
+## scene tree.  FalloutNV accepts Distance/Direction but ignores both in
+## practice; use a safe nearby spread instead, and retain the caller's
+## actual world rotation (including player look tilt when present).
+func debug_place_at_me(args: Array, caller: Node) -> Variant:
+	if caller == null or args.is_empty():
+		return 0
+	var base: Dictionary = cell_loader.esm.find_placeable_by_id(str(args[0]))
+	if base.is_empty():
+		push_warning("PlaceAtMe: no base form found for '%s'" % str(args[0]))
+		return 0
+	if String(base.get("base_type", "")) == "LVLI":
+		push_warning("PlaceAtMe: LVLI '%s' is unsupported (real engine shows Marker_Error.NIF)" % str(args[0]))
+		return 0
+	if String(base.get("model", "")) == "":
+		push_warning("PlaceAtMe: '%s' (%s) has no constructible model" % [str(args[0]), base.get("base_type", "")])
+		return 0
+	var count: int = max(int(args[1]) if args.size() > 1 else 1, 1)
+	var first: Node3D = null
+	var caller_3d := caller as Node3D
+	if caller_3d == null:
+		return 0
+	for i in range(count):
+		var angle := TAU * float(i) / float(count)
+		var nearby := Vector3(cos(angle), 0.35, sin(angle)) * (0.8 if count == 1 else 0.8 + 0.25 * float(i / 6))
+		var placement := {
+			"base_form_id": int(base["form_id"]), "base_type": base["base_type"], "model": base["model"],
+			"position": Vector3.ZERO, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0,
+			"editor_id": base.get("editor_id", "Spawned_%X" % int(base["form_id"])), "script_form_id": int(base.get("script_form_id", 0)),
+		}
+		var node := cell_loader.registry.build(placement)
+		if node == null:
+			push_warning("PlaceAtMe: registry could not construct '%s'" % str(args[0]))
+			continue
+		add_child(node)
+		node.global_position = caller_3d.global_position + nearby
+		node.global_rotation = caller_3d.global_rotation
+		if first == null:
+			first = node
+	return first if first != null else 0
+
+## Console-only CenterOnCell/COC.  The real command's destination is the
+## cell's authored COCMarkerHeading; `_on_load_completed()` already owns
+## that exact empty-_pending_door_spawn path, so don't duplicate its spawn
+## conversion here.  Exterior grid travel is CenterOnWorld's job and stays
+## deliberately separate for this first console pass.
+func debug_center_on_cell(args: Array) -> Variant:
+	if args.is_empty():
+		return { "error": "CenterOnCell requires a cell EditorID." }
+	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(str(args[0]))
+	if cell.is_empty():
+		return { "error": "No CELL with EditorID '%s' in the loaded ESM." % str(args[0]) }
+	var cell_form_id := int(cell["form_id"])
+	if cell_loader.esm.get_cell_worldspace(cell_form_id) != -1:
+		return { "error": "'%s' is exterior; CenterOnWorld is not implemented yet." % str(args[0]) }
+	world_streamer.set_paused(true)
+	_pending_door_spawn = {}
+	cell_loader.load_cell(cell_form_id)
+	return cell_form_id
 
 ## Dynamic types split into two real interact shapes right now: DoorNode
 ## (the only real has_method("activate") case) still always calls its own
