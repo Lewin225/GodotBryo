@@ -154,7 +154,7 @@ func _process(_delta: float) -> void:
 		_look_at_label.visible = not _look_at_label.visible
 	if _look_at_label != null and _look_at_label.visible:
 		_update_look_at_label()
-	if world_streamer != null and world_streamer.is_active():
+	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_paused():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
 			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellLoader's single-load case
