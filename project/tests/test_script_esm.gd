@@ -66,6 +66,18 @@ func _ready() -> void:
 	var missing_msg: Dictionary = reader.get_message_by_editor_id("DefinitelyNotARealMessage")
 	check(missing_msg.is_empty(), "a nonexistent MESG editor ID resolves empty, not a crash")
 
+	print("--- PlaceAtMe base-form lookup ---")
+	# Real console smoke-test form supplied during the scripting-tab pass:
+	# Apple, 0x00103B1E.  The command accepts its normal bare hex spelling.
+	var apple: Dictionary = reader.find_placeable_by_id("00103b1e")
+	check(not apple.is_empty(), "Apple FormID resolves for PlaceAtMe")
+	if not apple.is_empty():
+		check(String(apple["base_type"]) == "ALCH", "Apple resolves as ALCH (got %s)" % String(apple["base_type"]))
+		check(String(apple.get("model", "")) != "", "Apple carries a constructible MODL path")
+
+	var coc_cell: Dictionary = reader.find_cell_by_editor_id("GSDocMitchellHouse")
+	check(not coc_cell.is_empty(), "GSDocMitchellHouse resolves as a COC CELL")
+
 	_finish()
 
 func _finish() -> void:

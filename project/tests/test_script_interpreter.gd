@@ -133,6 +133,15 @@ func _test_script_engine() -> void:
 	# session (test_script_esm.gd asserts the same value).
 	engine.register_scripted_node(node, 0x17b787)
 	check(engine.is_scripted(node), "node registered with ScriptEngine")
+	var debug_instances: Array = engine.get_debug_instances()
+	check(debug_instances.size() == 1 and debug_instances[0]["node"] == node, "debug inspector reports the real live script context")
+
+	var console_player := Node3D.new()
+	console_player.visible = true
+	add_child(console_player)
+	engine.player_node = console_player
+	var console_reply: Dictionary = engine.run_debug_line("Player.Disable")
+	check(bool(console_reply.get("ok", false)) and not console_player.visible, "console line uses production parser/interpreter and resolves Player reference")
 
 	var actor := Node3D.new()
 	add_child(actor)
@@ -163,6 +172,7 @@ func _test_script_engine() -> void:
 
 	node.queue_free()
 	actor.queue_free()
+	console_player.queue_free()
 	engine.queue_free()
 
 func _finish() -> void:

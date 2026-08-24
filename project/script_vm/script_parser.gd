@@ -44,6 +44,9 @@ const KNOWN_ARITIES := {
 	"getdisabled": 0,
 	"activate": 1,
 	"unlock": 0,
+	"placeatme": 4,
+	"centeroncell": 1,
+	"coc": 1,
 }
 
 const _DECL_TYPES := ["int", "float", "ref", "short", "long"]

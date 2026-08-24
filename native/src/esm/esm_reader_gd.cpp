@@ -1,8 +1,10 @@
 #include "esm_reader_gd.h"
+#include "common/byte_reader.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 
+#include <cctype>
 #include <stdexcept>
 
 using namespace godot;
@@ -50,6 +52,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
+	ClassDB::bind_method(D_METHOD("find_placeable_by_id", "id_or_editor_id"), &EsmReader::find_placeable_by_id);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
 	ClassDB::bind_method(D_METHOD("get_all_script_form_ids"), &EsmReader::get_all_script_form_ids);
@@ -370,6 +373,46 @@ Dictionary EsmReader::get_item_data(int64_t item_form_id) const {
 		out["inventory_icon"] = String(item->inventory_icon.c_str());
 		out["message_icon"] = String(item->message_icon.c_str());
 	} catch (const std::exception &e) { last_error_ = String(e.what()); }
+	return out;
+}
+
+Dictionary EsmReader::find_placeable_by_id(const String &id_or_editor_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		std::string query = id_or_editor_id.utf8().get_data();
+		std::optional<esm::RecordInfo> record;
+		// Console FormIDs are hexadecimal even without a 0x prefix.  Only
+		// treat a pure hex run as one -- editor IDs like Apple remain names.
+		bool hex = !query.empty();
+		for (char c : query) {
+			if (!std::isxdigit(static_cast<unsigned char>(c))) { hex = false; break; }
+		}
+		if (hex) record = file_.find_record_by_form_id(static_cast<uint32_t>(std::stoul(query, nullptr, 16)));
+		if (!record) {
+			file_.for_each_record([&](const esm::RecordInfo &candidate) {
+				if (record) return;
+				auto data = file_.read_record_data(candidate);
+				for (const auto &sub : esm::EsmFile::parse_subrecords(data)) {
+					if (sub.type == "EDID" && sub.as_string() == query) { record = candidate; break; }
+				}
+			});
+		}
+		if (!record) return out;
+		out["form_id"] = static_cast<int64_t>(record->form_id);
+		out["base_type"] = String(record->type.c_str());
+		auto data = file_.read_record_data(*record);
+		for (const auto &sub : esm::EsmFile::parse_subrecords(data)) {
+			if (sub.type == "EDID") out["editor_id"] = String(sub.as_string().c_str());
+			else if (sub.type == "MODL") out["model"] = String(sub.as_string().c_str());
+			else if (sub.type == "SCRI" && sub.size >= 4) {
+				util::ByteReader sr(sub.data, sub.size);
+				out["script_form_id"] = static_cast<int64_t>(sr.read_u32());
+			}
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
 	return out;
 }
 

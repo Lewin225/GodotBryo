@@ -22,6 +22,11 @@ var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam th
 ## assigned) -- null-safe everywhere it's used below, since a registry can
 ## exist before an EsmReader is available (e.g. a bare unit test).
 var esm: EsmReader = null
+## Set by game.gd: this registry deliberately knows script semantics, not
+## scene ownership or loader roots.  PlaceAtMe delegates the world mutation
+## to the one runtime owner that has both.
+var place_at_me_handler: Callable
+var center_on_cell_handler: Callable
 
 func _init() -> void:
 	_register_defaults()
@@ -102,6 +107,20 @@ func _register_defaults() -> void:
 		# Real, deliberate gap: no lock/key state exists on any Dynamic type
 		# yet (DoorNode/ContainerNode have no `is_locked` field today).
 		return 0)
+
+	register("PlaceAtMe", func(a: Array, ctx: ScriptExecutionContext):
+		if a.is_empty() or not place_at_me_handler.is_valid():
+			push_warning("ScriptFunctionRegistry: PlaceAtMe unavailable -- no world placement handler")
+			return 0
+		return place_at_me_handler.call(a, ctx.calling_reference))
+
+	var center_on_cell := func(a: Array, _ctx: ScriptExecutionContext):
+		if a.is_empty() or not center_on_cell_handler.is_valid():
+			push_warning("ScriptFunctionRegistry: CenterOnCell unavailable -- no cell-transition handler")
+			return 0
+		return center_on_cell_handler.call(a)
+	register("CenterOnCell", center_on_cell)
+	register("COC", center_on_cell)
 
 	register("ShowMessage", func(a: Array, _c):
 		# Real argument shape confirmed against real data (GSBrokenSMGScript's

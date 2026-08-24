@@ -26,29 +26,35 @@ func has_block(block_type: String) -> bool:
 ## language behavior also gates on a block's own params (e.g. `OnTrigger
 ## Play` vs. plain `OnTrigger`) -- not implemented this pass, a real,
 ## documented gap (every same-named block runs regardless of its params).
-func run_block(block_type: String, ctx: ScriptExecutionContext) -> void:
+func run_block(block_type: String, ctx: ScriptExecutionContext) -> Variant:
+	var result: Variant = null
 	for block in program["blocks"]:
 		if String(block["blocktype"]).to_lower() == block_type.to_lower():
-			_exec_stmts(block["stmts"], ctx)
+			result = _exec_stmts(block["stmts"], ctx)
+	return result
 
-func _exec_stmts(stmts: Array, ctx: ScriptExecutionContext) -> void:
+func _exec_stmts(stmts: Array, ctx: ScriptExecutionContext) -> Variant:
+	var result: Variant = null
 	for stmt in stmts:
-		_exec_stmt(stmt, ctx)
+		result = _exec_stmt(stmt, ctx)
+	return result
 
-func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> void:
+func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 	match String(stmt["kind"]):
 		"set":
-			_assign(String(stmt["target"]), _eval(stmt["expr"], ctx), ctx)
+			var value: Variant = _eval(stmt["expr"], ctx)
+			_assign(String(stmt["target"]), value, ctx)
+			return value
 		"if":
 			for branch in stmt["branches"]:
 				if ScriptExecutionContext.is_truthy(_eval(branch["cond"], ctx)):
-					_exec_stmts(branch["stmts"], ctx)
-					return
-			_exec_stmts(stmt.get("else_stmts", []), ctx)
+					return _exec_stmts(branch["stmts"], ctx)
+			return _exec_stmts(stmt.get("else_stmts", []), ctx)
 		"call":
-			_eval(stmt, ctx) # bare call statement -- evaluated for its side effect only
+			return _eval(stmt, ctx) # bare call statement -- evaluated for its side effect only
 		"noop":
 			pass # a stray reserved keyword the parser skipped -- see script_parser.gd's own doc comment on _RESERVED_KEYWORDS
+	return null
 
 func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> void:
 	if not target.contains("."):
@@ -143,10 +149,11 @@ func _resolve_call_context(expr: Dictionary, ctx: ScriptExecutionContext) -> Scr
 	var ref_name := String(expr.get("reference", ""))
 	if ref_name == "":
 		return ctx
-	var resolved: Variant = ctx.get_local(ref_name)
+	var resolved: Variant = ctx.player_node if ref_name.to_lower() == "player" else ctx.get_local(ref_name)
 	if resolved is Node:
 		var sub_ctx := ScriptExecutionContext.new(resolved)
 		sub_ctx.locals = ctx.locals
 		sub_ctx.action_ref = ctx.action_ref
+		sub_ctx.player_node = ctx.player_node
 		return sub_ctx
 	return ctx

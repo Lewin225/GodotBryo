@@ -95,6 +95,12 @@ public:
 	Dictionary get_light_data(int64_t light_form_id) const;
 	Dictionary get_item_data(int64_t item_form_id) const;
 
+	// Runtime-console lookup for PlaceAtMe: accepts either an 8-digit hex
+	// FormID (with or without 0x) or an exact EditorID.  Returns the base
+	// record data needed to construct an ordinary placement: { form_id,
+	// base_type, editor_id, model, script_form_id }, or {} when absent.
+	Dictionary find_placeable_by_id(const String &id_or_editor_id) const;
+
 	// esm::EsmFile::get_cell_lighting_data() -- a CELL's own XCLL ("Lighting")
 	// subrecord: per-cell authored ambient/directional/fog data. Empty
 	// Dictionary if the CELL has no XCLL (real for exterior cells).
