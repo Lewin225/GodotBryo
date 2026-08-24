@@ -58,6 +58,14 @@ var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var texture_pool: Terrain3DTexturePool
 
+## The N=7 ID maps store these stable LTEX slots, never the render-texture
+## pool slot.  Two distinct LTEX records may share a DDS yet carry different
+## GNAM grass lists; preserving this identity is therefore required for the
+## GPU grass filter.  Slot zero remains the unpainted/default sentinel.
+const MAX_LTEX_SLOTS := 128
+var _ltex_slot_by_form_id: Dictionary = {}
+var _render_slot_by_ltex_slot := PackedInt32Array()
+
 ## phases/2/14-native-terrain-texture-blend.md: real per-vertex authored normals
 ## (VNML), decode solved and verified numerically (128,000 real samples,
 ## avg 1.34 deg / max 53.5 deg divergence from a computed-from-heights normal --
@@ -80,6 +88,8 @@ func _init(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver, pool: Ter
 	esm = esm_reader
 	resolver = mesh_resolver
 	texture_pool = pool
+	_render_slot_by_ltex_slot.resize(MAX_LTEX_SLOTS)
+	_render_slot_by_ltex_slot.fill(0)
 
 ## Creates the one shared, persistent Terrain3D node -- called once by the owner
 ## (WorldStreamer), NOT per-cell. `region_size`/`vertex_spacing` set before adding
@@ -199,7 +209,7 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	var overlay_layers := [[], [], [], []] # Array[Dictionary] (the layer dict each overlay_slots entry came from) per quadrant
 	for q in range(4):
 		var base_ltex := int(quadrant_ltex[q]) if q < quadrant_ltex.size() else 0
-		base_slot[q] = _resolve_to_slot(base_ltex)
+		base_slot[q] = _resolve_ltex_slot(base_ltex)
 		var candidates: Array = quadrant_layers[q]
 		if base_slot[q] < 0 and not candidates.is_empty():
 			# Real BTXT=0 case: pick the aggregate-strongest raw layer as a
@@ -215,7 +225,7 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 				if mass > best_mass:
 					best_mass = mass
 					best_i = i
-			var fallback_slot := _resolve_to_slot(int(candidates[best_i]["ltex_form_id"]))
+			var fallback_slot := _resolve_ltex_slot(int(candidates[best_i]["ltex_form_id"]))
 			if fallback_slot >= 0:
 				base_slot[q] = fallback_slot
 				candidates = candidates.duplicate()
@@ -224,9 +234,10 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		# defensively in case any other Gamebryo-family title's real data
 		# ever exceeds that.
 		for i in range(mini(candidates.size(), 6)):
-			var slot := _resolve_to_slot(int(candidates[i]["ltex_form_id"]))
+			var slot := _resolve_ltex_slot(int(candidates[i]["ltex_form_id"]))
 			overlay_slots[q].append(slot)
 			overlay_layers[q].append(candidates[i])
+	_update_ltex_render_lut(terrain)
 
 	if Vector2i(grid_x, grid_y) == debug_dump_grid:
 		print("Terrain3DBridge debug dump: cell (", grid_x, ",", grid_y, ")")
@@ -539,10 +550,10 @@ func prewarm_textures(wrld_form_id: int, grid_min: int = -65, grid_max: int = 64
 				continue
 			var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
 			for ltex in quadrant_ltex:
-				_resolve_to_slot(int(ltex))
+				_resolve_ltex_slot(int(ltex))
 			var alpha_layers: Array = land.get("alpha_layers", [])
 			for layer in alpha_layers:
-				_resolve_to_slot(int(layer["ltex_form_id"]))
+				_resolve_ltex_slot(int(layer["ltex_form_id"]))
 	return texture_pool.used_slot_count() - before
 
 func _resolve_to_slot(ltex_id: int) -> int:
@@ -561,3 +572,35 @@ func _resolve_to_slot(ltex_id: int) -> int:
 	var normal_path := esm.resolve_ltex_normal_texture_path(ltex_id)
 	var normal_tex := resolver.load_texture("textures\\" + normal_path) if normal_path != "" else null
 	return texture_pool.get_slot(tex, tex_path, normal_tex)
+
+func _resolve_ltex_slot(ltex_id: int) -> int:
+	if ltex_id == 0:
+		return -1
+	if _ltex_slot_by_form_id.has(ltex_id):
+		return _ltex_slot_by_form_id[ltex_id]
+	var render_slot := _resolve_to_slot(ltex_id)
+	if render_slot < 0:
+		return -1
+	var ltex_slot := _ltex_slot_by_form_id.size() + 1
+	if ltex_slot >= MAX_LTEX_SLOTS:
+		push_warning("Terrain3DBridge: LTEX slot budget exhausted; FormID %08X cannot retain grass identity" % ltex_id)
+		return -1
+	_ltex_slot_by_form_id[ltex_id] = ltex_slot
+	_render_slot_by_ltex_slot[ltex_slot] = render_slot
+	return ltex_slot
+
+func _update_ltex_render_lut(terrain: Terrain3D) -> void:
+	# Terrain3D's material is a native RenderingServer material, not a
+	# ShaderMaterial.  Bind directly, as the addon itself does for map RIDs.
+	RenderingServer.material_set_param(terrain.material.get_material_rid(), "_ltex_to_render_slot", _render_slot_by_ltex_slot)
+
+## Returns the Terrain3D texture-pool ID currently used for this real LTEX.
+## Terrain grass needs this exact bridge between LTEX.GNAM (authored FormIDs)
+## and the N=7 texture-ID maps sampled by its GPU particle shader.  Keeping
+## the conversion here prevents a second, subtly different LTEX->TXST->DDS
+## resolution path in the grass system.
+func get_ltex_slot(ltex_id: int) -> int:
+	return _resolve_ltex_slot(ltex_id)
+
+func get_ltex_slot_count() -> int:
+	return _ltex_slot_by_form_id.size()

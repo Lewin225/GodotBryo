@@ -167,6 +167,25 @@ struct ItemData {
 	std::string message_icon;
 };
 
+// GRAS.DATA, verified against all 24 real FalloutNV.esm records and the
+// GECK/NVSE trait table.  The record has deliberately retained its compact
+// byte fields rather than treating its 32-byte DATA payload as eight floats.
+// The unused/padding bytes are not exposed here.
+struct GrassData {
+	std::string editor_id;
+	std::string model_path; // MODL, relative to Data/Meshes/
+	uint8_t density = 0;
+	uint8_t min_slope = 0;
+	uint8_t max_slope = 0;
+	uint16_t units_from_water_amount = 0;
+	uint32_t units_from_water_type = 0;
+	float position_range = 0.0f;
+	float height_range = 0.0f;
+	float color_range = 0.0f;
+	float wave_period = 0.0f;
+	uint8_t flags = 0;
+};
+
 // TERM's authored menu is an ordered, interleaved subrecord stream rather
 // than a separate child record table.  Keep the FormID links and the limited
 // condition/script evidence needed by the first browsable-terminal pass;

@@ -161,6 +161,7 @@ var _pool: GamebryoResolverPool # phases/2/10-threaded-streaming-workers.md, ste
 var _terrain3d: Terrain3D # only non-null when use_terrain3d, created fresh per activate()
 var _terrain3d_pool: Terrain3DTexturePool
 var _terrain3d_bridge: Terrain3DBridge
+var _terrain_grass_particles: TerrainGrassParticles
 
 var diagnostic_construct_ms: Array = [] # TEMP DIAGNOSTIC -- stutter investigation
 var diagnostic_batch_build_ms: Array = [] # TEMP DIAGNOSTIC
@@ -249,6 +250,8 @@ func activate(wrld_form_id: int) -> void:
 		_terrain3d = Terrain3DBridge.create_terrain(self)
 		_terrain3d_pool = Terrain3DTexturePool.new(_terrain3d)
 		_terrain3d_bridge = Terrain3DBridge.new(esm, resolver, _terrain3d_pool)
+		_terrain_grass_particles = TerrainGrassParticles.new(_terrain3d, _terrain3d_bridge, esm, resolver)
+		add_child(_terrain_grass_particles)
 		_terrain3d_bridge.debug_dump_grid = terrain3d_debug_dump_grid
 		if prewarm_terrain_textures:
 			var registered := _terrain3d_bridge.prewarm_textures(wrld_form_id)
@@ -286,6 +289,9 @@ func deactivate() -> void:
 		_persistent_batch = null
 	_in_flight_count = 0
 	if _terrain3d != null:
+		if _terrain_grass_particles != null:
+			_terrain_grass_particles.queue_free()
+			_terrain_grass_particles = null
 		_terrain3d.free()
 		_terrain3d = null
 		_terrain3d_pool = null
@@ -603,6 +609,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 		# parent under terrain_root (there's exactly one Terrain3D node for the
 		# whole worldspace, not one per tile).
 		_terrain3d_bridge.import_cell(_terrain3d, cell_form_id)
+		_terrain_grass_particles.observe_cell(cell_form_id, coord)
 		diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
 	else:
 		var terrain := _builder.build_terrain(cell_form_id)

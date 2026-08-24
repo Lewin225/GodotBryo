@@ -158,6 +158,12 @@ public:
 	// LAND record.
 	Dictionary get_land_data(int64_t cell_form_id) const;
 
+	// GRAS record data and the complete authored LTEX.GNAM grass set.  A
+	// land texture is allowed to name multiple GRAS records, so callers pick
+	// from this returned Array rather than relying on a single implicit link.
+	Dictionary get_grass_data(int64_t grass_form_id) const;
+	Array get_ltex_grass_form_ids(int64_t ltex_form_id) const;
+
 	// LTEX -> TXST -> diffuse path (no "textures\" prefix — see
 	// esm::EsmFile::resolve_ltex_texture_path). Empty string if unresolved.
 	String resolve_ltex_texture_path(int64_t ltex_form_id) const;

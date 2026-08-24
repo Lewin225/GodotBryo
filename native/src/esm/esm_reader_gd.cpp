@@ -64,6 +64,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_cell_editor_id", "cell_form_id"), &EsmReader::get_cell_editor_id);
 	ClassDB::bind_method(D_METHOD("get_cell_worldspace", "cell_form_id"), &EsmReader::get_cell_worldspace);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
+	ClassDB::bind_method(D_METHOD("get_grass_data", "grass_form_id"), &EsmReader::get_grass_data);
+	ClassDB::bind_method(D_METHOD("get_ltex_grass_form_ids", "ltex_form_id"), &EsmReader::get_ltex_grass_form_ids);
 	ClassDB::bind_method(D_METHOD("get_cell_child_type_counts", "cell_form_id"), &EsmReader::get_cell_child_type_counts);
 	ClassDB::bind_method(D_METHOD("resolve_refr_xtel", "refr_form_id"), &EsmReader::resolve_refr_xtel);
 	ClassDB::bind_method(D_METHOD("get_door_destination", "door_refr_form_id"), &EsmReader::get_door_destination);
@@ -674,6 +676,49 @@ Dictionary EsmReader::get_land_data(int64_t cell_form_id) const {
 			vertex_normals_raw[static_cast<int>(i)] = land->vertex_normals_raw[i];
 		}
 		out["vertex_normals_raw"] = vertex_normals_raw;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_grass_data(int64_t grass_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto grass = file_.get_grass_data(static_cast<uint32_t>(grass_form_id));
+		if (!grass) {
+			return out;
+		}
+		out["editor_id"] = String(grass->editor_id.c_str());
+		out["model_path"] = String(grass->model_path.c_str());
+		out["density"] = static_cast<int>(grass->density);
+		out["min_slope"] = static_cast<int>(grass->min_slope);
+		out["max_slope"] = static_cast<int>(grass->max_slope);
+		out["units_from_water_amount"] = static_cast<int>(grass->units_from_water_amount);
+		out["units_from_water_type"] = static_cast<int64_t>(grass->units_from_water_type);
+		out["position_range"] = grass->position_range;
+		out["height_range"] = grass->height_range;
+		out["color_range"] = grass->color_range;
+		out["wave_period"] = grass->wave_period;
+		out["flags"] = static_cast<int>(grass->flags);
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Array EsmReader::get_ltex_grass_form_ids(int64_t ltex_form_id) const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		for (uint32_t form_id : file_.get_ltex_grass_form_ids(static_cast<uint32_t>(ltex_form_id))) {
+			out.push_back(static_cast<int64_t>(form_id));
+		}
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
