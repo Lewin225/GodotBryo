@@ -6,7 +6,7 @@ extends Node3D
 # top of the generated heightmap terrain. Same free-fly-camera pattern as
 # cell_viewer.gd.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const CELL_GRID_X := -17
 const CELL_GRID_Y := 0

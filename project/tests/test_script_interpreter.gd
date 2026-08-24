@@ -118,7 +118,7 @@ func _ready() -> void:
 
 func _test_script_engine() -> void:
 	var esm := EsmReader.new()
-	var opened := esm.open("/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm")
+	var opened := esm.open("../fresh_nv_copy/Data/FalloutNV.esm")
 	check(opened, "EsmReader opened FalloutNV.esm")
 	if not opened:
 		return

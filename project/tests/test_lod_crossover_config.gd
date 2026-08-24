@@ -10,7 +10,7 @@ extends Node3D
 # own @export values actually reach their `resolver` in _ready(). See
 # phases/2/12-distant-object-lod.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 
