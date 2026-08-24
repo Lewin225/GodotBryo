@@ -6,12 +6,19 @@
 [ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
-[ext_resource type="Script" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
-[ext_resource type="Script" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
+[ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
+[ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
+[ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
+exposure_multiplier = 3.334
+auto_exposure_enabled = true
+auto_exposure_scale = 0.3
+auto_exposure_speed = 2.0
 dof_blur_far_distance = 271.22
 dof_blur_far_transition = 2830.17
+auto_exposure_min_sensitivity = 56.88
+auto_exposure_max_sensitivity = 561.5
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kp17n"]
 albedo_color = Color(0.909804, 0.596078, 0, 1)
@@ -53,7 +60,7 @@ script = ExtResource("4_worldstreamer")
 use_terrain3d = true
 terrain3d_debug_dump_grid = Vector2i(-18, 0)
 
-[node name="ScriptEngine" type="Node" parent="."]
+[node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
 script = ExtResource("7_scriptengine")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
@@ -78,6 +85,7 @@ controls = {
 }
 
 [node name="Mesh" parent="Character" index="0" unique_id=537830521]
+cast_shadow = 0
 mesh = SubResource("CapsuleMesh_feb5d")
 
 [node name="Collision" parent="Character" index="1" unique_id=1716049046]
@@ -121,6 +129,55 @@ visible = false
 layout_mode = 2
 script = ExtResource("8_inventorydebug")
 metadata/_tab_index = 2
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Player inventory"
+
+[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Inc"
+tooltip_text = "Add one of the selected inventory item (debug only)."
+
+[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Delete"
+tooltip_text = "Remove one selected item from inventory."
+
+[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Drop"
+tooltip_text = "Spawn one selected item in front of the camera."
+
+[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+text = "0 distinct item type(s)"
 
 [node name="CellLoader" type="Control" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
@@ -228,7 +285,7 @@ layout_mode = 2
 script = ExtResource("6_environmentdebug")
 metadata/_tab_index = 5
 
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Envrioment"]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Envrioment" unique_id=524168662]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -240,44 +297,44 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin" unique_id=915081589]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="CellTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="CellTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=607578486]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Current cell"
 
-[node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1397622249]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 fit_content = true
 scroll_active = false
 
-[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1021671873]
 layout_mode = 2
 
-[node name="XcllTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="XcllTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1267340901]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "CELL.XCLL (real per-cell authored lighting)"
 
-[node name="XcllLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="XcllLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1969096503]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 fit_content = true
 scroll_active = false
 
-[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=22548968]
 layout_mode = 2
 
-[node name="AppliedTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="AppliedTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=352131969]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Currently applied WorldEnvironment"
 
-[node name="AppliedLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="AppliedLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1990442916]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 fit_content = true
@@ -313,53 +370,3 @@ theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
 
 [editable path="Character"]
-[ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
-
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
-
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Player inventory"
-
-[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
-custom_minimum_size = Vector2(0, 260)
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
-layout_mode = 2
-text = "Inc"
-tooltip_text = "Add one of the selected inventory item (debug only)."
-
-[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
-layout_mode = 2
-text = "Delete"
-tooltip_text = "Remove one selected item from inventory."
-
-[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
-layout_mode = 2
-text = "Drop"
-tooltip_text = "Spawn one selected item in front of the camera."
-
-[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
-layout_mode = 2
-text = "0 distinct item type(s)"
