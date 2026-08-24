@@ -6,6 +6,16 @@ Dynamic/Static classification · Companion to [phases/1/object-types.md](../1/ob
 tracks the separate, harder bar: does the type have a real per-instance Godot `Node`
 capable of one day running a script or diverging from the ESM at runtime).
 
+**Live tracking moved to GitHub** (github.com/Lewin225/GodotBryo) — this doc stays as
+the real-data reference (SCRI counts, the Dynamic/Static test, design rationale) but
+the actual open/closed status of each remaining item now lives as issues there, not as
+prose in this table, so it doesn't go stale the way the old inline status text did
+(TERM's row said "not started" for a while after the real work had already shipped).
+Remaining work, tracked live:
+[#9 Item branch: ARMO/WEAP/CCRD/AMMO](https://github.com/Lewin225/GodotBryo/issues/9) ·
+[#10 Item branch follow-up: KEYM use, ALCH consumption](https://github.com/Lewin225/GodotBryo/issues/10) ·
+[#11 Actor branch: GamebryoActor, NPCNode/CreatureNode, ACHR/ACRE](https://github.com/Lewin225/GodotBryo/issues/11).
+
 ## What "Dynamic" means here (from nv_class_hierarchy.md, restated precisely)
 
 > **Dynamic**: can have a script, or can move (or both) — either capability makes an
@@ -35,9 +45,10 @@ zero real instances in the base game + all DLC ever do).
 
 These five prove the pattern (`GamebryoVisual` subclass, composed `StaticBody3D` child
 for collision) — every remaining row below extends the same branch, no new base class
-needed. **Script execution itself is blocked on Phase 5's interpreter for all five** —
-having a real Node is necessary but not sufficient; none of these can run their real
-`SCRI` script yet, only exist as a script-*capable* target once 5.0 lands.
+needed. **"Script execution blocked on Phase 5" below is now partially stale** — Phase
+5 has since wired real `OnActivate` dispatch, `ShowMessage`, `PlaceAtMe`, and a runtime
+console; check `phases/5/README.md` for current state before assuming any of these five
+still can't run anything.
 
 | Type | Name | Real SCRI usage (FalloutNV.esm) | Node type | Status |
 |---|---|---|---|---|
@@ -60,7 +71,7 @@ registering in both `GamebryoObjectRegistry._register_defaults()` and
 | Type | Name | Real SCRI usage | Why Dynamic | Proposed node type | Status |
 |---|---|---|---|---|---|
 | `TACT` | Talking Activator | 18/87 | Script + dialogue/Voice Type | `TalkingActivatorNode` | Node done (mesh-only); script execution blocked on Phase 5 |
-| `TERM` | Terminal | 20/344 | Script (menu tree, per-item result scripts) | `TerminalNode` | Node done (mesh-only); terminal-menu behavior not started; script execution blocked on Phase 5 |
+| `TERM` | Terminal | 20/344 | Script (menu tree, per-item result scripts) | `TerminalNode` | Done — real browsable terminal (welcome text, menu/submenu navigation, result pages, linked Notes) shipped, see [issue #2](https://github.com/Lewin225/GodotBryo/issues/2) (closed) |
 | `MSTT` | Movable Static | 0/241 | **No script ever** — Dynamic purely because Havok can reposition it per-instance at runtime (real edge case: proves Dynamic needs "or," not "and") | `MovableStaticNode` | Node done (mesh-only); Havok movement not started |
 
 ### Item branch — needs the dual in-world/in-inventory shape, not a bespoke Node per type
@@ -77,12 +88,12 @@ enough real instances that leaving them unregistered is a genuine, measurable ga
 | Type | Name | Real SCRI usage | Node type | Status |
 |---|---|---|---|---|
 | `MISC` | Misc. Item | 178/507 | `ItemNode` (shared) | Done — Phase 3.2 proves the shared ItemNode pattern: real MISC DATA, inventory conversion, rigid-body world props, drag/pickup. The remaining six Item types can follow it after their individual DATA layouts are verified. |
-| `ARMO` | Armor | 47/389 | `ItemNode` (shared) | Not started |
-| `KEYM` | Key | 7/283 | `ItemNode` (shared) | In progress — shared pickup/physics path; keyring/use behavior remains deferred. |
-| `WEAP` | Weapon | 17/261 | `ItemNode` (shared) | Not started |
-| `CCRD` | Caravan Card | 270/270 (**all of them**) | `ItemNode` (shared) | Not started — every single real instance has a Pickup Script, confirmed real data, not the "moderate confidence" phases/1/object-types.md flagged it with |
-| `ALCH` | Consumable | 2/189 | `ItemNode` (shared) | In progress — pickup/physics only; consuming and effects deliberately deferred. |
-| `AMMO` | Ammunition | 2/92 | `ItemNode` (shared) | Not started — negligible but nonzero (also has a separate real `Impact Script` field on the base record itself, run on whatever Actor a projectile hits — orthogonal to placement-Node scripting, needs its own handling whenever Phase 6 combat lands) |
+| `ARMO` | Armor | 47/389 | `ItemNode` (shared) | Not started — [issue #9](https://github.com/Lewin225/GodotBryo/issues/9) |
+| `KEYM` | Key | 7/283 | `ItemNode` (shared) | Shared pickup/physics path done (static, no drag, by design); keyring/use behavior deferred — [issue #10](https://github.com/Lewin225/GodotBryo/issues/10) |
+| `WEAP` | Weapon | 17/261 | `ItemNode` (shared) | Not started — [issue #9](https://github.com/Lewin225/GodotBryo/issues/9) |
+| `CCRD` | Caravan Card | 270/270 (**all of them**) | `ItemNode` (shared) | Not started — every single real instance has a Pickup Script, confirmed real data, not the "moderate confidence" phases/1/object-types.md flagged it with — [issue #9](https://github.com/Lewin225/GodotBryo/issues/9) |
+| `ALCH` | Consumable | 2/189 | `ItemNode` (shared) | Real pickup/rigid-physics done; consuming/effects deferred — [issue #10](https://github.com/Lewin225/GodotBryo/issues/10) |
+| `AMMO` | Ammunition | 2/92 | `ItemNode` (shared) | Not started — negligible but nonzero real script usage; also has a separate real `Impact Script` field on the base record itself (run on whatever Actor a projectile hits), orthogonal to placement-Node scripting and belongs to Phase 6 combat, not this gap — [issue #9](https://github.com/Lewin225/GodotBryo/issues/9) |
 
 ### Actor branch — doesn't exist as a branch at all yet
 
@@ -98,8 +109,8 @@ item in this whole doc, both in scope and in real record count.
 
 | Type | Name | Real SCRI usage | Node type | Status |
 |---|---|---|---|---|
-| `NPC_` | Non-player character | 1046/3816 | `NPCNode` (extends `GamebryoActor`) | Not started — no placement, no base class, no node |
-| `CREA` | Creature | 260/1578 | `CreatureNode` (extends `GamebryoActor`) | Not started — same |
+| `NPC_` | Non-player character | 1046/3816 | `NPCNode` (extends `GamebryoActor`) | Not started — no placement, no base class, no node — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
+| `CREA` | Creature | 260/1578 | `CreatureNode` (extends `GamebryoActor`) | Not started — same — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
 
 ## Confirmed NOT Dynamic (real data, closes several "needs research" flags from phases/1/object-types.md)
 

@@ -27,3 +27,8 @@ mid-swing reactivation debounce.
 | 3.1 | Dynamic object types — full status table (Node type per Dynamic base record type, real-data-verified) | [01-dynamic-object-types.md](01-dynamic-object-types.md) |
 | 3.2 | Item branch: inventory foundation + MISC as a real, draggable/pickup-able physics prop | [02-item-branch-inventory-and-misc.md](02-item-branch-inventory-and-misc.md) |
 | 3.3 | Browsable terminals — real TERM data, menu navigation, result/Note pages | [03-browsable-terminals.md](03-browsable-terminals.md) |
+
+**Remaining Phase 3 work is tracked live on GitHub**, not as further numbered task
+files here — see [01-dynamic-object-types.md](01-dynamic-object-types.md)'s own note
+for the open issues (Item branch remainder, KEYM/ALCH follow-up, the Actor branch).
+These `.md` files stay as the real-data design record for what's already shipped.
