@@ -40,6 +40,24 @@ int main(int argc, char **argv) {
 			}
 			std::cout << "\n";
 		}
+		for (const auto &sub : subs) {
+			if (sub.type != "INAM" || sub.size < 4) continue;
+			util::ByteReader bytes(sub.data, sub.size);
+			const uint32_t note_form_id = bytes.read_u32();
+			auto note = file.find_record_by_form_id(note_form_id);
+			if (!note) {
+				std::cout << "  linked note 0x" << std::hex << note_form_id << std::dec << " missing\n";
+				continue;
+			}
+			std::cout << "  linked record 0x" << std::hex << note_form_id << std::dec << " " << note->type << "\n";
+			const auto note_data = file.read_record_data(*note);
+			for (const auto &note_sub : esm::EsmFile::parse_subrecords(note_data)) {
+				std::cout << "    " << note_sub.type << " " << note_sub.size;
+				if (note_sub.type == "EDID" || note_sub.type == "FULL" || note_sub.type == "DESC" || note_sub.type == "CNAM" || note_sub.type == "TNAM")
+					std::cout << "  \"" << note_sub.as_string() << "\"";
+				std::cout << "\n";
+			}
+		}
 	});
 	std::cout << "matched " << matched << " TERM record(s)\n";
 	if (find_placements) {

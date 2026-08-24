@@ -53,6 +53,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
+	ClassDB::bind_method(D_METHOD("get_note_data", "note_form_id"), &EsmReader::get_note_data);
 	ClassDB::bind_method(D_METHOD("find_placeable_by_id", "id_or_editor_id"), &EsmReader::find_placeable_by_id);
 	ClassDB::bind_method(D_METHOD("get_cell_lighting_data", "cell_form_id"), &EsmReader::get_cell_lighting_data);
 	ClassDB::bind_method(D_METHOD("get_script_data", "scpt_form_id"), &EsmReader::get_script_data);
@@ -401,6 +402,19 @@ Dictionary EsmReader::get_terminal_data(int64_t terminal_form_id) const {
 			items.push_back(d);
 		}
 		out["items"] = items;
+	} catch (const std::exception &e) { last_error_ = String(e.what()); }
+	return out;
+}
+
+Dictionary EsmReader::get_note_data(int64_t note_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto note = file_.get_note_data(static_cast<uint32_t>(note_form_id));
+		if (!note) return out;
+		out["editor_id"] = String(note->editor_id.c_str());
+		out["full_name"] = String(note->full_name.c_str());
+		out["text"] = String(note->text.c_str());
 	} catch (const std::exception &e) { last_error_ = String(e.what()); }
 	return out;
 }

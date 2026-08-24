@@ -669,6 +669,20 @@ std::optional<TerminalData> EsmFile::get_terminal_data(uint32_t terminal_form_id
 	return terminal;
 }
 
+std::optional<NoteData> EsmFile::get_note_data(uint32_t note_form_id) const {
+	auto record = find_record_by_form_id(note_form_id);
+	if (!record || record->type != "NOTE") return std::nullopt;
+	NoteData note;
+	std::vector<uint8_t> data = read_record_data(*record);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "EDID") note.editor_id = s.as_string();
+		else if (s.type == "FULL") note.full_name = s.as_string();
+		else if (s.type == "TNAM") note.text = s.as_string();
+	}
+	return note;
+}
+
 std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_form_id) const {
 	auto record = find_record_by_form_id(cell_form_id);
 	if (!record || record->type != "CELL") {

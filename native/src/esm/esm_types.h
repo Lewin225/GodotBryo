@@ -190,6 +190,16 @@ struct TerminalData {
 	std::vector<TerminalMenuItem> items;
 };
 
+// NOTE records linked by TERM.INAM.  The placed terminal fixture establishes
+// that NOTE.TNAM is the displayed body text; keep the record identity too so
+// terminals follow the authored FormID link rather than inferring a note from
+// its menu label.
+struct NoteData {
+	std::string editor_id; // EDID
+	std::string full_name; // FULL, optional on the surveyed notes
+	std::string text; // TNAM
+};
+
 // CELL.XCLL ("Lighting") -- confirmed layout via fopdoc's CELL page: 40
 // bytes -- Ambient Color(rgba), Directional Color(rgba), Fog Color(rgba),
 // Fog Near(f32), Fog Far(f32), Directional Rotation XY(i32), Directional
