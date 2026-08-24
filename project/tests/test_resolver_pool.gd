@@ -2,7 +2,7 @@ extends Node3D
 
 # 2.10 step 2 — GamebryoResolverPool. See phases/2/10-threaded-streaming-workers.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

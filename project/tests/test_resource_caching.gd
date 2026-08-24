@@ -9,7 +9,7 @@ extends Node3D
 # near-100%-cache-hit and meaningfully faster wall-clock than pass 1 — a
 # real measured before/after within one run, not an assumption.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const CELL_GRID_X := -17
 const CELL_GRID_Y := 0

@@ -9,7 +9,7 @@ extends Node3D
 # objects_per_frame=20) -- this test's own waits are sized generously
 # around that, not tuned to the bare minimum.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const SETTLE_TIMEOUT_MSEC := 90000
 
 var failures := 0

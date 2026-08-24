@@ -5,7 +5,7 @@ extends Node3D
 # same way it already does for full-detail. See
 # phases/2/12-distant-object-lod.md.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 

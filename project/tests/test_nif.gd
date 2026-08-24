@@ -1,6 +1,6 @@
 extends Node
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const OUT_DIR := "/tmp/nv_test_screenshots/nif_test_output/" # stable, session-independent -- created fresh by make_dir_recursive_absolute() below regardless of who's running this
 
 var failures := 0
