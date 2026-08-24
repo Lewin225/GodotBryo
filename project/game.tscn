@@ -119,6 +119,7 @@ metadata/_tab_index = 1
 [node name="Inventory" type="Control" parent="Debug Tools/TabContainer" unique_id=402594954]
 visible = false
 layout_mode = 2
+script = ExtResource("8_inventorydebug")
 metadata/_tab_index = 2
 
 [node name="CellLoader" type="Control" parent="Debug Tools/TabContainer" unique_id=655647290]
@@ -312,3 +313,53 @@ theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
 
 [editable path="Character"]
+[ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Player inventory"
+
+[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Inc"
+tooltip_text = "Add one of the selected inventory item (debug only)."
+
+[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Delete"
+tooltip_text = "Remove one selected item from inventory."
+
+[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+layout_mode = 2
+text = "Drop"
+tooltip_text = "Spawn one selected item in front of the camera."
+
+[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+text = "0 distinct item type(s)"
