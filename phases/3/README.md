@@ -26,3 +26,4 @@ mid-swing reactivation debounce.
 | 3.0 | Door completion — real swing animation, sounds, flags | [00-door-completion.md](00-door-completion.md) |
 | 3.1 | Dynamic object types — full status table (Node type per Dynamic base record type, real-data-verified) | [01-dynamic-object-types.md](01-dynamic-object-types.md) |
 | 3.2 | Item branch: inventory foundation + MISC as a real, draggable/pickup-able physics prop | [02-item-branch-inventory-and-misc.md](02-item-branch-inventory-and-misc.md) |
+| 3.3 | Browsable terminals — real TERM data, menu navigation, result/Note pages | [03-browsable-terminals.md](03-browsable-terminals.md) |

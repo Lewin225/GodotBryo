@@ -132,7 +132,9 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_
 			return _resolve_item(placement, ctx)
 		"ALCH":
 			return _resolve_item(placement, ctx)
-		"CONT", "ACTI", "FURN", "TACT", "TERM", "MSTT":
+		"TERM":
+			return _resolve_terminal(placement, ctx)
+		"CONT", "ACTI", "FURN", "TACT", "MSTT":
 			return _resolve_visual(placement, ctx, type_tag)
 		_:
 			if String(placement.get("model", "")) != "":
@@ -251,6 +253,13 @@ func _resolve_item(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictio
 	visual["item_data"] = ctx.esm.get_item_data(int(placement.get("base_form_id", 0)))
 	return visual
 
+func _resolve_terminal(placement: Dictionary, ctx: GamebryoResolveContext) -> Dictionary:
+	var visual := _resolve_visual(placement, ctx, "TERM")
+	if visual["kind"] == "skip":
+		return visual
+	visual["terminal_data"] = ctx.esm.get_terminal_data(int(placement.get("base_form_id", 0)))
+	return visual
+
 ## phases/2/10-threaded-streaming-workers.md, step 4: the main-thread-only
 ## "commit" half of the resolve/commit split -- builds the real Node
 ## subtree (or feeds `batch`, a DirectGeometryBatch, for the structural-
@@ -317,7 +326,10 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	resolver.populate_mesh_children(node, null, "", geometry)
 	resolver.populate_collision_children(node, null, "", geometry)
-	return _finalize(node, result["placement"])
+	node = _finalize(node, result["placement"])
+	if node is TerminalNode:
+		node.configure_terminal(result.get("terminal_data", {}))
+	return node
 
 ## phases/3/00-door-completion.md step 7: doors are Dynamic (can script,
 ## and can animate -- see enginedocs/nv_class_hierarchy.md's Dynamic/Static
@@ -440,7 +452,7 @@ func _register_defaults() -> void:
 	register("ACTI", func(p, r): return _instantiate_visual(ActivatorNode, p, r))
 	register("FURN", func(p, r): return _instantiate_visual(FurnitureNode, p, r))
 	register("TACT", func(p, r): return _instantiate_visual(TalkingActivatorNode, p, r))
-	register("TERM", func(p, r): return _instantiate_visual(TerminalNode, p, r))
+	register("TERM", func(p, r): return _build_terminal(p, r))
 	register("MSTT", func(p, r): return _instantiate_visual(MovableStaticNode, p, r))
 	register("MISC", func(p, r): return _build_item(p, r))
 	register("KEYM", func(p, r): return _build_item(p, r))
@@ -473,6 +485,13 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
+
+func _build_terminal(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var node := _instantiate_visual(TerminalNode, placement, mesh_resolver) as TerminalNode
+	if node == null:
+		return null
+	node.configure_terminal(esm.get_terminal_data(int(placement.get("base_form_id", 0))))
+	return node
 
 func _build_item(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
 	var data: Dictionary = esm.get_item_data(int(placement.get("base_form_id", 0)))

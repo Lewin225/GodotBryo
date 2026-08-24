@@ -167,6 +167,39 @@ struct ItemData {
 	std::string message_icon;
 };
 
+// TERM's authored menu is an ordered, interleaved subrecord stream rather
+// than a separate child record table.  Keep the FormID links and the limited
+// condition/script evidence needed by the first browsable-terminal pass;
+// evaluating conditions or menu scripts is deliberately a later layer.
+struct TerminalMenuItem {
+	std::string text; // ITXT
+	std::string result_text; // RNAM when it is authored text (empty is valid)
+	uint32_t note_form_id = 0; // INAM
+	uint32_t submenu_form_id = 0; // TNAM
+	uint8_t flags = 0; // ANAM, raw until its bits are verified
+	uint32_t condition_count = 0; // CTDA occurrences attached to this item
+	std::string script_source; // SCTX, if this item carries an inline script
+};
+
+struct TerminalData {
+	std::string editor_id; // EDID
+	std::string full_name; // FULL
+	std::string model_path; // MODL
+	std::string welcome_text; // DESC
+	uint32_t flags = 0; // DNAM, raw until verified
+	std::vector<TerminalMenuItem> items;
+};
+
+// NOTE records linked by TERM.INAM.  The placed terminal fixture establishes
+// that NOTE.TNAM is the displayed body text; keep the record identity too so
+// terminals follow the authored FormID link rather than inferring a note from
+// its menu label.
+struct NoteData {
+	std::string editor_id; // EDID
+	std::string full_name; // FULL, optional on the surveyed notes
+	std::string text; // TNAM
+};
+
 // CELL.XCLL ("Lighting") -- confirmed layout via fopdoc's CELL page: 40
 // bytes -- Ambient Color(rgba), Directional Color(rgba), Fog Color(rgba),
 // Fog Near(f32), Fog Far(f32), Directional Rotation XY(i32), Directional

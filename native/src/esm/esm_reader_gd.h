@@ -94,6 +94,8 @@ public:
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
 	Dictionary get_item_data(int64_t item_form_id) const;
+	Dictionary get_terminal_data(int64_t terminal_form_id) const;
+	Dictionary get_note_data(int64_t note_form_id) const;
 
 	// Runtime-console lookup for PlaceAtMe: accepts either an 8-digit hex
 	// FormID (with or without 0x) or an exact EditorID.  Returns the base
