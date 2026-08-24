@@ -261,7 +261,7 @@ func debug_drop_inventory_item(base_form_id: int) -> bool:
 	var player := _find_character_body(self)
 	if player == null or not ("CAMERA" in player): return false
 	var camera: Camera3D = player.CAMERA
-	var placement := { "base_form_id": base_form_id, "base_type": "MISC", "model": entry.get("model_path", ""), "position": camera.global_position - camera.global_transform.basis.z * 1.2, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0, "editor_id": entry.get("full_name", "DroppedItem") }
+	var placement := { "base_form_id": base_form_id, "base_type": entry.get("base_type", "MISC"), "model": entry.get("model_path", ""), "position": camera.global_position - camera.global_transform.basis.z * 1.2, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0, "editor_id": entry.get("full_name", "DroppedItem") }
 	var node := cell_loader.registry.build(placement)
 	if node == null: return false
 	add_child(node)

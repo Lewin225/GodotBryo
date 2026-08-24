@@ -6,6 +6,28 @@ func check(ok: bool, msg: String) -> void:
 	print("  OK   " if ok else "  FAIL ", msg)
 	if not ok: failures += 1
 
+func first_of_type(esm: EsmReader, cell_editor_id: String, type_tag: String) -> Dictionary:
+	var cell := esm.find_cell_by_editor_id(cell_editor_id)
+	for placement in esm.get_cell_references(int(cell.get("form_id", 0))):
+		if placement.get("base_type", "") == type_tag:
+			return placement
+	return {}
+
+func check_pickup_drop_shape(registry: GamebryoObjectRegistry, placement: Dictionary, rigid: bool, label: String) -> void:
+	var node := registry.build(placement)
+	check(node is ItemNode, "%s builds as ItemNode" % label)
+	if not node is ItemNode: return
+	var picked: Dictionary = node.pickup()
+	var data: Dictionary = picked["item_data"]
+	check(data.get("full_name", "") != "" and data.has("value") and data.has("weight"), "%s pickup retains name/value/weight" % label)
+	var dropped := placement.duplicate()
+	dropped["base_type"] = data["base_type"]
+	dropped["model"] = data["model_path"]
+	var restored := registry.build(dropped)
+	check((restored.get_node_or_null("RigidBody3D") is GamebryoRigidBody) == rigid, "%s drop restores %s physics" % [label, "rigid-body" if rigid else "static"])
+	node.free()
+	if restored != null: restored.free()
+
 func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
@@ -31,6 +53,12 @@ func _ready() -> void:
 		var ctx := GamebryoResolveContext.new()
 		var result := registry.resolve_placement(misc, ctx)
 		check(result.get("kind", "") == "item", "MISC resolves as item in WorldStreamer path")
+		var key := first_of_type(esm, "RepconHQ01", "KEYM")
+		check(not key.is_empty(), "found real REPCON keycard")
+		if not key.is_empty(): check_pickup_drop_shape(registry, key, false, "KEYM")
+		var alch := first_of_type(esm, "GSDocMitchellHouse", "ALCH")
+		check(not alch.is_empty(), "found real ALCH placement")
+		if not alch.is_empty(): check_pickup_drop_shape(registry, alch, true, "ALCH")
 	_finish()
 
 func _finish() -> void:

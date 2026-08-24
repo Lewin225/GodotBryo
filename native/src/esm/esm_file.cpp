@@ -600,21 +600,26 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 
 std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 	auto record = find_record_by_form_id(item_form_id);
-	// This parser intentionally starts with MISC: its eight-byte DATA layout
-	// was checked against FalloutNV.esm. Other item types require their own
-	// format verification before this generic surface can safely serve them.
-	if (!record || record->type != "MISC") return std::nullopt;
+	if (!record || (record->type != "MISC" && record->type != "KEYM" && record->type != "ALCH")) return std::nullopt;
 	ItemData item;
 	bool have_data = false;
+	bool have_alch_weight = false;
 	for (const auto &s : parse_subrecords(read_record_data(*record))) {
 		if (s.type == "FULL") item.full_name = s.as_string();
 		else if (s.type == "ICON") item.inventory_icon = s.as_string();
 		else if (s.type == "MICO") item.message_icon = s.as_string();
-		else if (s.type == "DATA" && s.size >= 8) {
+		else if ((record->type == "MISC" || record->type == "KEYM") && s.type == "DATA" && s.size >= 8) {
 			util::ByteReader sr(s.data, s.size);
 			item.value = static_cast<int32_t>(sr.read_u32());
 			item.weight = read_f32(sr);
 			have_data = true;
+		}
+		else if (record->type == "ALCH" && !have_alch_weight && s.type == "DATA" && s.size == 4) {
+			util::ByteReader sr(s.data, s.size); item.weight = read_f32(sr);
+			have_alch_weight = true;
+		}
+		else if (record->type == "ALCH" && s.type == "ENIT" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size); item.value = static_cast<int32_t>(sr.read_u32()); have_data = true;
 		}
 	}
 	return have_data ? std::optional<ItemData>(std::move(item)) : std::nullopt;

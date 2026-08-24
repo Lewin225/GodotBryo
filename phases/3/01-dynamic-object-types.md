@@ -78,10 +78,10 @@ enough real instances that leaving them unregistered is a genuine, measurable ga
 |---|---|---|---|---|
 | `MISC` | Misc. Item | 178/507 | `ItemNode` (shared) | Done — Phase 3.2 proves the shared ItemNode pattern: real MISC DATA, inventory conversion, rigid-body world props, drag/pickup. The remaining six Item types can follow it after their individual DATA layouts are verified. |
 | `ARMO` | Armor | 47/389 | `ItemNode` (shared) | Not started |
-| `KEYM` | Key | 7/283 | `ItemNode` (shared) | Not started |
+| `KEYM` | Key | 7/283 | `ItemNode` (shared) | In progress — shared pickup/physics path; keyring/use behavior remains deferred. |
 | `WEAP` | Weapon | 17/261 | `ItemNode` (shared) | Not started |
 | `CCRD` | Caravan Card | 270/270 (**all of them**) | `ItemNode` (shared) | Not started — every single real instance has a Pickup Script, confirmed real data, not the "moderate confidence" phases/1/object-types.md flagged it with |
-| `ALCH` | Consumable | 2/189 | `ItemNode` (shared) | Not started — negligible but nonzero |
+| `ALCH` | Consumable | 2/189 | `ItemNode` (shared) | In progress — pickup/physics only; consuming and effects deliberately deferred. |
 | `AMMO` | Ammunition | 2/92 | `ItemNode` (shared) | Not started — negligible but nonzero (also has a separate real `Impact Script` field on the base record itself, run on whatever Actor a projectile hits — orthogonal to placement-Node scripting, needs its own handling whenever Phase 6 combat lands) |
 
 ### Actor branch — doesn't exist as a branch at all yet
