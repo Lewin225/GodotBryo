@@ -981,8 +981,17 @@ func populate_rigid_body_children(parent: ItemNode, geometry: Dictionary, mass: 
 	var body := GamebryoRigidBody.new()
 	body.name = "RigidBody3D"
 	body.owner_ref = parent
-	body.mass = max(mass, 0.05)
+	# FNV inventory weight is a carry/balance unit, not Havok kilograms. A
+	# direct mapping made light books almost massless and easy to push through
+	# floors/other props; use a temporary stable conversion until Phase 4.
+	body.mass = max(mass * 5.0, 1.0)
+	# 2 is Godot's CAST_SHAPE CCD mode. Use the numeric enum value because
+	# this project's 4.7 bindings do not expose CCD_MODE_CAST_SHAPE to GDScript.
+	body.continuous_cd = 2
+	body.contact_monitor = true
+	body.max_contacts_reported = 8
 	body.can_sleep = true
+	body.sleeping = true # wake automatically on a player/prop collision or drag force
 	parent.add_child(body)
 	populate_mesh_children(body, null, "", geometry)
 	for entry in geometry["shape_entries"]:
