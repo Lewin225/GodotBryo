@@ -11,8 +11,10 @@ clearcoat_roughness = 0.2
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_jw1de"]
 material = SubResource("StandardMaterial3D_kp17n")
+radius = 0.3
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_uy03j"]
+radius = 0.3
 
 [sub_resource type="Animation" id="Animation_j8cx7"]
 resource_name = "RESET"
@@ -379,6 +381,7 @@ MarginContainer/constants/margin_right = 10
 MarginContainer/constants/margin_top = 10
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_k4wwl"]
+radius = 0.3
 
 [node name="Character" type="CharacterBody3D" unique_id=1664366571 node_paths=PackedStringArray("HEAD", "CAMERA", "HEADBOB_ANIMATION", "JUMP_ANIMATION", "CROUCH_ANIMATION", "COLLISION_MESH")]
 transform = Transform3D(-4.37114e-08, 0, -1, 0, 1, 0, 1, 0, -4.37114e-08, 0, 0, 0)
