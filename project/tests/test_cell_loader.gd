@@ -6,7 +6,7 @@ extends Node3D
 # immediately swap doesn't leave stale/renamed nodes), then test
 # cancel_load() mid-stream.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 var _progress_events := 0

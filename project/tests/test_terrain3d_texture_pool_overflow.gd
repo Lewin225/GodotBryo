@@ -29,7 +29,7 @@ extends Node3D
 # into the control map at all, so USABLE_SLOTS is a plain budget again
 # (127 usable + 1 pink fallback = TOTAL_SLOTS), no reserved gap slot.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+const DATA_DIR := "../fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 
 var failures := 0

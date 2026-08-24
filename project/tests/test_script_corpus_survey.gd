@@ -25,7 +25,7 @@ extends Node
 ## figure was counted across every DLC .esm too; this survey doesn't open
 ## those, a real, deliberate scope match to what this whole milestone
 ## covers so far, not a discrepancy.
-const ESM_PATH := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm"
+const ESM_PATH := "../fresh_nv_copy/Data/FalloutNV.esm"
 
 func _ready() -> void:
 	var esm := EsmReader.new()
