@@ -52,6 +52,11 @@ var _pending_item: ItemNode = null
 var _dragging_item: ItemNode = null
 var _item_press_time_msec := 0
 
+# The player is a scene-authored direct child (game.tscn: Character), not a
+# dynamically discovered gameplay object.  Keep a validated cache instead of
+# recursively walking every streamed CellLoader child before reaching it.
+var _character_body: CharacterBody3D = null
+
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
 # (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
 # duplicated.
@@ -107,7 +112,7 @@ func _ready() -> void:
 	script_engine.esm = cell_loader.esm
 	cell_loader.registry.script_engine = script_engine
 	world_streamer.registry.script_engine = script_engine
-	script_engine.player_node = _find_character_body(self) # real GECK "player" keyword -- see ScriptEngine's own doc comment
+	script_engine.player_node = _get_character_body() # real GECK "player" keyword -- see ScriptEngine's own doc comment
 	script_engine.function_registry.place_at_me_handler = debug_place_at_me
 	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
 
@@ -175,7 +180,7 @@ func _process(_delta: float) -> void:
 ## itself -- enginedocs/nv_class_hierarchy.md: composed, not inherited)
 ## the resolved owner_ref.
 func _interact_raycast() -> Dictionary:
-	var player := _find_character_body(self)
+	var player := _get_character_body()
 	if player == null or not ("CAMERA" in player) or player.CAMERA == null:
 		return {}
 	var camera: Camera3D = player.CAMERA
@@ -229,7 +234,7 @@ func _update_item_interaction() -> void:
 			_try_interact()
 	if _pending_item != null and Input.is_action_pressed("interact") and _dragging_item == null:
 		if Time.get_ticks_msec() - _item_press_time_msec >= int(ITEM_DRAG_HOLD_SECONDS * 1000.0):
-			var player := _find_character_body(self)
+			var player := _get_character_body()
 			if player != null and "CAMERA" in player and _pending_item.begin_drag(player.CAMERA):
 				_dragging_item = _pending_item
 			_pending_item = null
@@ -262,7 +267,7 @@ func debug_drop_inventory_item(base_form_id: int) -> bool:
 			entry = candidate
 			break
 	if entry.is_empty() or not inventory.remove_item(base_form_id): return false
-	var player := _find_character_body(self)
+	var player := _get_character_body()
 	if player == null or not ("CAMERA" in player): return false
 	var camera: Camera3D = player.CAMERA
 	var placement := { "base_form_id": base_form_id, "base_type": entry.get("base_type", "MISC"), "model": entry.get("model_path", ""), "position": camera.global_position - camera.global_transform.basis.z * 1.2, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0, "editor_id": entry.get("full_name", "DroppedItem") }
@@ -367,11 +372,11 @@ func _try_interact() -> void:
 		# a script side effect. Locking, conditions and menu scripts remain
 		# explicitly outside this first pass; TerminalSession displays those
 		# unavailable choices rather than silently executing or hiding them.
-		terminal_session.open_session(target, cell_loader.esm, _find_character_body(self))
+		terminal_session.open_session(target, cell_loader.esm, _get_character_body())
 		return
 	if not target.has_method("activate"):
 		if script_engine != null and script_engine.is_scripted(target):
-			script_engine.dispatch_event(target, "OnActivate", _find_character_body(self))
+			script_engine.dispatch_event(target, "OnActivate", _get_character_body())
 		return
 	var outcome: Dictionary = target.activate()
 	if outcome.is_empty():
@@ -418,7 +423,7 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	# _physics_process()), not just gravity specifically -- also freezes
 	# input, which is fine/expected here (matches the "release the player
 	# once streaming_settled fires" design this signal was built for).
-	var player := _find_character_body(self)
+	var player := _get_character_body()
 	if player != null:
 		player.set_physics_process(false)
 		if "velocity" in player:
@@ -578,7 +583,7 @@ func _find_fallback_spawn_transform() -> Dictionary:
 ## forward). Set HEAD's own rotation.y instead, and leave the body's
 ## rotation untouched, so both stay in sync.
 func reposition_player(pos: Vector3, rot: Vector3) -> void:
-	var player := _find_character_body(self)
+	var player := _get_character_body()
 	if player == null:
 		push_warning("game.gd: no CharacterBody3D found to reposition")
 		return
@@ -590,14 +595,16 @@ func reposition_player(pos: Vector3, rot: Vector3) -> void:
 	if "velocity" in player:
 		player.velocity = Vector3.ZERO
 
-func _find_character_body(node: Node) -> CharacterBody3D:
-	if node is CharacterBody3D:
-		return node
-	for c in node.get_children():
-		var found := _find_character_body(c)
-		if found != null:
-			return found
-	return null
+## This used to recurse from Game through its entire subtree. Character is
+## after CellLoader in game.tscn, so every lookup first traversed streamed
+## cell content; that is why one logical interaction lookup became hundreds
+## of profiler calls. Re-resolve only the authored direct child if the cache
+## was invalidated by a future character replacement.
+func _get_character_body() -> CharacterBody3D:
+	if is_instance_valid(_character_body):
+		return _character_body
+	_character_body = get_node_or_null(^"Character") as CharacterBody3D
+	return _character_body
 
 ## Returns the currently-loaded cell's combined world-space AABB (from its
 ## MeshInstance3D descendants), or null if nothing is loaded / has no
