@@ -625,6 +625,59 @@ std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 	return have_data ? std::optional<ItemData>(std::move(item)) : std::nullopt;
 }
 
+std::optional<GrassData> EsmFile::get_grass_data(uint32_t grass_form_id) const {
+	auto record = find_record_by_form_id(grass_form_id);
+	if (!record || record->type != "GRAS") {
+		return std::nullopt;
+	}
+	GrassData grass;
+	bool have_data = false;
+	const std::vector<uint8_t> data = read_record_data(*record);
+	const std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const Subrecord &s : subs) {
+		if (s.type == "EDID") grass.editor_id = s.as_string();
+		else if (s.type == "MODL") grass.model_path = s.as_string();
+		else if (s.type == "DATA" && s.size >= 29) {
+			// GRAS.DATA is 32 bytes in every shipped FNV base record.  Its
+			// first three traits are bytes, then two water traits with padding;
+			// only the later four traits are floats.  See grass_survey.cpp and
+			// GetGrassTraitNumeric's verified trait order.
+			util::ByteReader sr(s.data, s.size);
+			grass.density = sr.read_u8();
+			grass.min_slope = sr.read_u8();
+			grass.max_slope = sr.read_u8();
+			sr.read_u8(); // unknown/padding byte
+			grass.units_from_water_amount = sr.read_u16();
+			sr.read_u16(); // unknown/padding bytes
+			grass.units_from_water_type = sr.read_u32();
+			grass.position_range = read_f32(sr);
+			grass.height_range = read_f32(sr);
+			grass.color_range = read_f32(sr);
+			grass.wave_period = read_f32(sr);
+			grass.flags = sr.read_u8();
+			have_data = true;
+		}
+	}
+	return have_data ? std::optional<GrassData>(std::move(grass)) : std::nullopt;
+}
+
+std::vector<uint32_t> EsmFile::get_ltex_grass_form_ids(uint32_t ltex_form_id) const {
+	std::vector<uint32_t> out;
+	auto record = find_record_by_form_id(ltex_form_id);
+	if (!record || record->type != "LTEX") {
+		return out;
+	}
+	const std::vector<uint8_t> data = read_record_data(*record);
+	const std::vector<Subrecord> subs = parse_subrecords(data);
+	for (const Subrecord &s : subs) {
+		if (s.type == "GNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			out.push_back(sr.read_u32());
+		}
+	}
+	return out;
+}
+
 std::optional<TerminalData> EsmFile::get_terminal_data(uint32_t terminal_form_id) const {
 	auto record = find_record_by_form_id(terminal_form_id);
 	if (!record || record->type != "TERM") return std::nullopt;

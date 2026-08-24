@@ -478,6 +478,15 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 
 		std::string tex;
 		nif.GetTextureSlot(shape, tex, 0); // slot 0: diffuse/base
+		// Grass NIFs do not use BSShaderTextureSet: their real diffuse path
+		// lives directly on TallGrassShaderProperty.fileName.  Leaving this
+		// as an empty normal slot made every otherwise-valid GRAS mesh render
+		// without its alpha-tested grass texture.
+		if (tex.empty()) {
+			if (auto *grass_shader = dynamic_cast<nifly::TallGrassShaderProperty *>(shader)) {
+				tex = grass_shader->fileName.get();
+			}
+		}
 		sub.texture_path = tex;
 		nif.GetTextureSlot(shape, tex, 1); // slot 1: normal + gloss(alpha)
 		sub.normal_texture_path = tex;

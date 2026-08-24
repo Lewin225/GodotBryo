@@ -22,7 +22,7 @@ extends Control
 ## regardless of where Debug Tools itself ends up parented later.
 const REFRESH_INTERVAL_SEC := 0.25
 
-@onready var _state_label: RichTextLabel = $Margin/VBox/StateLabel
+@onready var _state_label: TextEdit = $Margin/VBox/StateLabel
 @onready var _radius_label: RichTextLabel = $Margin/VBox/RadiusLabel
 @onready var _tiles_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/TilesPerFrameSpin
 @onready var _objects_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/ObjectsPerFrameSpin
@@ -87,6 +87,8 @@ func _refresh_state() -> void:
 	lines.append("full-detail resident tiles: %d / %d" % [
 		ws._resident_full_detail.values().count(true), ws._resident.size(),
 	])
+	if ws._terrain_grass_particles != null:
+		lines.append_array(ws._terrain_grass_particles.get_debug_summary())
 	_state_label.text = "\n".join(lines)
 
 func _refresh_radius_config() -> void:
