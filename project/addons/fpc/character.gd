@@ -140,6 +140,9 @@ var moving : bool = false
 #endregion
 
 
+#Added this LN
+var speed_multiplier = 1
+
 
 #region Main Control Flow
 
@@ -170,6 +173,14 @@ func _process(_delta : float) -> void:
 
 
 func _physics_process(delta : float) -> void:
+	if Input.is_action_just_released("player_speedup"):
+		speed_multiplier += 1
+	if Input.is_action_just_released("player_speeddown"):
+		speed_multiplier -= 1
+	speed_multiplier = clampi(speed_multiplier, 1, 20)
+	speed = base_speed * speed_multiplier
+	jump_velocity = 4.5 * (speed_multiplier*0.35)
+	
 	if not is_on_floor() and gravity_enabled:
 		velocity += get_gravity() * delta
 
