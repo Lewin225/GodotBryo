@@ -4,4 +4,5 @@
 
 [node name="NifViewer" type="Node3D" unique_id=1911384985]
 script = ExtResource("1")
-preset = "Elevator - Silo (complex)"
+preset = "Light - Chandelier (NiAmbientLight)"
+custom_nif_path = "dungeons\\office\\doors\\offdoorhotelblanksmr01.nif"
