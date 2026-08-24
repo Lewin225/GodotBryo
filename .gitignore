@@ -41,3 +41,4 @@ dev_progress_media/
 
 # Claude Code harness temp files
 .claude/*.tmp.*
+dino_delux_test.scn
