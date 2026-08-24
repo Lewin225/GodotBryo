@@ -42,6 +42,7 @@ const ITEM_DRAG_HOLD_SECONDS := 0.28
 var cell_loader: CellLoader
 var world_streamer: WorldStreamer
 var script_engine: ScriptEngine
+var terminal_session: TerminalSession
 var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 var _sun: DirectionalLight3D
@@ -87,6 +88,7 @@ func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
 	script_engine = $ScriptEngine
+	terminal_session = $TerminalSession
 	_cell_label = $DebugHud/CellLabel
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
@@ -359,6 +361,13 @@ func _try_interact() -> void:
 		return
 	if target.has_method("pickup"):
 		_pickup_item(target)
+		return
+	if target is TerminalNode:
+		# TERM browsing is a Game-owned session, not an activate() outcome or
+		# a script side effect. Locking, conditions and menu scripts remain
+		# explicitly outside this first pass; TerminalSession displays those
+		# unavailable choices rather than silently executing or hiding them.
+		terminal_session.open_session(target, cell_loader.esm, _find_character_body(self))
 		return
 	if not target.has_method("activate"):
 		if script_engine != null and script_engine.is_scripted(target):
