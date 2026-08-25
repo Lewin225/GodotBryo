@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
+[ext_resource type="Script" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -256,12 +257,109 @@ text = "0 distinct item type(s)"
 fit_content = true
 scroll_active = false
 
-[node name="CellLoader" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
+[node name="Teleport" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
+script = ExtResource("11_teleportdebug")
 metadata/_tab_index = 3
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Teleport" unique_id=982341201]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin" unique_id=143290123]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=190283471]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]⚡ Fast Travel & Cell Teleport (COC)[/b]"
+
+[node name="QuickRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=184920348]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CellInput" type="LineEdit" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=129384019]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Enter Cell EditorID (e.g. GSDocMitchellHouse, NovacGiftShop)..."
+clear_button_enabled = true
+
+[node name="TeleportBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=102938475]
+layout_mode = 2
+tooltip_text = "Execute CenterOnCell (COC) teleport to the specified Cell EditorID."
+text = "Teleport (COC)"
+
+[node name="CurrentBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=192837465]
+layout_mode = 2
+tooltip_text = "Populate input with currently loaded Cell EditorID."
+text = "Current"
+
+[node name="StatusLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=139485720]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[color=#7f848e]Select a preset destination below or enter an EditorID.[/color]"
+
+[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=149582039]
+layout_mode = 2
+
+[node name="PresetsHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=120495839]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PresetsTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=194857203]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]📋 Preset Destinations[/b]"
+
+[node name="CategoryFilter" type="OptionButton" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=109283746]
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+
+[node name="SearchFilter" type="LineEdit" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=192837492]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+placeholder_text = "Search presets..."
+clear_button_enabled = true
+
+[node name="PresetTree" type="Tree" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=184759201]
+custom_minimum_size = Vector2(0, 240)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 3
+column_titles_visible = true
+hide_root = true
+
+[node name="ButtonsRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=149583029]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TeleportSelectedBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/ButtonsRow" unique_id=120394857]
+layout_mode = 2
+text = "Teleport to Selected"
+
+[node name="HintLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/ButtonsRow" unique_id=139485721]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[color=#7f848e]💡 Tip: Double-click any destination row to teleport instantly.[/color]"
 
 [node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
 visible = false
