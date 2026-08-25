@@ -1,5 +1,7 @@
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # TEMP DIAGNOSTIC: measure the main-thread construct-step cost (Node
 # creation + DirectGeometryBatch.build()) per tile, at whatever RADIUS_LOAD
 # is currently set in world_streamer.gd, for one real activate()-to-settled
@@ -25,7 +27,7 @@ func _percentile_report(label: String, values: Array) -> void:
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		get_tree().quit(1)
 		return

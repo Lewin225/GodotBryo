@@ -14,6 +14,10 @@ config/name="NV Engine Test"
 run/main_scene="res://game.tscn"
 config/features=PackedStringArray("4.7")
 
+[autoload]
+
+GameDataSettings="*res://game_data_settings.gd"
+
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/script_viewer/plugin.cfg")

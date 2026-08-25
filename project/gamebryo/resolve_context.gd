@@ -1,6 +1,8 @@
 class_name GamebryoResolveContext
 extends RefCounted
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## phases/2/10-threaded-streaming-workers.md, step 3: the per-task-private
 ## state a threaded tile resolve needs. Bundles a GamebryoMeshResolver
 ## (BSA/NIF/mesh/texture/collision resolution, per step 2) with its own
@@ -17,8 +19,11 @@ extends RefCounted
 var resolver: GamebryoMeshResolver
 var esm: EsmReader
 
-func _init() -> void:
-	resolver = GamebryoMeshResolver.new()
+
+func _init(data_dir: String = "") -> void:
+	if data_dir == "":
+		data_dir = String(GameDataConfigScript.resolve().get("data_dir", ""))
+	resolver = GamebryoMeshResolver.new(data_dir)
 	esm = EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("GamebryoResolveContext: could not open FalloutNV.esm")
