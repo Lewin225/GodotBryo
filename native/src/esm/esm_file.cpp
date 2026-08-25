@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <unordered_set>
 #include <zlib.h>
 
 namespace esm {
@@ -1238,6 +1239,72 @@ std::optional<DoorData> EsmFile::get_door_data(uint32_t door_form_id) const {
 	door.close_sound_path = resolve_soun_filename(anam);
 	door.loop_sound_path = resolve_soun_filename(bnam);
 	return door;
+}
+
+std::vector<std::string> EsmFile::get_all_item_candidates() const {
+	if (item_candidates_cached_) {
+		return item_candidates_cache_;
+	}
+	std::vector<std::string> out;
+	std::unordered_set<std::string> seen;
+
+	for_each_record([&](const RecordInfo &r) {
+		if (r.type == "WEAP" || r.type == "ARMO" || r.type == "AMMO" ||
+		    r.type == "ALCH" || r.type == "MISC" || r.type == "KEYM" || r.type == "BOOK") {
+			char hex_buf[16];
+			std::snprintf(hex_buf, sizeof(hex_buf), "0x%08X", r.form_id);
+			std::string hex_str(hex_buf);
+			if (seen.insert(hex_str).second) {
+				out.push_back(hex_str);
+			}
+
+			std::vector<uint8_t> data = read_record_data(r);
+			for (const auto &s : parse_subrecords(data)) {
+				if (s.type == "EDID") {
+					std::string edid = s.as_string();
+					if (!edid.empty() && seen.insert(edid).second) {
+						out.push_back(edid);
+					}
+				} else if (s.type == "FULL") {
+					std::string full = s.as_string();
+					if (!full.empty() && seen.insert(full).second) {
+						out.push_back(full);
+					}
+				}
+			}
+		}
+	});
+
+	item_candidates_cache_ = out;
+	item_candidates_cached_ = true;
+	return item_candidates_cache_;
+}
+
+std::vector<std::string> EsmFile::get_all_cell_candidates() const {
+	if (cell_candidates_cached_) {
+		return cell_candidates_cache_;
+	}
+	std::vector<std::string> out;
+	std::unordered_set<std::string> seen;
+
+	for_each_record([&](const RecordInfo &r) {
+		if (r.type == "CELL") {
+			std::vector<uint8_t> data = read_record_data(r);
+			for (const auto &s : parse_subrecords(data)) {
+				if (s.type == "EDID") {
+					std::string edid = s.as_string();
+					if (!edid.empty() && seen.insert(edid).second) {
+						out.push_back(edid);
+					}
+					break;
+				}
+			}
+		}
+	});
+
+	cell_candidates_cache_ = out;
+	cell_candidates_cached_ = true;
+	return cell_candidates_cache_;
 }
 
 } // namespace esm
