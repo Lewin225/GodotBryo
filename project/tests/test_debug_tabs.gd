@@ -56,19 +56,33 @@ func _ready() -> void:
 	script_tab._history_index += 1
 	check(script_tab._history[script_tab._history_index] == "CenterOnCell Goodsprings", "Down arrow navigates forward in history")
 
-	# Test Tab completion
+	# Test inline suggestion bar and completion
 	script_tab._line = LineEdit.new()
+	script_tab._suggestions_bar = RichTextLabel.new()
 	script_tab._line.text = "Center"
 	script_tab._line.caret_column = 6
-	script_tab._handle_tab_completion()
-	check(script_tab._line.text.begins_with("CenterOnCell"), "Tab auto-completes 'Center' to 'CenterOnCell'")
-	script_tab._line.free()
+	script_tab._update_suggestions_bar()
+	check(script_tab._suggestions.size() > 0, "Typing 'Center' populates inline suggestions list")
+	check(script_tab._suggestions.has("CenterOnCell"), "Suggestions list contains 'CenterOnCell'")
 
+	# Test Down arrow selection
+	script_tab._navigating_suggestions = true
+	script_tab._suggestion_index = 0
+	script_tab._apply_selected_suggestion()
+	check(script_tab._line.text.begins_with("CenterOnCell"), "Applying suggestion completes 'Center' to 'CenterOnCell'")
+
+	script_tab._suggestions_bar.free()
+	script_tab._line.free()
 	script_tab.free()
 
-	# 4. Test World Streaming sub-tabs structure in game.tscn
+	# 4. Test Scripting suggestions bar and World Streaming sub-tabs structure in game.tscn
 	var game_scene: PackedScene = load("res://game.tscn")
 	var game_node: Node = game_scene.instantiate()
+	var script_tab_node: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Scripting")
+	check(script_tab_node != null, "Scripting tab exists in game.tscn")
+	var suggestions_bar: Node = script_tab_node.get_node_or_null("Margin/VBox/SuggestionsBar")
+	check(suggestions_bar != null, "SuggestionsBar resolved in Scripting tab")
+
 	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
 	check(ws_tab != null, "World Streaming tab exists in game.tscn")
 	var status_card: Node = ws_tab.get_node_or_null("Margin/SubTabs/Streaming State/VBox/StateGrid/StatusCard")
