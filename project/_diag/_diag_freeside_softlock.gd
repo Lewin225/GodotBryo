@@ -1,5 +1,7 @@
 extends SceneTree
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Reproduces the reported softlock directly: activate() WorldStreamer on
 ## the real FreesideWorld worldspace with a real camera present (same
 ## precondition _do_exterior_transition() relies on -- streaming_settled is
@@ -7,12 +9,11 @@ extends SceneTree
 ## time how long streaming_settled takes to fire, with a generous timeout so
 ## a genuine hang is reported rather than the script itself hanging forever.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const TIMEOUT_SEC := 25.0
 
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

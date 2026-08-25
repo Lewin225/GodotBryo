@@ -1,6 +1,8 @@
 @tool
 extends Control
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Editor-only, read-only script inspector -- browse any real SCPT by
 ## editor ID, see its actual GECK source text with every function call
 ## color-coded by whether script_function_registry.gd implements it, and
@@ -29,7 +31,6 @@ extends Control
 ## interpreter, by construction, not a parallel bespoke text scan that
 ## could silently drift from what the game actually does.
 
-const ESM_PATH := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm"
 const REGISTRY_SCRIPT_PATH := "res://script_vm/script_function_registry.gd"
 
 const COLOR_KNOWN := Color("#7ec699") # implemented -- registered in script_function_registry.gd
@@ -73,7 +74,8 @@ func _ready() -> void:
 
 func _load_script_list() -> void:
 	_esm = EsmReader.new()
-	if not _esm.open(ESM_PATH):
+	var data_config := GameDataConfigScript.resolve()
+	if not String(data_config.get("error", "")).is_empty() or not _esm.open(String(data_config.get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		_status_label.text = "Failed to open ESM: %s" % _esm.get_last_error()
 		return
 	var form_ids: PackedInt64Array = _esm.get_all_script_form_ids()

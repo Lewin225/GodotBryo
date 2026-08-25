@@ -19,7 +19,10 @@ their framework outputs nor Fallout: New Vegas assets belong in Git.
 
 3. Place a legally-owned Fallout: New Vegas `Data` directory at the
    checkout-local path `fresh_nv_copy/Data/`. It is gitignored and must never
-   be copied into source control.
+   be copied into source control. To use another installation location, set
+   `GODOTBRYO_DATA_DIR` (or the legacy alias `FNV_DATA_DIR`) to the directory
+   containing `FalloutNV.esm` before launching Godot. The override is
+   authoritative and deliberately fails with an error if that file is absent.
 
 4. Initialise the repository submodules before compiling. In particular,
    `native/godot-cpp`, `native/nifly`, and `native/terrain3d` are build

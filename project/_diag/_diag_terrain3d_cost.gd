@@ -7,7 +7,6 @@ extends Node3D
 # trigger a full RADIUS_LOAD_DISTANT=20 scan -- ~1257 tiles, too much for a first
 # real timing check of the new per-vertex Terrain3D path).
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 
 func _percentile_report(label: String, values: Array) -> void:

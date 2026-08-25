@@ -1,17 +1,19 @@
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # Interactive viewer, not a test — stays open with a free-fly camera instead
 # of screenshotting and quitting. Now routes through the real
 # GamebryoObjectRegistry (phases/1/01-object-type-registry.md) instead of
 # the ad hoc "any REFR with a model" heuristic this started as — typed
 # nodes (DoorNode/ContainerNode/...) show up correctly in the Scene dock.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const CELL_EDITOR_ID := "GSDocMitchellHouse"
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		return
 
@@ -24,7 +26,7 @@ func _ready() -> void:
 	world.rotation_degrees.x = -90 # NIF Z-up -> Godot Y-up
 	add_child(world)
 
-	var resolver := GamebryoMeshResolver.new()
+	var resolver := GamebryoMeshResolver.new(data_dir)
 	var registry := GamebryoObjectRegistry.new(resolver, esm)
 
 	var refs: Array = esm.get_cell_references(int(cell["form_id"]))

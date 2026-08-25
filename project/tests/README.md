@@ -128,5 +128,6 @@ anything.
 | `test_terrain3d_bridge_placement` | 2.13 step 6: `Terrain3DBridge`'s real per-cell world placement, cross-checked against `GamebryoTerrainBuilder`'s own real placement + real 2-cell edge continuity | headless |
 | `test_terrain3d_texture_pool_overflow` | 2.13 step 6: real texture-budget overflow (961 real cells) confirms `Terrain3DTexturePool`'s pink fallback matches the real first texture's size/format/mipmap state (a real "all white" rendering bug otherwise) | headless |
 | `test_grass_esm` | Issue #12: real GRAS.DATA field decoding and a multi-GNAM LTEX grass fixture | headless |
+| `test_game_data_config` | Issue #22: portable data-directory discovery skips existing incomplete directories and reports an invalid explicit override | headless |
 
 Phase/task numbers refer to `phases/`'s own task docs (e.g. "2.12" = `phases/2/12-distant-object-lod.md`).

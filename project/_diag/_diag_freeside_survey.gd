@@ -1,5 +1,7 @@
 extends SceneTree
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Softlock investigation: how many real exterior cells does Freeside's own
 ## worldspace actually have, and how are they distributed in grid space --
 ## checking whether a door landing near Freeside's edge/center plausibly
@@ -8,11 +10,9 @@ extends SceneTree
 ## trigger condition for the suspected _process_load_queue() settled-signal
 ## gap.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

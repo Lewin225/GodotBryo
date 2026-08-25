@@ -1,6 +1,8 @@
 class_name WorldStreamer
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## phases/2/08-world-cell-streaming.md: continuous adjacent-grid-cell
 ## streaming, parallel to (not replacing) CellLoader's single-active-cell
 ## orchestration. Purely position-reactive once active() -- see the task
@@ -27,8 +29,6 @@ extends Node3D
 ## tile.
 
 signal streaming_settled
-
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
 ## phases/2/12-distant-object-lod.md, step 3: two radii instead of one --
 ## every tile out to RADIUS_LOAD_DISTANT gets streamed in, but only tiles
@@ -231,14 +231,15 @@ var _check_timer := 0.0
 var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own throttled cycle -- see get_current_cell_form_id()'s doc comment for why this exists
 
 func _ready() -> void:
+	var data_dir := GameDataSettings.get_data_dir()
 	esm = EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("WorldStreamer: could not open FalloutNV.esm")
-	resolver = GamebryoMeshResolver.new()
+	resolver = GamebryoMeshResolver.new(data_dir)
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
-	_pool = GamebryoResolverPool.new() # sized from OS.get_processor_count() -- see that class's own doc comment
+	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
 
 ## Starts (or retargets) continuous streaming for the given worldspace.
 ## Takes no position/cell -- the next check reacts to wherever the active
