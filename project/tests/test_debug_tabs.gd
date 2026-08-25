@@ -78,11 +78,22 @@ func _ready() -> void:
 	script_tab._update_suggestions_panel()
 	check(script_tab._suggestions.has("NovacPlayersRoom") or script_tab._suggestions.has("NovacGiftShop"), "Contextual suggestion for 'coc Nov' suggests Novac cells")
 
-	# Test Contextual 2nd argument suggestions for 'player.additem '
-	script_tab._line.text = "player.additem Sti"
-	script_tab._line.caret_column = 18
-	script_tab._update_suggestions_panel()
-	check(script_tab._suggestions.has("Stimpak"), "Contextual suggestion for 'player.additem Sti' suggests 'Stimpak'")
+	# Test Contextual dynamic item suggestions from live inventory
+	var test_game := Node.new()
+	var test_inv := Inventory.new()
+	test_inv.add_item(0x00004334, {"full_name": "Stimpak", "editor_id": "Stimpak"})
+	test_game.set_meta("inventory", test_inv)
+	var dynamic_items := ScriptCandidateProvider.get_item_candidates(test_game)
+	check(dynamic_items.has("Stimpak"), "ScriptCandidateProvider dynamically extracts 'Stimpak' from live inventory")
+	check(dynamic_items.has("0x00004334"), "ScriptCandidateProvider dynamically extracts '0x00004334' from live inventory")
+	test_game.free()
+
+	# Test dynamic message extraction from live scripted instances
+	var test_instances: Array = [
+		{"node_name": "BrokenSMG", "script_name": "GSBrokenSMGScript", "source_text": "ShowMessage GSBrokenSMGMsg\n"}
+	]
+	var dynamic_msgs := ScriptCandidateProvider.get_message_candidates(null, test_instances)
+	check(dynamic_msgs.has("GSBrokenSMGMsg"), "ScriptCandidateProvider dynamically extracts 'GSBrokenSMGMsg' from active script source")
 
 	# Test ScriptCandidateProvider dynamic command generation
 	var dummy_engine := ScriptEngine.new()
@@ -91,6 +102,15 @@ func _ready() -> void:
 	check(dynamic_cmds.has("MyDynamicDebugCmd"), "ScriptCandidateProvider includes newly registered function 'MyDynamicDebugCmd'")
 	check(dynamic_cmds.has("Player.MyDynamicDebugCmd"), "ScriptCandidateProvider includes player-scoped 'Player.MyDynamicDebugCmd'")
 	dummy_engine.free()
+
+	# Test EsmReader dynamic item and cell scanning against real game data
+	var test_esm := EsmReader.new()
+	if test_esm.open("fresh_nv_copy/Data/FalloutNV.esm"):
+		var esm_items := test_esm.get_all_item_candidates()
+		check(esm_items.size() > 1000, "EsmReader scans >1000 items from FalloutNV.esm (got %d)" % esm_items.size())
+		check(esm_items.has("WeapNV9mmPistol") or esm_items.has("Stimpak"), "EsmReader item candidates include standard items")
+		var esm_cells := test_esm.get_all_cell_candidates()
+		check(esm_cells.size() > 500, "EsmReader scans cell candidates from FalloutNV.esm (got %d)" % esm_cells.size())
 
 	script_tab._suggestions_list.free()
 	script_tab._suggestions_panel.free()
