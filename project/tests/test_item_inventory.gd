@@ -59,6 +59,18 @@ func _ready() -> void:
 		var alch := first_of_type(esm, "GSDocMitchellHouse", "ALCH")
 		check(not alch.is_empty(), "found real ALCH placement")
 		if not alch.is_empty(): check_pickup_drop_shape(registry, alch, true, "ALCH")
+		var weapon := first_of_type(esm, "WestsidePawnShopInterior", "WEAP")
+		check(not weapon.is_empty(), "found real WEAP placement")
+		if not weapon.is_empty():
+			var weapon_data: Dictionary = esm.get_item_data(int(weapon["base_form_id"]))
+			check(weapon_data.get("full_name", "") != "" \
+					and int(weapon_data.get("value", -1)) == 2500 \
+					and is_equal_approx(float(weapon_data.get("weight", 0.0)), 3.5), \
+				"WEAP DATA offset 0 value and offset 8 weight decode from real record")
+			check(registry.is_registered("WEAP"), "WEAP registered for CellLoader path")
+			check_pickup_drop_shape(registry, weapon, true, "WEAP")
+			var weapon_result: Dictionary = registry.resolve_placement(weapon, ctx)
+			check(weapon_result.get("kind", "") == "item", "WEAP resolves as item in WorldStreamer path")
 	_finish()
 
 func _finish() -> void:
