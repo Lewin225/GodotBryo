@@ -1,15 +1,15 @@
 [gd_scene format=3 uid="uid://o1xfly76gv3"]
 
 [ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
-[ext_resource type="PackedScene" uid="uid://cc1m2a1obsyn4" path="res://addons/fpc/character.tscn" id="2_e2o6t"]
+[ext_resource type="PackedScene" uid="uid://c6j2kx3d8yq1m" path="res://player/player.tscn" id="2_player"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
 [ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
 [ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
-[ext_resource type="Script" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
-[ext_resource type="Script" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
+[ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
+[ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
@@ -22,27 +22,18 @@ dof_blur_far_transition = 2830.17
 auto_exposure_min_sensitivity = 56.88
 auto_exposure_max_sensitivity = 561.5
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kp17n"]
-albedo_color = Color(0.909804, 0.596078, 0, 1)
-clearcoat_enabled = true
-clearcoat_roughness = 0.2
-
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_feb5d"]
-material = SubResource("StandardMaterial3D_kp17n")
-radius = 0.4
-
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fc0e3"]
-radius = 0.4
-
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Window
 
+func _ready() -> void:
+	visible = false
+	close_requested.connect(func() -> void: visible = false)
 
-
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-func _process(delta: float) -> void:
-	if Input.is_action_just_released(\"ui_home\"):
+func _process(_delta: float) -> void:
+	if Input.is_action_just_pressed(\"ui_home\"):
 		visible = !visible
+		if visible:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 "
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
@@ -65,7 +56,7 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 [node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
 script = ExtResource("7_scriptengine")
 
-[node name="TerminalSession" parent="." instance=ExtResource("10_terminalsession")]
+[node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
@@ -75,30 +66,19 @@ shadow_enabled = true
 environment = ExtResource("4_7jktm")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
 
-[node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_e2o6t")]
-default_reticle = "uid://y6etiws4d5gs"
-controls = {
-&"BACKWARD": "backward",
-&"CROUCH": "crouch",
-&"FORWARD": "forward",
-&"JUMP": "jump",
-&"LEFT": "left",
-&"PAUSE": "ui_cancel",
-&"RIGHT": "right",
-&"SPRINT": "sprint"
-}
+[node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_player")]
+standing_height = 1.65
+debug_click_shake = true
 
-[node name="Mesh" parent="Character" index="0" unique_id=537830521]
-cast_shadow = 0
-mesh = SubResource("CapsuleMesh_feb5d")
-
-[node name="Collision" parent="Character" index="1" unique_id=1716049046]
-shape = SubResource("CapsuleShape3D_fc0e3")
+[node name="Camera3D" parent="Character" index="1" unique_id=1676192724]
+far = 400.0
 
 [node name="Debug Tools" type="Window" parent="." unique_id=65829105]
+scaling_3d_scale = 0.3161
 oversampling_override = 1.0
 initial_position = 5
 size = Vector2i(784, 466)
+visible = false
 script = SubResource("GDScript_yryqu")
 
 [node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
@@ -124,7 +104,7 @@ layout_mode = 2
 script = ExtResource("9_scriptingdebug")
 metadata/_tab_index = 0
 
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting"]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=411638944]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -136,61 +116,56 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin" unique_id=847699033]
+layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Usage" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+[node name="Usage" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=2090400204]
 layout_mode = 2
 text = "0 live contexts"
 
-[node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+[node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=648164203]
 layout_mode = 2
 
-[node name="Line" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+[node name="Line" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=744659824]
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Run a script line, e.g. Player.Disable"
 
-[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=942724195]
 layout_mode = 2
 text = "Run"
 
-[node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox"]
+[node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1893336224]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Output" type="TextEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit"]
+[node name="Output" type="TextEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1789706687]
 custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 
-[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit"]
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1298307156]
 layout_mode = 2
 
-[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit"]
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=668789071]
 custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 
-[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit"]
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=1731338449]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="Details" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+[node name="Details" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1758729041]
 layout_mode = 2
 autowrap_mode = 2
 
-[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=464048584]
 custom_minimum_size = Vector2(0, 70)
 layout_mode = 2
 fit_content = true
 
-[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right"]
+[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
 layout_mode = 2
 size_flags_vertical = 3
 
@@ -205,7 +180,7 @@ layout_mode = 2
 script = ExtResource("8_inventorydebug")
 metadata/_tab_index = 2
 
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory"]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory" unique_id=139347742]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -217,40 +192,40 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin" unique_id=1680692534]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=832985244]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Player inventory"
 
-[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=635152149]
 custom_minimum_size = Vector2(0, 260)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=525794185]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=532771478]
 layout_mode = 2
-text = "Inc"
 tooltip_text = "Add one of the selected inventory item (debug only)."
+text = "Inc"
 
-[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=1913915189]
 layout_mode = 2
-text = "Delete"
 tooltip_text = "Remove one selected item from inventory."
+text = "Delete"
 
-[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons"]
+[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=76765613]
 layout_mode = 2
-text = "Drop"
 tooltip_text = "Spawn one selected item in front of the camera."
+text = "Drop"
 
-[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
 layout_mode = 2
 text = "0 distinct item type(s)"
 

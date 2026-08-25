@@ -1,0 +1,71 @@
+[gd_scene format=3 uid="uid://c6j2kx3d8yq1m"]
+
+[ext_resource type="Script" uid="uid://b3dympkwwkwah" path="res://player/player_controller.gd" id="1_controller"]
+[ext_resource type="Script" uid="uid://dkvdeivkcqjok" path="res://player/mouse_manager.gd" id="2_mouse"]
+[ext_resource type="Script" uid="uid://bqx2mbelqbts1" path="res://player/crosshair.gd" id="3_crosshair"]
+[ext_resource type="Script" uid="uid://c1a8lyyotsrcs" path="res://player/interact_ray.gd" id="4_interactray"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+margin = 0.06
+radius = 0.4
+height = 1.8
+
+[sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
+font_size = 32
+
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray")]
+script = ExtResource("1_controller")
+collision_shape = NodePath("CollisionShape3D")
+camera = NodePath("Camera3D")
+interact_ray = NodePath("Camera3D/InteractRay")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=67078899]
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
+current = true
+
+[node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
+target_position = Vector3(0, 0, -2.5)
+script = ExtResource("4_interactray")
+
+[node name="MouseCaptureManager" type="Node" parent="." unique_id=1257446344]
+script = ExtResource("2_mouse")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=98712345]
+
+[node name="Crosshair" type="CenterContainer" parent="HUD" unique_id=98712346 node_paths=PackedStringArray("interact_ray", "action_label")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_crosshair")
+interact_ray = NodePath("../../Camera3D/InteractRay")
+action_label = NodePath("VBoxContainer/ActionLabel")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUD/Crosshair" unique_id=98712347]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="DotSpacer" type="Control" parent="HUD/Crosshair/VBoxContainer" unique_id=98712348]
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ActionLabel" type="Label" parent="HUD/Crosshair/VBoxContainer" unique_id=98712349]
+layout_mode = 2
+offset_transform_enabled = true
+offset_transform_position = Vector2(0, 24)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
+text = "Label Text"
+label_settings = SubResource("LabelSettings_yw30f")
+horizontal_alignment = 1
+vertical_alignment = 1
