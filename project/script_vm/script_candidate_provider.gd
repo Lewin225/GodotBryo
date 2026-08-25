@@ -8,21 +8,6 @@ extends RefCounted
 ## presets are added to TeleportDebugTab, or new item definitions/inventories
 ## are registered, ScriptCandidateProvider automatically aggregates them.
 
-# Baseline fallback commands and GECK keywords
-const BASE_KEYWORDS: Array[String] = [
-	"ShowMessage", "GetButtonPressed", "PlaceAtMe", "CenterOnCell", "COC",
-	"AddItem", "RemoveItem", "GetItemCount", "EquipItem", "UnequipItem",
-	"Disable", "Enable", "GetDisabled", "Kill", "GetDead", "Resurrect",
-	"SetOpenState", "GetOpenState", "PlayGroup", "SetHardcore", "GetHardcore",
-	"MarkForDelete", "SetDestroyed", "GetDestroyed", "SetScale", "GetScale",
-	"MoveTo", "PositionCell", "StopCombat", "StartCombat", "ResetHealth",
-	"tcl", "TCL", "ToggleCollision", "Activate", "IsActionRef", "GetActionRef", "Unlock",
-	"Player.Disable", "Player.Enable", "Player.AddItem", "Player.RemoveItem",
-	"Player.PlaceAtMe", "Player.MoveTo", "Player.Kill", "Player.Resurrect",
-	"Player.SetHardcore", "Player.tcl", "Player.ToggleCollision",
-	"Set bInitialized to", "Set fTimer to", "Set iCount to"
-]
-
 const BASE_ITEMS: Array[String] = [
 	"Caps001", "0x0000000F", "BobbyPin", "PreWarMoney", "NCRMoney", "LegionMoney", "REPCONNKeycard", "0x000E2C80",
 	"Stimpak", "0x00004334", "SuperStimpak", "DoctorBag", "0x00004332", "RadAway", "0x00004342", "RadX", "0x00004340",
@@ -46,17 +31,28 @@ const QUANTITY_PRESETS: Array[String] = [
 
 
 ## Returns the dynamically aggregated list of all executable commands & keywords.
+## Only functions registered in ScriptFunctionRegistry are included.
 static func get_command_candidates(engine: ScriptEngine = null, instances: Array = []) -> Array[String]:
-	var candidates: Array[String] = BASE_KEYWORDS.duplicate()
+	var candidates: Array[String] = []
 
-	# Dynamically include all functions registered in ScriptFunctionRegistry
+	# Get registered functions from active engine registry (or default registry)
+	var reg_names: Array[String] = []
 	if engine != null and engine.function_registry != null:
-		for fn_name in engine.function_registry.get_registered_function_names():
-			if not candidates.has(fn_name):
-				candidates.append(fn_name)
-			var player_scoped := "Player." + fn_name
-			if not candidates.has(player_scoped):
-				candidates.append(player_scoped)
+		reg_names = engine.function_registry.get_registered_function_names()
+	else:
+		var default_reg := ScriptFunctionRegistry.new()
+		reg_names = default_reg.get_registered_function_names()
+
+	for fn_name in reg_names:
+		if not candidates.has(fn_name):
+			candidates.append(fn_name)
+		var player_scoped := "Player." + fn_name
+		if not candidates.has(player_scoped):
+			candidates.append(player_scoped)
+
+	# GECK basic variable assignment keyword
+	if not candidates.has("Set"):
+		candidates.append("Set")
 
 	# Dynamically include live script instance nodes & FormIDs
 	for entry in instances:
