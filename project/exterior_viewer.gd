@@ -1,6 +1,8 @@
 @tool
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # Editor-mode exterior (world) cell viewer — the WRLD/LAND counterpart to
 # interior_viewer.gd. Loads a rectangular area of a worldspace's exterior
 # cells (heightmap terrain + splatted textures + placed REFRs) as real child
@@ -37,8 +39,6 @@ extends Node3D
 # verified thread-safety, so calling them off the main thread needs its own
 # investigation before it'd be safe, not assumed as a free upgrade from
 # what's here.
-
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const CELL_SIZE_UNITS := 4096.0
 const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 
@@ -123,7 +123,8 @@ func _do_load() -> void:
 		old_root.free()
 
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		_loading = false
 		return
@@ -148,7 +149,7 @@ func _do_load() -> void:
 	refr_root.rotation_degrees.x = -90 # NIF/REFR Z-up -> Godot Y-up
 	_add_child(area_root, refr_root)
 
-	var resolver := GamebryoMeshResolver.new()
+	var resolver := GamebryoMeshResolver.new(data_dir)
 	var registry := GamebryoObjectRegistry.new(resolver, esm)
 
 	var cells_found := 0

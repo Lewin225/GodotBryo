@@ -1,5 +1,7 @@
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # TEMP DIAGNOSTIC: measure the main-thread construct-step cost (Node
 # creation + DirectGeometryBatch.build()) per tile, at whatever RADIUS_LOAD
 # is currently set in world_streamer.gd, for one real activate()-to-settled
@@ -8,7 +10,6 @@ extends Node3D
 # the way CellStreamBuilder.stream_refs()'s objects_per_frame used to) is
 # what's actually costing frame time now that resolve itself is off-thread.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
 func _percentile_report(label: String, values: Array) -> void:
 	if values.is_empty():
@@ -26,7 +27,7 @@ func _percentile_report(label: String, values: Array) -> void:
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		get_tree().quit(1)
 		return

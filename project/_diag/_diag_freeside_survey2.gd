@@ -1,15 +1,15 @@
 extends SceneTree
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Follow-up: no "Freeside"/"FreesideNV" worldspace editor ID exists.
 ## Find any cell whose editor ID contains "freeside" directly (via
 ## find_cell_by_editor_id on plausible names), and check whether it's
 ## interior or exterior via get_cell_worldspace().
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

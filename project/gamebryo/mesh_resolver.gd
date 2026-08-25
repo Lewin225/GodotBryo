@@ -1,6 +1,8 @@
 class_name GamebryoMeshResolver
 extends RefCounted
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## BSA-priority search + NIF/DDS resolution, shared by every object factory.
 ## Previously duplicated per-script across test_integration.gd, test_dds.gd,
 ## test_interior_cell.gd, cell_viewer.gd, and cell_viewer_editor.gd — worth
@@ -51,7 +53,8 @@ extends RefCounted
 ## for no safety benefit -- the discipline is which INSTANCE's methods get
 ## called from which thread, not the class boundary itself.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+var _data_dir := ""
+
 
 ## Bethesda/Gamebryo world units are NOT meters (~70 units/m — see
 ## native/src/common/units.h for the sourced conversion and rationale). The
@@ -133,11 +136,22 @@ static func _merge_dict(target: Dictionary, source: Dictionary) -> void:
 		if not target.has(key):
 			target[key] = source[key]
 
-func _init() -> void:
+## Main-thread callers pass GameDataSettings' validated path. The fallback is
+## retained for isolated tests/diagnostics; worker contexts always receive an
+## explicit string from GamebryoResolverPool.
+func _init(data_dir: String = "") -> void:
+	_data_dir = data_dir if data_dir != "" else String(GameDataConfigScript.resolve().get("data_dir", ""))
+	if _data_dir == "":
+		push_error("GamebryoMeshResolver: no validated game data directory configured")
+		return
 	_build_bsa_order()
 
 func _build_bsa_order() -> void:
-	var dir := DirAccess.open(DATA_DIR)
+	var dir := DirAccess.open(_data_dir)
+	if dir == null:
+		push_error("GamebryoMeshResolver: could not open data directory: " + _data_dir)
+		_bsa_order = []
+		return
 	var all_names: Array[String] = []
 	dir.list_dir_begin()
 	var fname := dir.get_next()
@@ -175,7 +189,7 @@ func _get_reader(bsa_name: String) -> BsaReader:
 	if _bsa_readers.has(bsa_name):
 		return _bsa_readers[bsa_name]
 	var r := BsaReader.new()
-	if not r.open(DATA_DIR + bsa_name):
+	if not r.open(_data_dir + bsa_name):
 		_bsa_readers[bsa_name] = null
 		return null
 	_bsa_readers[bsa_name] = r

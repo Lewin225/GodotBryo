@@ -2,6 +2,8 @@
 class_name CellLoader
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## phases/2/07-runtime-cell-loader.md, Step 2. A real cell loader usable
 ## BOTH ways: as a runtime node a door interaction calls (load_cell()), and
 ## as an @tool node usable directly in the Godot editor (an exported
@@ -52,8 +54,6 @@ signal load_started(cell_form_id: int)
 signal load_progress(fraction: float)
 signal load_completed(cell_form_id: int, success: bool)
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 ## How many REFRs to place per frame before yielding — same frame-budget
 ## pattern proven in exterior_viewer.gd (phases/2/02).
 @export var objects_per_frame: int = 20
@@ -90,10 +90,11 @@ var _generation := 0
 var _current_refs: Array = []
 
 func _ready() -> void:
+	var data_dir := GameDataSettings.get_data_dir()
 	esm = EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("CellLoader: could not open FalloutNV.esm")
-	resolver = GamebryoMeshResolver.new()
+	resolver = GamebryoMeshResolver.new(data_dir)
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m)
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
