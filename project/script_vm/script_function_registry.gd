@@ -16,6 +16,7 @@ extends RefCounted
 ## section) with the same non-crashing spirit for a missing function.
 
 var _functions := {} # lowercased name -> Callable
+var _canonical_names: Array[String] = [] # Original registered names for autocomplete/reflection
 var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam the log every frame
 
 ## Set externally (ScriptEngine propagates its own esm whenever it's
@@ -33,9 +34,14 @@ func _init() -> void:
 
 func register(name: String, fn: Callable) -> void:
 	_functions[name.to_lower()] = fn
+	if not _canonical_names.has(name):
+		_canonical_names.append(name)
 
 func is_registered(name: String) -> bool:
 	return _functions.has(name.to_lower())
+
+func get_registered_function_names() -> Array[String]:
+	return _canonical_names.duplicate()
 
 func call_function(name: String, args: Array, ctx: ScriptExecutionContext) -> Variant:
 	var lower := name.to_lower()

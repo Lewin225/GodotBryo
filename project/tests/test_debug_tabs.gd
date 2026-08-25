@@ -76,13 +76,21 @@ func _ready() -> void:
 	script_tab._line.text = "coc Nov"
 	script_tab._line.caret_column = 7
 	script_tab._update_suggestions_panel()
-	check(script_tab._suggestions.has("NovacPlayerRoom"), "Contextual suggestion for 'coc Nov' suggests 'NovacPlayerRoom'")
+	check(script_tab._suggestions.has("NovacPlayersRoom") or script_tab._suggestions.has("NovacGiftShop"), "Contextual suggestion for 'coc Nov' suggests Novac cells")
 
 	# Test Contextual 2nd argument suggestions for 'player.additem '
 	script_tab._line.text = "player.additem Sti"
 	script_tab._line.caret_column = 18
 	script_tab._update_suggestions_panel()
 	check(script_tab._suggestions.has("Stimpak"), "Contextual suggestion for 'player.additem Sti' suggests 'Stimpak'")
+
+	# Test ScriptCandidateProvider dynamic command generation
+	var dummy_engine := ScriptEngine.new()
+	dummy_engine.function_registry.register("MyDynamicDebugCmd", func(_a, _c): return 1)
+	var dynamic_cmds := ScriptCandidateProvider.get_command_candidates(dummy_engine)
+	check(dynamic_cmds.has("MyDynamicDebugCmd"), "ScriptCandidateProvider includes newly registered function 'MyDynamicDebugCmd'")
+	check(dynamic_cmds.has("Player.MyDynamicDebugCmd"), "ScriptCandidateProvider includes player-scoped 'Player.MyDynamicDebugCmd'")
+	dummy_engine.free()
 
 	script_tab._suggestions_list.free()
 	script_tab._suggestions_panel.free()

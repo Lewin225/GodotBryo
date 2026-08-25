@@ -32,56 +32,6 @@ var _token_start: int = 0
 var _token_prefix: String = ""
 var _navigating_suggestions: bool = false
 
-const CELL_CANDIDATES: Array[String] = [
-	"GSDocMitchellHouse", "GoodspringsGasStation", "GoodspringsSaloon", "GoodspringsSchoolhouse",
-	"GoodspringsGeneralStore", "GoodspringsVictorShack", "GoodspringsCave", "GoodspringsHome01",
-	"GoodspringsHome02", "GoodspringsHome03", "GoodspringsAbandonedShack",
-	"VikkiAndVanceCasino", "BisonSteveHotel01", "BisonSteveHotel02", "PrimmSheriffOffice",
-	"MojaveExpressNashResidence", "PrimmBeagleHouse", "MojaveOutpostHQ", "MojaveOutpostBarracks",
-	"NCRCFAdministration01", "NCRCFCellBlockA", "NCRCFCellBlockB",
-	"NovacDinoBiteGiftShop", "NovacPlayerRoom", "NovacFrontDesk", "NovacJeannieMayHouse",
-	"NovacNoBarksShack", "NovacBoonesRoom", "NovacMannyRoom", "NovacRangerAndyHome",
-	"GibsonScrapYardGarage", "BigHornSaloon", "BoulderCityTrainStation",
-	"TheTopsCasino", "TheTopsRestaurant", "TheTopsTheater", "TheTops13thFloor", "TheTopsPresSuite",
-	"UltraLuxeCasino", "UltraLuxePenthouse", "UltraLuxeGourmand", "UltraLuxeBathhouse",
-	"GomorrahMain", "GomorrahBrimstone", "GomorrahClubSuites", "Lucky38Casino", "Lucky38Penthouse",
-	"Lucky38PresSuite", "Lucky38ControlRoom", "Vault21GiftShop", "Vault21", "MichaelAngeloWorkshop",
-	"NCREmbassy", "AtomicWranglerCasino", "KingsSchoolOfImpersonation", "MickAndRalphs", "SilverRush",
-	"OldMormonFortMormonFort", "CeruleanRobotics", "MiguelsPawnShop", "CasaMadridApartments", "TheThorn",
-	"Vault3a", "Vault3b", "Vault11a", "Vault11b", "Vault19a", "Vault22a", "Vault22Common", "Vault34a", "Vault34Armory",
-	"McCarranConcourse", "McCarranTerminal", "CampGolfHouseResort", "CampForlornHopeCommand",
-	"HooverDamVisitorCenter", "HooverDamPowerPlant01", "HooverDamOffices", "HELIOSOnePlant", "HELIOSOneTower",
-	"REPCONNHQ01", "REPCONNTestFacility", "REPCONNBasement", "SunsetSarsaparillaHQ", "GunRunnersHQ",
-	"JacobstownLodge", "BlackMountainRadioStation", "HiddenValleyBunkerL1", "NellisBoomerHangar", "NellisMuseum",
-	"GreatKhanLonghouse", "LegatesTent", "DevArmory", "TestMentats", "TestJoshWeapons", "TestTraps", "Endgame"
-]
-
-const ITEM_CANDIDATES: Array[String] = [
-	"Caps001", "0x0000000F", "BobbyPin", "PreWarMoney", "NCRMoney", "LegionMoney", "REPCONNKeycard", "0x000E2C80",
-	"Stimpak", "0x00004334", "SuperStimpak", "DoctorBag", "0x00004332", "RadAway", "0x00004342", "RadX", "0x00004340",
-	"MedX", "Buffout", "Mentats", "Psycho", "Jet", "PurifiedWater", "SunsetSarsaparilla", "NukaCola",
-	"WeapNV9mmPistol", "WeapNV9mmSMG", "0x001465A6", "WeapNVServiceRifle", "0x000E377A", "WeapNVHuntingRifle",
-	"WeapNVDynamite", "0x000E3778", "WeapNVFragGrenade", "WeapNVLaserRifle", "WeapNVPlasmaPistol", "WeapNVSuperSledge",
-	"Ammo9mm", "Ammo556mm", "Ammo308", "Ammo10mm", "Ammo12Gauge", "Ammo20Gauge", "AmmoEnergyCell", "AmmoMicroFusionCell"
-]
-
-const MESSAGE_CANDIDATES: Array[String] = [
-	"GSBrokenSMGMsg", "GenericDoorLocked", "VMS03Msg01", "VMS03Msg02"
-]
-
-var _builtin_candidates: Array[String] = [
-	"ShowMessage", "GetButtonPressed", "PlaceAtMe", "CenterOnCell", "COC",
-	"AddItem", "RemoveItem", "GetItemCount", "EquipItem", "UnequipItem",
-	"Disable", "Enable", "GetDisabled", "Kill", "GetDead", "Resurrect",
-	"SetOpenState", "GetOpenState", "PlayGroup", "SetHardcore", "GetHardcore",
-	"MarkForDelete", "SetDestroyed", "GetDestroyed", "SetScale", "GetScale",
-	"MoveTo", "PositionCell", "StopCombat", "StartCombat", "ResetHealth",
-	"tcl", "TCL", "ToggleCollision",
-	"Player.Disable", "Player.Enable", "Player.AddItem", "Player.RemoveItem",
-	"Player.PlaceAtMe", "Player.MoveTo", "Player.Kill", "Player.Resurrect",
-	"Player.SetHardcore", "Set bInitialized to", "Set fTimer to", "Set iCount to"
-]
-
 
 func _ready() -> void:
 	_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
@@ -333,105 +283,10 @@ func _handle_tab_completion() -> void:
 
 
 func _get_contextual_candidates(left_text: String) -> Array[String]:
-	var trimmed := left_text.lstrip(" \t")
-	var ends_with_space := left_text.ends_with(" ") or left_text.ends_with("\t")
-	var tokens := trimmed.split(" ", false)
-
-	if tokens.is_empty():
-		return _get_command_candidates()
-
-	var cmd := tokens[0].to_lower()
-	var arg_idx: int = tokens.size() - 1
-	if ends_with_space:
-		arg_idx += 1
-
-	if arg_idx == 0:
-		return _get_command_candidates()
-
-	if arg_idx == 1:
-		match cmd:
-			"coc", "centeroncell":
-				return _get_cell_candidates()
-			"showmessage":
-				return _get_message_candidates()
-			"additem", "removeitem", "player.additem", "player.removeitem", "equipitem", "unequipitem", "getitemcount":
-				return _get_item_candidates()
-			"placeatme", "player.placeatme":
-				return _get_placeable_candidates()
-			"playgroup":
-				return ["Forward", "Backward", "Left", "Right", "Idle", "Attack", "Equip", "Unequip", "SpecialIdle"]
-			"setopenstate", "setdestroyed", "sethardcore", "player.sethardcore":
-				return ["0", "1"]
-			"set", "player.set":
-				return _get_variable_candidates()
-			"kill", "resurrect", "enable", "disable", "getdisabled", "getdead":
-				return _get_reference_candidates()
-
-	if arg_idx == 2:
-		match cmd:
-			"additem", "removeitem", "player.additem", "player.removeitem":
-				return ["1", "5", "10", "25", "50", "100"]
-			"set", "player.set":
-				return ["to"]
-			"placeatme", "player.placeatme":
-				return ["1", "0,0,0"]
-
-	return _get_command_candidates()
-
-
-func _get_cell_candidates() -> Array[String]:
-	return CELL_CANDIDATES.duplicate()
-
-
-func _get_item_candidates() -> Array[String]:
-	return ITEM_CANDIDATES.duplicate()
-
-
-func _get_message_candidates() -> Array[String]:
-	return MESSAGE_CANDIDATES.duplicate()
-
-
-func _get_placeable_candidates() -> Array[String]:
-	var list: Array[String] = ITEM_CANDIDATES.duplicate()
-	for c in ["GSDocMitchellDoor", "GSRadio", "Caps001", "WeapNVDynamite", "Stimpak"]:
-		if not list.has(c):
-			list.append(c)
-	return list
-
-
-func _get_variable_candidates() -> Array[String]:
-	var list: Array[String] = ["bInitialized", "fTimer", "iCount", "bQuestDone", "bDoOnce", "iState"]
-	for entry in _instances:
-		if _selected_node != null and entry.get("node") == _selected_node:
-			var locals_dict: Dictionary = entry.get("locals", {})
-			for k in locals_dict:
-				if not list.has(k):
-					list.append(k)
-	return list
-
-
-func _get_reference_candidates() -> Array[String]:
-	var list: Array[String] = ["Player"]
-	for entry in _instances:
-		var node_name := String(entry.get("node_name", ""))
-		if not node_name.is_empty() and not list.has(node_name):
-			list.append(node_name)
-	return list
-
-
-func _get_command_candidates() -> Array[String]:
-	var candidates: Array[String] = _builtin_candidates.duplicate()
-	for entry in _instances:
-		var node_name := String(entry.get("node_name", ""))
-		var script_name := String(entry.get("script_name", ""))
-		var form_hex := "0x%X" % int(entry.get("script_form_id", 0))
-		if not node_name.is_empty() and not candidates.has(node_name):
-			candidates.append(node_name)
-		if not script_name.is_empty() and not candidates.has(script_name):
-			candidates.append(script_name)
-		if not candidates.has(form_hex):
-			candidates.append(form_hex)
-	return candidates
+	var game_node: Node = get_tree().root.get_node_or_null("Game") if is_inside_tree() else null
+	return ScriptCandidateProvider.get_contextual_candidates(
+		left_text, _engine, _selected_node, _instances, game_node
+	)
 
 
 func _process(_delta: float) -> void:
