@@ -280,14 +280,24 @@ func teleport_to(editor_id: String) -> void:
 	if game == null:
 		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
 		return
-	if not game.has_method("debug_center_on_cell"):
-		_status_label.text = "[color=#e06c75]Game does not support debug_center_on_cell[/color]"
+
+	# Primary path: execute regular 'coc <EditorID>' through the ScriptEngine VM
+	if "script_engine" in game and game.script_engine != null:
+		var reply: Dictionary = game.script_engine.run_debug_line("coc " + editor_id)
+		if not bool(reply.get("ok", false)):
+			_status_label.text = "[color=#e06c75]✗ %s[/color]" % String(reply.get("message", "Teleport failed"))
+		else:
+			var cell_form_id := int(reply.get("result", 0))
+			_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color] via ScriptEngine[/color]" % [editor_id, cell_form_id]
+			_cell_input.text = editor_id
 		return
 
-	var res: Variant = game.debug_center_on_cell([editor_id])
-	if res is Dictionary and res.has("error"):
-		_status_label.text = "[color=#e06c75]✗ %s[/color]" % str(res["error"])
-	else:
-		var cell_form_id := int(res)
-		_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color][/color]" % [editor_id, cell_form_id]
-		_cell_input.text = editor_id
+	# Fallback if script_engine is not attached
+	if game.has_method("debug_center_on_cell"):
+		var res: Variant = game.debug_center_on_cell([editor_id])
+		if res is Dictionary and res.has("error"):
+			_status_label.text = "[color=#e06c75]✗ %s[/color]" % str(res["error"])
+		else:
+			var cell_form_id := int(res)
+			_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color][/color]" % [editor_id, cell_form_id]
+			_cell_input.text = editor_id
