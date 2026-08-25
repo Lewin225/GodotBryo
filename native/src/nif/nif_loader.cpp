@@ -471,7 +471,14 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		}
 
 		nifly::NiShader *shader = nif.GetShader(shape);
-		sub.no_lighting = dynamic_cast<nifly::BSShaderNoLightingProperty *>(shader) != nullptr;
+		if (auto *unlit = dynamic_cast<nifly::BSShaderNoLightingProperty *>(shader)) {
+			sub.no_lighting = true;
+			sub.no_lighting_uses_falloff = (unlit->shaderFlags1 & nifly::SLSF1_USE_FALLOFF) != 0;
+			sub.falloff_start_angle = unlit->falloffStartAngle;
+			sub.falloff_stop_angle = unlit->falloffStopAngle;
+			sub.falloff_start_opacity = unlit->falloffStartOpacity;
+			sub.falloff_stop_opacity = unlit->falloffStopOpacity;
+		}
 		if (nifly::BSShaderProperty *bs_shader = dynamic_cast<nifly::BSShaderProperty *>(shader)) {
 			sub.double_sided = bs_shader->IsDoubleSided();
 		}

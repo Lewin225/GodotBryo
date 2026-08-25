@@ -21,6 +21,7 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["rotation"] = Vector3(pl.rotation[0], pl.rotation[1], pl.rotation[2]);
 	d["scale"] = pl.scale;
 	d["script_form_id"] = static_cast<int64_t>(pl.script_form_id);
+	d["emittance_form_id"] = static_cast<int64_t>(pl.emittance_form_id);
 	// phases/2/12-distant-object-lod.md: real per-REFR gate for whether the
 	// game renders a distant-LOD variant of this placement at all -- always
 	// false for SCOL parts (get_scol_parts()), which have no REFR record of
@@ -51,6 +52,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_emittance_data", "emittance_form_id"), &EsmReader::get_emittance_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
 	ClassDB::bind_method(D_METHOD("get_note_data", "note_form_id"), &EsmReader::get_note_data);
@@ -359,6 +361,21 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		out["fov_degrees"] = light->fov_degrees;
 		out["is_spot"] = light->is_spot();
 		out["off_by_default"] = light->off_by_default();
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_emittance_data(int64_t emittance_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto color = file_.get_emittance_color(static_cast<uint32_t>(emittance_form_id));
+		if (!color) return out;
+		// XEMI supplies tint only. Its source records' fourth byte is not the
+		// effect opacity (the NIF's texture/vertex alpha remains authoritative).
+		out["color"] = Color((*color)[0] / 255.0f, (*color)[1] / 255.0f, (*color)[2] / 255.0f, 1.0f);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
