@@ -122,6 +122,18 @@ func _register_defaults() -> void:
 	register("CenterOnCell", center_on_cell)
 	register("COC", center_on_cell)
 
+	var toggle_collision := func(_a: Array, ctx: ScriptExecutionContext):
+		var target: Object = ctx.calling_reference
+		if target == null:
+			target = ctx.player_node
+		if target != null and "noclip" in target:
+			target.noclip = !target.noclip
+			return 1 if target.noclip else 0
+		return 0
+	register("tcl", toggle_collision)
+	register("TCL", toggle_collision)
+	register("ToggleCollision", toggle_collision)
+
 	register("ShowMessage", func(a: Array, _c):
 		# Real argument shape confirmed against real data (GSBrokenSMGScript's
 		# own `ShowMessage GSBrokenSMGMsg`): a bare MESG editor-ID name, not a

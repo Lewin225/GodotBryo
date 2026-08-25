@@ -39,6 +39,20 @@ extends CharacterBody3D
 @export var max_ground_velocity: float = 30.0
 @export var ground_snap_velocity: float = -2.0
 
+@export_group("Noclip & Cheats")
+@export var noclip: bool = false:
+	set(val):
+		noclip = val
+		if collision_shape:
+			collision_shape.disabled = noclip
+		if _shape_cast:
+			_shape_cast.enabled = !noclip
+		if noclip:
+			velocity = Vector3.ZERO
+			is_grounded = false
+@export var noclip_speed: float = 12.0
+@export var noclip_sprint_multiplier: float = 2.5
+
 @export_group("Step & Hovering")
 ## How far above the true ground the capsule bottom floats to step over obstacles.
 @export var hover_offset: float = 0.6
@@ -47,7 +61,10 @@ extends CharacterBody3D
 ## Maximum step down scan range while walking before detaching and falling naturally.
 @export var step_down_height: float = 0.3
 ## Maximum slope angle (in degrees) to consider as walkable without sliding.
-@export_range(1.0, 89.0) var max_floor_angle: float = 50.0
+@export_range(1.0, 89.0) var max_floor_angle: float = 50.0:
+	set(val):
+		max_floor_angle = val
+		floor_max_angle = deg_to_rad(max_floor_angle)
 ## Visual camera dip depth (in meters) when wedged across a gap/crevice.
 @export var bridge_dip_offset: float = 0.15
 
@@ -120,7 +137,10 @@ var aim_smooth: Vector3 = Vector3.ZERO
 var camera_lerp_position: Vector3 = Vector3.ZERO
 var camera_pitch: float = 0.0
 var gravity_project: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
-var gravity_multiplier: float = 1.4
+var gravity_multiplier: float = 1.4:
+	set(val):
+		gravity_multiplier = val
+		gravity = gravity_project * gravity_multiplier
 @onready var gravity: float = gravity_project * gravity_multiplier
 
 # --- Camera Animation State Variables ---
@@ -132,6 +152,11 @@ var _current_bridge_dip: float = 0.0
 var _noise_seed: float = 0.0
 var _click_shake_index: int = 0
 const CLICK_SHAKE_PATTERN: Array[float] = [0.5, 1.0, 2.0, 3.0, 4.0]
+
+
+func toggle_noclip() -> bool:
+	noclip = !noclip
+	return noclip
 
 
 func _ready() -> void:
@@ -206,6 +231,10 @@ func _physics_process(delta: float) -> void:
 		is_teleporting = false
 		return
 
+	if noclip:
+		_handle_noclip_movement(delta)
+		return
+
 	if _jump_cooldown_timer > 0.0:
 		_jump_cooldown_timer -= delta
 
@@ -222,6 +251,41 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_apply_push_forces(delta)
+
+
+func _handle_noclip_movement(delta: float) -> void:
+	var left_action: StringName = input_actions.get("move_left", &"left")
+	var right_action: StringName = input_actions.get("move_right", &"right")
+	var forward_action: StringName = input_actions.get("move_forward", &"forward")
+	var backward_action: StringName = input_actions.get("move_backward", &"backward")
+	var jump_action: StringName = input_actions.get("jump", &"jump")
+	var crouch_action: StringName = input_actions.get("crouch", &"crouch")
+	var sprint_action: StringName = input_actions.get("sprint", &"sprint")
+
+	if not InputMap.has_action(left_action): left_action = &"ui_left"
+	if not InputMap.has_action(right_action): right_action = &"ui_right"
+	if not InputMap.has_action(forward_action): forward_action = &"ui_up"
+	if not InputMap.has_action(backward_action): backward_action = &"ui_down"
+	if not InputMap.has_action(jump_action): jump_action = &"ui_accept"
+	if not InputMap.has_action(crouch_action): crouch_action = &"ui_cancel"
+
+	var input_vector := Input.get_vector(left_action, right_action, forward_action, backward_action)
+	var vertical_input := 0.0
+	if Input.is_action_pressed(jump_action):
+		vertical_input += 1.0
+	if InputMap.has_action(crouch_action) and Input.is_action_pressed(crouch_action):
+		vertical_input -= 1.0
+
+	var cam_basis := camera.global_transform.basis if camera else global_transform.basis
+	var move_dir := (cam_basis.x * input_vector.x + cam_basis.z * input_vector.y + Vector3.UP * vertical_input)
+	if move_dir.length_squared() > 1.0:
+		move_dir = move_dir.normalized()
+
+	var is_fast := InputMap.has_action(sprint_action) and Input.is_action_pressed(sprint_action)
+	var cur_speed := noclip_speed * (noclip_sprint_multiplier if is_fast else 1.0)
+
+	velocity = move_dir * cur_speed
+	global_position += velocity * delta
 
 
 # --- Movement & Slope Physics ---
@@ -495,7 +559,7 @@ func _update_camera_transform(delta: float) -> void:
 	var interp_pos := interp_transform.origin
 
 	var eye_y: float
-	if collision_shape:
+	if collision_shape and not noclip:
 		var interp_cs := collision_shape.get_global_transform_interpolated()
 		eye_y = (interp_cs.origin.y + (current_height * 0.5)) - 0.5
 	else:

@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
+[ext_resource type="Script" path="res://player_debug_tab.gd" id="12_playerdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -179,12 +180,320 @@ scroll_active = false
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Quest" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
+[node name="Player" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
 visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
+script = ExtResource("12_playerdebug")
 metadata/_tab_index = 1
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Player" unique_id=184729103]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Player/Margin" unique_id=194857291]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102938472]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]👤 Player & Controller Settings[/b]"
+
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759302]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "Pos: (0.0, 0.0, 0.0)   •   Speed: 0.0 m/s   •   State: —"
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847582]
+layout_mode = 2
+
+[node name="NoclipTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948573]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]👻 Noclip & Flight (TCL)[/b]"
+
+[node name="NoclipRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759203]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NoclipCheck" type="CheckBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837401]
+layout_mode = 2
+tooltip_text = "Toggle noclip flight mode (disables physics collision & gravity)."
+text = "Noclip Mode (TCL)"
+
+[node name="NoclipSpeedLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=182736495]
+layout_mode = 2
+text = "fly speed (m/s):"
+
+[node name="NoclipSpeedSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837495]
+layout_mode = 2
+min_value = 1.0
+max_value = 100.0
+step = 0.5
+value = 12.0
+
+[node name="NoclipSprintLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=182736496]
+layout_mode = 2
+text = "sprint multi:"
+
+[node name="NoclipSprintSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837496]
+layout_mode = 2
+min_value = 1.0
+max_value = 10.0
+step = 0.1
+value = 2.5
+
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847583]
+layout_mode = 2
+
+[node name="MoveTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948574]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🏃 Locomotion & Speed[/b]"
+
+[node name="MoveGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759204]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 4
+
+[node name="BaseSpeedLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736401]
+layout_mode = 2
+text = "walk speed:"
+
+[node name="BaseSpeedSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837402]
+layout_mode = 2
+min_value = 0.5
+max_value = 50.0
+step = 0.25
+value = 4.0
+
+[node name="SprintMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736403]
+layout_mode = 2
+text = "sprint multi:"
+
+[node name="SprintMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837404]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+step = 0.1
+value = 1.6
+
+[node name="CrouchMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736405]
+layout_mode = 2
+text = "crouch multi:"
+
+[node name="CrouchMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837406]
+layout_mode = 2
+min_value = 0.1
+max_value = 1.0
+step = 0.05
+value = 0.5
+
+[node name="AccelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736407]
+layout_mode = 2
+text = "accel rate:"
+
+[node name="AccelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837408]
+layout_mode = 2
+min_value = 5.0
+max_value = 200.0
+step = 1.0
+value = 45.0
+
+[node name="DecelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736409]
+layout_mode = 2
+text = "decel rate:"
+
+[node name="DecelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837410]
+layout_mode = 2
+min_value = 5.0
+max_value = 200.0
+step = 1.0
+value = 35.0
+
+[node name="Sep3" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847584]
+layout_mode = 2
+
+[node name="JumpTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948575]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🦘 Jump & Gravity Physics[/b]"
+
+[node name="JumpGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759205]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 4
+
+[node name="JumpVelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736411]
+layout_mode = 2
+text = "jump height/vel:"
+
+[node name="JumpVelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837412]
+layout_mode = 2
+min_value = 0.0
+max_value = 50.0
+step = 0.25
+value = 5.5
+
+[node name="GravityMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736413]
+layout_mode = 2
+text = "gravity scale:"
+
+[node name="GravityMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837414]
+layout_mode = 2
+min_value = 0.0
+max_value = 5.0
+step = 0.1
+value = 1.4
+
+[node name="CoyoteLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736415]
+layout_mode = 2
+text = "coyote time (s):"
+
+[node name="CoyoteSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837416]
+layout_mode = 2
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 0.15
+
+[node name="AutoJumpCheck" type="CheckBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837417]
+layout_mode = 2
+button_pressed = true
+text = "Auto-Jump"
+
+[node name="Sep4" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847585]
+layout_mode = 2
+
+[node name="StepTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948576]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🧗 Step & Slope Obstacle Handling[/b]"
+
+[node name="StepGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759206]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="StepHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736418]
+layout_mode = 2
+text = "max step height (m):"
+
+[node name="StepHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837419]
+layout_mode = 2
+min_value = 0.0
+max_value = 2.0
+step = 0.05
+value = 0.7
+
+[node name="MaxAngleLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736420]
+layout_mode = 2
+text = "max floor angle (°):"
+
+[node name="MaxAngleSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837421]
+layout_mode = 2
+min_value = 10.0
+max_value = 89.0
+step = 1.0
+value = 50.0
+
+[node name="HoverOffsetLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736422]
+layout_mode = 2
+text = "hover offset (m):"
+
+[node name="HoverOffsetSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837423]
+layout_mode = 2
+min_value = 0.0
+max_value = 1.5
+step = 0.05
+value = 0.6
+
+[node name="Sep5" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847586]
+layout_mode = 2
+
+[node name="CameraTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948577]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]👁️ Look & Camera Dynamics[/b]"
+
+[node name="CameraGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759207]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="MouseSensLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736424]
+layout_mode = 2
+text = "mouse sens:"
+
+[node name="MouseSensSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837425]
+layout_mode = 2
+min_value = 0.0005
+max_value = 0.02
+step = 0.0005
+value = 0.003
+
+[node name="EyeHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736426]
+layout_mode = 2
+text = "eye height (m):"
+
+[node name="EyeHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837427]
+layout_mode = 2
+min_value = 0.5
+max_value = 3.0
+step = 0.05
+value = 1.5
+
+[node name="FovLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736428]
+layout_mode = 2
+text = "camera fov (°):"
+
+[node name="FovSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837429]
+layout_mode = 2
+min_value = 40.0
+max_value = 120.0
+step = 1.0
+value = 75.0
+
+[node name="Sep6" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847587]
+layout_mode = 2
+
+[node name="ActionsRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759208]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ResetDefaultsBtn" type="Button" parent="Debug Tools/TabContainer/Player/Margin/VBox/ActionsRow" unique_id=192837430]
+layout_mode = 2
+text = "Reset Defaults"
+
+[node name="GroundSnapBtn" type="Button" parent="Debug Tools/TabContainer/Player/Margin/VBox/ActionsRow" unique_id=192837431]
+layout_mode = 2
+tooltip_text = "Raycast downwards and snap player position directly to ground."
+text = "Snap to Ground"
 
 [node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
 visible = false
