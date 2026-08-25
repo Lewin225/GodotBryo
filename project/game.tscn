@@ -57,6 +57,7 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 script = ExtResource("7_scriptengine")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
+visible = false
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
@@ -73,12 +74,14 @@ debug_click_shake = true
 [node name="Camera3D" parent="Character" index="1" unique_id=1676192724]
 far = 400.0
 
+[node name="HUD" parent="Character" index="3" unique_id=98712345]
+visible = false
+
 [node name="Debug Tools" type="Window" parent="." unique_id=65829105]
 scaling_3d_scale = 0.3161
 oversampling_override = 1.0
 initial_position = 5
 size = Vector2i(784, 466)
-visible = false
 script = SubResource("GDScript_yryqu")
 
 [node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
@@ -96,11 +99,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 0
-clip_tabs = true
+current_tab = 2
 drag_to_rearrange_enabled = true
 
 [node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
+visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -123,9 +126,9 @@ theme_override_constants/separation = 6
 [node name="Usage" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=2090400204]
 layout_mode = 2
 bbcode_enabled = true
+text = "0 live contexts"
 fit_content = true
 scroll_active = false
-text = "0 live contexts"
 
 [node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=648164203]
 layout_mode = 2
@@ -135,11 +138,11 @@ layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Run a script line, e.g. Player.Disable"
 
-[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=1878701052]
 layout_mode = 2
 text = "Run"
 
-[node name="Clear" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+[node name="Clear" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=2068415879]
 layout_mode = 2
 text = "Clear"
 
@@ -188,7 +191,6 @@ vertical_scroll_mode = 2
 metadata/_tab_index = 1
 
 [node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
-visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -211,16 +213,16 @@ theme_override_constants/separation = 8
 [node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=832985244]
 layout_mode = 2
 bbcode_enabled = true
+text = "[b]🎒 Player Inventory[/b]"
 fit_content = true
 scroll_active = false
-text = "[b]🎒 Player Inventory[/b]"
 
-[node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=94027675]
 layout_mode = 2
 placeholder_text = "Filter items by name or FormID..."
 clear_button_enabled = true
 
-[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=2087114334]
 custom_minimum_size = Vector2(0, 260)
 layout_mode = 2
 size_flags_vertical = 3
@@ -250,9 +252,9 @@ text = "Drop"
 [node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
 layout_mode = 2
 bbcode_enabled = true
+text = "0 distinct item type(s)"
 fit_content = true
 scroll_active = false
-text = "0 distinct item type(s)"
 
 [node name="CellLoader" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
@@ -278,208 +280,265 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1709561768]
+[node name="SubTabs" type="TabContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1564045092]
 layout_mode = 2
-theme_override_constants/separation = 10
+size_flags_horizontal = 3
+size_flags_vertical = 3
+current_tab = 0
 
-[node name="StateTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="Streaming State" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1347269149]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+metadata/_tab_index = 0
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State" unique_id=2054561651]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StateTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1746925482]
 layout_mode = 2
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "[b]🌐 World Streaming State[/b]"
-
-[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-layout_mode = 2
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 6
-columns = 4
-
-[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
-text = "Status: Inactive"
 
-[node name="CellCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1869765600]
 layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Cell: (none)"
-
-[node name="ResidentCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Resident: 0"
-
-[node name="FullDetailCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Full Detail: 0"
-
-[node name="DistantCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Distant: 0"
-
-[node name="InFlightCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "In-Flight: 0"
-
-[node name="QueueDepthCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Queue Depth: 0"
-
-[node name="NoCellCacheCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "Empty Cache: 0"
-
-[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-layout_mode = 2
-
-[node name="RadiusTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "[b]📏 Load Radius Configuration & Limits[/b]"
-
-[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 4
 columns = 3
 
-[node name="RadLoadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=378558192]
 layout_mode = 2
+size_flags_horizontal = 3
 bbcode_enabled = true
+text = "Status: Inactive"
 fit_content = true
 scroll_active = false
+autowrap_mode = 0
+
+[node name="CellCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=460620432]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Cell: (none)"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="ResidentCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=2110724604]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Resident: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="FullDetailCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=879374361]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Full Detail: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="DistantCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=917911515]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Distant: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="InFlightCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=1981231591]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "In-Flight: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="QueueDepthCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=476789449]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Queue Depth: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="NoCellCacheCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=748487168]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Empty Cache: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1331022457]
+layout_mode = 2
+
+[node name="RadiusTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1189047551]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]📏 Load Radius Configuration & Limits[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=952126884]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="RadLoadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=838554842]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
 text = "Load Full: 1.5"
-
-[node name="RadUnloadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+autowrap_mode = 0
+
+[node name="RadUnloadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1921313058]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
 text = "Unload Full: 2.25"
-
-[node name="RadLoadDistant" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+autowrap_mode = 0
+
+[node name="RadLoadDistant" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=93453800]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
 text = "Load Distant: 4.5"
-
-[node name="RadUnload" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+autowrap_mode = 0
+
+[node name="RadUnload" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=2024868804]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
 text = "Unload: 5.5"
-
-[node name="CheckInterval" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+autowrap_mode = 0
+
+[node name="CheckInterval" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=673022214]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
 text = "Check: 0.25s"
-
-[node name="LodCrossover" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
-text = "LOD Crossover: 250m"
+autowrap_mode = 0
 
-[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="LodCrossover" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1063840941]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "LOD Crossover: 250m"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=636008105]
+layout_mode = 2
+
+[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1472278246]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=2078833265]
 layout_mode = 2
 text = "tiles/frame:"
 vertical_alignment = 1
 
-[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
+[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1196531616]
 layout_mode = 2
 tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
 min_value = 1.0
 max_value = 64.0
 value = 1.0
 
-[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=2131326328]
 layout_mode = 2
 text = "objects/frame:"
 vertical_alignment = 1
 
-[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
+[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1368787344]
 layout_mode = 2
 tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
 min_value = 1.0
 max_value = 2000.0
 value = 1.0
 
-[node name="FreezeTraceRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-layout_mode = 2
-
-[node name="FreezeTraceLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
-layout_mode = 2
-text = "freeze trace:"
-vertical_alignment = 1
-
-[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
+[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=199155656]
 layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
-text = "enabled"
+text = "freeze trace"
 
-[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="Ground Textures" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1706202073]
+visible = false
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+metadata/_tab_index = 1
 
-[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures" unique_id=800481568]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 
-[node name="TexTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
+[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=448109901]
 layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "[b]🎨 World Ground Textures (Terrain3D Pool)[/b]"
+theme_override_constants/separation = 12
 
-[node name="TexSummaryLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
+[node name="TexTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=1030283830]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
+text = "[b]🎨 World Ground Textures (Terrain3D Pool)[/b]"
 fit_content = true
 scroll_active = false
 
-[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="TexSummaryLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=2101835264]
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
-placeholder_text = "Filter ground textures..."
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1044071171]
+layout_mode = 2
+placeholder_text = "Filter ground textures by name or slot..."
 clear_button_enabled = true
 
-[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
-custom_minimum_size = Vector2(0, 160)
+[node name="TextureTree" type="Tree" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1805287992]
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_vertical = 3
+columns = 2
+column_titles_visible = true
+hide_root = true
 
 [node name="Envrioment" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=124391377]
 visible = false
@@ -505,9 +564,9 @@ theme_override_constants/separation = 10
 [node name="CellTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=607578486]
 layout_mode = 2
 bbcode_enabled = true
+text = "[b]📍 Current Cell[/b]"
 fit_content = true
 scroll_active = false
-text = "[b]📍 Current Cell[/b]"
 
 [node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1397622249]
 custom_minimum_size = Vector2(0, 50)
@@ -516,136 +575,136 @@ bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="ColumnsContainer" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
+[node name="ColumnsContainer" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=521173631]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="LeftPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer"]
+[node name="LeftPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer" unique_id=2133578111]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="XcllTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="XcllTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=366228478]
 layout_mode = 2
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "[b]☀️ Authored CELL.XCLL Lighting[/b]"
+fit_content = true
+scroll_active = false
 
-[node name="AmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="AmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=422956097]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="AmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
+[node name="AmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow" unique_id=1818273909]
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="AmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
+[node name="AmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow" unique_id=986443432]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "ambient: —"
+fit_content = true
+scroll_active = false
 
-[node name="DirectionalRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="DirectionalRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=727936576]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="DirectionalSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
+[node name="DirectionalSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow" unique_id=1214956702]
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="DirectionalLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
+[node name="DirectionalLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow" unique_id=1835911970]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "directional: —"
-
-[node name="FogLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+
+[node name="FogLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=744471539]
+layout_mode = 2
+bbcode_enabled = true
 text = "fog: —"
-
-[node name="FadeLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+
+[node name="FadeLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=1196153313]
+layout_mode = 2
+bbcode_enabled = true
 text = "directional fade: —"
+fit_content = true
+scroll_active = false
 
-[node name="XcllNoteLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="XcllNoteLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=876955490]
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="RightPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer"]
+[node name="RightPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer" unique_id=1304625542]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="AppliedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="AppliedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1740068754]
 layout_mode = 2
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "[b]🌍 Applied WorldEnvironment[/b]"
+fit_content = true
+scroll_active = false
 
-[node name="EnvAmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="EnvAmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=14157388]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="EnvAmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
+[node name="EnvAmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow" unique_id=1096278479]
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="EnvAmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
+[node name="EnvAmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow" unique_id=464106494]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "ambient light: —"
+fit_content = true
+scroll_active = false
 
-[node name="EnvBgRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="EnvBgRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1018528632]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="EnvBgSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
+[node name="EnvBgSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow" unique_id=1682065532]
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="EnvBgLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
+[node name="EnvBgLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow" unique_id=2117349399]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
-fit_content = true
-scroll_active = false
 text = "background: —"
-
-[node name="EnvEnergyLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+
+[node name="EnvEnergyLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1534499185]
+layout_mode = 2
+bbcode_enabled = true
 text = "energy / source: —"
-
-[node name="EnvSettingsLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
-layout_mode = 2
-bbcode_enabled = true
 fit_content = true
 scroll_active = false
+
+[node name="EnvSettingsLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=482713744]
+layout_mode = 2
+bbcode_enabled = true
 text = "sdfgi / tonemap: —"
+fit_content = true
+scroll_active = false
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

@@ -7,29 +7,29 @@ extends Control
 
 const REFRESH_INTERVAL_SEC := 0.25
 
-@onready var _status_card: RichTextLabel = $Margin/VBox/StateGrid/StatusCard
-@onready var _cell_card: RichTextLabel = $Margin/VBox/StateGrid/CellCard
-@onready var _resident_card: RichTextLabel = $Margin/VBox/StateGrid/ResidentCard
-@onready var _full_detail_card: RichTextLabel = $Margin/VBox/StateGrid/FullDetailCard
-@onready var _distant_card: RichTextLabel = $Margin/VBox/StateGrid/DistantCard
-@onready var _in_flight_card: RichTextLabel = $Margin/VBox/StateGrid/InFlightCard
-@onready var _queue_depth_card: RichTextLabel = $Margin/VBox/StateGrid/QueueDepthCard
-@onready var _no_cell_cache_card: RichTextLabel = $Margin/VBox/StateGrid/NoCellCacheCard
+@onready var _status_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/StatusCard"
+@onready var _cell_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/CellCard"
+@onready var _resident_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/ResidentCard"
+@onready var _full_detail_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/FullDetailCard"
+@onready var _distant_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/DistantCard"
+@onready var _in_flight_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/InFlightCard"
+@onready var _queue_depth_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/QueueDepthCard"
+@onready var _no_cell_cache_card: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/StateGrid/NoCellCacheCard"
 
-@onready var _rad_load_full: RichTextLabel = $Margin/VBox/RadiusGrid/RadLoadFull
-@onready var _rad_unload_full: RichTextLabel = $Margin/VBox/RadiusGrid/RadUnloadFull
-@onready var _rad_load_distant: RichTextLabel = $Margin/VBox/RadiusGrid/RadLoadDistant
-@onready var _rad_unload: RichTextLabel = $Margin/VBox/RadiusGrid/RadUnload
-@onready var _check_interval: RichTextLabel = $Margin/VBox/RadiusGrid/CheckInterval
-@onready var _lod_crossover: RichTextLabel = $Margin/VBox/RadiusGrid/LodCrossover
+@onready var _rad_load_full: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/RadLoadFull"
+@onready var _rad_unload_full: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/RadUnloadFull"
+@onready var _rad_load_distant: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/RadLoadDistant"
+@onready var _rad_unload: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/RadUnload"
+@onready var _check_interval: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/CheckInterval"
+@onready var _lod_crossover: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/LodCrossover"
 
-@onready var _tiles_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/TilesPerFrameSpin
-@onready var _objects_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/ObjectsPerFrameSpin
-@onready var _freeze_trace_check: CheckBox = $Margin/VBox/FreezeTraceRow/FreezeTraceCheck
+@onready var _tiles_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/TilesPerFrameSpin"
+@onready var _objects_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/ObjectsPerFrameSpin"
+@onready var _freeze_trace_check: CheckBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/FreezeTraceCheck"
 
-@onready var _tex_filter_edit: LineEdit = $Margin/VBox/TexFilterEdit
-@onready var _texture_list: ItemList = $Margin/VBox/TextureList
-@onready var _texture_summary_label: RichTextLabel = $Margin/VBox/TexHeader/TexSummaryLabel
+@onready var _tex_filter_edit: LineEdit = $"Margin/SubTabs/Ground Textures/VBox/TexFilterEdit"
+@onready var _texture_tree: Tree = $"Margin/SubTabs/Ground Textures/VBox/TextureTree"
+@onready var _texture_summary_label: RichTextLabel = $"Margin/SubTabs/Ground Textures/VBox/TexHeader/TexSummaryLabel"
 
 var _world_streamer: WorldStreamer
 var _refresh_timer := 0.0
@@ -38,11 +38,26 @@ var _suppress_spin_signals := false
 
 func _ready() -> void:
 	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamer") as WorldStreamer
+	_setup_texture_tree()
 	_tiles_per_frame_spin.value_changed.connect(_on_tiles_per_frame_changed)
 	_objects_per_frame_spin.value_changed.connect(_on_objects_per_frame_changed)
 	_freeze_trace_check.toggled.connect(_on_freeze_trace_toggled)
 	_tex_filter_edit.text_changed.connect(func(_t: String) -> void: _refresh_texture_list())
 	_refresh()
+
+
+func _setup_texture_tree() -> void:
+	_texture_tree.columns = 2
+	_texture_tree.column_titles_visible = true
+	_texture_tree.hide_root = true
+	_texture_tree.select_mode = Tree.SELECT_ROW
+
+	_texture_tree.set_column_title(0, "Slot")
+	_texture_tree.set_column_expand(0, false)
+	_texture_tree.set_column_custom_minimum_width(0, 70)
+
+	_texture_tree.set_column_title(1, "Texture Path / Asset Name")
+	_texture_tree.set_column_expand(1, true)
 
 
 func _process(delta: float) -> void:
@@ -128,7 +143,7 @@ func _refresh_tuning_spinboxes() -> void:
 
 func _refresh_texture_list() -> void:
 	var pool: Terrain3DTexturePool = _world_streamer._terrain3d_pool
-	_texture_list.clear()
+	_texture_tree.clear()
 	if pool == null:
 		_texture_summary_label.text = "[color=#7f848e](not active)[/color]"
 		return
@@ -137,9 +152,19 @@ func _refresh_texture_list() -> void:
 	var entries: Array = pool.get_debug_texture_list()
 	_texture_summary_label.text = "[color=#61afef][b]%d[/b][/color] / [color=#7f848e]%d[/color] slots used" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS]
 
+	var root := _texture_tree.create_item()
 	for entry in entries:
 		var name: String = String(entry["name"])
 		var slot: int = int(entry["slot"])
-		if not filter_text.is_empty() and name.to_lower().find(filter_text) == -1:
-			continue
-		_texture_list.add_item("slot %3d   %s" % [slot, name])
+		var slot_str := str(slot)
+		if not filter_text.is_empty():
+			if name.to_lower().find(filter_text) == -1 and slot_str.find(filter_text) == -1:
+				continue
+		var item := _texture_tree.create_item(root)
+		item.set_metadata(0, slot)
+		item.set_text(0, slot_str)
+		item.set_text_alignment(0, HORIZONTAL_ALIGNMENT_CENTER)
+		item.set_custom_color(0, Color("#61afef"))
+
+		item.set_text(1, name)
+		item.set_custom_color(1, Color("#e5c07b"))
