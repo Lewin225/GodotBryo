@@ -66,6 +66,7 @@ func _refresh() -> void:
 			"directional: %s" % _color_str(directional),
 			"fog near/far: %.1f / %.1f   power: %.2f   clip: %.1f" % [
 				lighting["fog_near"], lighting["fog_far"], lighting["fog_power"], lighting["fog_clip_distance"]],
+			"directional rotation XY/Z: %d / %d" % [lighting["directional_rotation_xy"], lighting["directional_rotation_z"]],
 			"directional fade: %.2f" % lighting["directional_fade"],
 		])
 
@@ -78,9 +79,19 @@ func _refresh() -> void:
 		"ambient_light_color:  %s" % _color_str(env.ambient_light_color),
 		"ambient_light_energy: %.2f   source: %d" % [env.ambient_light_energy, env.ambient_light_source],
 		"sdfgi_enabled: %s   sdfgi_energy: %.2f" % [env.sdfgi_enabled, env.sdfgi_energy],
+		"fog_enabled: %s   color: %s" % [env.fog_enabled, _color_str(env.fog_light_color)],
+		"fog depth begin/end/curve: %.2f / %.2f / %.3f" % [env.fog_depth_begin, env.fog_depth_end, env.fog_depth_curve],
 		"tonemap_mode: %d   tonemap_exposure: %.2f" % [env.tonemap_mode, env.tonemap_exposure],
 		"background_mode: %d   background_color: %s" % [env.background_mode, _color_str(env.background_color)],
+		_directional_light_str(),
 	])
+
+func _directional_light_str() -> String:
+	var light: DirectionalLight3D = _game._interior_directional_light
+	if light == null:
+		return "interior directional: (not initialized)"
+	return "interior directional: visible=%s   color=%s   energy=%.2f   rotation=%s" % [
+		light.visible, _color_str(light.light_color), light.light_energy, light.rotation_degrees]
 
 func _color_str(c: Color) -> String:
 	return "rgb(%.0f, %.0f, %.0f)  [%.3f, %.3f, %.3f]" % [c.r * 255.0, c.g * 255.0, c.b * 255.0, c.r, c.g, c.b]
