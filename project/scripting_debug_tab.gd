@@ -23,9 +23,7 @@ var _history: Array[String] = []
 var _history_index: int = -1
 var _current_input_buffer: String = ""
 
-# Autocomplete state
-var _suggestions_popup: PopupMenu
-var _suggestions: Array[String] = []
+# Autocomplete candidates
 var _builtin_candidates: Array[String] = [
 	"ShowMessage", "GetButtonPressed", "PlaceAtMe", "CenterOnCell", "COC",
 	"AddItem", "RemoveItem", "GetItemCount", "EquipItem", "UnequipItem",
@@ -46,7 +44,6 @@ func _ready() -> void:
 	_output.editable = false
 
 	_setup_highlighter()
-	_setup_suggestions_popup()
 
 	_run.pressed.connect(_run_line)
 	if _clear:
@@ -54,7 +51,6 @@ func _ready() -> void:
 
 	_line.text_submitted.connect(func(_text: String) -> void: _run_line())
 	_line.gui_input.connect(_on_line_gui_input)
-	_line.text_changed.connect(_on_line_text_changed)
 
 	_instances_list.item_selected.connect(_select_instance)
 	_refresh()
@@ -85,11 +81,10 @@ func _setup_highlighter() -> void:
 	_source.syntax_highlighter = hl
 
 
-func _setup_suggestions_popup() -> void:
-	_suggestions_popup = PopupMenu.new()
-	_suggestions_popup.unfocusable = true
-	_suggestions_popup.id_pressed.connect(_on_suggestion_selected)
-	add_child(_suggestions_popup)
+var _tab_matches: Array[String] = []
+var _tab_match_index: int = 0
+var _tab_token_start: int = 0
+var _tab_prefix: String = ""
 
 
 func _on_line_gui_input(event: InputEvent) -> void:
@@ -98,35 +93,16 @@ func _on_line_gui_input(event: InputEvent) -> void:
 
 	var key_event := event as InputEventKey
 
-	# Handle suggestions popup navigation
-	if _suggestions_popup.visible:
-		if key_event.keycode == KEY_ESCAPE:
-			_suggestions_popup.hide()
-			accept_event()
-			return
-		elif key_event.keycode == KEY_DOWN:
-			var next_idx: int = (_suggestions_popup.get_focused_item() + 1) % maxi(1, _suggestions_popup.item_count)
-			_suggestions_popup.set_focused_item(next_idx)
-			accept_event()
-			return
-		elif key_event.keycode == KEY_UP:
-			var prev_idx: int = (_suggestions_popup.get_focused_item() - 1 + _suggestions_popup.item_count) % maxi(1, _suggestions_popup.item_count)
-			_suggestions_popup.set_focused_item(prev_idx)
-			accept_event()
-			return
-		elif key_event.keycode == KEY_TAB or key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER:
-			var focused := _suggestions_popup.get_focused_item()
-			if focused >= 0 and focused < _suggestions.size():
-				_on_suggestion_selected(focused)
-				accept_event()
-				return
-
-	# Handle Tab completion when popup isn't visible
+	# Handle Tab completion (in-place, never steals focus)
 	if key_event.keycode == KEY_TAB and not key_event.is_echo():
-		_show_suggestions(true)
-		if not _suggestions.is_empty():
-			accept_event()
-			return
+		_handle_tab_completion()
+		accept_event()
+		return
+
+	# Any non-tab keystroke resets tab cycling
+	if key_event.keycode != KEY_TAB:
+		_tab_matches.clear()
+		_tab_match_index = 0
 
 	# Handle History navigation (Up / Down)
 	if key_event.keycode == KEY_UP and not key_event.is_echo():
@@ -154,25 +130,58 @@ func _on_line_gui_input(event: InputEvent) -> void:
 			return
 
 
-func _on_line_text_changed(new_text: String) -> void:
-	if new_text.ends_with(" ") or new_text.strip_edges().is_empty():
-		_suggestions_popup.hide()
-		return
-	_show_suggestions(false)
-
-
-func _show_suggestions(force: bool) -> void:
+func _handle_tab_completion() -> void:
 	var text := _line.text
-	if text.ends_with(" "):
-		_suggestions_popup.hide()
+	var caret := _line.caret_column
+
+	# If already cycling through active matches on repeated Tab presses:
+	if not _tab_matches.is_empty() and caret >= _tab_token_start:
+		_tab_match_index = (_tab_match_index + 1) % _tab_matches.size()
+		var chosen := _tab_matches[_tab_match_index]
+		_apply_tab_completion(chosen)
 		return
 
-	var lower_text := text.to_lower().strip_edges()
-	if not force and lower_text.length() < 2:
-		_suggestions_popup.hide()
+	# Extract token before caret
+	var left_text := text.substr(0, caret)
+	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
+	var token := left_text.substr(token_start)
+
+	if token.is_empty():
 		return
 
-	# Build candidate list
+	_tab_prefix = token.to_lower()
+	_tab_token_start = token_start
+	_tab_matches.clear()
+	_tab_match_index = 0
+
+	var candidates := _get_all_candidates()
+	for c in candidates:
+		if c.to_lower().begins_with(_tab_prefix):
+			if not _tab_matches.has(c):
+				_tab_matches.append(c)
+
+	if _tab_matches.is_empty():
+		for c in candidates:
+			if c.to_lower().find(_tab_prefix) != -1:
+				if not _tab_matches.has(c):
+					_tab_matches.append(c)
+
+	if _tab_matches.is_empty():
+		return
+
+	_apply_tab_completion(_tab_matches[0])
+
+
+func _apply_tab_completion(completed_word: String) -> void:
+	var right_text := _line.text.substr(_line.caret_column)
+	var prefix_text := _line.text.substr(0, _tab_token_start)
+	var suffix := " " if right_text.is_empty() or not right_text.begins_with(" ") else ""
+
+	_line.text = prefix_text + completed_word + suffix + right_text
+	_line.caret_column = (prefix_text + completed_word + suffix).length()
+
+
+func _get_all_candidates() -> Array[String]:
 	var candidates: Array[String] = _builtin_candidates.duplicate()
 	for entry in _instances:
 		var node_name := String(entry.get("node_name", ""))
@@ -184,41 +193,7 @@ func _show_suggestions(force: bool) -> void:
 			candidates.append(script_name)
 		if not candidates.has(form_hex):
 			candidates.append(form_hex)
-
-	# Filter matches
-	_suggestions.clear()
-	for c in candidates:
-		var c_lower := c.to_lower()
-		if c_lower.begins_with(lower_text) or (force and c_lower.find(lower_text) != -1):
-			_suggestions.append(c)
-			if _suggestions.size() >= 10:
-				break
-
-	# Don't pop up if empty or if exact single match is already fully typed
-	if _suggestions.is_empty() or (!force and _suggestions.size() == 1 and _suggestions[0].to_lower() == lower_text):
-		_suggestions_popup.hide()
-		return
-
-	_suggestions_popup.clear()
-	for i in _suggestions.size():
-		_suggestions_popup.add_item(_suggestions[i], i)
-
-	# Position popup below LineEdit
-	var global_pos := _line.get_screen_position()
-	var popup_size := Vector2i(maxi(int(_line.size.x), 260), mini(_suggestions.size() * 28 + 10, 220))
-	_suggestions_popup.position = Vector2i(int(global_pos.x), int(global_pos.y + _line.size.y + 4.0))
-	_suggestions_popup.size = popup_size
-	_suggestions_popup.reset_size()
-	_suggestions_popup.show()
-	_suggestions_popup.set_focused_item(0)
-
-
-func _on_suggestion_selected(id: int) -> void:
-	if id >= 0 and id < _suggestions.size():
-		_line.text = _suggestions[id] + " "
-		_line.caret_column = _line.text.length()
-	_suggestions_popup.hide()
-	_line.grab_focus()
+	return candidates
 
 
 func _process(_delta: float) -> void:
@@ -302,7 +277,6 @@ func _run_line() -> void:
 		_history.append(cmd)
 	_history_index = -1
 	_current_input_buffer = ""
-	_suggestions_popup.hide()
 
 	var reply: Dictionary = _engine.run_debug_line(cmd, _selected_node)
 	_output.text += "> " + cmd + "\n" + ("OK" if bool(reply.get("ok", false)) else "ERROR") + ": " + String(reply.get("message", ""))

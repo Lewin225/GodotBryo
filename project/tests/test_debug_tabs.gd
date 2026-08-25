@@ -56,6 +56,14 @@ func _ready() -> void:
 	script_tab._history_index += 1
 	check(script_tab._history[script_tab._history_index] == "CenterOnCell Goodsprings", "Down arrow navigates forward in history")
 
+	# Test Tab completion
+	script_tab._line = LineEdit.new()
+	script_tab._line.text = "Center"
+	script_tab._line.caret_column = 6
+	script_tab._handle_tab_completion()
+	check(script_tab._line.text.begins_with("CenterOnCell"), "Tab auto-completes 'Center' to 'CenterOnCell'")
+	script_tab._line.free()
+
 	script_tab.free()
 
 	# 4. Test World Streaming sub-tabs structure in game.tscn
