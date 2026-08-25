@@ -334,6 +334,19 @@ min_value = 1.0
 max_value = 2000.0
 value = 1.0
 
+[node name="FreezeTraceRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+layout_mode = 2
+
+[node name="FreezeTraceLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
+layout_mode = 2
+text = "freeze trace:"
+vertical_alignment = 1
+
+[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
+layout_mode = 2
+tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
+text = "enabled"
+
 [node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=940079046]
 layout_mode = 2
 
