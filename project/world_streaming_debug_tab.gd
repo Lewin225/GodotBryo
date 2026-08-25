@@ -7,29 +7,29 @@ extends Control
 
 const REFRESH_INTERVAL_SEC := 0.25
 
-@onready var _status_card: Label = $Margin/VBox/StateGrid/StatusCard
-@onready var _cell_card: Label = $Margin/VBox/StateGrid/CellCard
-@onready var _resident_card: Label = $Margin/VBox/StateGrid/ResidentCard
-@onready var _full_detail_card: Label = $Margin/VBox/StateGrid/FullDetailCard
-@onready var _distant_card: Label = $Margin/VBox/StateGrid/DistantCard
-@onready var _in_flight_card: Label = $Margin/VBox/StateGrid/InFlightCard
-@onready var _queue_depth_card: Label = $Margin/VBox/StateGrid/QueueDepthCard
-@onready var _no_cell_cache_card: Label = $Margin/VBox/StateGrid/NoCellCacheCard
+@onready var _status_card: Label = $Margin/Columns/Left/StateGrid/StatusCard
+@onready var _cell_card: Label = $Margin/Columns/Left/StateGrid/CellCard
+@onready var _resident_card: Label = $Margin/Columns/Left/StateGrid/ResidentCard
+@onready var _full_detail_card: Label = $Margin/Columns/Left/StateGrid/FullDetailCard
+@onready var _distant_card: Label = $Margin/Columns/Left/StateGrid/DistantCard
+@onready var _in_flight_card: Label = $Margin/Columns/Left/StateGrid/InFlightCard
+@onready var _queue_depth_card: Label = $Margin/Columns/Left/StateGrid/QueueDepthCard
+@onready var _no_cell_cache_card: Label = $Margin/Columns/Left/StateGrid/NoCellCacheCard
 
-@onready var _rad_load_full: Label = $Margin/VBox/RadiusGrid/RadLoadFull
-@onready var _rad_unload_full: Label = $Margin/VBox/RadiusGrid/RadUnloadFull
-@onready var _rad_load_distant: Label = $Margin/VBox/RadiusGrid/RadLoadDistant
-@onready var _rad_unload: Label = $Margin/VBox/RadiusGrid/RadUnload
-@onready var _check_interval: Label = $Margin/VBox/RadiusGrid/CheckInterval
-@onready var _lod_crossover: Label = $Margin/VBox/RadiusGrid/LodCrossover
+@onready var _rad_load_full: Label = $Margin/Columns/Left/RadiusGrid/RadLoadFull
+@onready var _rad_unload_full: Label = $Margin/Columns/Left/RadiusGrid/RadUnloadFull
+@onready var _rad_load_distant: Label = $Margin/Columns/Left/RadiusGrid/RadLoadDistant
+@onready var _rad_unload: Label = $Margin/Columns/Left/RadiusGrid/RadUnload
+@onready var _check_interval: Label = $Margin/Columns/Left/RadiusGrid/CheckInterval
+@onready var _lod_crossover: Label = $Margin/Columns/Left/RadiusGrid/LodCrossover
 
-@onready var _tiles_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/TilesPerFrameSpin
-@onready var _objects_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/ObjectsPerFrameSpin
-@onready var _freeze_trace_check: CheckBox = $Margin/VBox/FreezeTraceRow/FreezeTraceCheck
+@onready var _tiles_per_frame_spin: SpinBox = $Margin/Columns/Left/TuneRow/TilesPerFrameSpin
+@onready var _objects_per_frame_spin: SpinBox = $Margin/Columns/Left/TuneRow/ObjectsPerFrameSpin
+@onready var _freeze_trace_check: CheckBox = $Margin/Columns/Left/FreezeTraceRow/FreezeTraceCheck
 
-@onready var _tex_filter_edit: LineEdit = $Margin/VBox/TexFilterEdit
-@onready var _texture_list: ItemList = $Margin/VBox/TextureList
-@onready var _texture_summary_label: Label = $Margin/VBox/TexHeader/TexSummaryLabel
+@onready var _tex_filter_edit: LineEdit = $Margin/Columns/Right/TexFilterEdit
+@onready var _texture_list: ItemList = $Margin/Columns/Right/TextureList
+@onready var _texture_summary_label: Label = $Margin/Columns/Right/TexHeader/TexSummaryLabel
 
 var _world_streamer: WorldStreamer
 var _refresh_timer := 0.0
