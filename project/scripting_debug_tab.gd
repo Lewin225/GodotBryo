@@ -13,7 +13,8 @@ extends Control
 @onready var _run: Button = $Margin/VBox/ConsoleRow/Run
 @onready var _clear: Button = $Margin/VBox/ConsoleRow.get_node_or_null("Clear")
 @onready var _output: TextEdit = $Margin/VBox/VSplit/Output
-@onready var _suggestions_bar: RichTextLabel = $Margin/VBox.get_node_or_null("SuggestionsBar")
+@onready var _suggestions_panel: PanelContainer = get_node_or_null("SuggestionsPanel")
+@onready var _suggestions_list: RichTextLabel = get_node_or_null("SuggestionsPanel/Margin/SuggestionsList")
 
 var _engine: ScriptEngine
 var _instances: Array = []
@@ -53,6 +54,18 @@ func _ready() -> void:
 
 	_setup_highlighter()
 
+	if _suggestions_panel != null:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color("#1e2227")
+		sb.border_color = Color("#4b5263")
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(4)
+		sb.shadow_color = Color(0, 0, 0, 0.45)
+		sb.shadow_size = 8
+		sb.shadow_offset = Vector2(0, 4)
+		_suggestions_panel.add_theme_stylebox_override("panel", sb)
+		_suggestions_panel.hide()
+
 	_run.pressed.connect(_run_line)
 	if _clear:
 		_clear.pressed.connect(func() -> void: _output.text = "")
@@ -91,11 +104,11 @@ func _setup_highlighter() -> void:
 
 
 func _on_line_text_changed(_new_text: String) -> void:
-	_update_suggestions_bar()
+	_update_suggestions_panel()
 
 
-func _update_suggestions_bar() -> void:
-	if _suggestions_bar == null:
+func _update_suggestions_panel() -> void:
+	if _suggestions_panel == null:
 		return
 
 	var text := _line.text
@@ -108,7 +121,7 @@ func _update_suggestions_bar() -> void:
 		_suggestions.clear()
 		_suggestion_index = 0
 		_navigating_suggestions = false
-		_suggestions_bar.hide()
+		_suggestions_panel.hide()
 		return
 
 	_token_start = token_start
@@ -134,31 +147,40 @@ func _update_suggestions_bar() -> void:
 		_suggestions.clear()
 		_suggestion_index = 0
 		_navigating_suggestions = false
-		_suggestions_bar.hide()
+		_suggestions_panel.hide()
 		return
 
 	if _suggestion_index >= _suggestions.size():
 		_suggestion_index = 0
 
-	_render_suggestions_bar()
+	_render_suggestions_panel()
 
 
-func _render_suggestions_bar() -> void:
-	if _suggestions_bar == null or _suggestions.is_empty():
-		if _suggestions_bar != null:
-			_suggestions_bar.hide()
+func _render_suggestions_panel() -> void:
+	if _suggestions_panel == null or _suggestions.is_empty():
+		if _suggestions_panel != null:
+			_suggestions_panel.hide()
 		return
 
-	var items: PackedStringArray = []
+	var rows: PackedStringArray = []
 	for i in _suggestions.size():
 		var c := _suggestions[i]
 		if _navigating_suggestions and i == _suggestion_index:
-			items.append("[b][color=#61afef]▶ %s[/color][/b]" % c)
+			rows.append("[color=#61afef][b]▶  %s[/b][/color]" % c)
 		else:
-			items.append("[color=#abb2bf]%s[/color]" % c)
+			rows.append("[color=#abb2bf]    %s[/color]" % c)
 
-	_suggestions_bar.text = "[color=#7f848e]💡 Suggestions:[/color]  %s   [color=#5c6370]• [Tab/Enter to apply, ↑/↓ to choose][/color]" % "   ".join(items)
-	_suggestions_bar.show()
+	rows.append("[color=#5c6370][font_size=11]↑/↓ to select  •  Tab/Enter to apply  •  Esc to dismiss[/font_size][/color]")
+	if _suggestions_list != null:
+		_suggestions_list.text = "\n".join(rows)
+
+	# Position floating panel directly below _line without affecting the flow of the UI
+	var line_pos := _line.global_position
+	var line_size := _line.size
+	_suggestions_panel.global_position = Vector2(line_pos.x, line_pos.y + line_size.y + 4.0)
+	_suggestions_panel.custom_minimum_size = Vector2(maxf(line_size.x, 260.0), 0)
+	_suggestions_panel.reset_size()
+	_suggestions_panel.show()
 
 
 func _on_line_gui_input(event: InputEvent) -> void:
@@ -167,15 +189,15 @@ func _on_line_gui_input(event: InputEvent) -> void:
 
 	var key_event := event as InputEventKey
 
-	# Handle interactive suggestion navigation when suggestions are active
-	if _suggestions_bar != null and _suggestions_bar.visible and not _suggestions.is_empty():
+	# Handle interactive suggestion navigation when suggestions panel is visible
+	if _suggestions_panel != null and _suggestions_panel.visible and not _suggestions.is_empty():
 		if key_event.keycode == KEY_DOWN and not key_event.is_echo():
 			if not _navigating_suggestions:
 				_navigating_suggestions = true
 				_suggestion_index = 0
 			else:
 				_suggestion_index = (_suggestion_index + 1) % _suggestions.size()
-			_render_suggestions_bar()
+			_render_suggestions_panel()
 			accept_event()
 			return
 		elif key_event.keycode == KEY_UP and not key_event.is_echo():
@@ -184,7 +206,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 				_suggestion_index = _suggestions.size() - 1
 			else:
 				_suggestion_index = (_suggestion_index - 1 + _suggestions.size()) % _suggestions.size()
-			_render_suggestions_bar()
+			_render_suggestions_panel()
 			accept_event()
 			return
 		elif key_event.keycode == KEY_TAB and not key_event.is_echo():
@@ -199,7 +221,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 		elif key_event.keycode == KEY_ESCAPE and not key_event.is_echo():
 			_suggestions.clear()
 			_navigating_suggestions = false
-			_suggestions_bar.hide()
+			_suggestions_panel.hide()
 			accept_event()
 			return
 
@@ -214,7 +236,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 			_history_index -= 1
 		_line.text = _history[_history_index]
 		_line.caret_column = _line.text.length()
-		_update_suggestions_bar()
+		_update_suggestions_panel()
 		accept_event()
 		return
 	elif key_event.keycode == KEY_DOWN and not key_event.is_echo():
@@ -226,7 +248,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 				_history_index = -1
 				_line.text = _current_input_buffer
 			_line.caret_column = _line.text.length()
-			_update_suggestions_bar()
+			_update_suggestions_panel()
 			accept_event()
 			return
 	elif key_event.keycode == KEY_TAB and not key_event.is_echo():
@@ -250,12 +272,12 @@ func _apply_selected_suggestion() -> void:
 
 	_suggestions.clear()
 	_navigating_suggestions = false
-	if _suggestions_bar != null:
-		_suggestions_bar.hide()
+	if _suggestions_panel != null:
+		_suggestions_panel.hide()
 
 
 func _handle_tab_completion() -> void:
-	_update_suggestions_bar()
+	_update_suggestions_panel()
 	if not _suggestions.is_empty():
 		_apply_selected_suggestion()
 
