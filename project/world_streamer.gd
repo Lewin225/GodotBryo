@@ -28,8 +28,6 @@ extends Node3D
 
 signal streaming_settled
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 ## phases/2/12-distant-object-lod.md, step 3: two radii instead of one --
 ## every tile out to RADIUS_LOAD_DISTANT gets streamed in, but only tiles
 ## within RADIUS_LOAD_FULL resolve every placement; tiles in the wider band
@@ -220,7 +218,7 @@ var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own 
 
 func _ready() -> void:
 	esm = EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("WorldStreamer: could not open FalloutNV.esm")
 	resolver = GamebryoMeshResolver.new()
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())

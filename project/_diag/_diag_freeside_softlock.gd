@@ -7,12 +7,11 @@ extends SceneTree
 ## time how long streaming_settled takes to fire, with a generous timeout so
 ## a genuine hang is reported rather than the script itself hanging forever.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const TIMEOUT_SEC := 25.0
 
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

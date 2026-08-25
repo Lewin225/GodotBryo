@@ -7,8 +7,6 @@ extends SceneTree
 ## Also verifies get_scene_nodes()/get_submesh_owning_node_index() -- the
 ## general node-graph preservation added as a follow-up.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 func _dump(path: String) -> void:
 	var resolver := GamebryoMeshResolver.new()
 	var found := resolver.resolve_bytes(path)
