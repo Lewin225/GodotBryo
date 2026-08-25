@@ -6,7 +6,7 @@ extends Control
 
 @onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Instances
 @onready var _usage: Label = $Margin/VBox/Usage
-@onready var _details: Label = $Margin/VBox/VSplit/HSplit/Right/Details
+@onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
 @onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Locals
 @onready var _source: CodeEdit = $Margin/VBox/VSplit/HSplit/Right/Source
 @onready var _line: LineEdit = $Margin/VBox/ConsoleRow/Line
@@ -255,7 +255,7 @@ func _select_instance(index: int) -> void:
 
 func _show_selected() -> void:
 	if _selected_node == null:
-		_details.text = "Select a live scripted reference. Console commands run with player as caller if none selected."
+		_details.text = "[color=#7f848e]Select a live scripted reference. Console commands run with player as caller if none selected.[/color]"
 		_locals.text = ""
 		_source.text = ""
 		return
@@ -264,23 +264,23 @@ func _show_selected() -> void:
 			continue
 		var block_badges: PackedStringArray = []
 		for b in entry.get("blocks", []):
-			block_badges.append("[%s]" % b)
-		_details.text = "📜 %s (0x%X)   •   Node: %s   •   Blocks: %s" % [
-			entry["script_name"], entry["script_form_id"],
-			entry["node_name"], " ".join(block_badges) if not block_badges.is_empty() else "(none)"
+			block_badges.append("[color=#61afef][%s][/color]" % b)
+		_details.text = "[b]📜 %s[/b] [color=#98c379](0x%08X)[/color]   •   [b]Node:[/b] [color=#e5c07b]%s[/color]   •   [b]Blocks:[/b] %s" % [
+			entry["script_name"], int(entry["script_form_id"]),
+			entry["node_name"], " ".join(block_badges) if not block_badges.is_empty() else "[color=#7f848e](none)[/color]"
 		]
 
 		var locals_dict: Dictionary = entry.get("locals", {})
 		if locals_dict.is_empty():
-			_locals.text = "[b]Local Storage:[/b]  (no declared locals)"
+			_locals.text = "[b]Local Storage:[/b]  [color=#7f848e](no declared locals)[/color]"
 		else:
 			var rows: PackedStringArray = []
 			rows.append("[table=3]")
-			rows.append("[cell][b]Variable[/b][/cell][cell][b]Type[/b][/cell][cell][b]Value[/b][/cell]")
+			rows.append("[cell][b]Variable[/b]  [/cell][cell][b]Type[/b]  [/cell][cell][b]Value[/b][/cell]")
 			for var_name in locals_dict:
 				var val: Variant = locals_dict[var_name]
 				var type_name := "int" if val is int else ("float" if val is float else "string")
-				rows.append("[cell]%s[/cell][cell]%s[/cell][cell][color=#e5c07b]%s[/color][/cell]" % [
+				rows.append("[cell][color=#e5c07b]%s[/color]  [/cell][cell][color=#c678dd]%s[/color]  [/cell][cell][color=#98c379]%s[/color][/cell]" % [
 					var_name, type_name, str(val)
 				])
 			rows.append("[/table]")

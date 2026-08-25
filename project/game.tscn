@@ -160,14 +160,18 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="Details" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1758729041]
+[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1758729041]
 layout_mode = 2
-autowrap_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 
 [node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=464048584]
 custom_minimum_size = Vector2(0, 70)
 layout_mode = 2
+bbcode_enabled = true
 fit_content = true
+scroll_active = false
 
 [node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
 layout_mode = 2
@@ -446,6 +450,7 @@ text = "Current cell"
 [node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1397622249]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
+bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
