@@ -6,12 +6,11 @@ extends Node3D
 # the ad hoc "any REFR with a model" heuristic this started as — typed
 # nodes (DoorNode/ContainerNode/...) show up correctly in the Scene dock.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const CELL_EDITOR_ID := "GSDocMitchellHouse"
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		return
 

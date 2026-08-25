@@ -6,13 +6,12 @@ extends Node3D
 # source LandData.heights for that same cell -- to find exactly which
 # cells/vertices disagree, rather than guessing.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const GRID_SIZE := 33
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	esm.open(DATA_DIR + "FalloutNV.esm")
+	esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm")
 	var resolver := GamebryoMeshResolver.new()
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id(WORLDSPACE_EDITOR_ID)
 	var wrld_id := int(wrld.get("form_id", 0))

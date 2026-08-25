@@ -1,8 +1,7 @@
 extends Node3D
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 func _ready() -> void:
 	var esm := EsmReader.new()
-	esm.open(DATA_DIR + "FalloutNV.esm")
+	esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm")
 	var resolver := GamebryoMeshResolver.new()
 	var wrld = esm.find_worldspace_by_editor_id("WastelandNV")
 	var wrld_id := int(wrld["form_id"])

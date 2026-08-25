@@ -52,8 +52,6 @@ signal load_started(cell_form_id: int)
 signal load_progress(fraction: float)
 signal load_completed(cell_form_id: int, success: bool)
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 ## How many REFRs to place per frame before yielding — same frame-budget
 ## pattern proven in exterior_viewer.gd (phases/2/02).
 @export var objects_per_frame: int = 20
@@ -91,7 +89,7 @@ var _current_refs: Array = []
 
 func _ready() -> void:
 	esm = EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("CellLoader: could not open FalloutNV.esm")
 	resolver = GamebryoMeshResolver.new()
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m)
