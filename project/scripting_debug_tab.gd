@@ -32,6 +32,43 @@ var _token_start: int = 0
 var _token_prefix: String = ""
 var _navigating_suggestions: bool = false
 
+const CELL_CANDIDATES: Array[String] = [
+	"GSDocMitchellHouse", "GoodspringsGasStation", "GoodspringsSaloon", "GoodspringsSchoolhouse",
+	"GoodspringsGeneralStore", "GoodspringsVictorShack", "GoodspringsCave", "GoodspringsHome01",
+	"GoodspringsHome02", "GoodspringsHome03", "GoodspringsAbandonedShack",
+	"VikkiAndVanceCasino", "BisonSteveHotel01", "BisonSteveHotel02", "PrimmSheriffOffice",
+	"MojaveExpressNashResidence", "PrimmBeagleHouse", "MojaveOutpostHQ", "MojaveOutpostBarracks",
+	"NCRCFAdministration01", "NCRCFCellBlockA", "NCRCFCellBlockB",
+	"NovacDinoBiteGiftShop", "NovacPlayerRoom", "NovacFrontDesk", "NovacJeannieMayHouse",
+	"NovacNoBarksShack", "NovacBoonesRoom", "NovacMannyRoom", "NovacRangerAndyHome",
+	"GibsonScrapYardGarage", "BigHornSaloon", "BoulderCityTrainStation",
+	"TheTopsCasino", "TheTopsRestaurant", "TheTopsTheater", "TheTops13thFloor", "TheTopsPresSuite",
+	"UltraLuxeCasino", "UltraLuxePenthouse", "UltraLuxeGourmand", "UltraLuxeBathhouse",
+	"GomorrahMain", "GomorrahBrimstone", "GomorrahClubSuites", "Lucky38Casino", "Lucky38Penthouse",
+	"Lucky38PresSuite", "Lucky38ControlRoom", "Vault21GiftShop", "Vault21", "MichaelAngeloWorkshop",
+	"NCREmbassy", "AtomicWranglerCasino", "KingsSchoolOfImpersonation", "MickAndRalphs", "SilverRush",
+	"OldMormonFortMormonFort", "CeruleanRobotics", "MiguelsPawnShop", "CasaMadridApartments", "TheThorn",
+	"Vault3a", "Vault3b", "Vault11a", "Vault11b", "Vault19a", "Vault22a", "Vault22Common", "Vault34a", "Vault34Armory",
+	"McCarranConcourse", "McCarranTerminal", "CampGolfHouseResort", "CampForlornHopeCommand",
+	"HooverDamVisitorCenter", "HooverDamPowerPlant01", "HooverDamOffices", "HELIOSOnePlant", "HELIOSOneTower",
+	"REPCONNHQ01", "REPCONNTestFacility", "REPCONNBasement", "SunsetSarsaparillaHQ", "GunRunnersHQ",
+	"JacobstownLodge", "BlackMountainRadioStation", "HiddenValleyBunkerL1", "NellisBoomerHangar", "NellisMuseum",
+	"GreatKhanLonghouse", "LegatesTent", "DevArmory", "TestMentats", "TestJoshWeapons", "TestTraps", "Endgame"
+]
+
+const ITEM_CANDIDATES: Array[String] = [
+	"Caps001", "0x0000000F", "BobbyPin", "PreWarMoney", "NCRMoney", "LegionMoney", "REPCONNKeycard", "0x000E2C80",
+	"Stimpak", "0x00004334", "SuperStimpak", "DoctorBag", "0x00004332", "RadAway", "0x00004342", "RadX", "0x00004340",
+	"MedX", "Buffout", "Mentats", "Psycho", "Jet", "PurifiedWater", "SunsetSarsaparilla", "NukaCola",
+	"WeapNV9mmPistol", "WeapNV9mmSMG", "0x001465A6", "WeapNVServiceRifle", "0x000E377A", "WeapNVHuntingRifle",
+	"WeapNVDynamite", "0x000E3778", "WeapNVFragGrenade", "WeapNVLaserRifle", "WeapNVPlasmaPistol", "WeapNVSuperSledge",
+	"Ammo9mm", "Ammo556mm", "Ammo308", "Ammo10mm", "Ammo12Gauge", "Ammo20Gauge", "AmmoEnergyCell", "AmmoMicroFusionCell"
+]
+
+const MESSAGE_CANDIDATES: Array[String] = [
+	"GSBrokenSMGMsg", "GenericDoorLocked", "VMS03Msg01", "VMS03Msg02"
+]
+
 var _builtin_candidates: Array[String] = [
 	"ShowMessage", "GetButtonPressed", "PlaceAtMe", "CenterOnCell", "COC",
 	"AddItem", "RemoveItem", "GetItemCount", "EquipItem", "UnequipItem",
@@ -114,35 +151,48 @@ func _update_suggestions_panel() -> void:
 	var text := _line.text
 	var caret := _line.caret_column
 	var left_text := text.substr(0, caret)
-	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
-	var token := left_text.substr(token_start).strip_edges()
 
-	if token.is_empty():
+	if left_text.strip_edges().is_empty():
 		_suggestions.clear()
 		_suggestion_index = 0
 		_navigating_suggestions = false
 		_suggestions_panel.hide()
 		return
 
+	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
+	var token := left_text.substr(token_start)
 	_token_start = token_start
-	_token_prefix = token.to_lower()
+	_token_prefix = token.to_lower().strip_edges()
 	_suggestions.clear()
 
-	var candidates := _get_all_candidates()
-	for c in candidates:
-		if c.to_lower().begins_with(_token_prefix):
-			if not _suggestions.has(c):
-				_suggestions.append(c)
-				if _suggestions.size() >= 8:
-					break
+	var candidates := _get_contextual_candidates(left_text)
 
-	if _suggestions.size() < 8:
+	# 1. Prefix matches
+	if not _token_prefix.is_empty():
+		for c in candidates:
+			if c.to_lower().begins_with(_token_prefix):
+				if not _suggestions.has(c):
+					_suggestions.append(c)
+					if _suggestions.size() >= 8:
+						break
+
+	# 2. Substring matches if under 8
+	if _suggestions.size() < 8 and not _token_prefix.is_empty():
 		for c in candidates:
 			if not _suggestions.has(c) and c.to_lower().find(_token_prefix) != -1:
 				_suggestions.append(c)
 				if _suggestions.size() >= 8:
 					break
 
+	# 3. If token is empty (just typed command + space, e.g. "coc "): show top candidates
+	if _token_prefix.is_empty():
+		for c in candidates:
+			if not _suggestions.has(c):
+				_suggestions.append(c)
+				if _suggestions.size() >= 8:
+					break
+
+	# If exact single match is already typed and nothing else matches
 	if _suggestions.is_empty() or (_suggestions.size() == 1 and _suggestions[0].to_lower() == _token_prefix):
 		_suggestions.clear()
 		_suggestion_index = 0
@@ -282,7 +332,94 @@ func _handle_tab_completion() -> void:
 		_apply_selected_suggestion()
 
 
-func _get_all_candidates() -> Array[String]:
+func _get_contextual_candidates(left_text: String) -> Array[String]:
+	var trimmed := left_text.lstrip(" \t")
+	var ends_with_space := left_text.ends_with(" ") or left_text.ends_with("\t")
+	var tokens := trimmed.split(" ", false)
+
+	if tokens.is_empty():
+		return _get_command_candidates()
+
+	var cmd := tokens[0].to_lower()
+	var arg_idx: int = tokens.size() - 1
+	if ends_with_space:
+		arg_idx += 1
+
+	if arg_idx == 0:
+		return _get_command_candidates()
+
+	if arg_idx == 1:
+		match cmd:
+			"coc", "centeroncell":
+				return _get_cell_candidates()
+			"showmessage":
+				return _get_message_candidates()
+			"additem", "removeitem", "player.additem", "player.removeitem", "equipitem", "unequipitem", "getitemcount":
+				return _get_item_candidates()
+			"placeatme", "player.placeatme":
+				return _get_placeable_candidates()
+			"playgroup":
+				return ["Forward", "Backward", "Left", "Right", "Idle", "Attack", "Equip", "Unequip", "SpecialIdle"]
+			"setopenstate", "setdestroyed", "sethardcore", "player.sethardcore":
+				return ["0", "1"]
+			"set", "player.set":
+				return _get_variable_candidates()
+			"kill", "resurrect", "enable", "disable", "getdisabled", "getdead":
+				return _get_reference_candidates()
+
+	if arg_idx == 2:
+		match cmd:
+			"additem", "removeitem", "player.additem", "player.removeitem":
+				return ["1", "5", "10", "25", "50", "100"]
+			"set", "player.set":
+				return ["to"]
+			"placeatme", "player.placeatme":
+				return ["1", "0,0,0"]
+
+	return _get_command_candidates()
+
+
+func _get_cell_candidates() -> Array[String]:
+	return CELL_CANDIDATES.duplicate()
+
+
+func _get_item_candidates() -> Array[String]:
+	return ITEM_CANDIDATES.duplicate()
+
+
+func _get_message_candidates() -> Array[String]:
+	return MESSAGE_CANDIDATES.duplicate()
+
+
+func _get_placeable_candidates() -> Array[String]:
+	var list: Array[String] = ITEM_CANDIDATES.duplicate()
+	for c in ["GSDocMitchellDoor", "GSRadio", "Caps001", "WeapNVDynamite", "Stimpak"]:
+		if not list.has(c):
+			list.append(c)
+	return list
+
+
+func _get_variable_candidates() -> Array[String]:
+	var list: Array[String] = ["bInitialized", "fTimer", "iCount", "bQuestDone", "bDoOnce", "iState"]
+	for entry in _instances:
+		if _selected_node != null and entry.get("node") == _selected_node:
+			var locals_dict: Dictionary = entry.get("locals", {})
+			for k in locals_dict:
+				if not list.has(k):
+					list.append(k)
+	return list
+
+
+func _get_reference_candidates() -> Array[String]:
+	var list: Array[String] = ["Player"]
+	for entry in _instances:
+		var node_name := String(entry.get("node_name", ""))
+		if not node_name.is_empty() and not list.has(node_name):
+			list.append(node_name)
+	return list
+
+
+func _get_command_candidates() -> Array[String]:
 	var candidates: Array[String] = _builtin_candidates.duplicate()
 	for entry in _instances:
 		var node_name := String(entry.get("node_name", ""))

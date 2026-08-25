@@ -72,6 +72,18 @@ func _ready() -> void:
 	script_tab._apply_selected_suggestion()
 	check(script_tab._line.text.begins_with("CenterOnCell"), "Applying suggestion completes 'Center' to 'CenterOnCell'")
 
+	# Test Contextual 2nd argument suggestions for 'coc '
+	script_tab._line.text = "coc Nov"
+	script_tab._line.caret_column = 7
+	script_tab._update_suggestions_panel()
+	check(script_tab._suggestions.has("NovacPlayerRoom"), "Contextual suggestion for 'coc Nov' suggests 'NovacPlayerRoom'")
+
+	# Test Contextual 2nd argument suggestions for 'player.additem '
+	script_tab._line.text = "player.additem Sti"
+	script_tab._line.caret_column = 18
+	script_tab._update_suggestions_panel()
+	check(script_tab._suggestions.has("Stimpak"), "Contextual suggestion for 'player.additem Sti' suggests 'Stimpak'")
+
 	script_tab._suggestions_list.free()
 	script_tab._suggestions_panel.free()
 	script_tab._line.free()
