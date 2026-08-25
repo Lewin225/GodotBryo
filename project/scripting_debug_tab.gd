@@ -155,7 +155,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 
 
 func _on_line_text_changed(new_text: String) -> void:
-	if new_text.strip_edges().is_empty():
+	if new_text.ends_with(" ") or new_text.strip_edges().is_empty():
 		_suggestions_popup.hide()
 		return
 	_show_suggestions(false)
@@ -163,6 +163,10 @@ func _on_line_text_changed(new_text: String) -> void:
 
 func _show_suggestions(force: bool) -> void:
 	var text := _line.text
+	if text.ends_with(" "):
+		_suggestions_popup.hide()
+		return
+
 	var lower_text := text.to_lower().strip_edges()
 	if not force and lower_text.length() < 2:
 		_suggestions_popup.hide()
@@ -184,12 +188,14 @@ func _show_suggestions(force: bool) -> void:
 	# Filter matches
 	_suggestions.clear()
 	for c in candidates:
-		if c.to_lower().find(lower_text) != -1 or lower_text.is_empty():
+		var c_lower := c.to_lower()
+		if c_lower.begins_with(lower_text) or (force and c_lower.find(lower_text) != -1):
 			_suggestions.append(c)
 			if _suggestions.size() >= 10:
 				break
 
-	if _suggestions.is_empty():
+	# Don't pop up if empty or if exact single match is already fully typed
+	if _suggestions.is_empty() or (!force and _suggestions.size() == 1 and _suggestions[0].to_lower() == lower_text):
 		_suggestions_popup.hide()
 		return
 
@@ -209,7 +215,7 @@ func _show_suggestions(force: bool) -> void:
 
 func _on_suggestion_selected(id: int) -> void:
 	if id >= 0 and id < _suggestions.size():
-		_line.text = _suggestions[id]
+		_line.text = _suggestions[id] + " "
 		_line.caret_column = _line.text.length()
 	_suggestions_popup.hide()
 	_line.grab_focus()
