@@ -56,13 +56,14 @@ func _ready() -> void:
 	script_tab._history_index += 1
 	check(script_tab._history[script_tab._history_index] == "CenterOnCell Goodsprings", "Down arrow navigates forward in history")
 
-	# Test inline suggestion bar and completion
+	# Test floating suggestion panel and completion
 	script_tab._line = LineEdit.new()
-	script_tab._suggestions_bar = RichTextLabel.new()
+	script_tab._suggestions_panel = PanelContainer.new()
+	script_tab._suggestions_list = RichTextLabel.new()
 	script_tab._line.text = "Center"
 	script_tab._line.caret_column = 6
-	script_tab._update_suggestions_bar()
-	check(script_tab._suggestions.size() > 0, "Typing 'Center' populates inline suggestions list")
+	script_tab._update_suggestions_panel()
+	check(script_tab._suggestions.size() > 0, "Typing 'Center' populates suggestions list")
 	check(script_tab._suggestions.has("CenterOnCell"), "Suggestions list contains 'CenterOnCell'")
 
 	# Test Down arrow selection
@@ -71,17 +72,20 @@ func _ready() -> void:
 	script_tab._apply_selected_suggestion()
 	check(script_tab._line.text.begins_with("CenterOnCell"), "Applying suggestion completes 'Center' to 'CenterOnCell'")
 
-	script_tab._suggestions_bar.free()
+	script_tab._suggestions_list.free()
+	script_tab._suggestions_panel.free()
 	script_tab._line.free()
 	script_tab.free()
 
-	# 4. Test Scripting suggestions bar and World Streaming sub-tabs structure in game.tscn
+	# 4. Test Scripting suggestions panel and World Streaming sub-tabs structure in game.tscn
 	var game_scene: PackedScene = load("res://game.tscn")
 	var game_node: Node = game_scene.instantiate()
 	var script_tab_node: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Scripting")
 	check(script_tab_node != null, "Scripting tab exists in game.tscn")
-	var suggestions_bar: Node = script_tab_node.get_node_or_null("Margin/VBox/SuggestionsBar")
-	check(suggestions_bar != null, "SuggestionsBar resolved in Scripting tab")
+	var suggestions_panel: Node = script_tab_node.get_node_or_null("SuggestionsPanel")
+	check(suggestions_panel != null, "SuggestionsPanel resolved in Scripting tab")
+	var suggestions_list: Node = script_tab_node.get_node_or_null("SuggestionsPanel/Margin/SuggestionsList")
+	check(suggestions_list != null, "SuggestionsList resolved in SuggestionsPanel")
 
 	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
 	check(ws_tab != null, "World Streaming tab exists in game.tscn")
