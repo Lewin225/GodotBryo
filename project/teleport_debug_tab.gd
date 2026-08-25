@@ -135,8 +135,11 @@ const CATEGORIES: Array[String] = [
 @onready var _preset_tree: Tree = $Margin/VBox/PresetTree
 @onready var _teleport_selected_btn: Button = $Margin/VBox/ButtonsRow/TeleportSelectedBtn
 
+var _engine: ScriptEngine
+
 
 func _ready() -> void:
+	_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
 	_setup_tree()
 	_setup_categories()
 
@@ -255,15 +258,17 @@ func _on_teleport_pressed() -> void:
 
 func _on_current_cell_pressed() -> void:
 	var game: Node = get_tree().root.get_node_or_null("Game")
-	if game == null or not ("cell_loader" in game) or game.cell_loader == null:
-		_status_label.text = "[color=#e06c75]Game / CellLoader not found[/color]"
+	if game == null:
+		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
 		return
-	var esm: EsmReader = game.cell_loader.esm
+	var esm: EsmReader = game.cell_loader.esm if ("cell_loader" in game and game.cell_loader != null) else null
+	if esm == null and _engine != null:
+		esm = _engine.esm
 	if esm == null:
 		_status_label.text = "[color=#e06c75]ESM reader not available[/color]"
 		return
 	var current_id := 0
-	if game.cell_loader._current != null:
+	if "cell_loader" in game and game.cell_loader != null and game.cell_loader._current != null:
 		current_id = int(game.cell_loader._current.get_meta("cell_form_id", 0))
 	if current_id == 0 and "world_streamer" in game and game.world_streamer != null:
 		current_id = game.world_streamer.get_current_cell_form_id()
@@ -276,28 +281,18 @@ func _on_current_cell_pressed() -> void:
 
 
 func teleport_to(editor_id: String) -> void:
-	var game: Node = get_tree().root.get_node_or_null("Game")
-	if game == null:
-		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
+	if _engine == null:
+		_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
+	if _engine == null:
+		_status_label.text = "[color=#e06c75]ScriptEngine not found[/color]"
 		return
 
-	# Primary path: execute regular 'coc <EditorID>' through the ScriptEngine VM
-	if "script_engine" in game and game.script_engine != null:
-		var reply: Dictionary = game.script_engine.run_debug_line("coc " + editor_id)
-		if not bool(reply.get("ok", false)):
-			_status_label.text = "[color=#e06c75]✗ %s[/color]" % String(reply.get("message", "Teleport failed"))
-		else:
-			var cell_form_id := int(reply.get("result", 0))
-			_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color] via ScriptEngine[/color]" % [editor_id, cell_form_id]
-			_cell_input.text = editor_id
-		return
-
-	# Fallback if script_engine is not attached
-	if game.has_method("debug_center_on_cell"):
-		var res: Variant = game.debug_center_on_cell([editor_id])
-		if res is Dictionary and res.has("error"):
-			_status_label.text = "[color=#e06c75]✗ %s[/color]" % str(res["error"])
-		else:
-			var cell_form_id := int(res)
-			_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color][/color]" % [editor_id, cell_form_id]
-			_cell_input.text = editor_id
+	# Send command directly to the scripting engine (matches scripting_debug_tab _run_line)
+	var cmd := "coc " + editor_id
+	var reply: Dictionary = _engine.run_debug_line(cmd)
+	if not bool(reply.get("ok", false)):
+		_status_label.text = "[color=#e06c75]✗ %s[/color]" % String(reply.get("message", "Teleport failed"))
+	else:
+		var cell_form_id := int(reply.get("result", 0))
+		_status_label.text = "[color=#98c379]✓ Teleported to [b]%s[/b] [color=#61afef](0x%08X)[/color][/color]" % [editor_id, cell_form_id]
+		_cell_input.text = editor_id
