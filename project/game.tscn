@@ -11,7 +11,7 @@
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
-[ext_resource type="Script" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
+[ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -58,7 +58,6 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 script = ExtResource("7_scriptengine")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
-visible = false
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
@@ -74,9 +73,6 @@ debug_click_shake = true
 
 [node name="Camera3D" parent="Character" index="1" unique_id=1676192724]
 far = 400.0
-
-[node name="HUD" parent="Character" index="3" unique_id=98712345]
-visible = false
 
 [node name="Debug Tools" type="Window" parent="." unique_id=65829105]
 scaling_3d_scale = 0.3161
@@ -100,11 +96,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 2
+current_tab = 0
 drag_to_rearrange_enabled = true
 
 [node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
-visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -192,6 +187,7 @@ vertical_scroll_mode = 2
 metadata/_tab_index = 1
 
 [node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
+visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -281,9 +277,9 @@ theme_override_constants/separation = 8
 [node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=190283471]
 layout_mode = 2
 bbcode_enabled = true
+text = "[b]⚡ Fast Travel & Cell Teleport (COC)[/b]"
 fit_content = true
 scroll_active = false
-text = "[b]⚡ Fast Travel & Cell Teleport (COC)[/b]"
 
 [node name="QuickRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=184920348]
 layout_mode = 2
@@ -308,9 +304,9 @@ text = "Current"
 [node name="StatusLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=139485720]
 layout_mode = 2
 bbcode_enabled = true
+text = "[color=#7f848e]Select a preset destination below or enter an EditorID.[/color]"
 fit_content = true
 scroll_active = false
-text = "[color=#7f848e]Select a preset destination below or enter an EditorID.[/color]"
 
 [node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=149582039]
 layout_mode = 2
@@ -323,9 +319,9 @@ theme_override_constants/separation = 8
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
+text = "[b]📋 Preset Destinations[/b]"
 fit_content = true
 scroll_active = false
-text = "[b]📋 Preset Destinations[/b]"
 
 [node name="CategoryFilter" type="OptionButton" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=109283746]
 custom_minimum_size = Vector2(170, 0)
@@ -357,9 +353,9 @@ text = "Teleport to Selected"
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
+text = "[color=#7f848e]💡 Tip: Double-click any destination row to teleport instantly.[/color]"
 fit_content = true
 scroll_active = false
-text = "[color=#7f848e]💡 Tip: Double-click any destination row to teleport instantly.[/color]"
 
 [node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
 visible = false
