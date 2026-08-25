@@ -43,6 +43,7 @@ var cell_loader: CellLoader
 var world_streamer: WorldStreamer
 var script_engine: ScriptEngine
 var terminal_session: TerminalSession
+var message_box: MessageBox
 var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 var _sun: DirectionalLight3D
@@ -94,6 +95,8 @@ func _ready() -> void:
 	world_streamer = $WorldStreamer
 	script_engine = $ScriptEngine
 	terminal_session = $TerminalSession
+	message_box = $MessageBox
+	script_engine.message_box = message_box
 	_cell_label = $DebugHud/CellLabel
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
