@@ -76,6 +76,8 @@ func _ready() -> void:
 		if not lighting.is_empty():
 			var ambient: Color = lighting["ambient_color"]
 			print("  ambient_color: ", ambient)
+			check(int(lighting["directional_rotation_xy"]) == 35, "directional rotation XY matches real XCLL value (35 degrees)")
+			check(int(lighting["directional_rotation_z"]) == 270, "directional rotation Z matches real XCLL value (270 degrees)")
 			# Confirmed via a real scratch dump against this exact cell earlier
 			# this task: raw XCLL ambient bytes (47, 70, 69, 0).
 			check(is_equal_approx(ambient.r, 47.0 / 255.0), "ambient.r matches known real XCLL byte value (47)")

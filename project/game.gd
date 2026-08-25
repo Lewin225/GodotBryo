@@ -46,6 +46,7 @@ var terminal_session: TerminalSession
 var _cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 var _sun: DirectionalLight3D
+var _interior_directional_light: DirectionalLight3D
 var _world_environment: WorldEnvironment
 var inventory := Inventory.new()
 var _pending_item: ItemNode = null
@@ -78,6 +79,7 @@ var _look_at_label: Label
 # node in the editor to preview it there without needing Play mode.
 const INTERIOR_ENVIRONMENT := preload("res://interior_environment.tres")
 const EXTERIOR_ENVIRONMENT := preload("res://exterior_environment.tres")
+const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 
 # Set by _try_interact() right before a door-triggered load_cell() call, so
 # _on_load_completed() knows to land the player at the door's own
@@ -98,6 +100,14 @@ func _ready() -> void:
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
+	# XCLL owns a separate directional source for interiors.  It is created
+	# here rather than authored into game.tscn so the scene's exterior Sun
+	# remains its own independently-tunable resource.
+	_interior_directional_light = DirectionalLight3D.new()
+	_interior_directional_light.name = "InteriorDirectionalLight3D"
+	_interior_directional_light.shadow_enabled = true
+	_interior_directional_light.visible = false
+	add_child(_interior_directional_light)
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
@@ -466,8 +476,23 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 func _set_exterior_environment(is_exterior: bool) -> void:
 	if _sun != null:
 		_sun.visible = is_exterior
+	if _interior_directional_light != null:
+		_interior_directional_light.visible = false
 	if _world_environment != null:
 		_world_environment.environment = EXTERIOR_ENVIRONMENT if is_exterior else INTERIOR_ENVIRONMENT
+
+## CELL.XCLL stores the directional source as Bethesda/Gamebryo X and Z
+## Euler degrees.  The named XY field is the first (X) rotation in the
+## on-disk pair; the second is the Z rotation.  Reuse the REFR conversion so
+## the same Z-up -> Y-up and sign conventions apply to both authored data
+## sources.  DirectionalLight3D emits along local -Z, so this first-pass
+## conversion includes a final half-turn to make the common real 0/270 pair
+## vertically downward in Godot.  That direction convention needs visual
+## comparison against a lit interior before it is treated as final.
+static func _xcll_directional_basis(rotation_xy_degrees: int, rotation_z_degrees: int) -> Basis:
+	var raw_rotation := Vector3(deg_to_rad(float(rotation_xy_degrees)), 0.0, deg_to_rad(float(rotation_z_degrees)))
+	var gamebryo_basis := GamebryoMeshResolver.refr_root_basis() * GamebryoMeshResolver.refr_basis(raw_rotation)
+	return gamebryo_basis * Basis(Vector3.RIGHT, PI)
 
 ## CELL.XCLL's own per-cell authored ambient color, layered on top of the
 ## shared INTERIOR_ENVIRONMENT.tres baseline (energy/tonemap/SDFGI/SSAO/etc
@@ -488,7 +513,39 @@ func _apply_cell_lighting(cell_form_id: int) -> void:
 		return
 	var env: Environment = INTERIOR_ENVIRONMENT.duplicate()
 	env.ambient_light_color = lighting["ambient_color"]
+	_apply_xcll_directional_light(lighting)
+	# XCLL fog distances share the Gamebryo-world-unit convention used by
+	# REFR transforms, LAND, and LIGH radius. Godot's depth-fog distances are
+	# metres, so preserve the authored range after this one conversion.
+	var fog_near_m := maxf(float(lighting.get("fog_near", 0.0)) * GAMEBRYO_UNITS_TO_METERS, 0.0)
+	var fog_far_m := maxf(float(lighting.get("fog_far", 0.0)) * GAMEBRYO_UNITS_TO_METERS, fog_near_m)
+	if fog_far_m > fog_near_m:
+		env.fog_enabled = true
+		env.fog_light_color = lighting["fog_color"]
+		env.fog_depth_begin = fog_near_m
+		env.fog_depth_end = fog_far_m
+		# XCLL calls this Fog Power; Godot's depth curve is likewise the
+		# non-linear shaping control between the authored near/far bounds.
+		# This is an explicit same-semantics approximation to verify in play.
+		env.fog_depth_curve = maxf(float(lighting.get("fog_power", 1.0)), 0.001)
+	else:
+		env.fog_enabled = false
 	_world_environment.environment = env
+
+func _apply_xcll_directional_light(lighting: Dictionary) -> void:
+	if _interior_directional_light == null:
+		return
+	var color: Color = lighting["directional_color"]
+	# A black authored directional colour is an explicit no-light value, not
+	# a request to fall back to the exterior Sun (Doc Mitchell's House is one
+	# real example).  Directional Fade is the only authored intensity scalar.
+	var energy := maxf(float(lighting.get("directional_fade", 0.0)), 0.0)
+	_interior_directional_light.light_color = color
+	_interior_directional_light.light_energy = energy
+	_interior_directional_light.basis = _xcll_directional_basis(
+			int(lighting.get("directional_rotation_xy", 0)),
+			int(lighting.get("directional_rotation_z", 0)))
+	_interior_directional_light.visible = energy > 0.0 and (color.r > 0.0 or color.g > 0.0 or color.b > 0.0)
 
 ## Debug HUD: current cell's own EditorID, plus its worldspace grid
 ## coordinate when it's an exterior cell (get_exterior_cell_grid() returns
