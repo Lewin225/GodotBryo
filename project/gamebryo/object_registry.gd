@@ -132,6 +132,8 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_
 			return _resolve_item(placement, ctx)
 		"ALCH":
 			return _resolve_item(placement, ctx)
+		"WEAP":
+			return _resolve_item(placement, ctx)
 		"TERM":
 			return _resolve_terminal(placement, ctx)
 		"CONT", "ACTI", "FURN", "TACT", "MSTT":
@@ -457,10 +459,11 @@ func _register_defaults() -> void:
 	register("MISC", func(p, r): return _build_item(p, r))
 	register("KEYM", func(p, r): return _build_item(p, r))
 	register("ALCH", func(p, r): return _build_item(p, r))
+	register("WEAP", func(p, r): return _build_item(p, r))
 	register("SCOL", func(p, r): return _build_scol(p, r))
 	register("LIGH", func(p, r): return _build_light(p, r))
-	# Every other Tier 1 type (WEAP/ARMO/AMMO/BOOK/KEYM/ALCH/NOTE/TREE/CCRD/
-	# IMOD/CMNY) is deliberately NOT registered — they share
+	# Every other Tier 1 type (ARMO/AMMO/BOOK/NOTE/TREE/CCRD/IMOD/CMNY) is
+	# deliberately NOT registered — they share
 	# the plain GamebryoVisual shape (confirmed identical EDID/OBND/MODL
 	# structure per phases/1/architecture.md's evidence table) and fall
 	# through to build()'s structural fallback tier. This exercises that
