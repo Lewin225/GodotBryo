@@ -67,6 +67,18 @@ func _ready() -> void:
 	check(status_card != null, "StatusCard resolved in Streaming State subtab")
 	var tex_tree: Node = ws_tab.get_node_or_null("Margin/SubTabs/Ground Textures/VBox/TextureTree")
 	check(tex_tree != null, "TextureTree resolved in Ground Textures subtab")
+
+	# 5. Test Teleport tab in game.tscn
+	var teleport_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Teleport")
+	check(teleport_tab != null, "Teleport tab exists in game.tscn")
+	var cell_input: Node = teleport_tab.get_node_or_null("Margin/VBox/QuickRow/CellInput")
+	check(cell_input != null, "CellInput resolved in Teleport tab")
+	var preset_tree: Node = teleport_tab.get_node_or_null("Margin/VBox/PresetTree")
+	check(preset_tree != null, "PresetTree resolved in Teleport tab")
+
+	var teleport_script := load("res://teleport_debug_tab.gd")
+	check(teleport_script.PRESETS.size() > 50, "Teleport tab has curated presets (>50)")
+
 	game_node.free()
 
 	_finish()
