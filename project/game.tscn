@@ -264,7 +264,7 @@ layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-text = "[b]🏃 Locomotion & Speed[/b]"
+text = "[b]🏃 Speed & Locomotion[/b]"
 
 [node name="MoveGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759204]
 layout_mode = 2
@@ -274,7 +274,7 @@ columns = 4
 
 [node name="BaseSpeedLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736401]
 layout_mode = 2
-text = "walk speed:"
+text = "walk speed (m/s):"
 
 [node name="BaseSpeedSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837402]
 layout_mode = 2
@@ -305,181 +305,78 @@ max_value = 1.0
 step = 0.05
 value = 0.5
 
-[node name="AccelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736407]
+[node name="JumpVelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736411]
 layout_mode = 2
-text = "accel rate:"
+text = "jump height (m/s):"
 
-[node name="AccelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837408]
-layout_mode = 2
-min_value = 5.0
-max_value = 200.0
-step = 1.0
-value = 45.0
-
-[node name="DecelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736409]
-layout_mode = 2
-text = "decel rate:"
-
-[node name="DecelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837410]
-layout_mode = 2
-min_value = 5.0
-max_value = 200.0
-step = 1.0
-value = 35.0
-
-[node name="Sep3" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847584]
-layout_mode = 2
-
-[node name="JumpTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948575]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "[b]🦘 Jump & Gravity Physics[/b]"
-
-[node name="JumpGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759205]
-layout_mode = 2
-theme_override_constants/h_separation = 16
-theme_override_constants/v_separation = 4
-columns = 4
-
-[node name="JumpVelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736411]
-layout_mode = 2
-text = "jump height/vel:"
-
-[node name="JumpVelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837412]
+[node name="JumpVelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837412]
 layout_mode = 2
 min_value = 0.0
 max_value = 50.0
 step = 0.25
 value = 5.5
 
-[node name="GravityMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736413]
-layout_mode = 2
-text = "gravity scale:"
-
-[node name="GravityMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837414]
-layout_mode = 2
-min_value = 0.0
-max_value = 5.0
-step = 0.1
-value = 1.4
-
-[node name="CoyoteLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=182736415]
-layout_mode = 2
-text = "coyote time (s):"
-
-[node name="CoyoteSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837416]
-layout_mode = 2
-min_value = 0.0
-max_value = 1.0
-step = 0.05
-value = 0.15
-
-[node name="AutoJumpCheck" type="CheckBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/JumpGrid" unique_id=192837417]
-layout_mode = 2
-button_pressed = true
-text = "Auto-Jump"
-
-[node name="Sep4" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847585]
+[node name="Sep3" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847584]
 layout_mode = 2
 
-[node name="StepTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948576]
+[node name="ViewTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948577]
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-text = "[b]🧗 Step & Slope Obstacle Handling[/b]"
+text = "[b]📏 Height & View Settings[/b]"
 
-[node name="StepGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759206]
+[node name="ViewGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759207]
 layout_mode = 2
 theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 4
-columns = 3
+columns = 4
 
-[node name="StepHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736418]
+[node name="StandHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736426]
 layout_mode = 2
-text = "max step height (m):"
+text = "standing height (m):"
 
-[node name="StepHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837419]
+[node name="StandHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837427]
 layout_mode = 2
-min_value = 0.0
+min_value = 0.5
+max_value = 3.0
+step = 0.05
+value = 1.7
+
+[node name="CrouchHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736432]
+layout_mode = 2
+text = "crouch height (m):"
+
+[node name="CrouchHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837433]
+layout_mode = 2
+min_value = 0.3
 max_value = 2.0
 step = 0.05
-value = 0.7
+value = 1.2
 
-[node name="MaxAngleLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736420]
-layout_mode = 2
-text = "max floor angle (°):"
-
-[node name="MaxAngleSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837421]
-layout_mode = 2
-min_value = 10.0
-max_value = 89.0
-step = 1.0
-value = 50.0
-
-[node name="HoverOffsetLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=182736422]
-layout_mode = 2
-text = "hover offset (m):"
-
-[node name="HoverOffsetSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/StepGrid" unique_id=192837423]
-layout_mode = 2
-min_value = 0.0
-max_value = 1.5
-step = 0.05
-value = 0.6
-
-[node name="Sep5" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847586]
-layout_mode = 2
-
-[node name="CameraTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948577]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
-text = "[b]👁️ Look & Camera Dynamics[/b]"
-
-[node name="CameraGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759207]
-layout_mode = 2
-theme_override_constants/h_separation = 16
-theme_override_constants/v_separation = 4
-columns = 3
-
-[node name="MouseSensLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736424]
+[node name="MouseSensLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736424]
 layout_mode = 2
 text = "mouse sens:"
 
-[node name="MouseSensSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837425]
+[node name="MouseSensSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837425]
 layout_mode = 2
 min_value = 0.0005
 max_value = 0.02
 step = 0.0005
 value = 0.003
 
-[node name="EyeHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736426]
-layout_mode = 2
-text = "eye height (m):"
-
-[node name="EyeHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837427]
-layout_mode = 2
-min_value = 0.5
-max_value = 3.0
-step = 0.05
-value = 1.5
-
-[node name="FovLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=182736428]
+[node name="FovLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736428]
 layout_mode = 2
 text = "camera fov (°):"
 
-[node name="FovSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/CameraGrid" unique_id=192837429]
+[node name="FovSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837429]
 layout_mode = 2
 min_value = 40.0
 max_value = 120.0
 step = 1.0
 value = 75.0
 
-[node name="Sep6" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847587]
+[node name="Sep4" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847587]
 layout_mode = 2
 
 [node name="ActionsRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759208]

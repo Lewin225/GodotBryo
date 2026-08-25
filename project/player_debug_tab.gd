@@ -1,8 +1,8 @@
 extends Control
 
 ## Debug Tools window (game.tscn) -> TabContainer -> "Player" tab.
-## Real-time inspection and live tuning of PlayerController movement,
-## jump physics, noclip mode, step hovering, gravity, and camera properties.
+## Streamlined inspection and tuning of PlayerController properties:
+## Noclip (TCL), speeds, jump height, standing/crouch height, mouse sens, and FOV.
 
 const REFRESH_INTERVAL_SEC := 0.1
 
@@ -10,17 +10,10 @@ const DEFAULTS := {
 	"base_speed": 4.0,
 	"sprint_multiplier": 1.6,
 	"crouch_multiplier": 0.5,
-	"acceleration": 45.0,
-	"deceleration": 35.0,
 	"jump_velocity": 5.5,
-	"gravity_multiplier": 1.4,
-	"auto_jump": true,
-	"coyote_time": 0.15,
-	"step_height": 0.7,
-	"max_floor_angle": 50.0,
-	"hover_offset": 0.6,
+	"standing_height": 1.7,
+	"crouching_height": 1.2,
 	"mouse_sensitivity": 0.003,
-	"camera_eye_height": 1.5,
 	"noclip_speed": 12.0,
 	"noclip_sprint_multiplier": 2.5,
 	"fov": 75.0,
@@ -33,30 +26,19 @@ const DEFAULTS := {
 @onready var _noclip_speed_spin: SpinBox = $Margin/VBox/NoclipRow/NoclipSpeedSpin
 @onready var _noclip_sprint_spin: SpinBox = $Margin/VBox/NoclipRow/NoclipSprintSpin
 
-# Movement parameters
+# Movement & Jump
 @onready var _base_speed_spin: SpinBox = $Margin/VBox/MoveGrid/BaseSpeedSpin
 @onready var _sprint_multi_spin: SpinBox = $Margin/VBox/MoveGrid/SprintMultiSpin
 @onready var _crouch_multi_spin: SpinBox = $Margin/VBox/MoveGrid/CrouchMultiSpin
-@onready var _accel_spin: SpinBox = $Margin/VBox/MoveGrid/AccelSpin
-@onready var _decel_spin: SpinBox = $Margin/VBox/MoveGrid/DecelSpin
+@onready var _jump_vel_spin: SpinBox = $Margin/VBox/MoveGrid/JumpVelSpin
 
-# Jump & Gravity
-@onready var _jump_vel_spin: SpinBox = $Margin/VBox/JumpGrid/JumpVelSpin
-@onready var _gravity_multi_spin: SpinBox = $Margin/VBox/JumpGrid/GravityMultiSpin
-@onready var _coyote_spin: SpinBox = $Margin/VBox/JumpGrid/CoyoteSpin
-@onready var _auto_jump_check: CheckBox = $Margin/VBox/JumpGrid/AutoJumpCheck
+# Height & View
+@onready var _stand_height_spin: SpinBox = $Margin/VBox/ViewGrid/StandHeightSpin
+@onready var _crouch_height_spin: SpinBox = $Margin/VBox/ViewGrid/CrouchHeightSpin
+@onready var _mouse_sens_spin: SpinBox = $Margin/VBox/ViewGrid/MouseSensSpin
+@onready var _fov_spin: SpinBox = $Margin/VBox/ViewGrid/FovSpin
 
-# Step & Slope
-@onready var _step_height_spin: SpinBox = $Margin/VBox/StepGrid/StepHeightSpin
-@onready var _max_angle_spin: SpinBox = $Margin/VBox/StepGrid/MaxAngleSpin
-@onready var _hover_offset_spin: SpinBox = $Margin/VBox/StepGrid/HoverOffsetSpin
-
-# Look & Camera
-@onready var _mouse_sens_spin: SpinBox = $Margin/VBox/CameraGrid/MouseSensSpin
-@onready var _eye_height_spin: SpinBox = $Margin/VBox/CameraGrid/EyeHeightSpin
-@onready var _fov_spin: SpinBox = $Margin/VBox/CameraGrid/FovSpin
-
-# Buttons
+# Action Buttons
 @onready var _reset_defaults_btn: Button = $Margin/VBox/ActionsRow/ResetDefaultsBtn
 @onready var _ground_snap_btn: Button = $Margin/VBox/ActionsRow/GroundSnapBtn
 
@@ -89,6 +71,7 @@ func _process(delta: float) -> void:
 
 
 func _connect_signals() -> void:
+	# Noclip
 	_noclip_check.toggled.connect(func(enabled: bool) -> void:
 		if _suppress_signals or _player == null: return
 		_player.noclip = enabled
@@ -103,6 +86,7 @@ func _connect_signals() -> void:
 		_player.noclip_sprint_multiplier = val
 	)
 
+	# Movement & Jump
 	_base_speed_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null: return
 		_player.base_speed = val
@@ -115,58 +99,30 @@ func _connect_signals() -> void:
 		if _suppress_signals or _player == null: return
 		_player.crouch_multiplier = val
 	)
-	_accel_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.acceleration = val
-	)
-	_decel_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.deceleration = val
-	)
-
 	_jump_vel_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null: return
 		_player.jump_velocity = val
 	)
-	_gravity_multi_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.gravity_multiplier = val
-	)
-	_coyote_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.coyote_time = val
-	)
-	_auto_jump_check.toggled.connect(func(enabled: bool) -> void:
-		if _suppress_signals or _player == null: return
-		_player.auto_jump = enabled
-	)
 
-	_step_height_spin.value_changed.connect(func(val: float) -> void:
+	# Height & View
+	_stand_height_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null: return
-		_player.step_height = val
+		_player.standing_height = val
 	)
-	_max_angle_spin.value_changed.connect(func(val: float) -> void:
+	_crouch_height_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null: return
-		_player.max_floor_angle = val
+		_player.crouching_height = val
 	)
-	_hover_offset_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.hover_offset = val
-	)
-
 	_mouse_sens_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null: return
 		_player.mouse_sensitivity = val
-	)
-	_eye_height_spin.value_changed.connect(func(val: float) -> void:
-		if _suppress_signals or _player == null: return
-		_player.camera_eye_height = val
 	)
 	_fov_spin.value_changed.connect(func(val: float) -> void:
 		if _suppress_signals or _player == null or _player.camera == null: return
 		_player.camera.fov = val
 	)
 
+	# Actions
 	_reset_defaults_btn.pressed.connect(_reset_to_defaults)
 	_ground_snap_btn.pressed.connect(_snap_to_ground)
 
@@ -183,20 +139,11 @@ func _sync_from_player() -> void:
 	_base_speed_spin.value = _player.base_speed
 	_sprint_multi_spin.value = _player.sprint_multiplier
 	_crouch_multi_spin.value = _player.crouch_multiplier
-	_accel_spin.value = _player.acceleration
-	_decel_spin.value = _player.deceleration
-
 	_jump_vel_spin.value = _player.jump_velocity
-	_gravity_multi_spin.value = _player.gravity_multiplier
-	_coyote_spin.value = _player.coyote_time
-	_auto_jump_check.button_pressed = _player.auto_jump
 
-	_step_height_spin.value = _player.step_height
-	_max_angle_spin.value = _player.max_floor_angle
-	_hover_offset_spin.value = _player.hover_offset
-
+	_stand_height_spin.value = _player.standing_height
+	_crouch_height_spin.value = _player.crouching_height
 	_mouse_sens_spin.value = _player.mouse_sensitivity
-	_eye_height_spin.value = _player.camera_eye_height
 	if _player.camera != null:
 		_fov_spin.value = _player.camera.fov
 
@@ -212,17 +159,10 @@ func _reset_to_defaults() -> void:
 	_player.base_speed = DEFAULTS["base_speed"]
 	_player.sprint_multiplier = DEFAULTS["sprint_multiplier"]
 	_player.crouch_multiplier = DEFAULTS["crouch_multiplier"]
-	_player.acceleration = DEFAULTS["acceleration"]
-	_player.deceleration = DEFAULTS["deceleration"]
 	_player.jump_velocity = DEFAULTS["jump_velocity"]
-	_player.gravity_multiplier = DEFAULTS["gravity_multiplier"]
-	_player.auto_jump = DEFAULTS["auto_jump"]
-	_player.coyote_time = DEFAULTS["coyote_time"]
-	_player.step_height = DEFAULTS["step_height"]
-	_player.max_floor_angle = DEFAULTS["max_floor_angle"]
-	_player.hover_offset = DEFAULTS["hover_offset"]
+	_player.standing_height = DEFAULTS["standing_height"]
+	_player.crouching_height = DEFAULTS["crouching_height"]
 	_player.mouse_sensitivity = DEFAULTS["mouse_sensitivity"]
-	_player.camera_eye_height = DEFAULTS["camera_eye_height"]
 	if _player.camera != null:
 		_player.camera.fov = DEFAULTS["fov"]
 	_sync_from_player()

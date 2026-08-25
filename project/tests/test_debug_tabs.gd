@@ -86,8 +86,12 @@ func _ready() -> void:
 	check(noclip_check != null, "NoclipCheck resolved in Player tab")
 	var base_speed_spin: Node = player_tab.get_node_or_null("Margin/VBox/MoveGrid/BaseSpeedSpin")
 	check(base_speed_spin != null, "BaseSpeedSpin resolved in Player tab")
-	var jump_vel_spin: Node = player_tab.get_node_or_null("Margin/VBox/JumpGrid/JumpVelSpin")
+	var jump_vel_spin: Node = player_tab.get_node_or_null("Margin/VBox/MoveGrid/JumpVelSpin")
 	check(jump_vel_spin != null, "JumpVelSpin resolved in Player tab")
+	var stand_height_spin: Node = player_tab.get_node_or_null("Margin/VBox/ViewGrid/StandHeightSpin")
+	check(stand_height_spin != null, "StandHeightSpin resolved in Player tab")
+	var crouch_height_spin: Node = player_tab.get_node_or_null("Margin/VBox/ViewGrid/CrouchHeightSpin")
+	check(crouch_height_spin != null, "CrouchHeightSpin resolved in Player tab")
 
 	# 7. Test PlayerController noclip & ScriptEngine TCL command
 	var player: PlayerController = game_node.get_node_or_null("Character")
