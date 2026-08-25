@@ -1,7 +1,9 @@
 extends Node3D
+
+const GameDataConfigScript := preload("res://game_data_config.gd")
 func _ready() -> void:
 	var esm := EsmReader.new()
-	esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm")
+	esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE)
 	var resolver := GamebryoMeshResolver.new()
 	var wrld = esm.find_worldspace_by_editor_id("WastelandNV")
 	var wrld_id := int(wrld["form_id"])

@@ -1,6 +1,8 @@
 class_name GamebryoResolverPool
 extends RefCounted
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## phases/2/10-threaded-streaming-workers.md, step 2: a small pool of
 ## independently-constructed GamebryoResolveContexts, one per concurrent
 ## tile-resolve task a caller wants in flight at once. Each pool member owns
@@ -51,7 +53,7 @@ extends RefCounted
 var _available: Array[GamebryoResolveContext] = []
 var _checked_out_count := 0
 var _size := 0
-var _shared_resolver := GamebryoMeshResolver.new()
+var _shared_resolver: GamebryoMeshResolver
 
 ## `size`, if given, overrides the automatic sizing below -- mainly for
 ## tests that want a small, deterministic pool. Automatic sizing is
@@ -63,12 +65,15 @@ var _shared_resolver := GamebryoMeshResolver.new()
 ## constant -- this project runs on whatever hardware it's asked to, and a
 ## hardcoded worker count would leave real cores idle on a bigger machine
 ## (or oversubscribe a smaller one).
-func _init(size: int = -1) -> void:
+func _init(size: int = -1, data_dir: String = "") -> void:
+	if data_dir == "":
+		data_dir = String(GameDataConfigScript.resolve().get("data_dir", ""))
+	_shared_resolver = GamebryoMeshResolver.new(data_dir)
 	if size <= 0:
 		size = maxi(2, OS.get_processor_count() - 1)
 	_size = size
 	for i in range(_size):
-		_available.append(GamebryoResolveContext.new())
+		_available.append(GamebryoResolveContext.new(data_dir))
 
 ## Returns a context not currently in use, or null if every instance is
 ## already checked out -- callers (2.10 step 4's WorldStreamer wiring) are

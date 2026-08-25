@@ -1,5 +1,7 @@
 extends SceneTree
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Follow-up: no "Freeside"/"FreesideNV" worldspace editor ID exists.
 ## Find any cell whose editor ID contains "freeside" directly (via
 ## find_cell_by_editor_id on plausible names), and check whether it's
@@ -7,7 +9,7 @@ extends SceneTree
 
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	if not esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

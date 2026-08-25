@@ -1,6 +1,8 @@
 class_name WorldStreamer
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## phases/2/08-world-cell-streaming.md: continuous adjacent-grid-cell
 ## streaming, parallel to (not replacing) CellLoader's single-active-cell
 ## orchestration. Purely position-reactive once active() -- see the task
@@ -110,6 +112,13 @@ const CHECK_INTERVAL_SEC := 0.1
 ## frame time, almost entirely build_terrain().
 @export var tiles_per_frame: int = 3
 
+## Issue #6: opt-in, concise main-thread stall trace. The normal streaming
+## diagnostic prints were too noisy to leave on during ordinary play; this
+## records only the stage immediately before/after work that can block frame
+## presentation. Toggle it from Debug Tools -> World Streaming before
+## reproducing a suspected freeze.
+@export var freeze_trace_enabled: bool = false
+
 ## phases/2/12-distant-object-lod.md, step 8: the real, inspector-tunable
 ## crossover distance/margin -- threaded into both the Node-based path
 ## (resolver.set_lod_crossover(), step 6) and the RID-based path
@@ -168,6 +177,11 @@ var diagnostic_terrain_ms: Array = [] # TEMP DIAGNOSTIC
 var diagnostic_resolve_wall_ms: Array = [] # TEMP DIAGNOSTIC -- includes checkout-wait + task-poll wall time, not just the task's own CPU time
 var diagnostic_find_exterior_cell_us := 0 # TEMP DIAGNOSTIC -- _start_tile_load()'s own find_exterior_cell() cost, main-thread, unthreaded
 
+func _freeze_trace(coord: Vector2i, stage: String, detail: String = "") -> void:
+	if not freeze_trace_enabled:
+		return
+	print("WorldStreamer freeze trace: tile %s | %s%s" % [coord, stage, " | " + detail if not detail.is_empty() else ""])
+
 ## True while streaming is paused (see set_paused()) -- resident state (tiles,
 ## batches, terrain, texture pool) stays fully intact, just hidden and
 ## physically inert, instead of being freed the way deactivate() does. Exists
@@ -217,14 +231,15 @@ var _check_timer := 0.0
 var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own throttled cycle -- see get_current_cell_form_id()'s doc comment for why this exists
 
 func _ready() -> void:
+	var data_dir := GameDataSettings.get_data_dir()
 	esm = EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("WorldStreamer: could not open FalloutNV.esm")
-	resolver = GamebryoMeshResolver.new()
+	resolver = GamebryoMeshResolver.new(data_dir)
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
-	_pool = GamebryoResolverPool.new() # sized from OS.get_processor_count() -- see that class's own doc comment
+	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
 
 ## Starts (or retargets) continuous streaming for the given worldspace.
 ## Takes no position/cell -- the next check reacts to wherever the active
@@ -463,13 +478,15 @@ func _check_streaming() -> void:
 				# close enough that a tile streamed distant-only now needs
 				# full detail -- re-stream it rather than leaving it stuck
 				# showing only its VWD-flagged placements.
+				_freeze_trace(coord, "upgrade eviction begin", "dx=%d dy=%d" % [dx, dy])
+				var eviction_start_us: int = Time.get_ticks_usec()
 				_resident[coord].free()
 				_resident.erase(coord)
 				if _resident_batches.has(coord):
 					_resident_batches[coord].free_all()
 					_resident_batches.erase(coord)
 				_resident_full_detail.erase(coord)
-				print("WorldStreamer: tile %s upgrading to full_detail (dx=%d dy=%d)" % [coord, dx, dy]) # TEMP DIAGNOSTIC -- 2026-08-23 missing-building investigation
+				_freeze_trace(coord, "upgrade eviction end", "%.2f ms" % ((Time.get_ticks_usec() - eviction_start_us) / 1000.0))
 				_enqueue_tile_load(coord, true)
 			elif _resident.has(coord) and _resident_full_detail.get(coord, false) and not _within_radius(dx, dy, RADIUS_UNLOAD_FULL):
 				# The reverse case -- a full-detail tile the camera has since
@@ -584,6 +601,7 @@ func _start_tile_load(coord: Vector2i, full_detail: bool = true) -> void:
 	_stream_tile(int(cell["form_id"]), coord, _generation, full_detail)
 
 func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_detail: bool) -> void:
+	_freeze_trace(coord, "tile stream begin", "cell=0x%X full_detail=%s" % [cell_form_id, full_detail])
 	var tile_root := Node3D.new()
 	tile_root.name = "Tile_%d_%d" % [coord.x, coord.y]
 	add_child(tile_root)
@@ -598,6 +616,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	tile_root.add_child(terrain_root)
 
 	var _tt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
+	_freeze_trace(coord, "terrain begin")
 	if use_terrain3d:
 		# phases/2/13-terrain3d-integration.md, implementation step 6: same
 		# diagnostic_terrain_ms array as the GamebryoTerrainBuilder path below,
@@ -615,12 +634,14 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 		if terrain != null:
 			CellStreamBuilder.set_collision_disabled(terrain, false) # visible+collidable immediately -- see _construct_results()'s own doc comment on progressive reveal
 			terrain_root.add_child(terrain)
+	_freeze_trace(coord, "terrain end", "%.2f ms" % ((Time.get_ticks_usec() - _tt0) / 1000.0))
 
 	# Deliberately NOT get_persistent_refs_for_cell() here -- persistent
 	# refs are streamed exactly once into PersistentRoot by
 	# _stream_persistent_root(), never per-tile (see this class's own doc
 	# comment on why).
 	var refs: Array = esm.get_cell_references(cell_form_id)
+	_freeze_trace(coord, "references read", "%d refs" % refs.size())
 
 	# phases/2/09-direct-server-static-geometry.md: this tile's own RID batch
 	# for non-interactive placements. Starts disabled -- deliberately still
@@ -636,8 +657,10 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
+	_freeze_trace(coord, "worker resolve begin")
 	var results = await _resolve_refs_threaded(refs, my_generation, full_detail)
 	diagnostic_resolve_wall_ms.append((Time.get_ticks_usec() - _rt0) / 1000.0) # TEMP DIAGNOSTIC
+	_freeze_trace(coord, "worker resolve end", "%.2f ms" % ((Time.get_ticks_usec() - _rt0) / 1000.0))
 
 	if results == null or my_generation != _generation:
 		_pending.erase(coord)
@@ -653,8 +676,10 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# resident OR pending; erasing it early (as this used to, right after
 	# resolve) would open a window where a coord is in neither dict and a
 	# duplicate load could start for the same tile.
-	var construct_result := await _construct_results(refr_root, results, batch, my_generation)
+	_freeze_trace(coord, "main-thread construct begin", "%d results" % results.size())
+	var construct_result := await _construct_results(refr_root, results, batch, my_generation, coord)
 	diagnostic_construct_ms.append(construct_result["active_ms"]) # TEMP DIAGNOSTIC -- active construct time only, excludes the awaited frame gaps between batches
+	_freeze_trace(coord, "main-thread construct end", "%.2f active ms" % float(construct_result["active_ms"]))
 
 	if not construct_result["ok"]:
 		_pending.erase(coord)
@@ -665,16 +690,17 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 		return
 
 	var _t2 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
+	_freeze_trace(coord, "batch build begin")
 	batch.build() # creates the actual (batched, one-per-distinct-mesh) RenderingServer instances -- must happen before set_enabled() has anything to enable
 	batch.set_enabled(true)
 	diagnostic_batch_build_ms.append((Time.get_ticks_usec() - _t2) / 1000.0) # TEMP DIAGNOSTIC
+	_freeze_trace(coord, "batch build end", "%.2f ms" % ((Time.get_ticks_usec() - _t2) / 1000.0))
 	diagnostic_refcounts.append(results.size()) # TEMP DIAGNOSTIC
 	_pending.erase(coord)
 	_in_flight_count -= 1
 	_resident[coord] = tile_root
 	_resident_batches[coord] = batch
 	_resident_full_detail[coord] = full_detail
-	print("WorldStreamer: tile %s resident, full_detail=%s" % [coord, full_detail]) # TEMP DIAGNOSTIC -- 2026-08-23 missing-building investigation, see object_registry.gd's own SCOL print
 	_maybe_emit_settled()
 
 func _stream_persistent_root() -> void:
@@ -790,13 +816,19 @@ func _resolve_refs_threaded(refs: Array, my_generation: int, full_detail: bool =
 ## between batches -- what diagnostic_construct_ms actually wants to know,
 ## not this function's own wall-clock span (which would include however
 ## many real frames it happened to take).
-func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBatch, my_generation: int) -> Dictionary:
+func _construct_results(parent: Node3D, results: Array, batch: DirectGeometryBatch, my_generation: int, trace_coord: Vector2i = Vector2i(999999, 999999)) -> Dictionary:
 	var per_frame: int = max(objects_per_frame, 1)
 	var active_us := 0
 	var seg_start := Time.get_ticks_usec()
 	var i := 0
 	for r in results:
+		if freeze_trace_enabled and trace_coord.x != 999999:
+			var result: Dictionary = r
+			var placement: Dictionary = result.get("placement", {})
+			_freeze_trace(trace_coord, "construct item begin", "%d/%d kind=%s type=%s base=0x%X" % [i + 1, results.size(), result.get("kind", ""), placement.get("base_type", ""), int(placement.get("base_form_id", 0))])
 		var node := registry.construct_from_resolved(r, batch)
+		if freeze_trace_enabled and trace_coord.x != 999999:
+			_freeze_trace(trace_coord, "construct item end", "%d/%d" % [i + 1, results.size()])
 		if node != null:
 			parent.add_child(node)
 			CellStreamBuilder.set_collision_disabled(node, false)
