@@ -1,6 +1,8 @@
 @tool
 extends Control
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 ## Editor-only, read-only script inspector -- browse any real SCPT by
 ## editor ID, see its actual GECK source text with every function call
 ## color-coded by whether script_function_registry.gd implements it, and
@@ -72,7 +74,8 @@ func _ready() -> void:
 
 func _load_script_list() -> void:
 	_esm = EsmReader.new()
-	if not _esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	var data_config := GameDataConfigScript.resolve()
+	if not String(data_config.get("error", "")).is_empty() or not _esm.open(String(data_config.get("data_dir", "")) + GameDataConfigScript.ESM_FILE):
 		_status_label.text = "Failed to open ESM: %s" % _esm.get_last_error()
 		return
 	var form_ids: PackedInt64Array = _esm.get_all_script_form_ids()

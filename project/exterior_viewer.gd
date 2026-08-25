@@ -1,6 +1,8 @@
 @tool
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # Editor-mode exterior (world) cell viewer — the WRLD/LAND counterpart to
 # interior_viewer.gd. Loads a rectangular area of a worldspace's exterior
 # cells (heightmap terrain + splatted textures + placed REFRs) as real child
@@ -121,7 +123,8 @@ func _do_load() -> void:
 		old_root.free()
 
 	var esm := EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		_loading = false
 		return
@@ -146,7 +149,7 @@ func _do_load() -> void:
 	refr_root.rotation_degrees.x = -90 # NIF/REFR Z-up -> Godot Y-up
 	_add_child(area_root, refr_root)
 
-	var resolver := GamebryoMeshResolver.new()
+	var resolver := GamebryoMeshResolver.new(data_dir)
 	var registry := GamebryoObjectRegistry.new(resolver, esm)
 
 	var cells_found := 0
