@@ -13,6 +13,7 @@ extends Control
 @onready var _run: Button = $Margin/VBox/ConsoleRow/Run
 @onready var _clear: Button = $Margin/VBox/ConsoleRow.get_node_or_null("Clear")
 @onready var _output: TextEdit = $Margin/VBox/VSplit/Output
+@onready var _suggestions_bar: RichTextLabel = $Margin/VBox.get_node_or_null("SuggestionsBar")
 
 var _engine: ScriptEngine
 var _instances: Array = []
@@ -23,7 +24,13 @@ var _history: Array[String] = []
 var _history_index: int = -1
 var _current_input_buffer: String = ""
 
-# Autocomplete candidates
+# Autocomplete state
+var _suggestions: Array[String] = []
+var _suggestion_index: int = 0
+var _token_start: int = 0
+var _token_prefix: String = ""
+var _navigating_suggestions: bool = false
+
 var _builtin_candidates: Array[String] = [
 	"ShowMessage", "GetButtonPressed", "PlaceAtMe", "CenterOnCell", "COC",
 	"AddItem", "RemoveItem", "GetItemCount", "EquipItem", "UnequipItem",
@@ -31,6 +38,7 @@ var _builtin_candidates: Array[String] = [
 	"SetOpenState", "GetOpenState", "PlayGroup", "SetHardcore", "GetHardcore",
 	"MarkForDelete", "SetDestroyed", "GetDestroyed", "SetScale", "GetScale",
 	"MoveTo", "PositionCell", "StopCombat", "StartCombat", "ResetHealth",
+	"tcl", "TCL", "ToggleCollision",
 	"Player.Disable", "Player.Enable", "Player.AddItem", "Player.RemoveItem",
 	"Player.PlaceAtMe", "Player.MoveTo", "Player.Kill", "Player.Resurrect",
 	"Player.SetHardcore", "Set bInitialized to", "Set fTimer to", "Set iCount to"
@@ -51,6 +59,7 @@ func _ready() -> void:
 
 	_line.text_submitted.connect(func(_text: String) -> void: _run_line())
 	_line.gui_input.connect(_on_line_gui_input)
+	_line.text_changed.connect(_on_line_text_changed)
 
 	_instances_list.item_selected.connect(_select_instance)
 	_refresh()
@@ -81,10 +90,75 @@ func _setup_highlighter() -> void:
 	_source.syntax_highlighter = hl
 
 
-var _tab_matches: Array[String] = []
-var _tab_match_index: int = 0
-var _tab_token_start: int = 0
-var _tab_prefix: String = ""
+func _on_line_text_changed(_new_text: String) -> void:
+	_update_suggestions_bar()
+
+
+func _update_suggestions_bar() -> void:
+	if _suggestions_bar == null:
+		return
+
+	var text := _line.text
+	var caret := _line.caret_column
+	var left_text := text.substr(0, caret)
+	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
+	var token := left_text.substr(token_start).strip_edges()
+
+	if token.is_empty():
+		_suggestions.clear()
+		_suggestion_index = 0
+		_navigating_suggestions = false
+		_suggestions_bar.hide()
+		return
+
+	_token_start = token_start
+	_token_prefix = token.to_lower()
+	_suggestions.clear()
+
+	var candidates := _get_all_candidates()
+	for c in candidates:
+		if c.to_lower().begins_with(_token_prefix):
+			if not _suggestions.has(c):
+				_suggestions.append(c)
+				if _suggestions.size() >= 8:
+					break
+
+	if _suggestions.size() < 8:
+		for c in candidates:
+			if not _suggestions.has(c) and c.to_lower().find(_token_prefix) != -1:
+				_suggestions.append(c)
+				if _suggestions.size() >= 8:
+					break
+
+	if _suggestions.is_empty() or (_suggestions.size() == 1 and _suggestions[0].to_lower() == _token_prefix):
+		_suggestions.clear()
+		_suggestion_index = 0
+		_navigating_suggestions = false
+		_suggestions_bar.hide()
+		return
+
+	if _suggestion_index >= _suggestions.size():
+		_suggestion_index = 0
+
+	_render_suggestions_bar()
+
+
+func _render_suggestions_bar() -> void:
+	if _suggestions_bar == null or _suggestions.is_empty():
+		if _suggestions_bar != null:
+			_suggestions_bar.hide()
+		return
+
+	var items: PackedStringArray = []
+	for i in _suggestions.size():
+		var c := _suggestions[i]
+		if _navigating_suggestions and i == _suggestion_index:
+			items.append("[b][color=#61afef]▶ %s[/color][/b]" % c)
+		else:
+			items.append("[color=#abb2bf]%s[/color]" % c)
+
+	_suggestions_bar.text = "[color=#7f848e]💡 Suggestions:[/color]  %s   [color=#5c6370]• [Tab/Enter to apply, ↑/↓ to choose][/color]" % "   ".join(items)
+	_suggestions_bar.show()
 
 
 func _on_line_gui_input(event: InputEvent) -> void:
@@ -93,18 +167,43 @@ func _on_line_gui_input(event: InputEvent) -> void:
 
 	var key_event := event as InputEventKey
 
-	# Handle Tab completion (in-place, never steals focus)
-	if key_event.keycode == KEY_TAB and not key_event.is_echo():
-		_handle_tab_completion()
-		accept_event()
-		return
+	# Handle interactive suggestion navigation when suggestions are active
+	if _suggestions_bar != null and _suggestions_bar.visible and not _suggestions.is_empty():
+		if key_event.keycode == KEY_DOWN and not key_event.is_echo():
+			if not _navigating_suggestions:
+				_navigating_suggestions = true
+				_suggestion_index = 0
+			else:
+				_suggestion_index = (_suggestion_index + 1) % _suggestions.size()
+			_render_suggestions_bar()
+			accept_event()
+			return
+		elif key_event.keycode == KEY_UP and not key_event.is_echo():
+			if not _navigating_suggestions:
+				_navigating_suggestions = true
+				_suggestion_index = _suggestions.size() - 1
+			else:
+				_suggestion_index = (_suggestion_index - 1 + _suggestions.size()) % _suggestions.size()
+			_render_suggestions_bar()
+			accept_event()
+			return
+		elif key_event.keycode == KEY_TAB and not key_event.is_echo():
+			_apply_selected_suggestion()
+			accept_event()
+			return
+		elif (key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER) and not key_event.is_echo():
+			if _navigating_suggestions:
+				_apply_selected_suggestion()
+				accept_event()
+				return
+		elif key_event.keycode == KEY_ESCAPE and not key_event.is_echo():
+			_suggestions.clear()
+			_navigating_suggestions = false
+			_suggestions_bar.hide()
+			accept_event()
+			return
 
-	# Any non-tab keystroke resets tab cycling
-	if key_event.keycode != KEY_TAB:
-		_tab_matches.clear()
-		_tab_match_index = 0
-
-	# Handle History navigation (Up / Down)
+	# Handle History navigation (Up / Down) when not navigating suggestions
 	if key_event.keycode == KEY_UP and not key_event.is_echo():
 		if _history.is_empty():
 			return
@@ -115,6 +214,7 @@ func _on_line_gui_input(event: InputEvent) -> void:
 			_history_index -= 1
 		_line.text = _history[_history_index]
 		_line.caret_column = _line.text.length()
+		_update_suggestions_bar()
 		accept_event()
 		return
 	elif key_event.keycode == KEY_DOWN and not key_event.is_echo():
@@ -126,59 +226,38 @@ func _on_line_gui_input(event: InputEvent) -> void:
 				_history_index = -1
 				_line.text = _current_input_buffer
 			_line.caret_column = _line.text.length()
+			_update_suggestions_bar()
 			accept_event()
 			return
-
-
-func _handle_tab_completion() -> void:
-	var text := _line.text
-	var caret := _line.caret_column
-
-	# If already cycling through active matches on repeated Tab presses:
-	if not _tab_matches.is_empty() and caret >= _tab_token_start:
-		_tab_match_index = (_tab_match_index + 1) % _tab_matches.size()
-		var chosen := _tab_matches[_tab_match_index]
-		_apply_tab_completion(chosen)
+	elif key_event.keycode == KEY_TAB and not key_event.is_echo():
+		_handle_tab_completion()
+		accept_event()
 		return
 
-	# Extract token before caret
-	var left_text := text.substr(0, caret)
-	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
-	var token := left_text.substr(token_start)
 
-	if token.is_empty():
+func _apply_selected_suggestion() -> void:
+	if _suggestions.is_empty():
 		return
+	var chosen_idx := clampi(_suggestion_index, 0, _suggestions.size() - 1)
+	var completed_word := _suggestions[chosen_idx]
 
-	_tab_prefix = token.to_lower()
-	_tab_token_start = token_start
-	_tab_matches.clear()
-	_tab_match_index = 0
-
-	var candidates := _get_all_candidates()
-	for c in candidates:
-		if c.to_lower().begins_with(_tab_prefix):
-			if not _tab_matches.has(c):
-				_tab_matches.append(c)
-
-	if _tab_matches.is_empty():
-		for c in candidates:
-			if c.to_lower().find(_tab_prefix) != -1:
-				if not _tab_matches.has(c):
-					_tab_matches.append(c)
-
-	if _tab_matches.is_empty():
-		return
-
-	_apply_tab_completion(_tab_matches[0])
-
-
-func _apply_tab_completion(completed_word: String) -> void:
 	var right_text := _line.text.substr(_line.caret_column)
-	var prefix_text := _line.text.substr(0, _tab_token_start)
+	var prefix_text := _line.text.substr(0, _token_start)
 	var suffix := " " if right_text.is_empty() or not right_text.begins_with(" ") else ""
 
 	_line.text = prefix_text + completed_word + suffix + right_text
 	_line.caret_column = (prefix_text + completed_word + suffix).length()
+
+	_suggestions.clear()
+	_navigating_suggestions = false
+	if _suggestions_bar != null:
+		_suggestions_bar.hide()
+
+
+func _handle_tab_completion() -> void:
+	_update_suggestions_bar()
+	if not _suggestions.is_empty():
+		_apply_selected_suggestion()
 
 
 func _get_all_candidates() -> Array[String]:

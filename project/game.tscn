@@ -143,6 +143,13 @@ text = "Run"
 layout_mode = 2
 text = "Clear"
 
+[node name="SuggestionsBar" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=194857299]
+visible = false
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
 [node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1893336224]
 layout_mode = 2
 size_flags_vertical = 3
