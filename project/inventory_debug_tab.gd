@@ -35,7 +35,7 @@ func _setup_tree() -> void:
 
 	_tree.set_column_title(2, "FormID")
 	_tree.set_column_expand(2, false)
-	_tree.set_column_custom_minimum_width(2, 90)
+	_tree.set_column_custom_minimum_width(2, 100)
 
 	_tree.set_column_title(3, "Weight")
 	_tree.set_column_expand(3, false)

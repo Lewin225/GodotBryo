@@ -57,6 +57,18 @@ func _ready() -> void:
 	check(script_tab._history[script_tab._history_index] == "CenterOnCell Goodsprings", "Down arrow navigates forward in history")
 
 	script_tab.free()
+
+	# 4. Test World Streaming sub-tabs structure in game.tscn
+	var game_scene: PackedScene = load("res://game.tscn")
+	var game_node: Node = game_scene.instantiate()
+	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
+	check(ws_tab != null, "World Streaming tab exists in game.tscn")
+	var status_card: Node = ws_tab.get_node_or_null("Margin/SubTabs/Streaming State/VBox/StateGrid/StatusCard")
+	check(status_card != null, "StatusCard resolved in Streaming State subtab")
+	var tex_tree: Node = ws_tab.get_node_or_null("Margin/SubTabs/Ground Textures/VBox/TextureTree")
+	check(tex_tree != null, "TextureTree resolved in Ground Textures subtab")
+	game_node.free()
+
 	_finish()
 
 
