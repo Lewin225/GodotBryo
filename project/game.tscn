@@ -132,9 +132,13 @@ layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Run a script line, e.g. Player.Disable"
 
-[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=942724195]
+[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
 layout_mode = 2
 text = "Run"
+
+[node name="Clear" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow"]
+layout_mode = 2
+text = "Clear"
 
 [node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1893336224]
 layout_mode = 2
@@ -201,10 +205,18 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Player inventory"
 
-[node name="ItemList" type="ItemList" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=635152149]
+[node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+placeholder_text = "Filter items by name or FormID..."
+clear_button_enabled = true
+
+[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
 custom_minimum_size = Vector2(0, 260)
 layout_mode = 2
 size_flags_vertical = 3
+columns = 6
+column_titles_visible = true
+hide_root = true
 
 [node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=525794185]
 layout_mode = 2
@@ -256,53 +268,109 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1002944894]
+[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Streaming state"
 
-[node name="StateLabel" type="TextEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=651999633]
-custom_minimum_size = Vector2(0, 220)
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-editable = false
-wrap_mode = 1
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 6
+columns = 4
 
-[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1832230305]
+[node name="StatusCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Status: Inactive"
+
+[node name="CellCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Cell: (none)"
+
+[node name="ResidentCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Resident: 0"
+
+[node name="FullDetailCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Full Detail: 0"
+
+[node name="DistantCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Distant: 0"
+
+[node name="InFlightCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "In-Flight: 0"
+
+[node name="QueueDepthCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Queue Depth: 0"
+
+[node name="NoCellCacheCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+layout_mode = 2
+text = "Empty Cache: 0"
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 
-[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=2026403959]
+[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "Load radius configuration"
+text = "Load radius configuration & limits"
 
-[node name="RadiusLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1265556442]
-custom_minimum_size = Vector2(0, 120)
+[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-fit_content = true
-scroll_active = false
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
 
-[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=1878409308]
+[node name="RadLoadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "Load Full: 1.5"
+
+[node name="RadUnloadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "Unload Full: 2.25"
+
+[node name="RadLoadDistant" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "Load Distant: 4.5"
+
+[node name="RadUnload" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "Unload: 5.5"
+
+[node name="CheckInterval" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "Check: 0.25s"
+
+[node name="LodCrossover" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+layout_mode = 2
+text = "LOD Crossover: 250m"
+
+[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=697380837]
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 text = "tiles/frame:"
 vertical_alignment = 1
 
-[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=1511312115]
+[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
 min_value = 1.0
 max_value = 64.0
 value = 1.0
 
-[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=826962062]
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 text = "objects/frame:"
 vertical_alignment = 1
 
-[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow" unique_id=2118290337]
+[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
 min_value = 1.0
@@ -322,23 +390,28 @@ layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
 text = "enabled"
 
-[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=940079046]
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 
-[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=591851737]
+[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader" unique_id=1322011602]
+[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "World ground textures (Terrain3D texture pool)"
 
-[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader" unique_id=1757201760]
+[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
 
-[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox" unique_id=955176849]
-custom_minimum_size = Vector2(0, 220)
+[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+layout_mode = 2
+placeholder_text = "Filter ground textures..."
+clear_button_enabled = true
+
+[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
 size_flags_vertical = 3
 
@@ -375,33 +448,102 @@ layout_mode = 2
 fit_content = true
 scroll_active = false
 
-[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1021671873]
+[node name="ColumnsContainer" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox"]
 layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
 
-[node name="XcllTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1267340901]
+[node name="LeftPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="XcllTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "CELL.XCLL (real per-cell authored lighting)"
+text = "Authored CELL.XCLL Lighting"
 
-[node name="XcllLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1969096503]
-custom_minimum_size = Vector2(0, 100)
+[node name="AmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
-fit_content = true
-scroll_active = false
+theme_override_constants/separation = 8
 
-[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=22548968]
+[node name="AmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
+custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
+color = Color(0, 0, 0, 1)
 
-[node name="AppliedTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=352131969]
+[node name="AmbientLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
+layout_mode = 2
+text = "ambient: —"
+
+[node name="DirectionalRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DirectionalSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="DirectionalLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
+layout_mode = 2
+text = "directional: —"
+
+[node name="FogLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+layout_mode = 2
+text = "fog: —"
+
+[node name="FadeLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+layout_mode = 2
+text = "directional fade: —"
+
+[node name="XcllNoteLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="RightPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="AppliedTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "Currently applied WorldEnvironment"
+text = "Applied WorldEnvironment"
 
-[node name="AppliedLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1990442916]
-custom_minimum_size = Vector2(0, 120)
+[node name="EnvAmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
-fit_content = true
-scroll_active = false
+theme_override_constants/separation = 8
+
+[node name="EnvAmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="EnvAmbientLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
+layout_mode = 2
+text = "ambient light: —"
+
+[node name="EnvBgRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnvBgSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="EnvBgLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
+layout_mode = 2
+text = "background: —"
+
+[node name="EnvEnergyLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+layout_mode = 2
+text = "energy / source: —"
+
+[node name="EnvSettingsLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+layout_mode = 2
+text = "sdfgi / tonemap: —"
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 
