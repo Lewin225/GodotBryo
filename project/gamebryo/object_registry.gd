@@ -172,6 +172,14 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# animation_sequences, none of which resolve_raw_geometry() itself
 	# captures) -- every other type ignores it, cheap to carry regardless.
 	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement, "nif": nif }
+	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
+	if emittance_form_id != 0:
+		var emittance_data: Dictionary = ctx.esm.get_emittance_data(emittance_form_id)
+		if not emittance_data.is_empty():
+			# XEMI belongs to this REFR, not its shared STAT. Carry the resolved
+			# colour across the worker boundary so construction can make a small,
+			# per-instance material override without defeating raw mesh caching.
+			result["emittance_color"] = emittance_data["color"]
 	var lod_geometry := _resolve_lod_geometry(placement, model, ctx.resolver)
 	if not lod_geometry.is_empty():
 		result["lod_geometry"] = lod_geometry
@@ -305,7 +313,10 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 				"MSTT":
 					return _construct_visual(MovableStaticNode, result)
 				_: # structural fallback
-					if batch != null:
+					# DirectGeometryBatch shares materials across all instances, but
+					# REFR.XEMI is an explicitly per-placement tint. Such effects must
+					# remain ordinary nodes so their material can be overridden safely.
+					if batch != null and not result.has("emittance_color"):
 						_construct_direct(result, batch)
 						return null
 					return _construct_visual(GamebryoVisual, result)
@@ -327,11 +338,32 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	# change from before step 6.
 	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	resolver.populate_mesh_children(node, null, "", geometry)
+	if result.has("emittance_color"):
+		_apply_emittance_tint(node, result["emittance_color"])
 	resolver.populate_collision_children(node, null, "", geometry)
 	node = _finalize(node, result["placement"])
 	if node is TerminalNode:
 		node.configure_terminal(result.get("terminal_data", {}))
 	return node
+
+## XEMI is an authored colour link on a REFR. Duplicate only the final
+## material Resource for this one visual; mesh/texture decoding stays shared.
+## Using material_override preserves its real alpha mode and vertex alpha.
+func _apply_emittance_tint(node: Node3D, tint: Color) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D and child.get_meta("gamebryo_is_unlit", false):
+			var source: Material = child.mesh.surface_get_material(0)
+			if source != null:
+				var material := source.duplicate() as Material
+				if material is StandardMaterial3D:
+					material.albedo_color = tint
+				elif material is ShaderMaterial:
+					material.set_shader_parameter("emittance_tint", tint)
+				else:
+					continue
+				child.material_override = material
+		if child is Node3D:
+			_apply_emittance_tint(child, tint)
 
 ## phases/3/00-door-completion.md step 7: doors are Dynamic (can script,
 ## and can animate -- see enginedocs/nv_class_hierarchy.md's Dynamic/Static
@@ -486,6 +518,11 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	var lod_raw := _resolve_lod_geometry(placement, model, mesh_resolver)
 	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model), lod_raw)
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
+	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
+	if emittance_form_id != 0:
+		var emittance_data: Dictionary = esm.get_emittance_data(emittance_form_id)
+		if not emittance_data.is_empty():
+			_apply_emittance_tint(node, emittance_data["color"])
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
 
