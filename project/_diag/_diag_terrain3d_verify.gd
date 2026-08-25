@@ -1,5 +1,7 @@
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # TEMP DIAGNOSTIC: reproduce the spiky-terrain bug reported around cell (-18,0)
 # by importing a real grid of cells the same way WorldStreamer does, then
 # comparing Terrain3D's own stored height at every real vertex against the
@@ -11,7 +13,7 @@ const GRID_SIZE := 33
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm")
+	esm.open(String(GameDataConfigScript.resolve().get("data_dir", "")) + GameDataConfigScript.ESM_FILE)
 	var resolver := GamebryoMeshResolver.new()
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id(WORLDSPACE_EDITOR_ID)
 	var wrld_id := int(wrld.get("form_id", 0))

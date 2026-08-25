@@ -1,6 +1,8 @@
 @tool
 extends Node3D
 
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
 # Editor-mode interior cell viewer (formerly cell_viewer_editor.gd — renamed
 # once exterior_viewer.gd gave world cells their own editor tool). Populates
 # a single interior CELL's REFRs as real child nodes of this scene while
@@ -65,7 +67,8 @@ func _do_load() -> void:
 		get_node("CellRoot").queue_free()
 
 	var esm := EsmReader.new()
-	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
+	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
+	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("could not open FalloutNV.esm")
 		return
 
@@ -79,7 +82,7 @@ func _do_load() -> void:
 	world.rotation_degrees.x = -90 # NIF Z-up -> Godot Y-up
 	_add_child(self, world)
 
-	var resolver := GamebryoMeshResolver.new()
+	var resolver := GamebryoMeshResolver.new(data_dir)
 	var registry := GamebryoObjectRegistry.new(resolver, esm)
 
 	var refs: Array = esm.get_cell_references(int(cell["form_id"]))

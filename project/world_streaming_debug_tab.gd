@@ -26,6 +26,7 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _radius_label: RichTextLabel = $Margin/VBox/RadiusLabel
 @onready var _tiles_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/TilesPerFrameSpin
 @onready var _objects_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/ObjectsPerFrameSpin
+@onready var _freeze_trace_check: CheckBox = $Margin/VBox/FreezeTraceRow/FreezeTraceCheck
 @onready var _texture_list: ItemList = $Margin/VBox/TextureList
 @onready var _texture_summary_label: Label = $Margin/VBox/TexHeader/TexSummaryLabel
 
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_world_streamer = get_tree().root.get_node("Game/WorldStreamer")
 	_tiles_per_frame_spin.value_changed.connect(_on_tiles_per_frame_changed)
 	_objects_per_frame_spin.value_changed.connect(_on_objects_per_frame_changed)
+	_freeze_trace_check.toggled.connect(_on_freeze_trace_toggled)
 	_refresh() # paint real values immediately, don't wait for the first timer tick
 
 func _process(delta: float) -> void:
@@ -56,6 +58,11 @@ func _on_objects_per_frame_changed(value: float) -> void:
 	if _suppress_spin_signals or _world_streamer == null:
 		return
 	_world_streamer.objects_per_frame = int(value)
+
+func _on_freeze_trace_toggled(enabled: bool) -> void:
+	if _suppress_spin_signals or _world_streamer == null:
+		return
+	_world_streamer.freeze_trace_enabled = enabled
 
 func _refresh() -> void:
 	if _world_streamer == null:
@@ -106,6 +113,7 @@ func _refresh_tuning_spinboxes() -> void:
 	_suppress_spin_signals = true
 	_tiles_per_frame_spin.value = _world_streamer.tiles_per_frame
 	_objects_per_frame_spin.value = _world_streamer.objects_per_frame
+	_freeze_trace_check.button_pressed = _world_streamer.freeze_trace_enabled
 	_suppress_spin_signals = false
 
 func _refresh_texture_list() -> void:
