@@ -79,6 +79,38 @@ func _ready() -> void:
 	var teleport_script := load("res://teleport_debug_tab.gd")
 	check(teleport_script.PRESETS.size() > 50, "Teleport tab has curated presets (>50)")
 
+	# 6. Test Player tab in game.tscn
+	var player_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Player")
+	check(player_tab != null, "Player tab exists in game.tscn")
+	var noclip_check: Node = player_tab.get_node_or_null("Margin/VBox/NoclipRow/NoclipCheck")
+	check(noclip_check != null, "NoclipCheck resolved in Player tab")
+	var base_speed_spin: Node = player_tab.get_node_or_null("Margin/VBox/MoveGrid/BaseSpeedSpin")
+	check(base_speed_spin != null, "BaseSpeedSpin resolved in Player tab")
+	var jump_vel_spin: Node = player_tab.get_node_or_null("Margin/VBox/JumpGrid/JumpVelSpin")
+	check(jump_vel_spin != null, "JumpVelSpin resolved in Player tab")
+
+	# 7. Test PlayerController noclip & ScriptEngine TCL command
+	var player: PlayerController = game_node.get_node_or_null("Character")
+	check(player != null, "Character is PlayerController")
+	if player != null:
+		check(player.noclip == false, "Player starts with noclip=false")
+		player.toggle_noclip()
+		check(player.noclip == true, "Player toggle_noclip() sets noclip=true")
+		check(player.collision_shape.disabled == true, "Collision shape is disabled during noclip")
+		player.toggle_noclip()
+		check(player.noclip == false, "Player toggle_noclip() sets noclip=false again")
+		check(player.collision_shape.disabled == false, "Collision shape is re-enabled when noclip is off")
+
+		# Test TCL via script engine
+		var script_engine: ScriptEngine = game_node.get_node_or_null("ScriptEngine")
+		if script_engine != null:
+			script_engine.player_node = player
+			var res := script_engine.run_debug_line("tcl", player)
+			check(bool(res.get("ok", false)), "ScriptEngine executes 'tcl'")
+			check(player.noclip == true, "'tcl' command toggles player noclip to true")
+			script_engine.run_debug_line("tcl", player)
+			check(player.noclip == false, "'tcl' command toggles player noclip back to false")
+
 	game_node.free()
 
 	_finish()
