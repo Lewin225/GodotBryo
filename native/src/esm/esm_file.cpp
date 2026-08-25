@@ -600,7 +600,7 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 
 std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 	auto record = find_record_by_form_id(item_form_id);
-	if (!record || (record->type != "MISC" && record->type != "KEYM" && record->type != "ALCH")) return std::nullopt;
+	if (!record || (record->type != "MISC" && record->type != "KEYM" && record->type != "ALCH" && record->type != "WEAP")) return std::nullopt;
 	ItemData item;
 	bool have_data = false;
 	bool have_alch_weight = false;
@@ -611,6 +611,16 @@ std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 		else if ((record->type == "MISC" || record->type == "KEYM") && s.type == "DATA" && s.size >= 8) {
 			util::ByteReader sr(s.data, s.size);
 			item.value = static_cast<int32_t>(sr.read_u32());
+			item.weight = read_f32(sr);
+			have_data = true;
+		}
+		else if (record->type == "WEAP" && s.type == "DATA" && s.size >= 12) {
+			// Real FalloutNV.esm WEAP.DATA is 15 bytes. Its pickup-relevant
+			// fields are Value:int32 at offset 0 and Weight:float32 at offset 8;
+			// the intervening bytes belong to weapon-specific stats.
+			util::ByteReader sr(s.data, s.size);
+			item.value = static_cast<int32_t>(sr.read_u32());
+			sr.skip(4);
 			item.weight = read_f32(sr);
 			have_data = true;
 		}
