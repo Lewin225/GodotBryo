@@ -5,11 +5,9 @@ extends SceneTree
 ## find_cell_by_editor_id on plausible names), and check whether it's
 ## interior or exterior via get_cell_worldspace().
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 func _init() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		quit(1)
 		return

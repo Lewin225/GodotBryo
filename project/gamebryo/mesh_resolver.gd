@@ -51,7 +51,40 @@ extends RefCounted
 ## for no safety benefit -- the discipline is which INSTANCE's methods get
 ## called from which thread, not the class boundary itself.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
+static var _cached_data_dir: String = ""
+
+static func get_data_dir() -> String:
+	if _cached_data_dir != "":
+		return _cached_data_dir
+
+	var env_data := OS.get_environment("GODOTBRYO_DATA_DIR")
+	if env_data == "":
+		env_data = OS.get_environment("FNV_DATA_DIR")
+	if env_data != "":
+		if not env_data.ends_with("/"):
+			env_data += "/"
+		if DirAccess.dir_exists_absolute(env_data):
+			_cached_data_dir = env_data
+			return _cached_data_dir
+
+	var candidates: Array[String] = [
+		ProjectSettings.globalize_path("res://../fresh_nv_copy/Data/"),
+		ProjectSettings.globalize_path("res://../fresh_nv_copy/NV/Data/"),
+		ProjectSettings.globalize_path("res://fresh_nv_copy/Data/"),
+		ProjectSettings.globalize_path("res://fresh_nv_copy/NV/Data/"),
+		"../fresh_nv_copy/Data/",
+		"../fresh_nv_copy/NV/Data/",
+		"fresh_nv_copy/Data/",
+		"fresh_nv_copy/NV/Data/",
+	]
+	for c in candidates:
+		if FileAccess.file_exists(c + "FalloutNV.esm") or DirAccess.dir_exists_absolute(c):
+			_cached_data_dir = c
+			return _cached_data_dir
+
+	_cached_data_dir = ProjectSettings.globalize_path("res://../fresh_nv_copy/Data/")
+	return _cached_data_dir
+
 
 ## Bethesda/Gamebryo world units are NOT meters (~70 units/m — see
 ## native/src/common/units.h for the sourced conversion and rationale). The
@@ -137,7 +170,12 @@ func _init() -> void:
 	_build_bsa_order()
 
 func _build_bsa_order() -> void:
-	var dir := DirAccess.open(DATA_DIR)
+	var data_dir := get_data_dir()
+	var dir := DirAccess.open(data_dir)
+	if dir == null:
+		push_error("GamebryoMeshResolver: could not open data directory: " + data_dir)
+		_bsa_order = []
+		return
 	var all_names: Array[String] = []
 	dir.list_dir_begin()
 	var fname := dir.get_next()
@@ -175,7 +213,7 @@ func _get_reader(bsa_name: String) -> BsaReader:
 	if _bsa_readers.has(bsa_name):
 		return _bsa_readers[bsa_name]
 	var r := BsaReader.new()
-	if not r.open(DATA_DIR + bsa_name):
+	if not r.open(get_data_dir() + bsa_name):
 		_bsa_readers[bsa_name] = null
 		return null
 	_bsa_readers[bsa_name] = r

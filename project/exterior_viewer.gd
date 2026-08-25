@@ -37,8 +37,6 @@ extends Node3D
 # verified thread-safety, so calling them off the main thread needs its own
 # investigation before it'd be safe, not assumed as a free upgrade from
 # what's here.
-
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 const CELL_SIZE_UNITS := 4096.0
 const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 
@@ -123,7 +121,7 @@ func _do_load() -> void:
 		old_root.free()
 
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		_loading = false
 		return
