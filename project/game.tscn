@@ -97,20 +97,20 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
 current_tab = 0
+clip_tabs = true
 drag_to_rearrange_enabled = true
 
-[node name="Scripting" type="Control" parent="Debug Tools/TabContainer" unique_id=1382890352]
+[node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 script = ExtResource("9_scriptingdebug")
 metadata/_tab_index = 0
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=411638944]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
@@ -173,24 +173,25 @@ fit_content = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Quest" type="Control" parent="Debug Tools/TabContainer" unique_id=1803339936]
+[node name="Quest" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
 visible = false
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 metadata/_tab_index = 1
 
-[node name="Inventory" type="Control" parent="Debug Tools/TabContainer" unique_id=402594954]
+[node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
 visible = false
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 script = ExtResource("8_inventorydebug")
 metadata/_tab_index = 2
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory" unique_id=139347742]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
@@ -241,199 +242,193 @@ text = "Drop"
 layout_mode = 2
 text = "0 distinct item type(s)"
 
-[node name="CellLoader" type="Control" parent="Debug Tools/TabContainer" unique_id=655647290]
+[node name="CellLoader" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 metadata/_tab_index = 3
 
-[node name="World Streaming" type="Control" parent="Debug Tools/TabContainer" unique_id=1916369332]
+[node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
 visible = false
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 script = ExtResource("5_worldstreamingdebug")
 metadata/_tab_index = 4
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming" unique_id=745694945]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="Columns" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1709561768]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 10
 
-[node name="Left" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns"]
+[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 16
 text = "Streaming state"
 
-[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_constants/h_separation = 10
-theme_override_constants/v_separation = 3
-columns = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 6
+columns = 4
 
-[node name="StatusCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="StatusCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Status: Inactive"
 
-[node name="CellCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="CellCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Cell: (none)"
 
-[node name="ResidentCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="ResidentCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Resident: 0"
 
-[node name="FullDetailCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="FullDetailCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Full Detail: 0"
 
-[node name="DistantCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="DistantCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Distant: 0"
 
-[node name="InFlightCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="InFlightCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "In-Flight: 0"
 
-[node name="QueueDepthCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="QueueDepthCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Queue Depth: 0"
 
-[node name="NoCellCacheCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/StateGrid"]
+[node name="NoCellCacheCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
 text = "Empty Cache: 0"
 
-[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 
-[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 16
 text = "Load radius configuration & limits"
 
-[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_constants/h_separation = 10
-theme_override_constants/v_separation = 3
-columns = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
 
-[node name="RadLoadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="RadLoadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "Load Full: 1.5"
 
-[node name="RadUnloadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="RadUnloadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "Unload Full: 2.25"
 
-[node name="RadLoadDistant" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="RadLoadDistant" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "Load Distant: 4.5"
 
-[node name="RadUnload" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="RadUnload" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "Unload: 5.5"
 
-[node name="CheckInterval" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="CheckInterval" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "Check: 0.25s"
 
-[node name="LodCrossover" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/RadiusGrid"]
+[node name="LodCrossover" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
 text = "LOD Crossover: 250m"
 
-[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 16
 
-[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/TuneRow"]
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 text = "tiles/frame:"
 vertical_alignment = 1
 
-[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/TuneRow"]
+[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
 min_value = 1.0
 max_value = 64.0
 value = 1.0
 
-[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/TuneRow"]
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 text = "objects/frame:"
 vertical_alignment = 1
 
-[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/TuneRow"]
+[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TuneRow"]
 layout_mode = 2
 tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
 min_value = 1.0
 max_value = 2000.0
 value = 1.0
 
-[node name="FreezeTraceRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left"]
+[node name="FreezeTraceRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 
-[node name="FreezeTraceLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/FreezeTraceRow"]
+[node name="FreezeTraceLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
 layout_mode = 2
 text = "freeze trace:"
 vertical_alignment = 1
 
-[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Left/FreezeTraceRow"]
+[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/FreezeTraceRow"]
 layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
 text = "enabled"
 
-[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns"]
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
 
-[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Right"]
+[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Right/TexHeader"]
+[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
-text = "Ground textures (Terrain3D pool)"
+theme_override_font_sizes/font_size = 16
+text = "World ground textures (Terrain3D texture pool)"
 
-[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Right/TexHeader"]
+[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
 
-[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Right"]
+[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 placeholder_text = "Filter ground textures..."
 clear_button_enabled = true
 
-[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/Columns/Right"]
+[node name="TextureList" type="ItemList" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Envrioment" type="Control" parent="Debug Tools/TabContainer" unique_id=124391377]
+[node name="Envrioment" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=124391377]
 visible = false
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 script = ExtResource("6_environmentdebug")
 metadata/_tab_index = 5
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Envrioment" unique_id=524168662]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
