@@ -20,6 +20,7 @@ adjustment_enabled = true
 
 [node name="InteriorViewer" type="Node3D" unique_id=472185801]
 script = ExtResource("1")
+cell_editor_id = "GSGeneralStore"
 
 [node name="EditorPreviewLight" type="DirectionalLight3D" parent="." unique_id=782666319]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
@@ -33,24 +34,3 @@ camera_attributes = SubResource("CameraAttributesPractical_ujtwi")
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1849535856]
 transform = Transform3D(0.99882424, -0.010926802, 0.047231637, 0.002440047, 0.9843644, 0.17612721, -0.04841765, -0.17580488, 0.98323363, 14.246089, 106.3862, -15.106682)
 fov = 88.57219
-
-[node name="ReflectionProbe" type="ReflectionProbe" parent="." unique_id=1984138256]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.1168857, 51.19938, 5.1602707)
-size = Vector3(7.980438, 4.1320953, 15.30957)
-box_projection = true
-interior = true
-enable_shadows = true
-
-[node name="ReflectionProbe2" type="ReflectionProbe" parent="." unique_id=478366252]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.1210723, 51.19938, 5.1602707)
-size = Vector3(7.980438, 4.1320953, 15.30957)
-box_projection = true
-interior = true
-enable_shadows = true
-
-[node name="ReflectionProbe3" type="ReflectionProbe" parent="." unique_id=1233556369]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.1086483, 50.88312, 15.335826)
-size = Vector3(7.980438, 4.1320953, 15.30957)
-box_projection = true
-interior = true
-enable_shadows = true
