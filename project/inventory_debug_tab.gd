@@ -2,7 +2,7 @@ extends Control
 
 @onready var _filter_edit: LineEdit = $Margin/VBox/FilterEdit
 @onready var _tree: Tree = $Margin/VBox/ItemTree
-@onready var _status: Label = $Margin/VBox/Status
+@onready var _status: RichTextLabel = $Margin/VBox/Status
 @onready var _inc: Button = $Margin/VBox/Buttons/Increment
 @onready var _delete: Button = $Margin/VBox/Buttons/Delete
 @onready var _drop: Button = $Margin/VBox/Buttons/Drop
@@ -107,18 +107,23 @@ func _refresh() -> void:
 		item.set_text_alignment(0, HORIZONTAL_ALIGNMENT_CENTER)
 
 		item.set_text(1, name)
+		item.set_custom_color(1, Color("#e5c07b"))
 
 		item.set_text(2, hex_id)
 		item.set_text_alignment(2, HORIZONTAL_ALIGNMENT_CENTER)
+		item.set_custom_color(2, Color("#61afef"))
 
 		item.set_text(3, "%.2f" % unit_wt)
 		item.set_text_alignment(3, HORIZONTAL_ALIGNMENT_RIGHT)
+		item.set_custom_color(3, Color("#abb2bf"))
 
 		item.set_text(4, "%d" % unit_val)
 		item.set_text_alignment(4, HORIZONTAL_ALIGNMENT_RIGHT)
+		item.set_custom_color(4, Color("#98c379"))
 
 		item.set_text(5, "%.2f" % (unit_wt * count))
 		item.set_text_alignment(5, HORIZONTAL_ALIGNMENT_RIGHT)
+		item.set_custom_color(5, Color("#d19a66"))
 
 		if base_id == prev_selected_id:
 			selected_item_found = item
@@ -126,7 +131,7 @@ func _refresh() -> void:
 	if selected_item_found != null:
 		selected_item_found.select(0)
 
-	_status.text = "%d distinct item(s)  •  %d total items  •  Total Weight: %.2f lbs  •  Total Value: %d caps" % [
+	_status.text = "[b]%d[/b] distinct item(s)   •   [b]%d[/b] total items   •   Total Weight: [color=#e5c07b][b]%.2f[/b] lbs[/color]   •   Total Value: [color=#98c379][b]%d[/b] caps[/color]" % [
 		distinct_types, total_count, total_weight, total_value
 	]
 

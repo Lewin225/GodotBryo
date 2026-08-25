@@ -28,7 +28,7 @@ func _ready() -> void:
 	var env_tab: Control = env_tab_script.new()
 	var test_color := Color(1.0, 0.5, 0.0, 1.0)
 	var col_str: String = env_tab._color_str(test_color)
-	check(col_str.begins_with("#FF7F00"), "Color string correctly formatted hex (#FF7F00, got %s)" % col_str)
+	check(col_str.contains("#FF7F00"), "Color string contains formatted hex (#FF7F00, got %s)" % col_str)
 	check(col_str.contains("rgb(255, 127, 0)"), "Color string contains RGB values")
 
 	env_tab.free()

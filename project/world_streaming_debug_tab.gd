@@ -7,29 +7,29 @@ extends Control
 
 const REFRESH_INTERVAL_SEC := 0.25
 
-@onready var _status_card: Label = $Margin/Columns/Left/StateGrid/StatusCard
-@onready var _cell_card: Label = $Margin/Columns/Left/StateGrid/CellCard
-@onready var _resident_card: Label = $Margin/Columns/Left/StateGrid/ResidentCard
-@onready var _full_detail_card: Label = $Margin/Columns/Left/StateGrid/FullDetailCard
-@onready var _distant_card: Label = $Margin/Columns/Left/StateGrid/DistantCard
-@onready var _in_flight_card: Label = $Margin/Columns/Left/StateGrid/InFlightCard
-@onready var _queue_depth_card: Label = $Margin/Columns/Left/StateGrid/QueueDepthCard
-@onready var _no_cell_cache_card: Label = $Margin/Columns/Left/StateGrid/NoCellCacheCard
+@onready var _status_card: RichTextLabel = $Margin/VBox/StateGrid/StatusCard
+@onready var _cell_card: RichTextLabel = $Margin/VBox/StateGrid/CellCard
+@onready var _resident_card: RichTextLabel = $Margin/VBox/StateGrid/ResidentCard
+@onready var _full_detail_card: RichTextLabel = $Margin/VBox/StateGrid/FullDetailCard
+@onready var _distant_card: RichTextLabel = $Margin/VBox/StateGrid/DistantCard
+@onready var _in_flight_card: RichTextLabel = $Margin/VBox/StateGrid/InFlightCard
+@onready var _queue_depth_card: RichTextLabel = $Margin/VBox/StateGrid/QueueDepthCard
+@onready var _no_cell_cache_card: RichTextLabel = $Margin/VBox/StateGrid/NoCellCacheCard
 
-@onready var _rad_load_full: Label = $Margin/Columns/Left/RadiusGrid/RadLoadFull
-@onready var _rad_unload_full: Label = $Margin/Columns/Left/RadiusGrid/RadUnloadFull
-@onready var _rad_load_distant: Label = $Margin/Columns/Left/RadiusGrid/RadLoadDistant
-@onready var _rad_unload: Label = $Margin/Columns/Left/RadiusGrid/RadUnload
-@onready var _check_interval: Label = $Margin/Columns/Left/RadiusGrid/CheckInterval
-@onready var _lod_crossover: Label = $Margin/Columns/Left/RadiusGrid/LodCrossover
+@onready var _rad_load_full: RichTextLabel = $Margin/VBox/RadiusGrid/RadLoadFull
+@onready var _rad_unload_full: RichTextLabel = $Margin/VBox/RadiusGrid/RadUnloadFull
+@onready var _rad_load_distant: RichTextLabel = $Margin/VBox/RadiusGrid/RadLoadDistant
+@onready var _rad_unload: RichTextLabel = $Margin/VBox/RadiusGrid/RadUnload
+@onready var _check_interval: RichTextLabel = $Margin/VBox/RadiusGrid/CheckInterval
+@onready var _lod_crossover: RichTextLabel = $Margin/VBox/RadiusGrid/LodCrossover
 
-@onready var _tiles_per_frame_spin: SpinBox = $Margin/Columns/Left/TuneRow/TilesPerFrameSpin
-@onready var _objects_per_frame_spin: SpinBox = $Margin/Columns/Left/TuneRow/ObjectsPerFrameSpin
-@onready var _freeze_trace_check: CheckBox = $Margin/Columns/Left/FreezeTraceRow/FreezeTraceCheck
+@onready var _tiles_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/TilesPerFrameSpin
+@onready var _objects_per_frame_spin: SpinBox = $Margin/VBox/TuneRow/ObjectsPerFrameSpin
+@onready var _freeze_trace_check: CheckBox = $Margin/VBox/FreezeTraceRow/FreezeTraceCheck
 
-@onready var _tex_filter_edit: LineEdit = $Margin/Columns/Right/TexFilterEdit
-@onready var _texture_list: ItemList = $Margin/Columns/Right/TextureList
-@onready var _texture_summary_label: Label = $Margin/Columns/Right/TexHeader/TexSummaryLabel
+@onready var _tex_filter_edit: LineEdit = $Margin/VBox/TexFilterEdit
+@onready var _texture_list: ItemList = $Margin/VBox/TextureList
+@onready var _texture_summary_label: RichTextLabel = $Margin/VBox/TexHeader/TexSummaryLabel
 
 var _world_streamer: WorldStreamer
 var _refresh_timer := 0.0
@@ -74,7 +74,7 @@ func _on_freeze_trace_toggled(enabled: bool) -> void:
 
 func _refresh() -> void:
 	if _world_streamer == null:
-		_status_card.text = "WorldStreamer not found"
+		_status_card.text = "[color=#e06c75]WorldStreamer not found[/color]"
 		return
 	_refresh_state()
 	_refresh_radius_config()
@@ -86,36 +86,36 @@ func _refresh_state() -> void:
 	var ws := _world_streamer
 
 	if ws.is_active():
-		_status_card.text = "Status: 🟢 ACTIVE" if not ws.is_paused() else "Status: 🟡 PAUSED"
+		_status_card.text = "Status: [color=#98c379][b]🟢 ACTIVE[/b][/color]" if not ws.is_paused() else "Status: [color=#e5c07b][b]🟡 PAUSED[/b][/color]"
 	else:
-		_status_card.text = "Status: ⚪ INACTIVE"
+		_status_card.text = "Status: [color=#7f848e]⚪ INACTIVE[/color]"
 
 	var cell_form_id := ws.get_current_cell_form_id()
 	var cell_label := "(none)"
 	if cell_form_id != 0:
 		var editor_id: String = ws.esm.get_cell_editor_id(cell_form_id) if ws.esm != null else ""
-		cell_label = "%s (0x%X)" % [editor_id if editor_id != "" else "Cell", cell_form_id]
+		cell_label = "[b]%s[/b] [color=#61afef](0x%08X)[/color]" % [editor_id if editor_id != "" else "Cell", cell_form_id]
 	_cell_card.text = "Cell: %s" % cell_label
 
 	var full_count: int = ws._resident_full_detail.values().count(true)
 	var resident_total: int = ws._resident.size()
 	var distant_count: int = resident_total - full_count
 
-	_resident_card.text = "Resident Tiles: %d" % resident_total
-	_full_detail_card.text = "Full Detail: %d" % full_count
-	_distant_card.text = "Distant (VWD): %d" % distant_count
-	_in_flight_card.text = "In-Flight: %d (Pending: %d)" % [ws._in_flight_count, ws._pending.size()]
-	_queue_depth_card.text = "Queue Depth: %d" % ws._load_queue.size()
-	_no_cell_cache_card.text = "Empty Grid Cache: %d" % ws._no_cell_cache.size()
+	_resident_card.text = "Resident: [b][color=#98c379]%d[/color][/b] tiles" % resident_total
+	_full_detail_card.text = "Full Detail: [b][color=#61afef]%d[/color][/b]" % full_count
+	_distant_card.text = "Distant: [b][color=#e5c07b]%d[/color][/b]" % distant_count
+	_in_flight_card.text = "In-Flight: [b]%d[/b] [color=#7f848e](Pend: %d)[/color]" % [ws._in_flight_count, ws._pending.size()]
+	_queue_depth_card.text = "Queue Depth: [b]%d[/b]" % ws._load_queue.size()
+	_no_cell_cache_card.text = "Empty Cache: [b]%d[/b]" % ws._no_cell_cache.size()
 
 
 func _refresh_radius_config() -> void:
-	_rad_load_full.text = "Load Full: %.1f" % WorldStreamer.RADIUS_LOAD_FULL
-	_rad_unload_full.text = "Unload Full: %.1f" % WorldStreamer.RADIUS_UNLOAD_FULL
-	_rad_load_distant.text = "Load Distant: %.1f" % WorldStreamer.RADIUS_LOAD_DISTANT
-	_rad_unload.text = "Unload: %.1f" % WorldStreamer.RADIUS_UNLOAD
-	_check_interval.text = "Check: %.2fs" % WorldStreamer.CHECK_INTERVAL_SEC
-	_lod_crossover.text = "LOD: %.0fm (±%.0fm)" % [_world_streamer.lod_crossover_distance_m, _world_streamer.lod_crossover_margin_m]
+	_rad_load_full.text = "Load Full: [color=#98c379][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_LOAD_FULL
+	_rad_unload_full.text = "Unload Full: [color=#e5c07b][b]%.2f[/b][/color]" % WorldStreamer.RADIUS_UNLOAD_FULL
+	_rad_load_distant.text = "Load Distant: [color=#61afef][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_LOAD_DISTANT
+	_rad_unload.text = "Unload: [color=#e06c75][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_UNLOAD
+	_check_interval.text = "Check: [b]%.2fs[/b]" % WorldStreamer.CHECK_INTERVAL_SEC
+	_lod_crossover.text = "LOD: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color]" % [_world_streamer.lod_crossover_distance_m, _world_streamer.lod_crossover_margin_m]
 
 
 func _refresh_tuning_spinboxes() -> void:
@@ -130,12 +130,12 @@ func _refresh_texture_list() -> void:
 	var pool: Terrain3DTexturePool = _world_streamer._terrain3d_pool
 	_texture_list.clear()
 	if pool == null:
-		_texture_summary_label.text = "  (not using Terrain3D / not active)"
+		_texture_summary_label.text = "[color=#7f848e](not active)[/color]"
 		return
 
 	var filter_text := _tex_filter_edit.text.to_lower().strip_edges()
 	var entries: Array = pool.get_debug_texture_list()
-	_texture_summary_label.text = "  %d / %d slots used" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS]
+	_texture_summary_label.text = "[color=#61afef][b]%d[/b][/color] / [color=#7f848e]%d[/color] slots used" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS]
 
 	for entry in entries:
 		var name: String = String(entry["name"])

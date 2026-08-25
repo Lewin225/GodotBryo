@@ -120,8 +120,11 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Usage" type="Label" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=2090400204]
+[node name="Usage" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=2090400204]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "0 live contexts"
 
 [node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=648164203]
@@ -205,10 +208,12 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=832985244]
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=832985244]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Player inventory"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🎒 Player Inventory[/b]"
 
 [node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
 layout_mode = 2
@@ -242,8 +247,11 @@ layout_mode = 2
 tooltip_text = "Spawn one selected item in front of the camera."
 text = "Drop"
 
-[node name="Status" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
+[node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "0 distinct item type(s)"
 
 [node name="CellLoader" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
@@ -274,10 +282,12 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="StateTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="StateTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Streaming state"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🌐 World Streaming State[/b]"
 
 [node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
@@ -285,45 +295,71 @@ theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 6
 columns = 4
 
-[node name="StatusCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Status: Inactive"
 
-[node name="CellCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="CellCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Cell: (none)"
 
-[node name="ResidentCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="ResidentCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Resident: 0"
 
-[node name="FullDetailCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="FullDetailCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Full Detail: 0"
 
-[node name="DistantCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="DistantCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Distant: 0"
 
-[node name="InFlightCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="InFlightCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "In-Flight: 0"
 
-[node name="QueueDepthCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="QueueDepthCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Queue Depth: 0"
 
-[node name="NoCellCacheCard" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
+[node name="NoCellCacheCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/StateGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Empty Cache: 0"
 
 [node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
 
-[node name="RadiusTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
+[node name="RadiusTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Load radius configuration & limits"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]📏 Load Radius Configuration & Limits[/b]"
 
 [node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
@@ -331,28 +367,46 @@ theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 4
 columns = 3
 
-[node name="RadLoadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="RadLoadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Load Full: 1.5"
 
-[node name="RadUnloadFull" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="RadUnloadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Unload Full: 2.25"
 
-[node name="RadLoadDistant" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="RadLoadDistant" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Load Distant: 4.5"
 
-[node name="RadUnload" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="RadUnload" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Unload: 5.5"
 
-[node name="CheckInterval" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="CheckInterval" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "Check: 0.25s"
 
-[node name="LodCrossover" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
+[node name="LodCrossover" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/RadiusGrid"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "LOD Crossover: 250m"
 
 [node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
@@ -403,13 +457,19 @@ layout_mode = 2
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="TexTitle" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
+[node name="TexTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "World ground textures (Terrain3D texture pool)"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🎨 World Ground Textures (Terrain3D Pool)[/b]"
 
-[node name="TexSummaryLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
+[node name="TexSummaryLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox/TexHeader"]
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 
 [node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/VBox"]
 layout_mode = 2
@@ -442,10 +502,12 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="CellTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=607578486]
+[node name="CellTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=607578486]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Current cell"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]📍 Current Cell[/b]"
 
 [node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1397622249]
 custom_minimum_size = Vector2(0, 50)
@@ -464,10 +526,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="XcllTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="XcllTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Authored CELL.XCLL Lighting"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]☀️ Authored CELL.XCLL Lighting[/b]"
 
 [node name="AmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
@@ -478,8 +542,12 @@ custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="AmbientLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
+[node name="AmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow"]
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "ambient: —"
 
 [node name="DirectionalRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
@@ -491,31 +559,45 @@ custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="DirectionalLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
+[node name="DirectionalLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow"]
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "directional: —"
 
-[node name="FogLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="FogLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "fog: —"
 
-[node name="FadeLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="FadeLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "directional fade: —"
 
-[node name="XcllNoteLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
+[node name="XcllNoteLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel"]
 layout_mode = 2
-autowrap_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 
 [node name="RightPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="AppliedTitle" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="AppliedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Applied WorldEnvironment"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "[b]🌍 Applied WorldEnvironment[/b]"
 
 [node name="EnvAmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
@@ -526,8 +608,12 @@ custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="EnvAmbientLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
+[node name="EnvAmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow"]
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "ambient light: —"
 
 [node name="EnvBgRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
@@ -539,16 +625,26 @@ custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 color = Color(0, 0, 0, 1)
 
-[node name="EnvBgLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
+[node name="EnvBgLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow"]
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "background: —"
 
-[node name="EnvEnergyLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="EnvEnergyLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "energy / source: —"
 
-[node name="EnvSettingsLabel" type="Label" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
+[node name="EnvSettingsLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel"]
 layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 text = "sdfgi / tonemap: —"
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]

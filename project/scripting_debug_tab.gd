@@ -5,7 +5,7 @@ extends Control
 ## an observer of the real VM rather than a second script-instance model.
 
 @onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Instances
-@onready var _usage: Label = $Margin/VBox/Usage
+@onready var _usage: RichTextLabel = $Margin/VBox/Usage
 @onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
 @onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Locals
 @onready var _source: CodeEdit = $Margin/VBox/VSplit/HSplit/Right/Source
@@ -238,7 +238,7 @@ func _refresh() -> void:
 		if entry["node"] == previous:
 			_instances_list.select(_instances_list.item_count - 1)
 	var usage: Dictionary = _engine.get_debug_usage()
-	_usage.text = "%d live context(s), %d cached script(s), %d local slot(s), %d non-zero" % [
+	_usage.text = "[color=#61afef]●[/color] [b]%d[/b] live context(s)   •   [color=#98c379]●[/color] [b]%d[/b] cached script(s)   •   [color=#e5c07b]●[/color] [b]%d[/b] local slot(s) ([color=#e5c07b]%d[/color] non-zero)" % [
 		usage["contexts"], usage["cached_scripts"], usage["local_slots"], usage["non_zero_locals"]
 	]
 	if previous != null and not is_instance_valid(previous):
