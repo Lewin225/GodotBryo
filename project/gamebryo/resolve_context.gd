@@ -14,13 +14,11 @@ extends RefCounted
 ## everything a resolve task needs without ever touching
 ## GamebryoObjectRegistry's own shared `esm`/`resolver` fields.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 var resolver: GamebryoMeshResolver
 var esm: EsmReader
 
 func _init() -> void:
 	resolver = GamebryoMeshResolver.new()
 	esm = EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("GamebryoResolveContext: could not open FalloutNV.esm")

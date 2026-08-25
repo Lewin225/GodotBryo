@@ -29,7 +29,6 @@ extends Control
 ## interpreter, by construction, not a parallel bespoke text scan that
 ## could silently drift from what the game actually does.
 
-const ESM_PATH := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/FalloutNV.esm"
 const REGISTRY_SCRIPT_PATH := "res://script_vm/script_function_registry.gd"
 
 const COLOR_KNOWN := Color("#7ec699") # implemented -- registered in script_function_registry.gd
@@ -73,7 +72,7 @@ func _ready() -> void:
 
 func _load_script_list() -> void:
 	_esm = EsmReader.new()
-	if not _esm.open(ESM_PATH):
+	if not _esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		_status_label.text = "Failed to open ESM: %s" % _esm.get_last_error()
 		return
 	var form_ids: PackedInt64Array = _esm.get_all_script_form_ids()

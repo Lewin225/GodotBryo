@@ -8,7 +8,6 @@ extends Node3D
 # the way CellStreamBuilder.stream_refs()'s objects_per_frame used to) is
 # what's actually costing frame time now that resolve itself is off-thread.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
 
 func _percentile_report(label: String, values: Array) -> void:
 	if values.is_empty():
@@ -26,7 +25,7 @@ func _percentile_report(label: String, values: Array) -> void:
 
 func _ready() -> void:
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		get_tree().quit(1)
 		return

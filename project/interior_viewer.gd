@@ -20,8 +20,6 @@ extends Node3D
 # a model" heuristic this started as — typed nodes (DoorNode/ContainerNode/
 # ...) show up correctly named in the Scene dock.
 
-const DATA_DIR := "/var/home/lewin/Desktop/Claude New Vegas Port/fresh_nv_copy/Data/"
-
 @export var cell_editor_id: String = "GSDocMitchellHouse"
 @export_tool_button("Load Cell") var load_button: Callable = _do_load
 
@@ -67,7 +65,7 @@ func _do_load() -> void:
 		get_node("CellRoot").queue_free()
 
 	var esm := EsmReader.new()
-	if not esm.open(DATA_DIR + "FalloutNV.esm"):
+	if not esm.open(GamebryoMeshResolver.get_data_dir() + "FalloutNV.esm"):
 		push_error("could not open FalloutNV.esm")
 		return
 
