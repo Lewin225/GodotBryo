@@ -493,6 +493,8 @@ Dictionary EsmReader::get_cell_lighting_data(int64_t cell_form_id) const {
 		out["fog_color"] = Color(lighting->fog_color[0] / 255.0f, lighting->fog_color[1] / 255.0f, lighting->fog_color[2] / 255.0f, 1.0f);
 		out["fog_near"] = lighting->fog_near;
 		out["fog_far"] = lighting->fog_far;
+		out["directional_rotation_xy"] = lighting->directional_rotation_xy;
+		out["directional_rotation_z"] = lighting->directional_rotation_z;
 		out["directional_fade"] = lighting->directional_fade;
 		out["fog_clip_distance"] = lighting->fog_clip_distance;
 		out["fog_power"] = lighting->fog_power;
