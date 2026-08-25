@@ -181,21 +181,28 @@ func _process(_delta: float) -> void:
 ## the resolved owner_ref.
 func _interact_raycast() -> Dictionary:
 	var player := _get_character_body()
-	if player == null or not ("CAMERA" in player) or player.CAMERA == null:
+	if player == null:
+		return {}
+	if "interact_ray" in player and player.interact_ray != null and player.interact_ray is InteractRay:
+		return player.interact_ray.get_interact_info()
+	if not ("CAMERA" in player) or player.CAMERA == null:
 		return {}
 	var camera: Camera3D = player.CAMERA
 	var from: Vector3 = camera.global_position
 	var to: Vector3 = from - camera.global_transform.basis.z * INTERACT_REACH_METERS
 	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [player.get_rid()]
 	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if result.is_empty():
 		return {}
 	var collider: Object = result.get("collider")
-	if collider == null:
+	if collider == null or collider == player or (collider is Node and player.is_ancestor_of(collider)):
 		return {}
 	var target: Object = collider
 	if collider is GamebryoCollisionBody or collider is GamebryoRigidBody:
 		target = collider.owner_ref
+	if target == player or (target is Node and player.is_ancestor_of(target)):
+		return {}
 	return { "collider": collider, "target": target }
 
 ## F3-toggled (see _process()). Reuses _interact_raycast() unconditionally
@@ -587,11 +594,16 @@ func reposition_player(pos: Vector3, rot: Vector3) -> void:
 	if player == null:
 		push_warning("game.gd: no CharacterBody3D found to reposition")
 		return
-	player.global_position = pos
+	if player.has_method("teleport"):
+		player.teleport(pos)
+	else:
+		player.global_position = pos
+	if "camera_pitch" in player:
+		player.camera_pitch = 0.0
 	if "HEAD" in player and player.HEAD != null:
 		player.HEAD.rotation.y = rot.y
 	else:
-		player.rotation = rot # fallback for a non-FPC CharacterBody3D
+		player.rotation.y = rot.y
 	if "velocity" in player:
 		player.velocity = Vector3.ZERO
 
