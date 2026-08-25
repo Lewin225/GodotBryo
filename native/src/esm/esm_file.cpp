@@ -604,7 +604,8 @@ std::optional<ItemData> EsmFile::get_item_data(uint32_t item_form_id) const {
 	ItemData item;
 	bool have_data = false;
 	bool have_alch_weight = false;
-	for (const auto &s : parse_subrecords(read_record_data(*record))) {
+	std::vector<uint8_t> data = read_record_data(*record);
+	for (const auto &s : parse_subrecords(data)) {
 		if (s.type == "FULL") item.full_name = s.as_string();
 		else if (s.type == "ICON") item.inventory_icon = s.as_string();
 		else if (s.type == "MICO") item.message_icon = s.as_string();
