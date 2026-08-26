@@ -134,6 +134,12 @@ public:
 	std::optional<TerminalData> get_terminal_data(uint32_t terminal_form_id) const;
 	std::optional<NoteData> get_note_data(uint32_t note_form_id) const;
 
+	// Returns all item candidate identifiers (EditorID, full name, hex FormID) from WEAP, ARMO, AMMO, ALCH, MISC, KEYM, BOOK records.
+	std::vector<std::string> get_all_item_candidates() const;
+
+	// Returns all non-empty CELL EditorIDs in the file.
+	std::vector<std::string> get_all_cell_candidates() const;
+
 	// phases/1/04-exterior-cell-terrain.md additions:
 
 	// Finds a WRLD (worldspace) record by its EDID (exact match).
@@ -246,6 +252,11 @@ private:
 	mutable std::unordered_map<uint32_t, RecordInfo> form_id_index_;
 	mutable bool form_id_index_built_ = false;
 	void ensure_form_id_index() const;
+
+	mutable std::vector<std::string> item_candidates_cache_;
+	mutable bool item_candidates_cached_ = false;
+	mutable std::vector<std::string> cell_candidates_cache_;
+	mutable bool cell_candidates_cached_ = false;
 
 	std::vector<uint8_t> read_at(long offset, size_t size) const;
 
