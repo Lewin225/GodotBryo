@@ -75,14 +75,18 @@ func _ready() -> void:
 		check(not lighting.is_empty(), "GSDocMitchellHouse has an XCLL subrecord")
 		if not lighting.is_empty():
 			var ambient: Color = lighting["ambient_color"]
+			var cell_ambient: Color = lighting["cell_ambient_color"]
 			print("  ambient_color: ", ambient)
 			check(int(lighting["directional_rotation_xy"]) == 35, "directional rotation XY matches real XCLL value (35 degrees)")
 			check(int(lighting["directional_rotation_z"]) == 270, "directional rotation Z matches real XCLL value (270 degrees)")
-			# Confirmed via a real scratch dump against this exact cell earlier
-			# this task: raw XCLL ambient bytes (47, 70, 69, 0).
-			check(is_equal_approx(ambient.r, 47.0 / 255.0), "ambient.r matches known real XCLL byte value (47)")
-			check(is_equal_approx(ambient.g, 70.0 / 255.0), "ambient.g matches known real XCLL byte value (70)")
-			check(is_equal_approx(ambient.b, 69.0 / 255.0), "ambient.b matches known real XCLL byte value (69)")
+			check(int(lighting["template_form_id"]) == 0x8F58B, "Doc's House resolves its real LTMP LGTM")
+			check(int(lighting["inheritance_flags"]) == 0x9F, "Doc's House preserves real LNAM field mask")
+			# The literal CELL.XCLL remains visible for diagnostics, while the
+			# runtime ambient correctly inherits LGTM.DATA through LNAM bit 0x1.
+			check(is_equal_approx(cell_ambient.g, 70.0 / 255.0), "cell XCLL ambient retains known raw green byte (70)")
+			check(is_equal_approx(ambient.r, 31.0 / 255.0), "resolved ambient inherits LTMP red byte (31)")
+			check(is_equal_approx(ambient.g, 31.0 / 255.0), "resolved ambient inherits LTMP green byte (31)")
+			check(is_equal_approx(ambient.b, 45.0 / 255.0), "resolved ambient inherits LTMP blue byte (45)")
 
 	_finish()
 
