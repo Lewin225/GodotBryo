@@ -1,0 +1,1015 @@
+<title>Terrain Streaming Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #EDEFF1;
+    --surface: #FFFFFF;
+    --surface-2: #F5F6F8;
+    --ink: #1B2430;
+    --ink-soft: #55606E;
+    --ink-faint: #8892A0;
+    --accent: #2F6E5C;
+    --accent-soft: #E4EEEA;
+    --accent-warm: #B4592A;
+    --accent-warm-soft: #F6E9E1;
+    --line: #C7CCD1;
+    --line-soft: #DEE1E5;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10151B;
+      --surface: #171E26;
+      --surface-2: #1D252F;
+      --ink: #E6EAEE;
+      --ink-soft: #9AA7B4;
+      --ink-faint: #6B7684;
+      --accent: #5FBBA0;
+      --accent-soft: #1B3129;
+      --accent-warm: #E08A54;
+      --accent-warm-soft: #33211A;
+      --line: #2B3540;
+      --line-soft: #212A34;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10151B;
+    --surface: #171E26;
+    --surface-2: #1D252F;
+    --ink: #E6EAEE;
+    --ink-soft: #9AA7B4;
+    --ink-faint: #6B7684;
+    --accent: #5FBBA0;
+    --accent-soft: #1B3129;
+    --accent-warm: #E08A54;
+    --accent-warm-soft: #33211A;
+    --line: #2B3540;
+    --line-soft: #212A34;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); color: var(--ink); }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 4rem 2rem 6rem;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 0 2.25rem;
+  }
+
+  .rail { grid-column: 1; position: relative; }
+  .rail-line {
+    position: sticky;
+    top: 4rem;
+    width: 1px;
+    background: var(--line);
+    height: calc(100vh - 8rem);
+    margin: 0 auto;
+  }
+
+  .content { grid-column: 2; min-width: 0; }
+
+  header.hero {
+    padding-bottom: 2.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 7px; height: 7px;
+    background: var(--accent);
+    display: inline-block;
+    transform: rotate(45deg);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-optical-sizing: auto;
+    font-size: clamp(2.1rem, 4vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+  .dek {
+    font-size: 1.08rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 1.6rem;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+  .meta-row a { color: var(--ink-soft); }
+  .meta-row strong { color: var(--ink); font-weight: 500; }
+
+  .changelog {
+    margin: 2rem 0 3rem;
+    padding: 1.1rem 1.3rem;
+    border: 1px solid var(--accent-warm);
+    background: var(--accent-warm-soft);
+    border-radius: 4px;
+  }
+  .changelog .tag {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    color: var(--accent-warm);
+  }
+  .changelog ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+  .changelog li { margin-bottom: 0.4rem; font-size: 0.95rem; }
+  .changelog li::marker { color: var(--accent-warm); }
+
+  section.phase { position: relative; margin-bottom: 3.4rem; }
+  .phase-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    margin-bottom: 0.9rem;
+  }
+  .phase-num {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0.22rem 0.55rem;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.55rem;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .phase-goal { color: var(--ink-soft); max-width: 68ch; margin: 0 0 1.4rem; }
+
+  h3 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 1.6rem 0 0.7rem;
+  }
+
+  ul.tasks, ol.tasks { margin: 0 0 1rem; padding-left: 1.3rem; }
+  ul.tasks li, ol.tasks li { margin-bottom: 0.55rem; padding-left: 0.15rem; }
+  ul.tasks li::marker { color: var(--accent); }
+  ol.tasks li::marker { color: var(--accent); font-family: var(--font-mono); }
+
+  code, .code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 0.08em 0.4em;
+  }
+
+  .files { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.9rem 0 0; }
+  .files .label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    align-self: center;
+    margin-right: 0.3rem;
+  }
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.18rem 0.5rem;
+  }
+  .chip.new { color: var(--accent); border-color: var(--accent); }
+
+  .callout {
+    border-left: 2px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 0.85rem 1.1rem;
+    margin: 1.1rem 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .callout.open { border-left-color: var(--accent-warm); background: var(--accent-warm-soft); }
+  .callout.blocking { border-left-color: var(--accent-warm); background: var(--accent-warm-soft); border-left-width: 3px; }
+  .callout .tag {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+    color: var(--accent);
+  }
+  .callout.open .tag, .callout.blocking .tag { color: var(--accent-warm); }
+  .callout p { margin: 0; font-size: 0.95rem; }
+  .callout p + p { margin-top: 0.5rem; }
+
+  .exit {
+    margin-top: 1.4rem;
+    padding-top: 1.1rem;
+    border-top: 1px dashed var(--line);
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+  }
+  .exit strong { color: var(--ink); font-weight: 600; }
+
+  table.decisions { width: 100%; border-collapse: collapse; margin: 1rem 0 0.5rem; font-size: 0.92rem; }
+  table.decisions th, table.decisions td {
+    text-align: left;
+    padding: 0.55rem 0.8rem 0.55rem 0;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  table.decisions th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+
+  footer.close {
+    margin-top: 3.5rem;
+    padding-top: 1.6rem;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 0.88rem;
+  }
+
+  @media (max-width: 640px) {
+    .page { grid-template-columns: 0 1fr; padding: 2.5rem 1.25rem 4rem; }
+    .rail { display: none; }
+  }
+</style>
+
+<div class="page">
+  <div class="rail"><div class="rail-line"></div></div>
+
+  <div class="content">
+    <header class="hero">
+      <div class="eyebrow">Draft plan · v1.4 — consistency review folded in</div>
+      <h1>Terrain Streaming Plan</h1>
+      <p class="dek">
+        A working plan for <a href="https://github.com/Lewin225/GodotBryo/issues/19">issue #19</a>:
+        pull exterior terrain ownership out of cell streaming entirely and give it a dedicated
+        Terrain3D-only pipeline that eventually covers the whole worldspace — so the Mojave's
+        distant mountains render the way they do in the original game.
+      </p>
+      <div class="meta-row">
+        <span>Target: <strong>github.com/Lewin225/GodotBryo #19</strong></span>
+        <span>Touches: <strong>world_streamer.gd, terrain3d_bridge.gd, terrain3d_texture_pool.gd</strong></span>
+        <span>Status: <strong>pre-implementation — Phase 0 not started, topology/readiness/queue contracts now explicit</strong></span>
+      </div>
+    </header>
+
+    <div class="changelog">
+      <span class="tag">What changed from 1.0 — implementation review by Codex</span>
+      <p>1.0 had two false architectural assumptions, an unsafe threading conclusion, and missing
+      contracts at the points where this system meets rendering, physics, and exterior transitions.
+      This revision treats that review as correct — verified independently against source for the two
+      most consequential claims before accepting the rest. Concretely:</p>
+      <ul>
+        <li><strong>Texture pool sharing was wrong, not just under-specified.</strong> <code>Terrain3DTexturePool</code> is bound to one <code>Terrain3D</code> instance's own <code>.assets</code> — it cannot serve a second worldspace's terrain as-is. Phase 4 now requires a real design decision instead of assuming one shared pool works.</li>
+        <li><strong>The threading safety conclusion was wrong.</strong> No <code>RenderingServer</code> call inside <code>set_pixel()</code> does not mean a worker can safely mutate a live <code>Image</code>/<code>Terrain3DRegion</code> the main thread and renderer can observe concurrently. Phase 2 (new, split out from the old Phase 1) now scopes workers to detached data preparation only.</li>
+        <li><strong>Phase boundary re-sequenced.</strong> Extraction (ownership/readiness/pause/parity), threading, and continuous whole-world fill were combined in 1.0. They're now three separate phases, each with its own exit signal, so a failure in one doesn't take the others down with it.</li>
+        <li><strong>Missing contracts made explicit</strong>: LAND enumeration/termination, shared cell-border determinism under concurrent writes, spawn-safe player-release readiness, and pause/worldspace-switch/cancellation ownership (currently split across <code>WorldStreamer.set_paused()</code> with nowhere for it to move to).</li>
+        <li>Corrected: 8 generated Terrain3D map arrays in this fork, not 3; <code>prewarm_terrain_textures</code> still defaults <code>true</code> in committed code (only local testing has run with it off); a full Phase 0 benchmark task list replaces the vaguer "measure it" note.</li>
+      </ul>
+    </div>
+
+    <div class="changelog">
+      <span class="tag">What changed from 1.1 — second implementation review by Codex, with pushback</span>
+      <p>1.1 fixed the two false assumptions from 1.0, but the reviewer correctly found it still
+      wasn't implementation-ready: no explicit hand-off API between the two streamers, readiness
+      specified as bare signals rather than queryable state, queue mechanics underspecified, and the
+      edge-determinism/texture-memory claims needed tightening. Accepted those, verified against
+      source rather than taken on faith. Two points pushed back on, also with source:</p>
+      <ul>
+        <li><strong>Accepted, and grounded in this codebase's own history</strong>: one-shot readiness signals are a real, already-encountered hazard here — <code>world_streamer.gd</code>'s own <code>set_paused(false)</code> doc comment describes a listener-attaches-too-late bug that silently froze the player, fixed only by a <code>call_deferred()</code> workaround. Phase 1 now specifies a generation-tagged queryable readiness predicate instead.</li>
+        <li><strong>Accepted, with a stronger citation than the review gave</strong>: the review said the decoded ground texture "may" be shareable across worldspaces via the mesh cache — verified it already is: <code>terrain3d_bridge.gd:565</code> calls <code>resolver.load_texture(...)</code>, going through <code>GamebryoMeshResolver</code>'s existing path-keyed cache. Only the Terrain3D-asset-bound normalized copy is genuinely per-instance.</li>
+        <li><strong>Pushed back</strong>: the review's proposed topology has <code>Game</code> injecting the active camera into the new streamer. Current <code>WorldStreamer</code> doesn't work that way — it self-queries <code>get_viewport().get_camera_3d()</code> (<code>world_streamer.gd:402-404</code>). Kept <code>TerrainStreamer</code> on that same established pattern instead of introducing a new supply mechanism.</li>
+        <li><strong>Pushed back</strong>: the review read Phase 1's "parity only" framing as hiding a behavior migration. Checked: <code>game.tscn:57</code> already sets <code>use_terrain3d = true</code> — that's the real running behavior today, despite the class default staying <code>false</code>. Removing the toggle changes dead configuration surface, not actual behavior, and was already authorized in the 1.0 review round. Wording tightened rather than the claim withdrawn.</li>
+      </ul>
+    </div>
+
+    <div class="changelog">
+      <span class="tag">What changed from 1.2 — third implementation review, no pushback this round</span>
+      <p>Verdict this round: "Phase 0 may start." Both hard technical claims were verified directly
+      against source and found correct — no pushback warranted this time, unlike 1.1. Concretely:</p>
+      <ul>
+        <li><strong>Real inconsistency, confirmed</strong>: the rejected 1.0 wording ("main-thread-only until a dedicated thread-safety test proves a narrower safe boundary") was still live in Phase 0's audit and Phase 2's exit signal, even after Phase 2's own callout body was corrected in 1.2. Grepped and found both leftover instances. Fixed everywhere to one consistent rule.</li>
+        <li><strong>Verified against Terrain3D's own C++ source, and it's a bug my own 1.2 addition would have introduced</strong>: <code>Terrain3D::set_camera()</code> (<code>terrain_3d.cpp:480-493</code>) only calls <code>set_physics_process(true)</code> inside the branch where the passed camera differs from the one already stored — confirmed by reading it directly. 1.2 added "processing" to the pause-lifecycle scope without specifying resume, which would have called <code>set_camera()</code> with the *same* camera on resume — a no-op that leaves Terrain3D's clipmap/collision permanently frozen after any pause. Fixed: resume calls <code>set_physics_process(true)</code> directly, not through <code>set_camera()</code>.</li>
+        <li>Accepted without further verification needed (precision gaps in my own writing, not contested claims): <code>TerrainStreamer</code>'s <code>EsmReader</code>/<code>GamebryoMeshResolver</code> ownership was never specified; <code>await_ready_for()</code>'s return contract was hand-wavy; the edge-ownership rule needed the actual sample-domain skip logic, not just "lower coordinate wins"; the per-transition-type call sequence (pause vs. deactivate) needed to be explicit; <code>game.tscn</code> was missing from Phase 1's file list.</li>
+        <li><strong>Mid-review revision, own correction accepted</strong>: the reviewer's own earlier absolute "main-thread-only, full stop, no test can broaden it" demand was itself walked back after inspecting Terrain3D more closely, replaced with a scoped, cited empirical boundary plus a materially better Phase 2 architecture (worker-staged regions + a new native batch-publish API, superseding "detached arrays then thousands of <code>set_pixel()</code> calls"). Verified the two new checkable claims directly: the five unsynchronized live-mutation call sites, and that this project's <code>project.godot</code> doesn't enable a RenderingServer/PhysicsServer3D separate-thread setting. Both confirmed correct — folded in as Phase 2's actual design, not just a wording fix.</li>
+      </ul>
+    </div>
+
+    <div class="changelog">
+      <span class="tag">What changed from 1.3 — consistency review by Claude</span>
+      <p>Two internal contracts were made explicit without silently selecting either remaining
+      implementation policy: the Phase 4 registry no longer assumes one particular texture-pool
+      design, and the Phase 3 cell queue now states how it relates to the Phase 2 region composer.</p>
+    </div>
+
+    <section class="phase" id="phase-0">
+      <div class="phase-head">
+        <span class="phase-num">PHASE 0</span>
+        <h2>Research &amp; audit</h2>
+      </div>
+      <p class="phase-goal">
+        The issue's own deliverable requires this to land as a comment before any code —
+        real coverage figures, Terrain3D's real constraints, and a migration plan grounded
+        in both, not assumption.
+      </p>
+
+      <h3>Worldspace coverage survey</h3>
+      <ul class="tasks">
+        <li>Extend <code>native/tools/terrain_census</code> to report per-worldspace LAND record count, grid bounding box, and gaps within that box, for WastelandNV and every other terrain-owning worldspace (Freeside, at minimum). The census output <strong>is</strong> the queue domain for Phase 3's termination check — see below, not a separate document.</li>
+        <li>Cross-check against the region-count ceiling already discovered the hard way in <code>terrain3d_bridge.gd</code>: <code>Terrain3DData</code>'s region map is a fixed 32×32 grid, which is why <code>region_size</code> was raised from 128 to 256. Confirm 256 still holds once the fill pushes real region residency to the worldspace edge.</li>
+        <li>Measure real per-region memory (all eight generated maps — see below — at <code>region_size=256</code>) so a "keep every worldspace resident, never evict" policy has an actual number behind it, not a guess.</li>
+        <li>Document Terrain3D's usable region-coordinate bounds against every surveyed worldspace's real grid extent, including the exact coordinate transform already worked out in <code>cell_terrain3d_global_position()</code> — this is what determines whether <code>region_size=256</code> genuinely covers a given worldspace's edges, not just WastelandNV's.</li>
+        <li>Record a reproducible benchmark scene/script plus the hardware/settings it ran under, so throughput numbers from this survey stay comparable to whatever Phase 2 measures later.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — LAND enumeration decision</span>
+        <p>
+          There is no current worldspace LAND index. <code>EsmReader</code> can locate an exterior
+          <code>CELL</code> by grid through the ESM block/sub-block structure, then
+          <code>get_land_data()</code> finds that <code>CELL</code>'s LAND child — it cannot currently
+          enumerate <code>{ grid, CELL, LAND }</code> directly. Phase 0 must choose one finite source
+          of truth for Phase 3's fill queue before that phase starts: either add a native worldspace
+          LAND enumeration/index, or use the surveyed finite grid bounds above plus the existing
+          indexed CELL lookup. An unbounded spiral plus a no-cell cache is <em>not</em> a termination
+          policy on its own — the census above must produce the exact queue domain, present-LAND
+          count, and missing coordinates per worldspace, and Phase 3 consumes that number directly.
+        </p>
+      </div>
+
+      <h3>Vanilla behavior</h3>
+      <div class="callout">
+        <span class="tag">Direct fact vs. inference — kept separate on purpose</span>
+        <p>
+          Directly documented: FNV's own Gamebryo terrain LOD is a real <code>LOD4 / LOD8 / LOD16 /
+          LOD32</code> hierarchy — pre-baked simplified meshes
+          (<code>Meshes\Landscape\LOD\&lt;Worldspace&gt;\*.NIF</code>) plus baked diffuse/normal
+          textures, grouped by cell-block size, generated offline. Source:
+          <a href="https://wiki.nexusmods.com/index.php/LOD_Generation_For_New_Vegas_and_Fallout_3">Nexus Mods Wiki, LOD Generation For New Vegas and Fallout 3</a>,
+          <a href="https://vivanewvegas.moddinglinked.com/lod.html">Viva New Vegas LOD Guide</a>. This
+          matches the "reuse Bethesda's own pre-baked LOD data" approach already used for
+          <em>object</em> LOD (phase 2.12, <code>_lod.nif</code> pairs); ROADMAP.md's Phase 2 bullet
+          names it explicitly.
+        </p>
+        <p>
+          <strong>Not yet directly observed</strong>, and needs to be before Phase 3 sizes its fill
+          radius: how far out the pre-baked LOD tiers are actually visible in real play before
+          atmospheric fade/sky dome hides them, and separately, real Terrain3D clipmap coverage at
+          this fork's actual settings (<code>mesh_lods</code>, <code>mesh_size</code>, vertex spacing —
+          current native defaults are seven LODs and mesh size 48, see
+          <code>native/terrain3d/src/terrain_3d.h</code>). Loading all LAND does not by itself prove
+          distant mountains render — measure actual visible radius, silhouette quality, and GPU cost
+          at the target horizon distance before claiming the clipmap replaces vanilla terrain LOD.
+        </p>
+      </div>
+      <div class="callout open">
+        <span class="tag">Open question</span>
+        <p>
+          Issue #19 already commits to a different approach than the pre-baked-mesh one above —
+          feeding Terrain3D's own clipmap LOD with continuously-streamed <em>real</em> LAND heightmap
+          data. That's a deliberate fork from this project's stated default (reuse pre-baked data),
+          not an oversight — worth a one-line confirmation that it's still the intended direction
+          before Phase 3 builds on it, since the pre-baked LOD meshes are sitting right there as a
+          lower-effort alternative.
+        </p>
+      </div>
+
+      <h3>Terrain3D capability check</h3>
+      <ul class="tasks">
+        <li>Read <code>native/terrain3d/src/terrain_3d_region.h</code> / <code>terrain_3d_collision.cpp</code> directly to determine whether collision and grass can be scoped <em>per region</em>, or only globally the way <code>set_collision_mode()</code> is called on the whole <code>Terrain3D</code> node today, and confirm real collision coverage/update behavior immediately after a region commit — not assumed from the height/control write succeeding.</li>
+        <li>Measure the real clipmap horizon at the fork's actual mesh settings <em>and compare it directly against directly-observed vanilla terrain visibility</em> (not just the cited pre-baked-LOD configuration values above) — the two need to actually be compared side by side before claiming parity, not each measured in isolation.</li>
+        <li>Profile <code>TerrainGrassParticles.observe_cell()</code> under whole-world-fill conditions, not just nearby streaming: it currently rebinds every live emitter on every observed cell, and a background fill touching every cell in the worldspace turns that into repeated, cumulative <code>RenderingServer</code> work. Either batch grass discovery, make it near-camera-priority only, or demonstrate the cost is negligible — required before Phase 3 ships, not a nice-to-have.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — texture pool cannot be shared as-is</span>
+        <p>
+          Corrected from 1.0, which assumed one <code>Terrain3DTexturePool</code> serves every
+          worldspace's <code>Terrain3D</code>. Verified false: <code>Terrain3DTexturePool._init(terrain)</code>
+          (<code>terrain3d_texture_pool.gd:68</code>) stores a single <code>_terrain: Terrain3D</code>,
+          and every asset write goes through <code>_terrain.assets.set_texture(...)</code> — bound to
+          that one instance's own <code>Terrain3DAssets</code>. A second <code>Terrain3D</code>
+          (Freeside) would never receive those textures; its bridge would still emit texture IDs
+          against a material LUT nothing populated.
+        </p>
+        <p>
+          Choose and document one design here, before Phase 1 starts: <strong>(1) simple, correct
+          first pass</strong> — one texture pool and one bridge per <code>Terrain3D</code>/worldspace;
+          or <strong>(2) shared logical catalogue</strong> — cache normalized source images and a
+          stable LTEX-to-logical-slot mapping once, then replay that exact order into each
+          worldspace's own independent asset pool. Option 2 is not a small refactor — it must account
+          for each terrain's own native material RID and its own <code>_ltex_to_render_slot</code>
+          parameter, not just its asset list.
+        </p>
+        <p>
+          <strong>Corrected in 1.2</strong>: don't describe that per-worldspace texture cost as
+          duplicated raw image data — it isn't. <code>Terrain3DBridge</code> already resolves ground
+          textures through <code>resolver.load_texture(...)</code> (<code>terrain3d_bridge.gd:565</code>),
+          i.e. <code>GamebryoMeshResolver</code>'s existing path-keyed decode cache — the same DDS used
+          by two worldspaces is decoded once and shared today, before any of this plan's changes. What
+          <em>is</em> genuinely per-instance is the normalized, Terrain3D-asset-bound copy
+          (<code>Terrain3DTexturePool._normalize_texture()</code>) and its slot-table/material binding
+          (<code>_terrain.assets.set_texture()</code>). Phase 0's benchmark must report these two costs
+          separately — shared decoded-image memory vs. per-Terrain3D asset/array bookkeeping — not one
+          combined "texture memory" number.
+        </p>
+      </div>
+
+      <div class="callout">
+        <span class="tag">Reconsidered, twice — tightened</span>
+        <p>
+          <code>prewarm_terrain_textures</code> is <strong>still <code>true</code> by default</strong>
+          in committed code (<code>world_streamer.gd:155</code>) — it exists only to work around a
+          shader-regeneration corruption bug in the addon's own texture-add path, long since fixed.
+          Local testing has run with it manually disabled, at the cost of a noticeably slower first
+          paint on the exterior world as textures resolve lazily instead — but that is not the same
+          claim as the code defaulting to off, and this doc should not conflate the two.
+        </p>
+        <p>
+          Without prewarm, resolving a texture the first time it's seen (normalize, slot assignment,
+          upload) is a genuine per-texture cost — the same cost nearby cell streaming already pays
+          today, not something the whole-world fill introduces new. Working assumption: one import
+          path, no reduced-fidelity variant for far cells. Phase 0 task: measure this lazy-resolve
+          cost under the fill's own pacing, and decide whether <code>prewarm_terrain_textures</code>'s
+          default should flip now that its original bug justification no longer applies.
+        </p>
+      </div>
+
+      <h3>Main-thread boundary audit — corrected</h3>
+      <p>Read <code>native/terrain3d/src/terrain_3d_data.cpp</code> directly rather than assuming — the safety <em>conclusion</em> drawn from that read in 1.0 was wrong, even though the underlying fact was accurate:</p>
+      <div class="callout">
+        <span class="tag">Confirmed from source</span>
+        <p>
+          <code>Terrain3DData::set_pixel()</code> (<code>terrain_3d_data.cpp:749</code>), which
+          <code>set_height()</code> wraps, is just <code>Image::set_pixelv()</code> on the region's
+          own CPU-side <code>Image</code> plus a <code>set_modified(true)</code> flag — no
+          <code>RenderingServer</code> call, no signal, nothing GPU-facing inside that one call.
+        </p>
+      </div>
+      <div class="callout blocking">
+        <span class="tag">Blocking — corrected conclusion</span>
+        <p>
+          That fact does <strong>not</strong> make the call worker-safe, and 1.0 was wrong to
+          conclude it did. <code>set_pixel()</code> mutates an <code>Image</code> owned by an active
+          <code>Terrain3DRegion</code> and changes region state that Terrain3D, the renderer,
+          collision, and the main thread can all observe live. A per-region worker claim prevents two
+          <em>workers</em> from writing the same region concurrently — it does not make concurrent
+          mutation of a live Godot Resource safe against the main thread, which may be reading or
+          rendering that same region at the same moment.
+        </p>
+        <p>
+          Workers may perform only detached preparation: ESM LAND lookup/decompression through a
+          private <code>EsmReader</code> (the established <code>GamebryoResolveContext</code>
+          pattern); coordinate conversion; decoded heights, normals, VCLR, VTXT opacity; and LTEX
+          FormIDs — prepared arrays keyed by the <em>real LTEX FormID</em>, not a final render-slot ID
+          (slot resolution touches the shared texture pool and must stay main-thread, see the
+          texture-pool decision above).
+        </p>
+        <p>
+          <strong>Revised in 1.3</strong> — the prior "main-thread-only, full stop, no test can broaden
+          this" framing overcorrected. Godot's own rule is narrower than that: concurrently mutating the
+          <em>same active, live</em> resource is unsafe, but constructing a new, detached resource on a
+          worker and handing it off before it joins the active scene is a supported pattern. Verified
+          directly: this project doesn't enable <code>rendering/rendering_thread_model</code> or a
+          PhysicsServer3D separate-thread setting in <code>project.godot</code>, so calling
+          <code>RenderingServer</code>/<code>PhysicsServer3D</code> from a worker isn't available under
+          the current runtime configuration regardless — but that only rules out live server calls from
+          workers, not worker-side construction of plain data or detached Godot objects. See Phase 2 for
+          the actual worker/main split this implies.
+        </p>
+      </div>
+      <ul class="tasks">
+        <li>Region creation (<code>ensure_regions_for_cell()</code> → <code>add_region_blank()</code>, mutates <code>terrain.data.region_locations</code> directly), first-time texture resolution (<code>Terrain3DTexturePool.get_slot()</code>, creates/normalizes a real <code>Texture2D</code>), and post-loop bookkeeping (<code>update_maps()</code>/<code>calc_height_range()</code>/<code>set_edited()</code>, regenerates GPU texture arrays and emits <code>*_changed</code> signals) all confirmed main-thread-only, unchanged from 1.0's finding.</li>
+        <li>Real hazard, not incidental: two adjacent cells can share a boundary region — <code>import_cell()</code>'s own header comment documents this for odd grid coordinates. A per-region worker claim prevents two workers racing on the same region's write, but does <strong>not</strong> prevent nondeterministic last-writer-wins values at a shared edge when worker <em>completion order</em> varies run to run. See Phase 2's shared-edge contract below — this needs either a canonical edge-ownership rule or a proven, deterministic commit order with a regression test, not just a lock.</li>
+      </ul>
+
+      <h3>Map/upload cost — corrected</h3>
+      <div class="callout blocking">
+        <span class="tag">Blocking — understated in 1.0</span>
+        <p>
+          1.0 described three generated Terrain3D map arrays. This fork has <strong>eight</strong>:
+          height, control, colour, TEX_ID_A, TEX_ID_B, WEIGHT_A, WEIGHT_B, and normal — matching this
+          project's own N=7 blend patch. <code>Terrain3DData::update_maps(TYPE_MAX, false, false)</code>
+          updates every <em>edited</em> map layer; a full rebuild recreates all eight arrays. See
+          <code>native/terrain3d/src/terrain_3d_data.cpp</code>.
+        </p>
+        <p>
+          The Phase 0 benchmark must separately measure, with real numbers, not a slogan: LAND
+          read/decode/preparation cost; main-thread region creation cost; main-thread texture/asset
+          resolution cost; per-cell map write cost (all eight arrays); incremental upload cost;
+          full-array-rebuild cost when a new region is introduced; collision update cost, if enabled;
+          and worst/p95/average frame cost across a real churn run. The current bridge performs
+          thousands of GDScript-to-GDExtension pixel calls per cell — Phase 2's detached preparation
+          may not move the real bottleneck at all if most of the cost is actually in those main-thread
+          calls, not the data preparation. This must be measured before Phase 2 is scoped as "the"
+          fix.
+        </p>
+      </div>
+
+      <div class="exit">
+        <strong>Exit signal —</strong> a GitHub comment on #19 with: real coverage/gap numbers per
+        worldspace and the LAND enumeration decision; the texture-pool architecture decision (§ above);
+        the pre-baked-vs-live-LAND confirmation; measured Terrain3D horizon coverage at real clipmap
+        settings; the grass-discovery profiling result; and the full eight-map benchmark breakdown —
+        before any of Phase 1 starts. This plan supersedes issue #19's older height-only wording; link
+        the two so future work isn't misled by it.
+      </div>
+    </section>
+
+    <section class="phase" id="phase-1">
+      <div class="phase-head">
+        <span class="phase-num">PHASE 1</span>
+        <h2>Extract ownership — parity only</h2>
+      </div>
+      <p class="phase-goal">
+        Deliberately narrow, per review feedback: move current terrain behavior to a single new
+        owner with <strong>zero change to import fidelity, scheduler policy, or which cells get
+        terrain, relative to what <code>game.tscn</code> actually runs today</strong> — that scene
+        already sets <code>use_terrain3d = true</code> (<code>game.tscn:57</code>), so removing the
+        now-dead legacy toggle and its <code>false</code> class default is deleting unused
+        configuration surface, not changing real runtime behavior; it was also already authorized in
+        the 1.0 review round. No threading, no whole-world fill yet — those are Phases 2 and 3. Prove
+        ownership, readiness, and pause/resume first, since everything after this depends on getting
+        those three right.
+      </p>
+
+      <h3>New class: <code>TerrainStreamer</code></h3>
+      <ul class="tasks">
+        <li>Owns the shared <code>Terrain3D</code> node, <code>Terrain3DTexturePool</code>, <code>Terrain3DBridge</code>, and <code>TerrainGrassParticles</code> — all four currently live as <code>WorldStreamer</code> member fields, created in <code>activate()</code> and freed in <code>deactivate()</code>. Those four fields move out wholesale.</li>
+        <li>Imports terrain for exactly the same radius/cells <code>WorldStreamer</code> currently drives it for — this phase changes <em>who</em> imports, not <em>what</em> gets imported or <em>how many</em> cells. The continuous whole-world fill is Phase 3, deliberately sequenced after this and Phase 2 are both proven.</li>
+        <li>Gets its own diagnostics, mirroring the existing <code>diagnostic_terrain_ms</code> array and the opt-in <code>freeze_trace_enabled</code> pattern from issue #6 — a second independently-observable trace, not folded into <code>WorldStreamer</code>'s.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — explicit hand-off topology, not implied by "TerrainStreamer owns X"</span>
+        <p>
+          Verified this is a real scene-wiring change, not just a class extraction:
+          <code>Terrain3DBridge.create_terrain(self)</code> is called as <code>world_streamer.gd:263</code>
+          — <code>self</code> is <code>WorldStreamer</code>, and <code>create_terrain()</code> literally
+          does <code>parent.add_child(terrain)</code> (<code>terrain3d_bridge.gd:120</code>). Terrain3D is
+          a real child of <code>WorldStreamer</code> in the live scene tree today. The interface must be
+          named before coding, not left implicit:
+        </p>
+        <ul class="tasks">
+          <li><code>Game</code> (already the parent of both <code>CellLoader</code> and <code>WorldStreamer</code>, per <code>game.tscn</code>) owns <code>TerrainStreamer</code> as a third sibling, and calls the matching lifecycle method on it alongside the existing two, per transition type — see the explicit call sequence below.</li>
+          <li><code>TerrainStreamer</code> derives its own grid coordinate the same way <code>WorldStreamer</code> already does — self-querying <code>get_viewport().get_camera_3d()</code> (<code>_active_camera()</code>, <code>world_streamer.gd:402-404</code>), not camera-injection from <code>Game</code>. Kept on this project's own established pattern rather than a new supply mechanism.</li>
+          <li><strong>Added, per review</strong>: this is more than a camera-source statement — <code>TerrainStreamer</code> independently computes its own desired terrain-coordinate set on its own cadence, the same way <code>WorldStreamer._check_streaming()</code> computes its own resident set today. A <code>WorldStreamer</code> priority call is a hint that re-prioritizes an already-desired coordinate, never the sole source of what gets imported — object-queue throttling, missing-cell handling, and terrain import timing are different concerns with different budgets, and conflating them was exactly what made "parity" ambiguous in 1.2. <code>TerrainStreamer</code> tests LAND presence itself (via whichever enumeration Phase 0 chose) before queuing a coordinate, independent of whether <code>WorldStreamer</code> has any REFR content there at all.</li>
+          <li><code>WorldStreamer</code> may call exactly one narrow method on <code>TerrainStreamer</code>: <code>request_terrain_priority(coord: Vector2i)</code>. It must not hold a <code>Terrain3D</code>/bridge/pool reference of its own, and must not read or decide terrain state.</li>
+        </ul>
+        <p>
+          <strong>Added, per review — data-service ownership.</strong> <code>WorldStreamer._ready()</code>
+          currently owns the main-thread <code>EsmReader</code>/<code>GamebryoMeshResolver</code>
+          (<code>world_streamer.gd:235,238</code>) and hands them to the terrain bridge on construction.
+          Once <code>TerrainStreamer</code> is its own class, that source disappears. Decision, chosen
+          now: <code>Game</code> owns and injects one shared main-thread <code>EsmReader</code>/
+          <code>GamebryoMeshResolver</code> pair into both streamers, rather than each streamer
+          constructing its own. Workers still get their own private per-task readers (the established
+          <code>GamebryoResolveContext</code> pattern, unaffected). This is the option that actually
+          preserves the one-decode-cache property the corrected texture-memory claim above depends
+          on — a `TerrainStreamer`-owned duplicate resolver would silently reintroduce duplicate DDS
+          decodes across worldspaces, undermining that claim. Phase 0's memory measurement must
+          confirm the shared cache is genuinely retained and hit under this model, not assumed.
+        </p>
+        <p>
+          <strong>Added, per review — explicit per-transition call sequence</strong>, since
+          <code>Game</code> pauses <code>WorldStreamer</code> on an ordinary exterior→interior door
+          rather than deactivating it (existing behavior, unchanged):
+        </p>
+        <ul class="tasks">
+          <li>Exterior → interior: pause both <code>WorldStreamer</code> and <code>TerrainStreamer</code>.</li>
+          <li>Interior → same exterior: resume both.</li>
+          <li>Exterior → a different worldspace: transition both by generation (Phase 1's single-active-world lifecycle: today's <code>deactivate()</code>-then-<code>activate()</code> shape). The outgoing terrain is hidden-and-retained across a worldspace switch only once Phase 4 provides the multi-world registry — Phase 1 alone still tears down and rebuilds on a worldspace change, exactly like today's behavior it's replacing.</li>
+        </ul>
+      </div>
+
+      <h3><code>WorldStreamer</code> changes</h3>
+      <ul class="tasks">
+        <li>Delete the entire <code>use_terrain3d</code> branch inside <code>_stream_tile()</code> — both sides. The legacy, non-Terrain3D <code>GamebryoTerrainBuilder</code> mesh path is deprecated and removed outright, not preserved as a parallel system. <code>TerrainStreamer</code> becomes the only terrain path; <code>use_terrain3d</code>, <code>terrain_root</code>, and <code>CellStreamBuilder.build_terrain()</code>'s call site all go away with it.</li>
+        <li>Cell streaming may <em>request</em> priority for the coord it's about to populate — a plain method call into <code>TerrainStreamer</code>, not an import — but never touches <code>Terrain3D</code> itself.</li>
+        <li><strong>Added, verified</strong>: <code>world_streaming_debug_tab.gd:145</code> currently reads <code>_world_streamer._terrain3d_pool</code> directly — a private-field dependency this extraction breaks outright, not a cosmetic one. Move texture-pool and terrain-queue status display to <code>TerrainStreamer</code> (or a new dedicated terrain debug tab) as part of this phase, not left stale.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — spawn-safe readiness contract</span>
+        <p>
+          "The requested coordinate landed" is not a sufficient readiness signal, and 1.0 only
+          gestured at this. The transition contract this phase must actually define:
+        </p>
+        <ul class="tasks">
+          <li>Exactly which cell/neighbourhood must have <em>committed</em> height data before release — not just enqueued or in-flight.</li>
+          <li>Whether Terrain3D collision must be built <em>and enabled</em> before release, not just height data present — a player released onto committed-but-collisionless terrain falls through it.</li>
+          <li>Whether GPU upload completion is required before release, or whether committed CPU-side data is sufficient (ties directly into the incremental-vs-full-rebuild upload cost from Phase 0).</li>
+          <li>Cancellation behavior if the player changes worldspace mid-load — what happens to an in-flight readiness wait for a worldspace that's no longer the active one.</li>
+        </ul>
+        <p>
+          <strong>Corrected in 1.2</strong>: "await both readiness signals" is not enough on its own —
+          confirmed by this project's own history, not just abstract caution. <code>world_streamer.gd</code>'s
+          own doc comment on <code>set_paused(false)</code> already documents a real bug of exactly this
+          shape: <code>_maybe_emit_settled()</code> firing synchronously "with zero listeners connected
+          yet — the emission is simply lost... leaving the player frozen forever," fixed only by routing
+          through <code>call_deferred()</code>. A bare one-shot signal here would reintroduce that same
+          class of bug at the terrain boundary.
+        </p>
+        <p>
+          Define a generation-tagged, queryable readiness predicate instead:
+          <code>await_ready_for(worldspace, coord, generation)</code>, whose first action checks
+          already-committed state (so a caller attaching late still gets a correct answer, not a missed
+          signal) and whose eventual completion re-checks it.
+        </p>
+        <p>
+          <strong>Corrected in 1.3</strong>: "resolve/reject deterministically" isn't itself an API —
+          GDScript's <code>await</code> has no implicit promise-rejection semantics. Concrete return
+          contract: <code>await_ready_for()</code> returns one of <code>READY</code>,
+          <code>CANCELLED</code> (pause/deactivate fired mid-wait), or <code>SUPERSEDED</code> (a newer
+          activation/generation replaced this one before it resolved) — <code>game.gd</code> only
+          releases the player on <code>READY</code>; a <code>CANCELLED</code>/<code>SUPERSEDED</code>
+          result from an <em>old</em> transition must never unfreeze a player who now belongs to a
+          <em>newer</em> one. <code>TerrainStreamer</code> owns the generation counter (bumped on every
+          activate/deactivate, mirroring <code>WorldStreamer._generation</code>'s existing role) and is
+          responsible for releasing every outstanding waiter with the correct status on pause,
+          deactivate, or a new activation.
+        </p>
+        <p>
+          "Target coordinate's own neighbourhood" is replaced with a named, testable set: the spawn
+          cell plus whichever cells Phase 0's own real collision-coverage measurement shows are
+          required for solid footing at that spawn point — not a vague radius. GPU-upload completion is
+          only included in "ready" if Phase 0 finds an actual observable completion boundary in the
+          Terrain3D/RenderingServer API; this plan does not promise readiness against a renderer fence
+          that the addon or Godot doesn't expose. <code>game.gd</code> currently awaits only
+          <code>WorldStreamer.streaming_settled</code>; this predicate replaces a hand-rolled two-signal
+          race, it doesn't sit alongside one.
+        </p>
+      </div>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — pause ownership moves, doesn't duplicate — expanded scope</span>
+        <p>
+          <code>WorldStreamer.set_paused()</code> currently owns Terrain3D visibility
+          (<code>visible = false</code>) and collision (<code>set_collision_mode(DISABLED)</code>) for
+          the interior-transition case. Those calls <strong>move</strong> into
+          <code>TerrainStreamer</code>'s own pause/resume lifecycle in this phase — not duplicated
+          across both classes. This is already Phase 1's job, not Phase 4's (Phase 4 only extends a
+          proven single-world lifecycle to a multi-world registry — it does not introduce lifecycle
+          handling for the first time).
+        </p>
+        <p>
+          The lifecycle this phase owns is broader than visibility+collision alone, expanded per
+          review: also <strong>processing</strong> (a hidden Terrain3D must not keep ticking clipmap/
+          collision work just because it's invisible — verify, don't assume `visible=false` already
+          stops it), and <strong>camera binding</strong> — a real, already-found bug in this exact file:
+          "Terrain3D's own clipmap LOD update... needs a real camera reference to position its rings...
+          never set anywhere in this file before, so it silently failed" (<code>world_streamer.gd</code>,
+          <code>_check_streaming()</code>'s own comment on <code>_terrain3d.set_camera()</code>). Once
+          camera tracking moves to <code>TerrainStreamer</code>, it inherits responsibility for keeping
+          that call live across pause/resume too. And <strong>readiness invalidation</strong> — any
+          in-flight <code>await_ready_for()</code> call above must be cancelled/rejected on pause, not
+          left dangling.
+        </p>
+        <p>
+          <strong>Corrected in 1.3 — verified against Terrain3D's own source, not assumed.</strong>
+          <code>Terrain3D::set_camera(p_camera)</code> (<code>terrain_3d.cpp:480-493</code>) only calls
+          <code>set_physics_process(true)</code> inside the branch where <code>p_camera</code> differs
+          from the currently-stored <code>_camera</code> — confirmed by reading the source directly.
+          Simply calling <code>set_camera(_active_camera())</code> again on resume, the way
+          <code>_check_streaming()</code> already does every tick, is a no-op for the common case (the
+          player's camera identity doesn't change across a pause) and would <strong>not</strong>
+          re-enable clipmap snapping or dynamic collision updates that pause disabled. Resume must call
+          <code>set_physics_process(true)</code> on the <code>Terrain3D</code> node directly (a plain
+          <code>Node</code> method, unrelated to <code>set_camera()</code>) as its own explicit step,
+          not rely on the camera-set call to do it. The Phase 1 exterior→interior→same-exterior
+          acceptance test must move the camera after return and prove clipmap rings and collision
+          actually update again post-resume, not just that the scene looks visually unchanged.
+        </p>
+      </div>
+
+      <div class="files">
+        <span class="label">Files</span>
+        <span class="chip new">project/gamebryo/terrain_streamer.gd — new</span>
+        <span class="chip">project/world_streamer.gd</span>
+        <span class="chip">project/gamebryo/terrain3d_bridge.gd</span>
+        <span class="chip">project/cell_stream_builder.gd — build_terrain() removed</span>
+        <span class="chip">project/game.gd — transition-await contract</span>
+        <span class="chip">project/world_streaming_debug_tab.gd — terrain-pool field access moves</span>
+        <span class="chip">project/game.tscn — TerrainStreamer sibling node</span>
+      </div>
+
+      <div class="exit">
+        <strong>Exit signal —</strong> a real trace confirming zero <code>Terrain3D</code> API calls
+        originate from <code>WorldStreamer</code>; terrain still imports at exact parity with today's
+        behavior (same cells, same fidelity, same radius) from the new owner; the spawn-safe readiness
+        contract and moved pause/resume lifecycle both proven with a real exterior→interior→exterior
+        and a real door-transition test. No threading, no whole-world fill — those don't start until
+        this phase's exit signal is real.
+      </div>
+    </section>
+
+    <section class="phase" id="phase-2">
+      <div class="phase-head">
+        <span class="phase-num">PHASE 2</span>
+        <h2>Detached worker preparation</h2>
+      </div>
+      <p class="phase-goal">
+        New phase, split out of 1.0's combined Phase 1 per review feedback. Revised in 1.3 from a
+        smaller design (worker prepares raw arrays, main thread calls <code>set_pixel()</code>
+        thousands of times per cell) to a materially more aggressive one: workers construct entire
+        staged region maps, and a new small native batch-publish API replaces the per-pixel commit
+        loop entirely.
+      </p>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — the boundary is empirical and cited, not a permanent ban or a blanket clearance</span>
+        <p>
+          Verified directly against the vendored source, not assumed either way: the current live
+          Terrain3D import path has no synchronization around active state. <code>Terrain3DData::set_pixel()</code>
+          writes the <code>Image</code> owned by an active <code>Terrain3DRegion</code>
+          (<code>terrain_3d_data.cpp:749</code>); <code>add_region()</code> mutates the live
+          <code>_regions</code>/<code>_region_locations</code> collections (<code>terrain_3d_data.cpp:226</code>);
+          <code>update_maps()</code> rebuilds those collections and emits signals
+          (<code>terrain_3d_data.cpp:467</code>); <code>GeneratedTexture::create()</code>/<code>update()</code>
+          call <code>RenderingServer::texture_2d_layered_create()</code>/<code>texture_2d_update()</code>
+          directly (<code>generated_texture.cpp:25</code>); <code>Terrain3DCollision::update()</code> reads
+          live terrain state while changing physics shapes (<code>terrain_3d_collision.cpp:286</code>).
+          None of these five paths is safe to call concurrently from multiple workers today — not a
+          generic Godot caveat, the literal absence of synchronization in the exact structures this
+          project would race.
+        </p>
+        <p>
+          That does <strong>not</strong> mean every step of an import must happen on the main thread —
+          only the ones touching that live state. Godot's own documented rule is narrower than a
+          blanket ban: a worker may construct a new, detached resource and hand it off before it joins
+          the active scene; concurrently mutating the <em>same active</em> resource is what's
+          unsupported. Treat the boundary below as the current evidence-based default, not a
+          permanent theoretical limit — a later, deliberately engineered Terrain3D fork (double-buffered
+          region/map-array RIDs, a render-thread command queue, atomic main-thread swap) could move the
+          publish step itself further off-thread, but that's an invasive renderer/physics ownership
+          change requiring its own benchmark and stress test, not something to slip into this phase.
+        </p>
+      </div>
+
+      <h3>Worker-staged regions, native batch publication</h3>
+      <ul class="tasks">
+        <li><strong>Worker task</strong> — all of the expensive, pure/import-side work: private <code>EsmReader</code> LAND lookup/decompression (the established <code>GamebryoResolveContext</code> per-worker pattern); grid conversion; expansion of LAND/VCLR/VNML/VTXT into the project's eight final map payloads (height, control, colour, TEX_ID_A/B, WEIGHT_A/B, normal); construction and filling of <strong>new, worker-owned</strong> <code>Image</code> objects — never a reference into any currently-active Terrain3D region. Applies the canonical shared-edge masking rule (below) as part of this construction, not as an afterthought at commit time.</li>
+        <li>No worker retains a reference to a staged region/image after publishing it, and no staged image is ever also referenced by a currently-active region. Multiple cells that contribute to the <em>same</em> 256×256 region must be composed by one serial owner — a per-region staging job, or a locked staging buffer — before publication. This is not solved by letting workers write different portions of a live region concurrently. <strong>Queue contract:</strong> <code>prepared</code> always means the individual cell payload is available to that region's composer. The publication-policy decision below defines whether <code>committed</code> advances every contributing prepared cell atomically (complete-region publication) or only the cells included in an immutable incremental snapshot.</li>
+        <li><strong>Main-thread publication</strong> — deliberately short, only what must touch active Terrain3D state: resolve the staged LTEX FormIDs through the active world's slot table (whichever texture-pool design Phase 0 chose); create/replace the active region and attach the completed staged maps via the new native batch-publish API below; update the region index and generated map textures <em>once per bounded batch</em>, not once per cell; schedule/perform the collision update; update material bindings/grass only after publication.</li>
+        <li><strong>New native scope, not present in 1.2</strong>: add a small batch-publication API to the vendored <code>native/terrain3d/</code> fork — accepting a detached region or the eight completed <code>Image</code>s, doing one region-index/generated-map update at the end, instead of <code>import_cell()</code>'s current thousands of GDScript-to-GDExtension <code>set_pixel()</code> calls. This directly removes the per-pixel call overhead Phase 0's benchmark is measuring, rather than just moving preparation off-thread and leaving that overhead in place.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — shared cell-border determinism, solved at staging time</span>
+        <p>
+          Adjacent LAND cells write duplicate edge vertices. Since staged-region composition already
+          happens once, serially, per region before publication (above), the canonical-owner rule
+          becomes the masking policy applied <em>during that staged construction</em>, not a race
+          resolved after the fact at commit time — a cleaner fit than 1.2's "publish then hope order
+          doesn't matter" framing. <strong>Default policy, unchanged</strong>: the cell with the lower
+          grid coordinate (lower x, then lower y) owns a shared edge's samples. Still needs the actual
+          half-open sample-domain rule written out — which west/east and north/south row/column a
+          non-owning cell skips, and which cell owns a shared corner — covering height, normals,
+          colour, both texture-ID maps, and both weight maps. The regression test must still compare
+          completed terrain under deliberately varied <em>job</em> completion order (which worker
+          finishes which cell first, before the serial composer runs), since that's the real remaining
+          nondeterminism once masking itself is fixed at staging time.
+        </p>
+      </div>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — region publication policy must be chosen before implementation</span>
+        <p>
+          A 256×256 Terrain3D region spans many 33×33 LAND-cell patches, and one cell can feed more
+          than one region at a boundary. The queue/composer contract intentionally leaves two valid
+          policies open pending the Phase 0/2 prototype: <strong>(1) complete-region publication</strong>,
+          which schedules every required cell for a region and moves all of its prepared cells to
+          <code>committed</code> atomically; or <strong>(2) immutable incremental snapshots</strong>,
+          which lets the serial composer publish a complete copy of the currently composed region as
+          nearby cells arrive, with a versioned handoff and no overwrite of already-published samples.
+          The prototype must select one based on near-spawn latency, copy cost, and frame-time results.
+          A cell waiting in <code>prepared</code> for a slower region neighbour is expected under (1),
+          not a queue error.
+        </p>
+      </div>
+
+      <div class="files">
+        <span class="label">Files</span>
+        <span class="chip new">native/terrain3d/src/terrain_3d_data.* — batch-publish API, new</span>
+        <span class="chip">project/gamebryo/terrain_streamer.gd — worker dispatch + staging</span>
+        <span class="chip new">project/gamebryo/terrain_region_staging.gd — new, serial per-region composer</span>
+      </div>
+
+      <div class="exit">
+        <strong>Exit signal —</strong> a repeatable thread-boundary stress test, not a one-off "it
+        didn't crash" run: (1) workers build many unique detached staged regions while the game
+        continues rendering and querying collision; (2) batches publish on the main thread while the
+        camera moves across region boundaries; (3) repeated pause/deactivate/worldspace-change asserts
+        no stale-generation batch ever publishes; (4) every map byte and shared edge verified against
+        the expected payload after randomized job completion order; (5) frame-time p50/p95/max and
+        main-thread time recorded against the current per-pixel <code>import_cell()</code> baseline
+        from Phase 0. If the benchmark shows the native batch-publish call itself still dominates
+        regardless of staging, that's a valid, real finding this phase must report honestly rather
+        than build past.
+      </div>
+    </section>
+
+    <section class="phase" id="phase-3">
+      <div class="phase-head">
+        <span class="phase-num">PHASE 3</span>
+        <h2>Continuous outward terrain fill</h2>
+      </div>
+      <p class="phase-goal">
+        Sequenced after Phase 1 (ownership/readiness/pause proven) and Phase 2 (threading proven and
+        benchmarked) per review feedback — combining lifecycle migration, native ESM indexing,
+        threading, render uploads, and whole-world fill into one pass was flagged as "one debugging
+        failure," and that's the reason for the split. No second radius tier, no reduced-fidelity
+        import path: <code>TerrainStreamer</code> fills outward from the player continuously until
+        there is no worldspace left to import, at two speeds rather than two data profiles.
+      </p>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — corrected: queue mechanics, not a slogan</span>
+        <p>
+          1.1 said the queue "only drains forward," which is false once the priority center can move —
+          a min-heap ordered around a stale player coordinate is wrong the moment the player travels,
+          and naively inserting priority requests creates duplicates and starvation. The direction (one
+          queue, outward from the player, two speeds split at the existing LOD2 radius) stays correct;
+          what was missing is the mechanics making that direction actually work:
+        </p>
+        <ul class="tasks">
+          <li>Authoritative coordinate source is <code>TerrainStreamer</code>'s own camera query (Phase 1's topology contract), never <code>WorldStreamer._current_grid_coord()</code> directly — that method stays private to <code>WorldStreamer</code>.</li>
+          <li>A per-cell state machine keyed by <code>(worldspace, coord)</code>: <code>unseen → queued → preparing → prepared → committed</code>, with <code>cancelled</code> reachable from any non-terminal state (worldspace switch, pause, generation change).</li>
+          <li>Priorities are recomputed when the tracked center moves materially (a real distance threshold, not every tick) — not left stale from whenever a cell was first enqueued.</li>
+          <li>Duplicate suppression: a coord already in <code>queued</code>/<code>preparing</code>/<code>prepared</code> is never re-enqueued; a <code>WorldStreamer</code> priority request on such a coord re-prioritizes its existing queue entry instead of inserting a second one.</li>
+          <li>A fairness rule guarantees the low-priority whole-world fill still progresses even while the player continuously generates new near-priority work — e.g. a minimum guaranteed low-priority slot per tick, not "whatever's left over."</li>
+        </ul>
+      </div>
+
+      <ul class="tasks">
+        <li>Two throttle rates instead of two tiers: cells within <code>WorldStreamer.RADIUS_LOAD_DISTANT</code> (today's "LOD2", 20 grid cells) import at the existing responsive pace; cells beyond it import at a deliberately slower cadence — same import path, different budget, not a second code path.</li>
+        <li>Investigate resolving LAND directly by grid coordinate/FormID rather than <code>find_exterior_cell()</code> → full <code>CELL</code> resolution, using whichever LAND enumeration Phase 0 chose — the fill will eventually touch every coordinate in the worldspace, including many that never need REFR/CELL data at all.</li>
+        <li>Termination uses Phase 0's census output directly as the queue domain — present-LAND count and confirmed-missing coordinates per worldspace — not an unbounded spiral with an incidental no-cell cache.</li>
+        <li>Grass discovery runs the batched/priority-gated approach Phase 0's profiling settled on, not <code>observe_cell()</code>'s current per-cell rebind unconditionally.</li>
+      </ul>
+
+      <table class="decisions">
+        <tr><th>Existing tier</th><th>Owner (today)</th><th>Owner (after)</th><th>Bound</th></tr>
+        <tr><td>Full-detail cell content</td><td>WorldStreamer</td><td>WorldStreamer</td><td>RADIUS_LOAD_FULL = 5</td></tr>
+        <tr><td>Distant object LOD (VWD)</td><td>WorldStreamer</td><td>WorldStreamer</td><td>RADIUS_LOAD_DISTANT = 20 ("LOD2")</td></tr>
+        <tr><td>Terrain (unified)</td><td>WorldStreamer (via bridge)</td><td>TerrainStreamer</td><td>none — whole worldspace, two speeds split at LOD2</td></tr>
+      </table>
+
+      <div class="exit">
+        <strong>Exit signal —</strong> a full worldspace eventually resident with real terrain
+        (continuous distant mountain silhouettes, e.g. Goodsprings looking toward the strip); object
+        streaming's frame-cost diagnostics unchanged from Phase 1's baseline throughout the fill;
+        adjacent-cell seams pass the Phase 2 determinism regression test at whole-world scale, not
+        just in isolated pairs.
+      </div>
+    </section>
+
+    <section class="phase" id="phase-4">
+      <div class="phase-head">
+        <span class="phase-num">PHASE 4</span>
+        <h2>Per-worldspace terrain lifetime</h2>
+      </div>
+      <p class="phase-goal">
+        Terrain residency belongs to a worldspace, not a reusable buffer. Switching from
+        WastelandNV into Freeside must hide, not overwrite, WastelandNV's terrain — and this phase
+        is where the texture-pool architecture Phase 0 chose actually gets built.
+      </p>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — build on Phase 0's texture-pool decision, not the old shared-pool assumption</span>
+        <p>
+          1.0 assumed one shared <code>Terrain3DTexturePool</code> across worldspaces, leaving only
+          heightmap data as genuinely per-worldspace. That's false (Phase 0). This phase implements
+          whichever real design Phase 0 chose: either an independent texture pool + bridge per
+          worldspace, or the shared logical catalogue replayed into each worldspace's own asset pool
+          in a stable order. Either way, per-worldspace memory accounting in this phase must include
+          the real texture cost, not just heightmap data.
+        </p>
+      </div>
+
+      <ul class="tasks">
+        <li>Replace <code>WorldStreamer.deactivate()</code>'s current behavior — <code>_terrain3d.free()</code>, unconditionally, on every worldspace switch — with a per-worldspace registry inside <code>TerrainStreamer</code>: <code>{ wrld_form_id: { terrain, bridge, grass, texture_binding_state, queue_state, generation, resident } }</code>. <code>texture_binding_state</code> means the independent pool selected by Phase 0 <em>or</em> the per-world asset binding/replay state selected by its shared-logical-catalogue alternative; this registry does not pre-decide between them. Create an entry only on its first activation; do not clear an entry in this phase.</li>
+        <li><strong>Required inactive-cache operation — exact order:</strong> first mark the entry inactive and increment its generation, so no queued/prepared worker result may publish; suspend its queue while retaining only committed terrain state; then set <code>terrain.visible = false</code>, call <code>terrain.set_physics_process(false)</code>, and call <code>terrain.set_collision_mode(Terrain3DCollision.DISABLED)</code>. On the matching <code>TerrainGrassParticles</code> instance, set <code>visible = false</code> and <code>set_process(false)</code>, and set every owned <code>GPUParticles3D.emitting = false</code>. Hiding alone is not a pause: it does not establish that Terrain3D clipmap/collision work or particle simulation has stopped.</li>
+        <li><strong>Required activation/resume operation — exact order:</strong> select/create the entry; make its terrain visible; set its current active camera; call <code>terrain.set_physics_process(true)</code> explicitly (required even when the camera identity did not change); enable <code>Terrain3DCollision.DYNAMIC_GAME</code>; make grass visible, call <code>grass.set_process(true)</code>, restore only locally-covered emitters to <code>emitting = true</code>, and restart them after their first active-camera coverage update; finally resume the queue under its new generation. Collision and grass must not be enabled before the terrain entry and active camera are restored.</li>
+        <li>Returning to a previously-loaded worldspace reactivates this retained instance rather than rebuilding it — no LAND re-import or texture-pool reassignment. The Game-level ESM/resolver cache is shared, but every entry retains its own Terrain3D map arrays, material bindings, bridge, collision state, grass node, and Terrain3D asset pool.</li>
+        <li>No eviction, no memory-pressure policy — explicitly deferred, tweakable later once real per-worldspace memory numbers (heightmap <em>and</em> texture, per Phase 0) exist.</li>
+      </ul>
+
+      <div class="callout blocking">
+        <span class="tag">Blocking — full pause/switch/cancellation lifecycle, not just the cross-worldspace case</span>
+        <p>
+          The same inactive-cache operation applies to an ordinary exterior → interior transition,
+          not only WastelandNV → Freeside. Pausing invalidates every in-flight worker publication by
+          generation, retains committed maps and the uncommitted queue domain, and prevents all
+          Terrain3D/collision/grass processing until resume. A result completing while paused is
+          discarded and its coordinate becomes eligible for the resumed queue; it must never commit
+          into a hidden entry. Returning to an exterior runs the ordered resume operation above and
+          rebuilds only uncommitted work, never the retained terrain maps.
+        </p>
+      </div>
+
+      <div class="exit">
+        <strong>Exit signal —</strong> Goodsprings → Freeside → Goodsprings round trip: WastelandNV
+        terrain reappears instantly on return, no re-import, no cross-contaminated region or texture
+        data from Freeside, and the inactive Wasteland entry recorded zero Terrain3D physics ticks,
+        collision updates, grass-process ticks, and emitting grass particles while Freeside was active.
+        A separate exterior → interior → same exterior round trip: fill queue suspends and resumes
+        correctly, no stale Phase 2 payload lands after a mid-transition worldspace switch, and camera
+        motion after return proves clipmap and collision updates resumed.
+      </div>
+    </section>
+
+    <section class="phase" id="acceptance-tests">
+      <div class="phase-head">
+        <span class="phase-num">TESTS</span>
+        <h2>Required acceptance tests</h2>
+      </div>
+      <p class="phase-goal">Before declaring the first implementation pass complete, per review feedback — not optional polish:</p>
+      <ol class="tasks">
+        <li>Real LAND census/bounds/gaps for each terrain-owning worldspace, including region-coordinate bounds vs. the real grid extent.</li>
+        <li>Adjacent-cell seams across heights, normals, VCLR, and all eight N=7 ID/weight maps, under deliberately varied worker completion order — not just synchronous ordered imports.</li>
+        <li>A counter/assertion proving <code>WorldStreamer</code> holds no <code>Terrain3D</code>/bridge/pool field and makes no bridge/grass call — only the documented <code>request_terrain_priority()</code> call.</li>
+        <li>Queue state/ordering deterministic under duplicate requests and a moving player, demonstrating both near responsiveness and eventual low-priority background progress.</li>
+        <li>Spawn-safe readiness via <code>await_ready_for()</code> including terrain collision, not just height data — including a transition cancelled/replaced mid-wait.</li>
+        <li>Worker results proven incapable of mutating any Godot resource directly, and proven that a stale result cannot commit after pause/deactivate/world switch.</li>
+        <li>Exterior → interior → same exterior executes the exact inactive/resume operation: hidden Terrain3D has physics processing disabled and collision disabled; grass root processing is disabled and every emitter is non-emitting; return explicitly restores camera, Terrain3D physics processing, collision, locally-covered emitters, and queue work.</li>
+        <li>WastelandNV → Freeside → WastelandNV isolation and retained residency, with texture allocation/sharing measured directly across the two resident worldspaces, not inferred from the pool's object graph; diagnostics prove the inactive entry accumulated zero Terrain3D physics ticks, collision updates, grass-process ticks, and emitting grass particles.</li>
+        <li>Measured object-streaming frame cost while the terrain queue fills.</li>
+        <li>Actual distant-silhouette coverage at the chosen clipmap settings, measured against directly-observed vanilla visibility.</li>
+        <li>The live debug UI (world streaming tab's terrain-pool display) remains functional after the ownership extraction.</li>
+      </ol>
+    </section>
+
+    <footer class="close">
+      v1.4: folds the consistency review into the plan: the worldspace registry's texture field is
+      deliberately conditional on the Phase 0 texture architecture rather than assuming one pool per
+      entry, and the cell queue's <code>prepared</code>/<code>committed</code> states now explicitly
+      relate to the region composer and its still-open complete-region versus immutable-snapshot
+      publication choice. Retains v1.3's worker-safety wording made consistent everywhere (no more leftover "until a test proves
+      otherwise" in one section and "fixed, full stop" in another), then revised again mid-review to
+      an evidence-based scoped boundary — five specific unsynchronized live-mutation call sites cited,
+      not a blanket ban; Phase 2 redesigned from "detached arrays then thousands of per-pixel main-
+      thread calls" to worker-staged full regions plus a new native batch-publish API, which also
+      solves shared-edge determinism at staging time instead of at commit time; Terrain3D's own
+      <code>set_camera()</code> no-op-on-same-camera behavior verified against source and the pause/
+      resume lifecycle fixed to call <code>set_physics_process()</code> directly instead; readiness
+      given a concrete <code>READY</code>/<code>CANCELLED</code>/<code>SUPERSEDED</code> return
+      contract and generation ownership instead of "resolve or reject deterministically"; explicit
+      per-transition-type call sequence (pause vs. deactivate) and data-service (EsmReader/resolver)
+      ownership named for Phase 1; <code>game.tscn</code> added to the file list. No pushback this
+      round — both hard technical claims verified correct against source. Comment inline on anything
+      still open.
+    </footer>
+  </div>
+</div>
