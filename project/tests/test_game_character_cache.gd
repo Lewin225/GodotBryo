@@ -10,7 +10,28 @@ func check(ok: bool, message: String) -> void:
 		failures += 1
 
 func _ready() -> void:
+	var xcll_basis := GAME_SCRIPT._xcll_directional_basis(0, 270)
+	check((xcll_basis * Vector3.FORWARD).is_equal_approx(Vector3.UP), "XCLL 0/270 directional rotation emits vertically down after axis conversion")
+
 	var game := GAME_SCRIPT.new()
+	game._interior_directional_light = DirectionalLight3D.new()
+	game.add_child(game._interior_directional_light)
+	game._apply_xcll_directional_light({
+		"directional_color": Color(0.2, 0.3, 0.4),
+		"directional_fade": 0.5,
+		"directional_rotation_xy": 0,
+		"directional_rotation_z": 270,
+	})
+	check(game._interior_directional_light.visible, "enables a non-black XCLL directional light")
+	check(is_equal_approx(game._interior_directional_light.light_energy, 0.5), "uses XCLL directional fade as directional-light energy")
+	game._apply_xcll_directional_light({
+		"directional_color": Color.BLACK,
+		"directional_fade": 1.0,
+		"directional_rotation_xy": 35,
+		"directional_rotation_z": 270,
+	})
+	check(not game._interior_directional_light.visible, "keeps a black XCLL directional source disabled")
+
 	var streamed_content := Node.new()
 	streamed_content.name = "CellLoader"
 	game.add_child(streamed_content)

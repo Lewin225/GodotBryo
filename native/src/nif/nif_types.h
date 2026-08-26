@@ -55,6 +55,15 @@ struct SubMesh {
 	// a lit gray instead of a clean fade.
 	bool no_lighting = false;
 
+	// BSShaderNoLightingProperty's optional view-angle alpha falloff. Its
+	// shaderFlags1 Use Falloff bit is the authoritative gate; when false the
+	// four values are ignored even if present in the on-disk block.
+	bool no_lighting_uses_falloff = false;
+	float falloff_start_angle = 1.0f;
+	float falloff_stop_angle = 0.0f;
+	float falloff_start_opacity = 1.0f;
+	float falloff_stop_opacity = 1.0f;
+
 	// BSShaderProperty::IsDoubleSided() -- real per-shape shaderFlags2 bit
 	// (niftools SLSF2_DOUBLE_SIDED, confirmed via nifly's own
 	// BSShaderProperty::IsDoubleSided() implementation: shaderFlags2 &
