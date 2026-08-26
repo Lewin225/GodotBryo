@@ -61,9 +61,15 @@ func _refresh() -> void:
 	else:
 		var ambient: Color = lighting["ambient_color"]
 		var directional: Color = lighting["directional_color"]
+		var template_form_id := int(lighting.get("template_form_id", 0))
+		var inheritance_flags := int(lighting.get("inheritance_flags", 0))
+		var cell_ambient: Color = lighting.get("cell_ambient_color", ambient)
+		var cell_directional: Color = lighting.get("cell_directional_color", directional)
 		_xcll_label.text = "\n".join([
-			"ambient:     %s" % _color_str(ambient),
-			"directional: %s" % _color_str(directional),
+			"resolved ambient:     %s" % _color_str(ambient),
+			"resolved directional: %s" % _color_str(directional),
+			"cell XCLL ambient/directional: %s / %s" % [_color_str(cell_ambient), _color_str(cell_directional)],
+			"LTMP: %s   LNAM inheritance: 0x%X" % ["0x%X" % template_form_id if template_form_id != 0 else "(none)", inheritance_flags],
 			"fog near/far: %.1f / %.1f   power: %.2f   clip: %.1f" % [
 				lighting["fog_near"], lighting["fog_far"], lighting["fog_power"], lighting["fog_clip_distance"]],
 			"directional rotation XY/Z: %d / %d" % [lighting["directional_rotation_xy"], lighting["directional_rotation_z"]],

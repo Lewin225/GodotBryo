@@ -487,12 +487,12 @@ func _set_exterior_environment(is_exterior: bool) -> void:
 ## the same Z-up -> Y-up and sign conventions apply to both authored data
 ## sources.  DirectionalLight3D emits along local -Z, so this first-pass
 ## conversion includes a final half-turn to make the common real 0/270 pair
-## vertically downward in Godot.  That direction convention needs visual
-## comparison against a lit interior before it is treated as final.
+## vertically downward in Godot. DirectionalLight3D emits along its local
+## forward (-Z) axis, so this uses the same Gamebryo-to-Godot conversion as
+## placements with no additional half-turn.
 static func _xcll_directional_basis(rotation_xy_degrees: int, rotation_z_degrees: int) -> Basis:
 	var raw_rotation := Vector3(deg_to_rad(float(rotation_xy_degrees)), 0.0, deg_to_rad(float(rotation_z_degrees)))
-	var gamebryo_basis := GamebryoMeshResolver.refr_root_basis() * GamebryoMeshResolver.refr_basis(raw_rotation)
-	return gamebryo_basis * Basis(Vector3.RIGHT, PI)
+	return GamebryoMeshResolver.refr_root_basis() * GamebryoMeshResolver.refr_basis(raw_rotation)
 
 ## CELL.XCLL's own per-cell authored ambient color, layered on top of the
 ## shared INTERIOR_ENVIRONMENT.tres baseline (energy/tonemap/SDFGI/SSAO/etc
@@ -513,7 +513,13 @@ func _apply_cell_lighting(cell_form_id: int) -> void:
 		return
 	var env: Environment = INTERIOR_ENVIRONMENT.duplicate()
 	env.ambient_light_color = lighting["ambient_color"]
-	_apply_xcll_directional_light(lighting)
+	# LGTM/XCLL directional fields are interior-lighting metadata, not proof of
+	# a world-spanning sun. Doc Mitchell's enclosed cell inherits one from its
+	# generic template; mapping it to a shadow-casting DirectionalLight3D made
+	# it cast through the roof. Keep the authored values parsed/debuggable, but
+	# leave this disabled until the Gamebryo static/interior lighting path is
+	# represented rather than approximating it as a direct sun.
+	_interior_directional_light.visible = false
 	# XCLL fog distances share the Gamebryo-world-unit convention used by
 	# REFR transforms, LAND, and LIGH radius. Godot's depth-fog distances are
 	# metres, so preserve the authored range after this one conversion.
@@ -536,9 +542,9 @@ func _apply_xcll_directional_light(lighting: Dictionary) -> void:
 	if _interior_directional_light == null:
 		return
 	var color: Color = lighting["directional_color"]
-	# A black authored directional colour is an explicit no-light value, not
-	# a request to fall back to the exterior Sun (Doc Mitchell's House is one
-	# real example).  Directional Fade is the only authored intensity scalar.
+	# A black resolved directional colour is an explicit no-light value, not
+	# a request to fall back to the exterior Sun. LTMP/LNAM inheritance was
+	# already resolved by EsmReader before this point.
 	var energy := maxf(float(lighting.get("directional_fade", 0.0)), 0.0)
 	_interior_directional_light.light_color = color
 	_interior_directional_light.light_energy = energy

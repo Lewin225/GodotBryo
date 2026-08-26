@@ -147,6 +147,13 @@ func _ready() -> void:
 	# key rig, confirmed by direct inspection — see phases/1/01's Implementation
 	# notes) but now build as LightNode via a real light, not a mesh.
 	check(by_class.get("LightNode", 0) == 25, "all 25 LIGH refs became LightNode (got %d)" % by_class.get("LightNode", 0))
+	var all_lights_use_authored_rgb_strength := true
+	for child in root.get_children():
+		if child is LightNode:
+			for light_child in child.get_children():
+				if light_child is Light3D and not is_equal_approx(light_child.light_energy, 1.0):
+					all_lights_use_authored_rgb_strength = false
+	check(all_lights_use_authored_rgb_strength, "LIGH sources do not add a global light-energy multiplier")
 	# Structural fallback, exercised by real unregistered types (WEAP/ARMO/
 	# ALCH), not a contrived one — see object_registry.gd.
 	check(by_class.get("GamebryoVisual", 0) > 0,

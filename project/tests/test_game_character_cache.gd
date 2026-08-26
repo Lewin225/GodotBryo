@@ -11,7 +11,7 @@ func check(ok: bool, message: String) -> void:
 
 func _ready() -> void:
 	var xcll_basis := GAME_SCRIPT._xcll_directional_basis(0, 270)
-	check((xcll_basis * Vector3.FORWARD).is_equal_approx(Vector3.UP), "XCLL 0/270 directional rotation emits vertically down after axis conversion")
+	check((xcll_basis * Vector3.FORWARD).is_equal_approx(Vector3.DOWN), "XCLL 0/270 directional rotation emits vertically down after axis conversion")
 
 	var game := GAME_SCRIPT.new()
 	game._interior_directional_light = DirectionalLight3D.new()

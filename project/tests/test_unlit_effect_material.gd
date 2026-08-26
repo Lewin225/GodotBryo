@@ -48,8 +48,9 @@ func _ready() -> void:
 			var mesh_child := beam_node.get_child(0) as MeshInstance3D
 			var tint_material := mesh_child.material_override as ShaderMaterial if mesh_child != null else null
 			var tint: Color = tint_material.get_shader_parameter("emittance_tint") if tint_material != null else Color.BLACK
-			check(tint_material != null and is_equal_approx(tint.r, 173.0 / 255.0),
-				"XEMI applies a per-reference material tint rather than changing the shared mesh material")
+			var expected_tint := Color(173.0 / 255.0, 170.0 / 255.0, 160.0 / 255.0).linear_to_srgb()
+			check(tint_material != null and tint.is_equal_approx(expected_tint),
+				"XEMI encodes its per-reference Gamebryo-linear tint for the shader without changing the shared mesh material")
 		var docs_cell: Dictionary = esm.find_cell_by_editor_id("GSDocMitchellHouse")
 		for placement in esm.get_cell_references(int(docs_cell.get("form_id", 0))):
 			if int(placement.get("refr_form_id", 0)) == 0x103E1D:
@@ -57,14 +58,18 @@ func _ready() -> void:
 		var window_node := registry.build(window_ref)
 		var window_mesh_count := 0
 		var tinted_window_mesh_count := 0
+		var emissive_window_mesh_count := 0
 		if window_node != null:
 			for child in window_node.get_children():
 				if child is MeshInstance3D:
 					window_mesh_count += 1
-					if child.material_override is StandardMaterial3D:
+					if child.material_override is ShaderMaterial:
 						tinted_window_mesh_count += 1
-		check(window_mesh_count > 1 and tinted_window_mesh_count == 1,
-			"XEMI tints only the window model's authored NoLighting glass, not its construction submeshes")
+						var material := child.material_override as ShaderMaterial
+						if material.shader.resource_path.ends_with("xemi_no_lighting_opaque.gdshader") and float(material.get_shader_parameter("emission_energy")) > 1.0:
+							emissive_window_mesh_count += 1
+		check(window_mesh_count > 1 and tinted_window_mesh_count == 1 and emissive_window_mesh_count == 1,
+			"XEMI tints and HDR-boosts only the window model's authored NoLighting backing, not construction submeshes")
 
 	var resolver := GamebryoMeshResolver.new()
 	const MODEL_PATH := "Effects\\Ambient\\FXLightBeamW03.NIF"
