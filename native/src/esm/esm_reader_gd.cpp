@@ -43,8 +43,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_header_info"), &EsmReader::get_header_info);
 	ClassDB::bind_method(D_METHOD("get_record_type_histogram"), &EsmReader::get_record_type_histogram);
 	ClassDB::bind_method(D_METHOD("find_first_stat_model"), &EsmReader::find_first_stat_model);
-	ClassDB::bind_method(D_METHOD("find_stat_by_editor_id", "editor_id"), &EsmReader::find_stat_by_editor_id);
 	ClassDB::bind_method(D_METHOD("get_message_by_editor_id", "editor_id"), &EsmReader::get_message_by_editor_id);
+	ClassDB::bind_method(D_METHOD("get_message_by_form_id", "form_id"), &EsmReader::get_message_by_form_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
@@ -211,6 +211,9 @@ Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
 			std::vector<uint8_t> data = file_.read_record_data(r);
 			std::vector<esm::Subrecord> subs = esm::EsmFile::parse_subrecords(data);
 			std::string edid, title, text;
+			PackedStringArray buttons;
+			uint32_t flags = 0;
+			float display_time = 2.0f;
 			for (const auto &s : subs) {
 				if (s.type == "EDID") {
 					edid = s.as_string();
@@ -218,6 +221,12 @@ Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
 					title = s.as_string();
 				} else if (s.type == "DESC") {
 					text = s.as_string();
+				} else if (s.type == "ITXT") {
+					buttons.push_back(String(s.as_string().c_str()));
+				} else if (s.type == "DNAM" && s.size >= 4) {
+					flags = *reinterpret_cast<const uint32_t*>(s.data);
+				} else if (s.type == "TNAM" && s.size >= 4) {
+					display_time = *reinterpret_cast<const float*>(s.data);
 				}
 			}
 			if (edid == target) {
@@ -225,7 +234,60 @@ Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
 				found["editor_id"] = String(edid.c_str());
 				found["title"] = String(title.c_str());
 				found["text"] = String(text.c_str());
+				found["flags"] = static_cast<int64_t>(flags);
+				found["is_message_box"] = (flags & 0x1) != 0 || !buttons.is_empty();
+				found["buttons"] = buttons;
+				found["display_time"] = display_time;
 			}
+		});
+		return found;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return out;
+	}
+}
+
+Dictionary EsmReader::get_message_by_form_id(int64_t form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	uint32_t target = static_cast<uint32_t>(form_id);
+	try {
+		Dictionary found;
+		file_.for_each_record([&](const esm::RecordInfo &r) {
+			if (!found.is_empty() || r.type != "MESG" || r.form_id != target) {
+				return;
+			}
+			std::vector<uint8_t> data = file_.read_record_data(r);
+			std::vector<esm::Subrecord> subs = esm::EsmFile::parse_subrecords(data);
+			std::string edid, title, text;
+			PackedStringArray buttons;
+			uint32_t flags = 0;
+			float display_time = 2.0f;
+			for (const auto &s : subs) {
+				if (s.type == "EDID") {
+					edid = s.as_string();
+				} else if (s.type == "FULL") {
+					title = s.as_string();
+				} else if (s.type == "DESC") {
+					text = s.as_string();
+				} else if (s.type == "ITXT") {
+					buttons.push_back(String(s.as_string().c_str()));
+				} else if (s.type == "DNAM" && s.size >= 4) {
+					flags = *reinterpret_cast<const uint32_t*>(s.data);
+				} else if (s.type == "TNAM" && s.size >= 4) {
+					display_time = *reinterpret_cast<const float*>(s.data);
+				}
+			}
+			found["form_id"] = static_cast<int64_t>(r.form_id);
+			found["editor_id"] = String(edid.c_str());
+			found["title"] = String(title.c_str());
+			found["text"] = String(text.c_str());
+			found["flags"] = static_cast<int64_t>(flags);
+			found["is_message_box"] = (flags & 0x1) != 0 || !buttons.is_empty();
+			found["buttons"] = buttons;
+			found["display_time"] = display_time;
 		});
 		return found;
 	} catch (const std::exception &e) {

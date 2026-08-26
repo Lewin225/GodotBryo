@@ -28,6 +28,8 @@ var esm: EsmReader = null
 ## to the one runtime owner that has both.
 var place_at_me_handler: Callable
 var center_on_cell_handler: Callable
+var show_message_handler: Callable
+var get_button_pressed_handler: Callable
 
 func _init() -> void:
 	_register_defaults()
@@ -140,39 +142,29 @@ func _register_defaults() -> void:
 	register("TCL", toggle_collision)
 	register("ToggleCollision", toggle_collision)
 
-	register("ShowMessage", func(a: Array, _c):
-		# Real argument shape confirmed against real data (GSBrokenSMGScript's
-		# own `ShowMessage GSBrokenSMGMsg`): a bare MESG editor-ID name, not a
-		# FormID -- resolved via get_message_by_editor_id(), which reads the
-		# real MESG.FULL (title)/MESG.DESC (body) subrecords.
-		#
-		# No in-game message-box/menu UI exists in this project yet. Real,
-		# per user direction: use the OS's own native alert dialog
-		# (OS.alert()) as a stand-in -- genuinely shows the real message
-		# text, just not through in-game UI. Two real consequences worth
-		# being explicit about: OS.alert() is blocking/modal (freezes the
-		# whole game loop, GameMode ticking included, until dismissed --
-		# unlike the real engine's own non-blocking, frame-persistent
-		# message box), and it returns void -- no button index at all, so a
-		# MESG with real button choices (like GSBrokenSMGMsg's own two ITXT
-		# entries) only ever shows as a single OK dialog. GetButtonPressed
-		# stays genuinely unimplementable through this mechanism -- there's
-		# no button result to report back, not a gap this function could
-		# close even partially.
+	register("ShowMessage", func(a: Array, ctx: ScriptExecutionContext):
+		# Real argument shape: either an EditorID string (e.g. GSBrokenSMGMsg)
+		# or a FormID -- resolved via get_message_by_editor_id() or get_message_by_form_id().
 		if a.is_empty() or esm == null:
 			return 0
-		# str(), not String() -- GDScript's String() constructor is stricter
-		# than it looks (confirmed directly, repeatedly, this session: it
-		# throws for int/bool/other non-String Variants rather than
-		# converting them). a[0] is normally already a String (a "name"
-		# node's own literal), but a real script could pass a declared
-		# local of any type here -- str() converts anything safely instead
-		# of risking the same crash class again.
-		var editor_id := str(a[0])
-		var msg: Dictionary = esm.get_message_by_editor_id(editor_id)
+		var identifier := str(a[0])
+		var msg: Dictionary = {}
+		if a[0] is int or a[0] is float:
+			msg = esm.get_message_by_form_id(int(a[0]))
+		elif identifier.is_valid_int():
+			msg = esm.get_message_by_form_id(int(identifier))
 		if msg.is_empty():
-			push_warning("ScriptFunctionRegistry: ShowMessage -- no MESG found for editor ID '%s'" % editor_id)
+			msg = esm.get_message_by_editor_id(identifier)
+		if msg.is_empty():
+			push_warning("ScriptFunctionRegistry: ShowMessage -- no MESG found for '%s'" % identifier)
 			return 0
-		var title: String = msg.get("title", "")
-		OS.alert(String(msg.get("text", "")), title if title != "" else editor_id)
+		if show_message_handler.is_valid():
+			return show_message_handler.call(msg, ctx)
 		return 1)
+
+	register("GetButtonPressed", func(_a: Array, ctx: ScriptExecutionContext):
+		# Returns the 0-based button index pressed by the player, or -1 if no button
+		# was pressed yet. Reading this value consumes it back to -1 per Gamebryo semantics.
+		if get_button_pressed_handler.is_valid():
+			return get_button_pressed_handler.call(ctx)
+		return -1)

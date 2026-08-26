@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
+[ext_resource type="PackedScene" path="res://message_box.tscn" id="11_messagebox"]
 [ext_resource type="Script" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
 [ext_resource type="Script" path="res://player_debug_tab.gd" id="12_playerdebug"]
@@ -60,6 +61,8 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 script = ExtResource("7_scriptengine")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
+
+[node name="MessageBox" parent="." unique_id=782194631 instance=ExtResource("11_messagebox")]
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
