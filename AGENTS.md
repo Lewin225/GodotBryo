@@ -341,6 +341,19 @@ Output: `project/bin/libnv_engine.linux.template_debug.x86_64.so` — builds
 directly into place, no manual copy step. See `native/README.md` for why
 each flag is needed.
 
+**Rebuild after pulling or making any change under `native/src/`** — a real
+gotcha, found the hard way: `project/bin/*.so` is gitignored, so `git pull`
+never rebuilds it. A stale `.so` doesn't fail loudly — GDScript call sites
+that add a new native method typically guard with
+`esm.has_method("new_method")` first (the established defensive pattern for
+calling into `EsmReader`), so against a stale binary they just silently
+return empty/default data instead of erroring. A landed feature can look
+completely missing — inert, not broken — with no error printed anywhere,
+until you rebuild. Confirmed directly: PR #38 added
+`EsmReader.get_all_item_candidates()`/`get_all_cell_candidates()` for the
+Scripting tab's autocomplete; the local `.so` predated that merge by ~11
+hours, and the feature silently no-opped until rebuilding fixed it.
+
 **`native/terrain3d` is a separate GDExtension with its own build**, and a
 real gotcha: it has its own embedded demo project
 (`native/terrain3d/project/`), separate from this repo's real
