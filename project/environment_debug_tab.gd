@@ -83,16 +83,6 @@ func _refresh() -> void:
 		var inheritance_flags := int(lighting.get("inheritance_flags", 0))
 		var cell_ambient: Color = lighting.get("cell_ambient_color", ambient)
 		var cell_directional: Color = lighting.get("cell_directional_color", directional)
-		_xcll_label.text = "\n".join([
-			"resolved ambient:     %s" % _color_str(ambient),
-			"resolved directional: %s" % _color_str(directional),
-			"cell XCLL ambient/directional: %s / %s" % [_color_str(cell_ambient), _color_str(cell_directional)],
-			"LTMP: %s   LNAM inheritance: 0x%X" % ["0x%X" % template_form_id if template_form_id != 0 else "(none)", inheritance_flags],
-			"fog near/far: %.1f / %.1f   power: %.2f   clip: %.1f" % [
-				lighting["fog_near"], lighting["fog_far"], lighting["fog_power"], lighting["fog_clip_distance"]],
-			"directional rotation XY/Z: %d / %d" % [lighting["directional_rotation_xy"], lighting["directional_rotation_z"]],
-			"directional fade: %.2f" % lighting["directional_fade"],
-		])
 		_ambient_swatch.color = ambient
 		_ambient_label.text = "ambient: %s" % _color_str(ambient)
 		_directional_swatch.color = directional
@@ -101,7 +91,15 @@ func _refresh() -> void:
 			lighting["fog_near"], lighting["fog_far"], lighting["fog_power"], lighting["fog_clip_distance"]
 		]
 		_fade_label.text = "directional fade: [b]%.2f[/b]" % lighting["directional_fade"]
-		_xcll_note_label.text = ""
+		# Raw pre-inheritance cell XCLL values plus LTMP/LNAM template state --
+		# the swatches/labels above already show the RESOLVED ambient/
+		# directional (post-LGTM-inheritance where applicable), so this note
+		# is the only place the authored-vs-resolved distinction is visible.
+		_xcll_note_label.text = "[color=#7f848e]cell XCLL ambient/directional: %s / %s   •   LTMP: %s   LNAM inheritance: 0x%X   •   directional rotation XY/Z: %d / %d[/color]" % [
+			_color_str(cell_ambient), _color_str(cell_directional),
+			"0x%X" % template_form_id if template_form_id != 0 else "(none)", inheritance_flags,
+			lighting["directional_rotation_xy"], lighting["directional_rotation_z"],
+		]
 
 	var world_env: WorldEnvironment = _game._world_environment
 	var env: Environment = world_env.environment if world_env != null else null
