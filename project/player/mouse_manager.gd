@@ -24,8 +24,13 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Recapture mouse on left click if visible
+	# Recapture mouse on left click if visible -- but not when the click
+	# lands on an actual GUI Control (e.g. a MessageBox button). This runs
+	# in _input(), which fires before Controls get their own _gui_input()
+	# pass, so without this check every click on any in-game UI button
+	# would be consumed here first and never reach the Control at all --
+	# real, found the hard way testing the MessageBox dialog.
 	if recapture_on_click and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and get_viewport().gui_get_hovered_control() == null:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()
