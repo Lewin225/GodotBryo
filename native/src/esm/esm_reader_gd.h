@@ -219,6 +219,9 @@ public:
 	// failed / file isn't open.
 	Dictionary find_first_compressed_record() const;
 
+	PackedStringArray get_all_item_candidates() const;
+	PackedStringArray get_all_cell_candidates() const;
+
 private:
 	esm::EsmFile file_;
 	bool opened_ = false;
