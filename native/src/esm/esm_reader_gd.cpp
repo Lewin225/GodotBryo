@@ -356,6 +356,7 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		}
 		out["radius"] = light->radius;
 		out["color"] = Color(light->color[0] / 255.0f, light->color[1] / 255.0f, light->color[2] / 255.0f, 1.0f);
+		out["color_alpha"] = static_cast<int64_t>(light->color[3]);
 		out["flags"] = static_cast<int64_t>(light->flags);
 		out["falloff"] = light->falloff;
 		out["fov_degrees"] = light->fov_degrees;
@@ -488,16 +489,23 @@ Dictionary EsmReader::get_cell_lighting_data(int64_t cell_form_id) const {
 		if (!lighting) {
 			return out;
 		}
-		out["ambient_color"] = Color(lighting->ambient_color[0] / 255.0f, lighting->ambient_color[1] / 255.0f, lighting->ambient_color[2] / 255.0f, 1.0f);
-		out["directional_color"] = Color(lighting->directional_color[0] / 255.0f, lighting->directional_color[1] / 255.0f, lighting->directional_color[2] / 255.0f, 1.0f);
-		out["fog_color"] = Color(lighting->fog_color[0] / 255.0f, lighting->fog_color[1] / 255.0f, lighting->fog_color[2] / 255.0f, 1.0f);
-		out["fog_near"] = lighting->fog_near;
-		out["fog_far"] = lighting->fog_far;
-		out["directional_rotation_xy"] = lighting->directional_rotation_xy;
-		out["directional_rotation_z"] = lighting->directional_rotation_z;
-		out["directional_fade"] = lighting->directional_fade;
-		out["fog_clip_distance"] = lighting->fog_clip_distance;
-		out["fog_power"] = lighting->fog_power;
+		const auto &resolved = lighting->resolved;
+		const auto &authored = lighting->cell_authored;
+		out["ambient_color"] = Color(resolved.ambient_color[0] / 255.0f, resolved.ambient_color[1] / 255.0f, resolved.ambient_color[2] / 255.0f, 1.0f);
+		out["directional_color"] = Color(resolved.directional_color[0] / 255.0f, resolved.directional_color[1] / 255.0f, resolved.directional_color[2] / 255.0f, 1.0f);
+		out["fog_color"] = Color(resolved.fog_color[0] / 255.0f, resolved.fog_color[1] / 255.0f, resolved.fog_color[2] / 255.0f, 1.0f);
+		out["fog_near"] = resolved.fog_near;
+		out["fog_far"] = resolved.fog_far;
+		out["directional_rotation_xy"] = resolved.directional_rotation_xy;
+		out["directional_rotation_z"] = resolved.directional_rotation_z;
+		out["directional_fade"] = resolved.directional_fade;
+		out["fog_clip_distance"] = resolved.fog_clip_distance;
+		out["fog_power"] = resolved.fog_power;
+		out["template_form_id"] = static_cast<int64_t>(lighting->template_form_id);
+		out["inheritance_flags"] = static_cast<int64_t>(lighting->inherited_fields);
+		out["cell_ambient_color"] = Color(authored.ambient_color[0] / 255.0f, authored.ambient_color[1] / 255.0f, authored.ambient_color[2] / 255.0f, 1.0f);
+		out["cell_directional_color"] = Color(authored.directional_color[0] / 255.0f, authored.directional_color[1] / 255.0f, authored.directional_color[2] / 255.0f, 1.0f);
+		out["cell_fog_color"] = Color(authored.fog_color[0] / 255.0f, authored.fog_color[1] / 255.0f, authored.fog_color[2] / 255.0f, 1.0f);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

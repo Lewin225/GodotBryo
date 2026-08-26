@@ -224,7 +224,8 @@ struct NoteData {
 	std::string text; // TNAM
 };
 
-// CELL.XCLL ("Lighting") -- confirmed layout via fopdoc's CELL page: 40
+// CELL.XCLL and LGTM.DATA ("Lighting") -- confirmed against the shipped
+// GSDocMitchellHouse CELL and its LTMP LGTM: both use this 40-byte layout.
 // bytes -- Ambient Color(rgba), Directional Color(rgba), Fog Color(rgba),
 // Fog Near(f32), Fog Far(f32), Directional Rotation XY(i32), Directional
 // Rotation Z(i32), Directional Fade(f32), Fog Clip Distance(f32), Fog
@@ -244,6 +245,17 @@ struct CellLightingData {
 	float directional_fade = 0.0f;
 	float fog_clip_distance = 0.0f;
 	float fog_power = 0.0f;
+};
+
+// CELL may inherit individual lighting fields from an LGTM through LTMP and
+// LNAM. Keep both the resolved values used by the renderer and the cell's
+// literal XCLL for diagnostics; replacing the entire block would be wrong
+// because LNAM is explicitly field-granular.
+struct ResolvedCellLightingData {
+	CellLightingData resolved;
+	CellLightingData cell_authored;
+	uint32_t template_form_id = 0;
+	uint32_t inherited_fields = 0;
 };
 
 // DOOR.FNAM (real values confirmed via fopdoc's DOOR page): a uint8, one

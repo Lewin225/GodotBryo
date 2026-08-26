@@ -11,16 +11,17 @@
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
+[ext_resource type="Script" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
 auto_exposure_enabled = true
-auto_exposure_scale = 0.3
+auto_exposure_scale = 0.07
 auto_exposure_speed = 2.0
 dof_blur_far_distance = 271.22
 dof_blur_far_transition = 2830.17
 auto_exposure_min_sensitivity = 56.88
-auto_exposure_max_sensitivity = 561.5
+auto_exposure_max_sensitivity = 81.0
 
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Window
@@ -402,6 +403,124 @@ custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 fit_content = true
 scroll_active = false
+
+[node name="Lighting" type="Control" parent="Debug Tools/TabContainer"]
+visible = false
+layout_mode = 2
+script = ExtResource("11_lightingdebug")
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Lighting"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Placed LIGH sources"
+
+[node name="Summary" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox"]
+layout_mode = 2
+text = "(loading)"
+
+[node name="Controls" type="HBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox"]
+layout_mode = 2
+
+[node name="ShowLights" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+button_pressed = true
+text = "Show placed LIGH"
+
+[node name="SoloLight" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+text = "Solo selected"
+
+[node name="ColorControls" type="HBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox"]
+layout_mode = 2
+
+[node name="LighLinearColor" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls"]
+layout_mode = 2
+button_pressed = true
+tooltip_text = "On: preserve LIGH RGB bytes as linear light and encode for Godot. Off: treat bytes as direct sRGB."
+text = "LIGH bytes are linear (colour-space trial)"
+
+[node name="XemiEmissionLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls"]
+layout_mode = 2
+text = "XEMI HDR"
+
+[node name="XemiEmission" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+min_value = 0.0
+max_value = 1024.0
+step = 0.25
+value = 12.0
+tooltip_text = "HDR multiplier for XEMI-tinted ordinary NoLighting backing layers. Additive beam/ray shaders are unchanged."
+
+[node name="AutoExposure" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+button_pressed = true
+text = "Auto exposure"
+
+[node name="AutoExposureScaleLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+text = "Scale"
+
+[node name="AutoExposureScale" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+custom_minimum_size = Vector2(74, 0)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 0.07
+
+[node name="MinSensitivityLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+text = "Min ISO"
+
+[node name="MinSensitivity" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 3200.0
+step = 1.0
+value = 56.88
+
+[node name="MaxSensitivityLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+layout_mode = 2
+text = "Max ISO"
+
+[node name="MaxSensitivity" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 3200.0
+step = 10.0
+value = 81.0
+
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="LightList" type="ItemList" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/HSplit"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+
+[node name="Details" type="TextEdit" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/HSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+editable = false
+wrap_mode = 1
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

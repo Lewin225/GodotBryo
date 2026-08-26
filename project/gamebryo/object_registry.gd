@@ -1,6 +1,9 @@
 class_name GamebryoObjectRegistry
 extends RefCounted
 
+const XEMI_NO_LIGHTING_SHADER := preload("res://gamebryo/xemi_no_lighting.gdshader")
+const XEMI_NO_LIGHTING_OPAQUE_SHADER := preload("res://gamebryo/xemi_no_lighting_opaque.gdshader")
+
 ## type_tag -> factory registry (phases/1/01-object-type-registry.md /
 ## phases/1/architecture.md's "Registry extensibility"). Runtime-populated,
 ## not a compiled switch — adding a type is one register() call, nothing
@@ -9,6 +12,18 @@ extends RefCounted
 var resolver: GamebryoMeshResolver
 var esm: EsmReader
 var _factories := {} # String -> Callable(Dictionary, GamebryoMeshResolver) -> Node3D
+
+# Debug-tunable while validating how Gamebryo's packed LIGH RGB reaches
+# Godot. Kept on the registry so newly streamed/loaded lights use the same
+# interpretation as existing ones, rather than the toggle affecting only
+# the currently resident cell.
+var ligh_bytes_are_linear := true
+
+# XEMI supplies a colour but no separate intensity. For ordinary authored
+# NoLighting window/backing layers, make that colour HDR self-lit so the
+# project's already-enabled bloom can represent the deliberate sunlight
+# blowout. Additive falloff effects retain their dedicated shader path.
+var xemi_no_lighting_emission_energy := 12.0
 
 ## Optional (null by default -- every @tool viewer and most test_*.tscn
 ## scenes construct a GamebryoObjectRegistry with no ScriptEngine at all,
@@ -356,9 +371,24 @@ func _apply_emittance_tint(node: Node3D, tint: Color) -> void:
 			if source != null:
 				var material := source.duplicate() as Material
 				if material is StandardMaterial3D:
-					material.albedo_color = tint
+					var standard := material as StandardMaterial3D
+					var effect := ShaderMaterial.new()
+					effect.shader = XEMI_NO_LIGHTING_OPAQUE_SHADER if standard.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED else XEMI_NO_LIGHTING_SHADER
+					effect.set_shader_parameter("albedo_texture", standard.albedo_texture)
+					effect.set_shader_parameter("use_albedo_texture", standard.albedo_texture != null)
+					# RCLR uses the same packed Gamebryo modulation convention as
+					# LIGH.DATA: preserve its byte values as linear light before the
+					# source_color shader uniform converts them for Godot.
+					effect.set_shader_parameter("emittance_tint", tint.linear_to_srgb())
+					effect.set_shader_parameter("emission_energy", xemi_no_lighting_emission_energy)
+					material = effect
+					child.set_meta("gamebryo_xemi_emission", true)
+					child.set_meta("gamebryo_xemi_tint", tint)
 				elif material is ShaderMaterial:
-					material.set_shader_parameter("emittance_tint", tint)
+					# Existing specialised NoLighting shaders (light cookies/rays)
+					# expose the same source_color uniform. Keep the XEMI RCLR
+					# convention consistent with ordinary window backings.
+					material.set_shader_parameter("emittance_tint", tint.linear_to_srgb())
 				else:
 					continue
 				child.material_override = material
@@ -655,7 +685,14 @@ func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 	if light_data.is_empty():
 		return
 	var radius: float = max(float(light_data.get("radius", 5.0)), 0.1) * 2.0
-	var color: Color = light_data.get("color", Color.WHITE)
+	# LIGH.DATA is packed 8-bit Gamebryo light modulation, not a Godot color
+	# property. Godot's Light3D expects nonlinear sRGB and linearizes it for
+	# lighting; treating the authored bytes as sRGB therefore applies an extra
+	# gamma curve and makes the real warm office rig unnaturally yellow/green.
+	# Preserve the authored component balance as linear light, then encode only
+	# at Godot's Light3D API boundary.
+	var authored_color: Color = light_data.get("color", Color.WHITE)
+	var color: Color = authored_color.linear_to_srgb() if ligh_bytes_are_linear else authored_color
 	var is_spot: bool = light_data.get("is_spot", false)
 
 	var light: Light3D
@@ -678,7 +715,11 @@ func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 
 	light.name = "SpotLight3D" if is_spot else "OmniLight3D"
 	light.light_color = color
-	light.light_energy = 2.1 # 30% below the previous approximate value; see phases/1/03-light-sources.md
+	# LIGH.DATA has no separate intensity field: its authored RGB luminance is
+	# the source strength.  Do not multiply every ambient/fill/key/kicker by a
+	# fabricated global energy value; Godot's default 1.0 preserves that
+	# relative authored intensity through the active HDR/tonemap pipeline.
+	light.light_energy = 1.0
 	light.shadow_enabled = true
 	light.visible = not bool(light_data.get("off_by_default", false))
 	node.add_child(light)
