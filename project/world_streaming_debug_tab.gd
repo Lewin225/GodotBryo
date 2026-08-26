@@ -32,12 +32,14 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _texture_summary_label: RichTextLabel = $"Margin/SubTabs/Ground Textures/VBox/TexHeader/TexSummaryLabel"
 
 var _world_streamer: WorldStreamer
+var _terrain_streamer: TerrainStreamer
 var _refresh_timer := 0.0
 var _suppress_spin_signals := false
 
 
 func _ready() -> void:
 	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamer") as WorldStreamer
+	_terrain_streamer = get_tree().root.get_node_or_null("Game/TerrainStreamer") as TerrainStreamer
 	_setup_texture_tree()
 	_tiles_per_frame_spin.value_changed.connect(_on_tiles_per_frame_changed)
 	_objects_per_frame_spin.value_changed.connect(_on_objects_per_frame_changed)
@@ -99,6 +101,7 @@ func _refresh() -> void:
 
 func _refresh_state() -> void:
 	var ws := _world_streamer
+	var terrain_diag := _terrain_streamer.get_diagnostics() if _terrain_streamer != null else {}
 
 	if ws.is_active():
 		_status_card.text = "Status: [color=#98c379][b]🟢 ACTIVE[/b][/color]" if not ws.is_paused() else "Status: [color=#e5c07b][b]🟡 PAUSED[/b][/color]"
@@ -116,11 +119,11 @@ func _refresh_state() -> void:
 	var resident_total: int = ws._resident.size()
 	var distant_count: int = resident_total - full_count
 
-	_resident_card.text = "Resident: [b][color=#98c379]%d[/color][/b] tiles" % resident_total
+	_resident_card.text = "Resident: [b][color=#98c379]%d[/color][/b] objects / [b]%d[/b] terrain" % [resident_total, int(terrain_diag.get("resident_cells", 0))]
 	_full_detail_card.text = "Full Detail: [b][color=#61afef]%d[/color][/b]" % full_count
 	_distant_card.text = "Distant: [b][color=#e5c07b]%d[/color][/b]" % distant_count
 	_in_flight_card.text = "In-Flight: [b]%d[/b] [color=#7f848e](Pend: %d)[/color]" % [ws._in_flight_count, ws._pending.size()]
-	_queue_depth_card.text = "Queue Depth: [b]%d[/b]" % ws._load_queue.size()
+	_queue_depth_card.text = "Queue Depth: [b]%d[/b] objects / [b]%d[/b] terrain" % [ws._load_queue.size(), int(terrain_diag.get("queued_cells", 0))]
 	_no_cell_cache_card.text = "Empty Cache: [b]%d[/b]" % ws._no_cell_cache.size()
 
 
@@ -142,15 +145,15 @@ func _refresh_tuning_spinboxes() -> void:
 
 
 func _refresh_texture_list() -> void:
-	var pool: Terrain3DTexturePool = _world_streamer._terrain3d_pool
 	_texture_tree.clear()
-	if pool == null:
+	if _terrain_streamer == null:
 		_texture_summary_label.text = "[color=#7f848e](not active)[/color]"
 		return
 
+	var diagnostics := _terrain_streamer.get_diagnostics()
 	var filter_text := _tex_filter_edit.text.to_lower().strip_edges()
-	var entries: Array = pool.get_debug_texture_list()
-	_texture_summary_label.text = "[color=#61afef][b]%d[/b][/color] / [color=#7f848e]%d[/color] slots used" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS]
+	var entries: Array = diagnostics.get("texture_entries", [])
+	_texture_summary_label.text = "[color=#61afef][b]%d[/b][/color] / [color=#7f848e]%d[/color] slots used" % [int(diagnostics.get("texture_slots_used", 0)), Terrain3DTexturePool.USABLE_SLOTS]
 
 	var root := _texture_tree.create_item()
 	for entry in entries:

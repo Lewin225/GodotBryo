@@ -26,36 +26,6 @@ func _init(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver, object_re
 	registry = object_registry
 	objects_per_frame = refs_per_frame
 
-## Builds a terrain mesh for `cell_form_id`, positioned at its own
-## worldspace grid offset -- null (no terrain) for an interior cell or an
-## exterior cell with no LAND, a real valid case, not an error. Not parented
-## to anything -- the caller decides where/how to add it (and whether to
-## apply editor ownership).
-func build_terrain(cell_form_id: int) -> Node3D:
-	var land: Dictionary = esm.get_land_data(cell_form_id)
-	if land.is_empty():
-		return null
-	var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
-	var grid_x := int(grid.get("x", 0))
-	var grid_y := int(grid.get("y", 0))
-	var quadrant_ltex: PackedInt64Array = land.get("quadrant_base_ltex", PackedInt64Array())
-	var quadrant_textures: Array = []
-	for i in range(quadrant_ltex.size()):
-		var ltex_id := int(quadrant_ltex[i])
-		var tex: Texture2D = null
-		if ltex_id != 0:
-			var tex_path := esm.resolve_ltex_texture_path(ltex_id)
-			if tex_path != "":
-				tex = resolver.load_texture("textures\\" + tex_path)
-		quadrant_textures.append(tex)
-	var terrain := GamebryoTerrainBuilder.build(land, quadrant_textures)
-	if terrain != null:
-		terrain.position = Vector3(
-				grid_x * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS,
-				0.0,
-				-(grid_y * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS))
-	return terrain
-
 ## Streams `refs` (already-resolved REFR placement Dictionaries -- the
 ## caller decides what set: a single cell's own, plus a worldspace's
 ## persistent refs, or a persistent-only set for a dedicated PersistentRoot)

@@ -89,12 +89,17 @@ var _generation := 0
 ## find_ref_by_form_id() rather than reading this directly.
 var _current_refs: Array = []
 
+func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> void:
+	esm = esm_reader
+	resolver = mesh_resolver
+
 func _ready() -> void:
-	var data_dir := GameDataSettings.get_data_dir()
-	esm = EsmReader.new()
-	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
-		push_error("CellLoader: could not open FalloutNV.esm")
-	resolver = GamebryoMeshResolver.new(data_dir)
+	if esm == null or resolver == null:
+		var data_dir := GameDataSettings.get_data_dir()
+		esm = EsmReader.new()
+		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
+			push_error("CellLoader fallback could not open FalloutNV.esm")
+		resolver = GamebryoMeshResolver.new(data_dir)
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m)
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
@@ -190,15 +195,6 @@ func load_cell(cell_form_id: int) -> void:
 	refr_root.name = "RefrRoot"
 	refr_root.rotation_degrees.x = -90 # NIF/REFR Z-up -> Godot Y-up
 	_add_child(loading_root, refr_root)
-
-	var terrain_root := Node3D.new()
-	terrain_root.name = "TerrainRoot"
-	_add_child(loading_root, terrain_root)
-
-	var terrain := _builder.build_terrain(cell_form_id)
-	if terrain != null:
-		CellStreamBuilder.set_collision_disabled(terrain, true)
-		_add_child(terrain_root, terrain)
 
 	var refs: Array = esm.get_cell_references(cell_form_id)
 	# phases/2/07-runtime-cell-loader.md's "Known gap": an exterior cell's

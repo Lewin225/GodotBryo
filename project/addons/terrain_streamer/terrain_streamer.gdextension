@@ -1,0 +1,6 @@
+[configuration]
+entry_symbol = "terrain_streamer_library_init"
+compatibility_minimum = "4.7"
+
+[libraries]
+linux.debug.x86_64 = "res://addons/terrain_streamer/bin/libterrain_streamer.linux.template_debug.x86_64.so"
