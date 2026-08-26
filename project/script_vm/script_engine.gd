@@ -32,6 +32,14 @@ var esm: EsmReader:
 ## real GECK global keyword, see ScriptInterpreter's own "name" case)
 ## resolves to something real instead of staying an unresolved name.
 var player_node: Node = null
+var message_box: MessageBox = null:
+	set(value):
+		if message_box != null and message_box.button_clicked.is_connected(_on_message_box_button_clicked):
+			message_box.button_clicked.disconnect(_on_message_box_button_clicked)
+		message_box = value
+		if message_box != null:
+			message_box.button_clicked.connect(_on_message_box_button_clicked)
+
 var function_registry: ScriptFunctionRegistry
 
 var _interpreter_cache: Dictionary = {} # scpt_form_id (int) -> ScriptInterpreter
@@ -39,9 +47,31 @@ var _contexts: Dictionary = {} # Node -> ScriptExecutionContext
 var _node_interpreter: Dictionary = {} # Node -> ScriptInterpreter, set in register_scripted_node()
 var _node_script_form_ids: Dictionary = {} # Node -> int, retained for the runtime debug inspector
 var _game_mode_nodes: Array = [] # Nodes whose script has a GameMode block -- the only ones _process() needs to visit every frame
+var _last_button_pressed: int = -1
+
 
 func _init() -> void:
 	function_registry = ScriptFunctionRegistry.new()
+	function_registry.show_message_handler = _handle_show_message
+	function_registry.get_button_pressed_handler = _handle_get_button_pressed
+
+
+func _handle_show_message(msg: Dictionary, _ctx: ScriptExecutionContext) -> int:
+	if message_box != null:
+		message_box.display_message(msg)
+		return 1
+	push_warning("ScriptEngine: ShowMessage called but no MessageBox UI attached")
+	return 0
+
+
+func _handle_get_button_pressed(_ctx: ScriptExecutionContext) -> int:
+	var pressed := _last_button_pressed
+	_last_button_pressed = -1 # Consumed on read
+	return pressed
+
+
+func _on_message_box_button_clicked(button_idx: int) -> void:
+	_last_button_pressed = button_idx
 
 func _process(delta: float) -> void:
 	for node in _game_mode_nodes:

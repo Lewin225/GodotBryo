@@ -44,12 +44,14 @@ public:
 	// than "whichever STAT comes first in the file".
 	Dictionary find_stat_by_editor_id(const String &editor_id) const;
 
-	// phases/5: MESG (Message) record lookup by EditorID -- ShowMessage's
-	// own argument is a bare MESG editor-ID name, not a FormID, per real
+	// phases/5: MESG (Message) record lookup by EditorID or FormID -- ShowMessage's
+	// own argument is either a bare MESG editor-ID name or a FormID, per real
 	// script data. { "form_id": int, "editor_id": String, "title": String
-	// (MESG.FULL, "" if absent), "text": String (MESG.DESC) }, empty
-	// Dictionary if no MESG with that EditorID exists.
+	// (MESG.FULL), "text": String (MESG.DESC), "buttons": PackedStringArray (ITXT),
+	// "is_message_box": bool (DNAM flag bit 0), "flags": int, "display_time": float (TNAM) },
+	// empty Dictionary if no MESG with that identifier exists.
 	Dictionary get_message_by_editor_id(const String &editor_id) const;
+	Dictionary get_message_by_form_id(int64_t form_id) const;
 
 	// Finds a CELL record by EditorID or FormID: { "form_id": int }, or an
 	// empty Dictionary if not found. Both exist so callers can demonstrate
