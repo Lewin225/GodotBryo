@@ -180,12 +180,11 @@ public:
 	// std::nullopt if the FormID isn't a SCPT.
 	std::optional<ScriptData> get_script_data(uint32_t scpt_form_id) const;
 
-	// Reads a CELL's own XCLL ("Lighting") subrecord -- per-cell authored
-	// ambient/directional/fog data, distinct from the flat global ambient
-	// this codebase currently applies via interior_environment.tres.
+	// Reads a CELL's XCLL ("Lighting") and resolves its optional LTMP/LNAM
+	// field-level inheritance from an LGTM record.
 	// std::nullopt if the FormID isn't a CELL, or is a CELL with no XCLL (a
 	// real, common case for exterior cells).
-	std::optional<CellLightingData> get_cell_lighting_data(uint32_t cell_form_id) const;
+	std::optional<ResolvedCellLightingData> get_cell_lighting_data(uint32_t cell_form_id) const;
 
 	// A worldspace's own "persistent" cell — the Construction Set's bucket
 	// for always-loaded references (quest markers, fast-travel triggers, LOD

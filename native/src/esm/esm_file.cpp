@@ -26,6 +26,51 @@ float read_f32(util::ByteReader &r) {
 	return f;
 }
 
+std::optional<CellLightingData> parse_lighting_data(const std::vector<Subrecord> &subs, const char *subrecord_name) {
+	for (const auto &s : subs) {
+		if (s.type != subrecord_name || s.size < 40) continue;
+		util::ByteReader sr(s.data, s.size);
+		CellLightingData lighting;
+		for (int i = 0; i < 4; ++i) lighting.ambient_color[i] = sr.read_u8();
+		for (int i = 0; i < 4; ++i) lighting.directional_color[i] = sr.read_u8();
+		for (int i = 0; i < 4; ++i) lighting.fog_color[i] = sr.read_u8();
+		lighting.fog_near = read_f32(sr);
+		lighting.fog_far = read_f32(sr);
+		lighting.directional_rotation_xy = static_cast<int32_t>(sr.read_u32());
+		lighting.directional_rotation_z = static_cast<int32_t>(sr.read_u32());
+		lighting.directional_fade = read_f32(sr);
+		lighting.fog_clip_distance = read_f32(sr);
+		lighting.fog_power = read_f32(sr);
+		return lighting;
+	}
+	return std::nullopt;
+}
+
+constexpr uint32_t kLnamInheritAmbient = 0x001;
+constexpr uint32_t kLnamInheritDirectionalColor = 0x002;
+constexpr uint32_t kLnamInheritFogColor = 0x004;
+constexpr uint32_t kLnamInheritFogNear = 0x008;
+constexpr uint32_t kLnamInheritFogFar = 0x010;
+constexpr uint32_t kLnamInheritDirectionalRotation = 0x020;
+constexpr uint32_t kLnamInheritDirectionalFade = 0x040;
+constexpr uint32_t kLnamInheritFogClip = 0x080;
+constexpr uint32_t kLnamInheritFogPower = 0x100;
+
+void apply_lighting_inheritance(CellLightingData &out, const CellLightingData &templ, uint32_t fields) {
+	if (fields & kLnamInheritAmbient) std::memcpy(out.ambient_color, templ.ambient_color, sizeof(out.ambient_color));
+	if (fields & kLnamInheritDirectionalColor) std::memcpy(out.directional_color, templ.directional_color, sizeof(out.directional_color));
+	if (fields & kLnamInheritFogColor) std::memcpy(out.fog_color, templ.fog_color, sizeof(out.fog_color));
+	if (fields & kLnamInheritFogNear) out.fog_near = templ.fog_near;
+	if (fields & kLnamInheritFogFar) out.fog_far = templ.fog_far;
+	if (fields & kLnamInheritDirectionalRotation) {
+		out.directional_rotation_xy = templ.directional_rotation_xy;
+		out.directional_rotation_z = templ.directional_rotation_z;
+	}
+	if (fields & kLnamInheritDirectionalFade) out.directional_fade = templ.directional_fade;
+	if (fields & kLnamInheritFogClip) out.fog_clip_distance = templ.fog_clip_distance;
+	if (fields & kLnamInheritFogPower) out.fog_power = templ.fog_power;
+}
+
 // phases/2/11-exterior-cell-lookup-index.md: Exterior Cell Block/Sub-Block
 // GRUP sizing, confirmed against UESP's Mod File Format docs -- a block is
 // 32x32 cells (4x4 sub-blocks of 8x8 cells each).
@@ -771,7 +816,7 @@ std::optional<NoteData> EsmFile::get_note_data(uint32_t note_form_id) const {
 	return note;
 }
 
-std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_form_id) const {
+std::optional<ResolvedCellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_form_id) const {
 	auto record = find_record_by_form_id(cell_form_id);
 	if (!record || record->type != "CELL") {
 		return std::nullopt;
@@ -779,31 +824,28 @@ std::optional<CellLightingData> EsmFile::get_cell_lighting_data(uint32_t cell_fo
 	std::vector<uint8_t> data = read_record_data(*record);
 	std::vector<Subrecord> subs = parse_subrecords(data);
 
+	auto authored = parse_lighting_data(subs, "XCLL");
+	if (!authored) return std::nullopt;
+	ResolvedCellLightingData result;
+	result.cell_authored = *authored;
+	result.resolved = *authored;
 	for (const auto &s : subs) {
-		if (s.type != "XCLL" || s.size < 40) {
-			continue;
+		if (s.type == "LTMP" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			result.template_form_id = sr.read_u32();
+		} else if (s.type == "LNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			result.inherited_fields = sr.read_u32();
 		}
-		util::ByteReader sr(s.data, s.size);
-		CellLightingData lighting;
-		for (int i = 0; i < 4; ++i) {
-			lighting.ambient_color[i] = sr.read_u8();
-		}
-		for (int i = 0; i < 4; ++i) {
-			lighting.directional_color[i] = sr.read_u8();
-		}
-		for (int i = 0; i < 4; ++i) {
-			lighting.fog_color[i] = sr.read_u8();
-		}
-		lighting.fog_near = read_f32(sr);
-		lighting.fog_far = read_f32(sr);
-		lighting.directional_rotation_xy = static_cast<int32_t>(sr.read_u32());
-		lighting.directional_rotation_z = static_cast<int32_t>(sr.read_u32());
-		lighting.directional_fade = read_f32(sr);
-		lighting.fog_clip_distance = read_f32(sr);
-		lighting.fog_power = read_f32(sr);
-		return lighting;
 	}
-	return std::nullopt;
+	if (result.template_form_id != 0 && result.inherited_fields != 0) {
+		auto template_record = find_record_by_form_id(result.template_form_id);
+		if (template_record && template_record->type == "LGTM") {
+			auto template_lighting = parse_lighting_data(parse_subrecords(read_record_data(*template_record)), "DATA");
+			if (template_lighting) apply_lighting_inheritance(result.resolved, *template_lighting, result.inherited_fields);
+		}
+	}
+	return result;
 }
 
 std::optional<ScriptData> EsmFile::get_script_data(uint32_t scpt_form_id) const {
