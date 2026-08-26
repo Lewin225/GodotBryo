@@ -3,6 +3,7 @@
 
 #include "esm_types.h"
 
+#include <array>
 #include <cstdio>
 #include <functional>
 #include <optional>
@@ -124,6 +125,7 @@ public:
 	// std::nullopt if the FormID doesn't resolve to a LIGH record or has no
 	// DATA subrecord.
 	std::optional<LightData> get_light_data(uint32_t light_form_id) const;
+	std::optional<std::array<uint8_t, 4>> get_emittance_color(uint32_t emittance_form_id) const;
 	std::optional<ItemData> get_item_data(uint32_t item_form_id) const;
 	std::optional<GrassData> get_grass_data(uint32_t grass_form_id) const;
 	// An LTEX can link several grass definitions through repeated GNAM fields.

@@ -28,6 +28,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_glow_texture_path", "index"), &NifReader::get_glow_texture_path);
 	ClassDB::bind_method(D_METHOD("get_alpha_info", "index"), &NifReader::get_alpha_info);
 	ClassDB::bind_method(D_METHOD("is_unlit", "index"), &NifReader::is_unlit);
+	ClassDB::bind_method(D_METHOD("get_no_lighting_falloff", "index"), &NifReader::get_no_lighting_falloff);
 	ClassDB::bind_method(D_METHOD("is_double_sided", "index"), &NifReader::is_double_sided);
 	ClassDB::bind_method(D_METHOD("get_transform", "index"), &NifReader::get_transform);
 	ClassDB::bind_method(D_METHOD("get_submesh_owning_node_index", "index"), &NifReader::get_submesh_owning_node_index);
@@ -170,6 +171,18 @@ Dictionary NifReader::get_alpha_info(int index) const {
 bool NifReader::is_unlit(int index) const {
 	const nif::SubMesh *s = submesh(index);
 	return s ? s->no_lighting : false;
+}
+
+Dictionary NifReader::get_no_lighting_falloff(int index) const {
+	Dictionary out;
+	const nif::SubMesh *s = submesh(index);
+	if (!s || !s->no_lighting) return out;
+	out["enabled"] = s->no_lighting_uses_falloff;
+	out["start_angle"] = s->falloff_start_angle;
+	out["stop_angle"] = s->falloff_stop_angle;
+	out["start_opacity"] = s->falloff_start_opacity;
+	out["stop_opacity"] = s->falloff_stop_opacity;
+	return out;
 }
 
 bool NifReader::is_double_sided(int index) const {

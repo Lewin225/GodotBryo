@@ -128,6 +128,13 @@ func _clear_applied() -> void:
 	_env_settings_label.text = "sdfgi / tonemap: —"
 
 
+func _directional_light_str() -> String:
+	var light: DirectionalLight3D = _game._interior_directional_light
+	if light == null:
+		return "interior directional: (not initialized)"
+	return "interior directional: visible=%s   color=%s   energy=%.2f   rotation=%s" % [
+		light.visible, _color_str(light.light_color), light.light_energy, light.rotation_degrees]
+
 func _color_str(c: Color) -> String:
 	return "[color=#e5c07b][b]#%02X%02X%02X[/b][/color]  [color=#7f848e]rgb(%d, %d, %d)[/color]" % [
 		int(c.r * 255.0), int(c.g * 255.0), int(c.b * 255.0),

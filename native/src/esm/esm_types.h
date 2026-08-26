@@ -96,6 +96,11 @@ struct ReferencePlacement {
 	// SCOL parts are always STAT, which can never carry a script.
 	uint32_t script_form_id = 0;
 
+	// REFR.XEMI (Emittance): an authored colour source for visual effects.
+	// It points to either LIGH or REGN; it is deliberately a reference-level
+	// field, not a property of the shared STAT base record.
+	uint32_t emittance_form_id = 0;
+
 	float position[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;

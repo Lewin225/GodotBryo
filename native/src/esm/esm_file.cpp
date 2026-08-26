@@ -444,6 +444,7 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		std::vector<Subrecord> subs = parse_subrecords(data);
 
 		uint32_t base_form_id = 0;
+		uint32_t emittance_form_id = 0;
 		float position[3] = { 0.0f, 0.0f, 0.0f };
 		float rotation[3] = { 0.0f, 0.0f, 0.0f };
 		float scale = 1.0f;
@@ -457,6 +458,9 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 			if (s.type == "NAME" && s.size >= 4) {
 				util::ByteReader sr(s.data, s.size);
 				base_form_id = sr.read_u32();
+			} else if (s.type == "XEMI" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				emittance_form_id = sr.read_u32();
 			} else if (s.type == "DATA" && s.size >= 24) {
 				util::ByteReader sr(s.data, s.size);
 				// Position, not rotation/scale: Gamebryo units -> meters (units.h).
@@ -492,6 +496,7 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		ReferencePlacement pl;
 		pl.refr_form_id = child.form_id;
 		pl.base_form_id = base_form_id;
+		pl.emittance_form_id = emittance_form_id;
 		std::memcpy(pl.position, position, sizeof(position));
 		std::memcpy(pl.rotation, rotation, sizeof(rotation));
 		pl.scale = scale;
@@ -595,6 +600,24 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 		light.fov_degrees = read_f32(sr);
 		// Value, Weight follow — unused, not read.
 		return light;
+	}
+	return std::nullopt;
+}
+
+std::optional<std::array<uint8_t, 4>> EsmFile::get_emittance_color(uint32_t emittance_form_id) const {
+	auto record = find_record_by_form_id(emittance_form_id);
+	if (!record) return std::nullopt;
+	if (record->type == "LIGH") {
+		auto light = get_light_data(emittance_form_id);
+		if (!light) return std::nullopt;
+		return std::array<uint8_t, 4>{light->color[0], light->color[1], light->color[2], light->color[3]};
+	}
+	if (record->type != "REGN") return std::nullopt;
+	const std::vector<uint8_t> data = read_record_data(*record);
+	for (const auto &s : parse_subrecords(data)) {
+		if (s.type == "RCLR" && s.size >= 4) {
+			return std::array<uint8_t, 4>{s.data[0], s.data[1], s.data[2], s.data[3]};
+		}
 	}
 	return std::nullopt;
 }
