@@ -66,6 +66,15 @@ const MAX_LTEX_SLOTS := 128
 var _ltex_slot_by_form_id: Dictionary = {}
 var _render_slot_by_ltex_slot := PackedInt32Array()
 
+## Opt-in per-cell phase timings for the isolated issue-19 benchmark. Kept off
+## in normal play so `import_cell()` does not call the clock or allocate a
+## Dictionary on every streamed LAND record.
+var collect_import_timings: bool = false
+var last_import_timings: Dictionary = {}
+var _timing_diffuse_load_ms: float = 0.0
+var _timing_normal_load_ms: float = 0.0
+var _timing_pool_insert_ms: float = 0.0
+
 ## phases/2/14-native-terrain-texture-blend.md: real per-vertex authored normals
 ## (VNML), decode solved and verified numerically (128,000 real samples,
 ## avg 1.34 deg / max 53.5 deg divergence from a computed-from-heights normal --
@@ -140,6 +149,15 @@ static func _flipped_row(row: int) -> int:
 ## cell with no terrain data) -- a valid case, not an error, same as
 ## CellStreamBuilder.build_terrain()'s own null-return convention.
 func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
+	var phase_started_us := 0
+	var total_started_us := 0
+	if collect_import_timings:
+		last_import_timings = {}
+		_timing_diffuse_load_ms = 0.0
+		_timing_normal_load_ms = 0.0
+		_timing_pool_insert_ms = 0.0
+		phase_started_us = Time.get_ticks_usec()
+		total_started_us = phase_started_us
 	var land: Dictionary = esm.get_land_data(cell_form_id)
 	if land.is_empty():
 		return false
@@ -151,6 +169,9 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	var heights: PackedFloat32Array = land.get("heights", PackedFloat32Array())
 	if heights.size() != GRID_SIZE * GRID_SIZE:
 		return false
+	if collect_import_timings:
+		last_import_timings["land_lookup_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		phase_started_us = Time.get_ticks_usec()
 
 	var global_pos := cell_terrain3d_global_position(grid_x, grid_y)
 
@@ -173,6 +194,9 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	# GamebryoTerrainBuilder's own real placement, and its 2-real-adjacent-cell
 	# edge-continuity check.
 	var created_new_regions := ensure_regions_for_cell(terrain, grid_x, grid_y)
+	if collect_import_timings:
+		last_import_timings["region_prepare_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		phase_started_us = Time.get_ticks_usec()
 
 	# --- Real N=7-layer per-vertex texture write path ---
 	# phases/2/14-native-terrain-texture-blend.md: real BTXT base (implicit
@@ -238,6 +262,12 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 			overlay_slots[q].append(slot)
 			overlay_layers[q].append(candidates[i])
 	_update_ltex_render_lut(terrain)
+	if collect_import_timings:
+		last_import_timings["ltex_resolution_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		last_import_timings["diffuse_load_ms"] = _timing_diffuse_load_ms
+		last_import_timings["normal_load_ms"] = _timing_normal_load_ms
+		last_import_timings["texture_pool_insert_ms"] = _timing_pool_insert_ms
+		phase_started_us = Time.get_ticks_usec()
 
 	if Vector2i(grid_x, grid_y) == debug_dump_grid:
 		print("Terrain3DBridge debug dump: cell (", grid_x, ",", grid_y, ")")
@@ -307,6 +337,9 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 						Color(weights[0], weights[1], weights[2], weights[3]))
 				terrain.data.set_pixel(Terrain3DRegion.TYPE_WEIGHT_B, pos,
 						Color(weights[4], weights[5], 0.0, 0.0))
+	if collect_import_timings:
+		last_import_timings["cpu_map_writes_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		phase_started_us = Time.get_ticks_usec()
 
 	# Regenerates the GPU-side texture arrays/normals + the cached height range
 	# this import's real changes need to actually render and cull correctly --
@@ -380,6 +413,9 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 		var region: Terrain3DRegion = terrain.data.get_region(loc)
 		if region != null:
 			region.set_edited(false)
+	if collect_import_timings:
+		last_import_timings["publish_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		last_import_timings["total_ms"] = float(Time.get_ticks_usec() - total_started_us) / 1000.0
 	return true
 
 ## Real bug found via a 9x9-cell real-data verification pass (many cells resident
@@ -562,16 +598,30 @@ func _resolve_to_slot(ltex_id: int) -> int:
 	var tex_path := esm.resolve_ltex_texture_path(ltex_id)
 	if tex_path == "":
 		return -1
+	var phase_started_us := Time.get_ticks_usec() if collect_import_timings else 0
 	var tex := resolver.load_texture("textures\\" + tex_path)
+	if collect_import_timings:
+		_timing_diffuse_load_ms += float(Time.get_ticks_usec() - phase_started_us) / 1000.0
 	if tex == null:
-		return -1
+		# Some shipped LTEX records name an absent DDS. Keep the frozen logical
+		# identity valid and map it to the pool's explicit pink fallback; otherwise
+		# a finite-domain fill could never reach its terminal committed count.
+		return texture_pool.get_slot(null, tex_path)
 	# Real TX01 normal/bump map -- see Terrain3DTexturePool.get_slot()'s own
 	# comment on why this pool needs it now. A real, common case for this to
 	# be "" (not every real ground texture has one); resolver.load_texture()
 	# already returns null for an empty/unresolvable path.
 	var normal_path := esm.resolve_ltex_normal_texture_path(ltex_id)
+	if collect_import_timings:
+		phase_started_us = Time.get_ticks_usec()
 	var normal_tex := resolver.load_texture("textures\\" + normal_path) if normal_path != "" else null
-	return texture_pool.get_slot(tex, tex_path, normal_tex)
+	if collect_import_timings:
+		_timing_normal_load_ms += float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+		phase_started_us = Time.get_ticks_usec()
+	var slot := texture_pool.get_slot(tex, tex_path, normal_tex)
+	if collect_import_timings:
+		_timing_pool_insert_ms += float(Time.get_ticks_usec() - phase_started_us) / 1000.0
+	return slot
 
 func _resolve_ltex_slot(ltex_id: int) -> int:
 	if ltex_id == 0:
@@ -604,3 +654,26 @@ func get_ltex_slot(ltex_id: int) -> int:
 
 func get_ltex_slot_count() -> int:
 	return _ltex_slot_by_form_id.size()
+
+## Phase 2 region payloads contain stable logical LTEX IDs rather than pool
+## slots. Resolve only the identities actually used by this region, then bind
+## the logical-to-render LUT before its maps become visible.
+func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Array, logical_slots: Dictionary) -> bool:
+	for raw_id in used_ltex_form_ids:
+		var ltex_id := int(raw_id)
+		var logical_slot := int(logical_slots.get(ltex_id, 0))
+		if logical_slot <= 0 or logical_slot >= MAX_LTEX_SLOTS:
+			push_error("Terrain3DBridge: invalid frozen logical slot for LTEX %08X" % ltex_id)
+			return false
+		if _ltex_slot_by_form_id.has(ltex_id):
+			if int(_ltex_slot_by_form_id[ltex_id]) != logical_slot:
+				push_error("Terrain3DBridge: logical slot changed for LTEX %08X" % ltex_id)
+				return false
+			continue
+		var render_slot := _resolve_to_slot(ltex_id)
+		if render_slot < 0:
+			return false
+		_ltex_slot_by_form_id[ltex_id] = logical_slot
+		_render_slot_by_ltex_slot[logical_slot] = render_slot
+	_update_ltex_render_lut(terrain)
+	return true

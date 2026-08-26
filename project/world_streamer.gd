@@ -16,9 +16,8 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 ## player body -- hardcoding to a player node would silently break
 ## free-fly/editor camera movement (the camera moves, nothing streams in).
 ##
-## Uses CellStreamBuilder (shared with CellLoader) for the actual per-tile
-## terrain+REFR streaming work, so that logic isn't duplicated between the
-## single-active-cell and multi-tile-resident cases.
+## Terrain is independently owned by the sibling TerrainStreamer. This class
+## streams placed objects only; its sole terrain interaction is a priority hint.
 ##
 ## Persistent refs (see EsmReader.get_persistent_refs_for_worldspace() --
 ## phases/2/07-runtime-cell-loader.md's "Known gap") get their own
@@ -88,28 +87,17 @@ const CHECK_INTERVAL_SEC := 0.1
 
 ## How many REFRs to construct (build Resources for + add_child()/
 ## batch.add_object()) per frame before yielding -- see _construct_results().
-## Previously plumbed only to `_builder` (which WorldStreamer only ever
-## calls build_terrain() on, never stream_refs()), so this field had no
-## real effect on WorldStreamer's own behavior until this step actually
-## used it for the construct loop. Default raised from 1 (a leftover from
-## when this field did nothing here) to 20, matching CellLoader's own
-## default -- at 1, a dense tile (real measured tiles run up to ~450
-## placements) would take several seconds to finish visibly populating.
+## Applied by WorldStreamer's main-thread object construction loop.
 @export var objects_per_frame: int = 20
 
 ## How many NEW tile loads to actually START per frame -- see
 ## _process_load_queue(). Confirmed necessary via a real perf report, not
-## hypothetical: _start_tile_load()'s own synchronous prefix
-## (CellStreamBuilder.build_terrain(), ~75% of which is
-## GamebryoTerrainBuilder's own collision generation) runs entirely before
-## _stream_tile()'s first await point, so calling it many times back-to-back
-## in the same _check_streaming() tick pays every one of those synchronous
-## costs in one frame. That's exactly what happens when a whole new ring
+## hypothetical: _start_tile_load() has synchronous lookup/setup work before
+## _stream_tile()'s first await point. A whole new ring
 ## "edge" becomes needed at once -- crossing one grid line in a single axis
 ## brings in an entire new column/row, up to 2*RADIUS_LOAD_DISTANT+1 tiles,
 ## inherent to a square ring's own geometry (not a distance-calculation
-## bug) -- the real report showed 57 tiles starting in one tick, 209ms of
-## frame time, almost entirely build_terrain().
+## bug) -- the real report showed 57 tiles starting in one tick.
 @export var tiles_per_frame: int = 3
 
 ## Issue #6: opt-in, concise main-thread stall trace. The normal streaming
@@ -131,49 +119,15 @@ const CHECK_INTERVAL_SEC := 0.1
 @export var lod_crossover_distance_m: float = 100.0
 @export var lod_crossover_margin_m: float = 5.0
 
-## phases/2/13-terrain3d-integration.md, implementation step 6: opt-in switch to
-## the Terrain3D-based terrain path (Terrain3DBridge) instead of the existing,
-## already-validated GamebryoTerrainBuilder path -- default false, per that doc's
-## own "Coexistence / migration plan" (don't remove/risk the working path until
-## Terrain3D's is validated in real play the same way 2.12 was). When true, a
-## single shared, persistent Terrain3D node is created in activate() and each
-## tile's terrain step calls Terrain3DBridge.import_cell() into it instead of
-## CellStreamBuilder.build_terrain() -- timed into the same diagnostic_terrain_ms
-## array for a direct, real before/after comparison (see _stream_tile()).
-@export var use_terrain3d: bool = false
-
-## phases/2/14-native-terrain-texture-blend.md: real debugging aid for a live
-## white-terrain-patch investigation -- resolves every real ground texture the
-## active worldspace could ever need into Terrain3DTexturePool up front in
-## activate(), before any cell streams in, instead of discovering them lazily
-## as new cells get explored. See Terrain3DBridge.prewarm_textures()'s own
-## doc comment for why: isolates whether the corruption is caused by the
-## addon's own shader-regeneration-on-new-texture behavior (visible directly
-## in a real Terrain3D DEBUG-level log capture) by making the pool a static
-## set that never grows again mid-session. Real total worldspace need is only
-## ~64 distinct textures (confirmed this session), so this is cheap.
-@export var prewarm_terrain_textures: bool = true
-
-## See Terrain3DBridge.debug_dump_grid's own doc comment -- set to a real
-## grid coordinate (e.g. Vector2i(-18, 0)) to print exactly what real
-## base/overlay texture-pool slots import_cell() resolves for that one cell.
-## Default (an impossible coordinate) means off.
-@export var terrain3d_debug_dump_grid: Vector2i = Vector2i(999999, 999999)
-
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
-var _builder: CellStreamBuilder
 var _pool: GamebryoResolverPool # phases/2/10-threaded-streaming-workers.md, step 4
-var _terrain3d: Terrain3D # only non-null when use_terrain3d, created fresh per activate()
-var _terrain3d_pool: Terrain3DTexturePool
-var _terrain3d_bridge: Terrain3DBridge
-var _terrain_grass_particles: TerrainGrassParticles
+var terrain_streamer: TerrainStreamer
 
 var diagnostic_construct_ms: Array = [] # TEMP DIAGNOSTIC -- stutter investigation
 var diagnostic_batch_build_ms: Array = [] # TEMP DIAGNOSTIC
 var diagnostic_refcounts: Array = [] # TEMP DIAGNOSTIC
-var diagnostic_terrain_ms: Array = [] # TEMP DIAGNOSTIC
 var diagnostic_resolve_wall_ms: Array = [] # TEMP DIAGNOSTIC -- includes checkout-wait + task-poll wall time, not just the task's own CPU time
 var diagnostic_find_exterior_cell_us := 0 # TEMP DIAGNOSTIC -- _start_tile_load()'s own find_exterior_cell() cost, main-thread, unthreaded
 
@@ -182,21 +136,16 @@ func _freeze_trace(coord: Vector2i, stage: String, detail: String = "") -> void:
 		return
 	print("WorldStreamer freeze trace: tile %s | %s%s" % [coord, stage, " | " + detail if not detail.is_empty() else ""])
 
-## True while streaming is paused (see set_paused()) -- resident state (tiles,
-## batches, terrain, texture pool) stays fully intact, just hidden and
+## True while object streaming is paused -- resident tiles and batches stay
+## intact, just hidden and
 ## physically inert, instead of being freed the way deactivate() does. Exists
 ## for the interior-transition case: door-triggered CellLoader.load_cell()
 ## calls used to deactivate() WorldStreamer entirely, meaning every real door
 ## back out to the same exterior spot paid the full activate() cost again --
-## Terrain3DTexturePool re-resolving/re-normalizing every real ground texture
-## from scratch, every resident tile re-streamed -- a real, measured multi-
-## second stall per door, not a design choice this game's own RAM budget
-## needs (unlike the original Xbox 360 port's 512MB constraint). See
+## every resident tile re-streamed. See
 ## set_paused()'s own comment for what "hidden and physically inert" actually
 ## requires -- Node visibility alone does NOT cover this project's own
-## RID-based DirectGeometryBatch geometry or Terrain3D's own internal
-## PhysicsServer3D collision body, neither of which is reachable by toggling
-## a parent Node3D's `visible`.
+## RID-based DirectGeometryBatch geometry or PhysicsServer bodies.
 var _paused := false
 var _active_wrld_form_id: int = -1 # -1 == inactive
 var _generation := 0 # bumped on every activate()/deactivate() -- invalidates stale in-flight tile streams
@@ -232,14 +181,21 @@ var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own 
 
 func _ready() -> void:
 	var data_dir := GameDataSettings.get_data_dir()
-	esm = EsmReader.new()
-	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
-		push_error("WorldStreamer: could not open FalloutNV.esm")
-	resolver = GamebryoMeshResolver.new(data_dir)
+	if esm == null or resolver == null:
+		esm = EsmReader.new()
+		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
+			push_error("WorldStreamer fallback could not open FalloutNV.esm")
+		resolver = GamebryoMeshResolver.new(data_dir)
 	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
 	registry = GamebryoObjectRegistry.new(resolver, esm)
-	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
 	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
+
+func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> void:
+	esm = esm_reader
+	resolver = mesh_resolver
+
+func set_terrain_streamer(owner: TerrainStreamer) -> void:
+	terrain_streamer = owner
 
 ## Starts (or retargets) continuous streaming for the given worldspace.
 ## Takes no position/cell -- the next check reacts to wherever the active
@@ -251,24 +207,6 @@ func activate(wrld_form_id: int) -> void:
 	deactivate()
 	_active_wrld_form_id = wrld_form_id
 	_generation += 1
-	if use_terrain3d:
-		# Fresh per activate() -- a worldspace switch shouldn't carry stale
-		# regions from the previous one (this is also why deactivate() frees it
-		# rather than leaving it resident across an activate()/deactivate() pair
-		# for a DIFFERENT worldspace; simple and correct, not yet the
-		# region-residency-across-a-single-worldspace-session optimization the
-		# design doc's "Streaming integration" section describes -- that's about
-		# which regions stay loaded WITHIN one active worldspace as the camera
-		# moves, a separate question from this per-worldspace lifecycle).
-		_terrain3d = Terrain3DBridge.create_terrain(self)
-		_terrain3d_pool = Terrain3DTexturePool.new(_terrain3d)
-		_terrain3d_bridge = Terrain3DBridge.new(esm, resolver, _terrain3d_pool)
-		_terrain_grass_particles = TerrainGrassParticles.new(_terrain3d, _terrain3d_bridge, esm, resolver)
-		add_child(_terrain_grass_particles)
-		_terrain3d_bridge.debug_dump_grid = terrain3d_debug_dump_grid
-		if prewarm_terrain_textures:
-			var registered := _terrain3d_bridge.prewarm_textures(wrld_form_id)
-			print("WorldStreamer: prewarmed Terrain3DTexturePool with ", registered, " real distinct ground textures (", _terrain3d_pool.used_slot_count(), " total slots used)")
 	_stream_persistent_root()
 	_check_streaming() # immediate check, don't wait for the next timer tick
 
@@ -301,14 +239,6 @@ func deactivate() -> void:
 		_persistent_batch.free_all()
 		_persistent_batch = null
 	_in_flight_count = 0
-	if _terrain3d != null:
-		if _terrain_grass_particles != null:
-			_terrain_grass_particles.queue_free()
-			_terrain_grass_particles = null
-		_terrain3d.free()
-		_terrain3d = null
-		_terrain3d_pool = null
-		_terrain3d_bridge = null
 
 func is_active() -> bool:
 	return _active_wrld_form_id != -1
@@ -335,16 +265,11 @@ func is_paused() -> bool:
 ##  2. It does NOT reach `DirectGeometryBatch` (phases/2/09) -- that manages
 ##     raw RenderingServer MultiMesh RIDs directly, with no Node3D wrapping
 ##     them to inherit visibility from at all. Needs its own set_enabled(false).
-##  3. It does NOT reach ANY PhysicsServer3D body regardless of whether it's
+##  3. It does NOT reach ANY PhysicsServer3D body regardless of whether it is
 ##     Node-based or not -- collision stays live in the physics world
 ##     independent of node visibility/process state. Node-based REFR
 ##     collision (StaticBody3D/CollisionShape3D under each tile/persistent
-##     root) needs CellStreamBuilder.set_collision_disabled(); Terrain3D's own
-##     heightmap collision is its own internal PhysicsServer3D body, reachable
-##     only via Terrain3D.set_collision_mode(Terrain3DCollision.DISABLED) --
-##     confirmed by reading native/terrain3d/src/terrain_3d_collision.cpp,
-##     not assumed: DISABLED actually destroys the static body's PhysicsServer3D
-##     presence (is_enabled() == mode > DISABLED), not just a soft flag.
+##     root) needs CellStreamBuilder.set_collision_disabled().
 ## Without all three, resuming would look fine visually while the player
 ## could still be blocked by (or standing on) invisible exterior collision
 ## while indoors -- a real, silent gameplay bug, not just a rendering glitch.
@@ -361,8 +286,6 @@ func set_paused(p: bool) -> void:
 		CellStreamBuilder.set_collision_disabled(_persistent_root, p)
 	if _persistent_batch != null:
 		_persistent_batch.set_enabled(not p)
-	if _terrain3d != null:
-		_terrain3d.set_collision_mode(Terrain3DCollision.DISABLED if p else Terrain3DCollision.DYNAMIC_GAME)
 	if not p:
 		# Resuming: re-check residency once immediately (matches activate()'s
 		# own "don't wait for the next timer tick" reasoning) -- nothing
@@ -412,7 +335,7 @@ func _current_grid_coord() -> Variant:
 		return null
 	var pos: Vector3 = cam.global_position
 	var cell_size_m: float = CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
-	# Inverse of CellStreamBuilder.build_terrain()'s own grid->world placement
+	# Inverse of the established exterior grid-to-world placement
 	# (grid_x * cell_size_m, -(grid_y * cell_size_m)) -- floor(), not
 	# truncation, so this stays correct for negative coordinates (a real,
 	# common case -- Goodsprings' own tiles are at negative x).
@@ -444,17 +367,6 @@ func _check_streaming() -> void:
 	var center: Variant = _current_grid_coord()
 	if center == null:
 		return
-	if _terrain3d != null:
-		# Real bug found in real play: Terrain3D's own clipmap LOD update
-		# (_grab_camera(), internal to the addon) needs a real camera reference
-		# to position its rings -- never set anywhere in this file before, so it
-		# silently failed ("Cannot find the active camera") and its own
-		# _physics_process() stopped updating entirely, causing angle-dependent
-		# culling Kept in sync
-		# here (not just once in activate()) since the active camera can
-		# legitimately change (free-fly viewer swaps, etc) -- same cadence
-		# _current_grid_coord() above already re-queries it at.
-		_terrain3d.set_camera(_active_camera())
 	_current_cell_form_id_cache = _tile_cell_form_id(center) # cached here, on this already-throttled cycle, instead of get_current_cell_form_id() re-deriving it from a fresh find_exterior_cell() scan on every single call -- caught directly: that scan alone costs ~41ms (a full linear walk over WastelandNV's 185,720 child records), and game.gd's own _process() was calling get_current_cell_form_id() completely unthrottled, every frame, while active. Real, severe, unrelated to rendering at all -- explained the entire flat ~30fps ceiling this whole investigation was chasing.
 
 	# The dx/dy loop bounds are still a square -- a cheap-to-enumerate
@@ -468,6 +380,8 @@ func _check_streaming() -> void:
 			if not _within_radius(dx, dy, RADIUS_LOAD_DISTANT):
 				continue # inside the square bound but outside the real circular radius
 			var coord := Vector2i(center.x + dx, center.y + dy)
+			if terrain_streamer != null:
+				terrain_streamer.request_terrain_priority(coord)
 			if _no_cell_cache.has(coord):
 				continue # confirmed no real cell here for this worldspace -- see _no_cell_cache's own doc comment
 			var desired_full: bool = _within_radius(dx, dy, RADIUS_LOAD_FULL)
@@ -532,8 +446,7 @@ func _enqueue_tile_load(coord: Vector2i, full_detail: bool) -> void:
 		_process_load_queue()
 
 ## Drains _load_queue, starting up to tiles_per_frame tiles before yielding
-## a frame -- this is what actually bounds how many synchronous
-## build_terrain() calls happen in any one frame, regardless of how many
+## a frame -- this bounds synchronous object setup regardless of how many
 ## coords _check_streaming() enqueues at once (up to a whole ring edge, see
 ## tiles_per_frame's own doc comment).
 ##
@@ -610,31 +523,6 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	refr_root.name = "RefrRoot"
 	refr_root.rotation_degrees.x = -90 # NIF/REFR Z-up -> Godot Y-up
 	tile_root.add_child(refr_root)
-
-	var terrain_root := Node3D.new()
-	terrain_root.name = "TerrainRoot"
-	tile_root.add_child(terrain_root)
-
-	var _tt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
-	_freeze_trace(coord, "terrain begin")
-	if use_terrain3d:
-		# phases/2/13-terrain3d-integration.md, implementation step 6: same
-		# diagnostic_terrain_ms array as the GamebryoTerrainBuilder path below,
-		# for a direct real before/after comparison -- import_cell() writes
-		# directly into the shared _terrain3d node (real per-vertex
-		# set_height()/set_control() calls, see terrain3d_bridge.gd), nothing to
-		# parent under terrain_root (there's exactly one Terrain3D node for the
-		# whole worldspace, not one per tile).
-		_terrain3d_bridge.import_cell(_terrain3d, cell_form_id)
-		_terrain_grass_particles.observe_cell(cell_form_id, coord)
-		diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
-	else:
-		var terrain := _builder.build_terrain(cell_form_id)
-		diagnostic_terrain_ms.append((Time.get_ticks_usec() - _tt0) / 1000.0) # TEMP DIAGNOSTIC
-		if terrain != null:
-			CellStreamBuilder.set_collision_disabled(terrain, false) # visible+collidable immediately -- see _construct_results()'s own doc comment on progressive reveal
-			terrain_root.add_child(terrain)
-	_freeze_trace(coord, "terrain end", "%.2f ms" % ((Time.get_ticks_usec() - _tt0) / 1000.0))
 
 	# Deliberately NOT get_persistent_refs_for_cell() here -- persistent
 	# refs are streamed exactly once into PersistentRoot by

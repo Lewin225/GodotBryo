@@ -31,6 +31,7 @@ extends Node3D
 ## drop-from-above-the-AABB heuristic only if a cell genuinely has none.
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
+const GameDataConfigScript := preload("res://game_data_config.gd")
 
 # Interact reach: no game-data source for this (it's a pure UX/feel
 # constant in the original engine too, not derived from anything in the
@@ -41,6 +42,7 @@ const ITEM_DRAG_HOLD_SECONDS := 0.28
 
 var cell_loader: CellLoader
 var world_streamer: WorldStreamer
+var terrain_streamer: TerrainStreamer
 var script_engine: ScriptEngine
 var terminal_session: TerminalSession
 var message_box: MessageBox
@@ -91,10 +93,33 @@ const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 # newly-loaded cell's own RefrRoot once loading completes, same as
 # _find_coc_spawn_transform() does for the marker case.
 var _pending_door_spawn: Dictionary = {}
+var _shared_esm: EsmReader
+var _shared_resolver: GamebryoMeshResolver
+var _transition_generation := 0
+
+func _enter_tree() -> void:
+	var configuration: Dictionary = GameDataConfigScript.resolve()
+	var data_dir := String(configuration.get("data_dir", ""))
+	if data_dir.is_empty():
+		push_error("Game: " + String(configuration.get("error", "no game data directory")))
+		return
+	_shared_esm = EsmReader.new()
+	if not _shared_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
+		push_error("Game: could not open FalloutNV.esm")
+		return
+	_shared_resolver = GamebryoMeshResolver.new(data_dir)
+	cell_loader = get_node("CellLoader") as CellLoader
+	world_streamer = get_node("WorldStreamer") as WorldStreamer
+	terrain_streamer = get_node("TerrainStreamer") as TerrainStreamer
+	cell_loader.configure(_shared_esm, _shared_resolver)
+	world_streamer.configure(_shared_esm, _shared_resolver)
+	terrain_streamer.configure(_shared_esm, _shared_resolver)
+	world_streamer.set_terrain_streamer(terrain_streamer)
 
 func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
 	world_streamer = $WorldStreamer
+	terrain_streamer = $TerrainStreamer
 	script_engine = $ScriptEngine
 	terminal_session = $TerminalSession
 	message_box = $MessageBox
@@ -114,9 +139,7 @@ func _ready() -> void:
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
 	cell_loader.load_started.connect(_on_load_started)
 	cell_loader.load_completed.connect(_on_load_completed)
-	await get_tree().process_frame # let CellLoader's own _ready() open the ESM
-
-	# Reuse CellLoader's already-open EsmReader rather than opening a second
+	# Reuse Game's shared EsmReader.
 	# one -- same convention _apply_cell_lighting() below already uses.
 	# Wired into both real object_registry.gd instances (interior + exterior)
 	# here, once, rather than each loader reaching for it itself -- neither
@@ -352,7 +375,9 @@ func debug_center_on_cell(args: Array) -> Variant:
 	var cell_form_id := int(cell["form_id"])
 	if cell_loader.esm.get_cell_worldspace(cell_form_id) != -1:
 		return { "error": "'%s' is exterior; CenterOnWorld is not implemented yet." % str(args[0]) }
+	terrain_streamer.set_paused(true)
 	world_streamer.set_paused(true)
+	_transition_generation += 1
 	_pending_door_spawn = {}
 	cell_loader.load_cell(cell_form_id)
 	return cell_form_id
@@ -415,6 +440,8 @@ func _try_interact() -> void:
 		# forced. See WorldStreamer.set_paused()'s own doc comment for what
 		# "paused" actually has to cover (RenderingServer AND PhysicsServer,
 		# not just Node visibility).
+		_transition_generation += 1
+		terrain_streamer.set_paused(true)
 		world_streamer.set_paused(true)
 		_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
 		cell_loader.load_cell(dest_cell_form_id)
@@ -429,6 +456,15 @@ func _try_interact() -> void:
 ## _convert_dest_spawn_transform_exterior()), THEN activate() so its very
 ## first streaming check already sees the player's new position.
 func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: Vector3) -> void:
+	_transition_generation += 1
+	var my_transition := _transition_generation
+	var terrain_diag := terrain_streamer.get_diagnostics()
+	var same_worldspace := terrain_streamer.is_active() and int(terrain_diag.get("worldspace_form_id", -1)) == wrld_form_id
+	if not same_worldspace:
+		world_streamer.deactivate()
+		# TerrainStreamer retains supported Mojave-family entries itself. Its
+		# following activate() suspends the outgoing terrain before selecting or
+		# creating the destination entry; do not final-teardown it here.
 	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
 	_set_exterior_environment(true)
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
@@ -449,8 +485,24 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 		if "velocity" in player:
 			player.velocity = Vector3.ZERO
 
-	world_streamer.activate(wrld_form_id)
-	await world_streamer.streaming_settled # lets a future loading-screen UI know when it's safe to release the player -- WorldStreamer itself has no idea a screen exists
+	var object_ready := [false]
+	var settled_callback := func() -> void: object_ready[0] = true
+	world_streamer.streaming_settled.connect(settled_callback)
+	if same_worldspace:
+		terrain_streamer.set_paused(false)
+		world_streamer.activate(wrld_form_id)
+	else:
+		terrain_streamer.activate(wrld_form_id)
+		world_streamer.activate(wrld_form_id)
+	var terrain_generation := terrain_streamer.get_generation()
+	var spawn_coord := Vector2i(floori(spawn["position"].x / TerrainStreamer.CELL_SIZE_METERS), floori(-spawn["position"].z / TerrainStreamer.CELL_SIZE_METERS))
+	var terrain_status := await terrain_streamer.await_ready_for(wrld_form_id, spawn_coord, terrain_generation)
+	while not object_ready[0] and my_transition == _transition_generation:
+		await get_tree().process_frame
+	if world_streamer.streaming_settled.is_connected(settled_callback):
+		world_streamer.streaming_settled.disconnect(settled_callback)
+	if not _can_release_exterior_transition(my_transition, terrain_status, object_ready[0]):
+		return
 
 	if player != null:
 		if "velocity" in player:
@@ -460,6 +512,11 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	var cell_form_id := world_streamer.get_current_cell_form_id()
 	if cell_form_id != 0:
 		_update_cell_hud(cell_form_id)
+
+func _can_release_exterior_transition(generation: int, terrain_status: TerrainStreamer.ReadyStatus, object_ready: bool) -> bool:
+	return generation == _transition_generation \
+			and terrain_status == TerrainStreamer.ReadyStatus.READY \
+			and object_ready
 
 ## Rendering-issues list #1: interiors don't have a real sky/sun -- Bethesda
 ## interior cells are always fully enclosed geometry with their own baked

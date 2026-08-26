@@ -370,3 +370,42 @@ cp project/addons/terrain_3d/bin/libterrain.linux.debug.x86_64.so \
 (No `api_version=4.7` for Terrain3D — it pins its own, older, nested
 `godot-cpp` submodule; see `native/README.md`'s Dependencies section for
 why forcing this repo's newer pin onto it fails to compile.)
+
+**`native/terrain_streamer` (issue #19 C++ LAND-region composer) is a separate
+first-party GDExtension that shares `native/godot-cpp`'s root config with
+`nv_engine`**, unlike Terrain3D above — it calls the same
+`SConscript("../godot-cpp/SConstruct")`, not a nested/vendored copy, so it
+should be built with the same flags as `nv_engine`:
+
+```bash
+cd native/terrain_streamer
+scons platform=linux target=template_debug api_version=4.7 use_static_cpp=no disable_exceptions=no -j$(nproc)
+```
+
+Output: `project/addons/terrain_streamer/bin/libterrain_streamer.linux.template_debug.x86_64.so`.
+
+**Real gotcha, found and fixed the hard way**: the shared `godot-cpp` static
+archive (`native/godot-cpp/bin/libgodot-cpp.*.a`) has enough generated object
+files that a plain `ar` invocation can exceed this environment's `ARG_MAX`
+("Argument list too long"). The generic SCons fix — wrapping `ARCOM` in
+`${TEMPFILE(ARCOM)}`, the same response-file technique godot-cpp's own
+`tools/web.py` already uses for the Emscripten target — does **not** work
+reliably with this host's GNU `ar`: confirmed directly, `ar` returns success
+without ever creating the archive, then `ranlib` fails because the file
+doesn't exist. GNU `ar`'s own man page explains why: "If file does not
+exist, or cannot be read, then the [`@file`] option will be treated
+literally, and not removed" — an unreadable response file is silently
+ignored rather than erroring, so no real archive operation happens at all.
+
+This exact problem already had a proven fix elsewhere in this same
+`godot-cpp` submodule — `native/godot-cpp/tools/my_spawn.py` — but it's
+gated to Windows only (`exists()` checks `os.name == "nt"`) and doesn't rely
+on `ar`'s `@file` support: it spawns `ar q archive member` once per object
+file instead of one giant argv. `native/terrain_streamer/SConstruct` mirrors
+that same technique for POSIX, scoped to its own build only. One more real
+trap hit along the way: SCons pre-quotes each substituted argv token with
+literal `"` characters so a shell-joined command line survives paths with
+spaces (this repo's own path has them — "Claude New Vegas Port") — passing
+those tokens through `subprocess.run`'s list form (no shell) means `ar`
+receives filenames with literal quote characters baked in unless you strip
+them first.
