@@ -58,6 +58,7 @@ public:
 	// phases/2/06-vertex-color-transparency.md) — Bethesda's own signal
 	// that scene lighting should not affect this shape.
 	bool is_unlit(int index) const;
+	Dictionary get_no_lighting_falloff(int index) const;
 	bool is_double_sided(int index) const;
 	Transform3D get_transform(int index) const;
 	// Index into get_scene_nodes() for this shape's own node, or -1 if

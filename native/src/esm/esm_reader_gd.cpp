@@ -21,6 +21,7 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["rotation"] = Vector3(pl.rotation[0], pl.rotation[1], pl.rotation[2]);
 	d["scale"] = pl.scale;
 	d["script_form_id"] = static_cast<int64_t>(pl.script_form_id);
+	d["emittance_form_id"] = static_cast<int64_t>(pl.emittance_form_id);
 	// phases/2/12-distant-object-lod.md: real per-REFR gate for whether the
 	// game renders a distant-LOD variant of this placement at all -- always
 	// false for SCOL parts (get_scol_parts()), which have no REFR record of
@@ -51,6 +52,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_emittance_data", "emittance_form_id"), &EsmReader::get_emittance_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
 	ClassDB::bind_method(D_METHOD("get_note_data", "note_form_id"), &EsmReader::get_note_data);
@@ -74,6 +76,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("resolve_soun_filename", "soun_form_id"), &EsmReader::resolve_soun_filename);
 	ClassDB::bind_method(D_METHOD("get_door_data", "door_form_id"), &EsmReader::get_door_data);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
+	ClassDB::bind_method(D_METHOD("get_all_item_candidates"), &EsmReader::get_all_item_candidates);
+	ClassDB::bind_method(D_METHOD("get_all_cell_candidates"), &EsmReader::get_all_cell_candidates);
 }
 
 bool EsmReader::open(const String &path) {
@@ -416,11 +420,27 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		}
 		out["radius"] = light->radius;
 		out["color"] = Color(light->color[0] / 255.0f, light->color[1] / 255.0f, light->color[2] / 255.0f, 1.0f);
+		out["color_alpha"] = static_cast<int64_t>(light->color[3]);
 		out["flags"] = static_cast<int64_t>(light->flags);
 		out["falloff"] = light->falloff;
 		out["fov_degrees"] = light->fov_degrees;
 		out["is_spot"] = light->is_spot();
 		out["off_by_default"] = light->off_by_default();
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_emittance_data(int64_t emittance_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto color = file_.get_emittance_color(static_cast<uint32_t>(emittance_form_id));
+		if (!color) return out;
+		// XEMI supplies tint only. Its source records' fourth byte is not the
+		// effect opacity (the NIF's texture/vertex alpha remains authoritative).
+		out["color"] = Color((*color)[0] / 255.0f, (*color)[1] / 255.0f, (*color)[2] / 255.0f, 1.0f);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
@@ -533,14 +553,23 @@ Dictionary EsmReader::get_cell_lighting_data(int64_t cell_form_id) const {
 		if (!lighting) {
 			return out;
 		}
-		out["ambient_color"] = Color(lighting->ambient_color[0] / 255.0f, lighting->ambient_color[1] / 255.0f, lighting->ambient_color[2] / 255.0f, 1.0f);
-		out["directional_color"] = Color(lighting->directional_color[0] / 255.0f, lighting->directional_color[1] / 255.0f, lighting->directional_color[2] / 255.0f, 1.0f);
-		out["fog_color"] = Color(lighting->fog_color[0] / 255.0f, lighting->fog_color[1] / 255.0f, lighting->fog_color[2] / 255.0f, 1.0f);
-		out["fog_near"] = lighting->fog_near;
-		out["fog_far"] = lighting->fog_far;
-		out["directional_fade"] = lighting->directional_fade;
-		out["fog_clip_distance"] = lighting->fog_clip_distance;
-		out["fog_power"] = lighting->fog_power;
+		const auto &resolved = lighting->resolved;
+		const auto &authored = lighting->cell_authored;
+		out["ambient_color"] = Color(resolved.ambient_color[0] / 255.0f, resolved.ambient_color[1] / 255.0f, resolved.ambient_color[2] / 255.0f, 1.0f);
+		out["directional_color"] = Color(resolved.directional_color[0] / 255.0f, resolved.directional_color[1] / 255.0f, resolved.directional_color[2] / 255.0f, 1.0f);
+		out["fog_color"] = Color(resolved.fog_color[0] / 255.0f, resolved.fog_color[1] / 255.0f, resolved.fog_color[2] / 255.0f, 1.0f);
+		out["fog_near"] = resolved.fog_near;
+		out["fog_far"] = resolved.fog_far;
+		out["directional_rotation_xy"] = resolved.directional_rotation_xy;
+		out["directional_rotation_z"] = resolved.directional_rotation_z;
+		out["directional_fade"] = resolved.directional_fade;
+		out["fog_clip_distance"] = resolved.fog_clip_distance;
+		out["fog_power"] = resolved.fog_power;
+		out["template_form_id"] = static_cast<int64_t>(lighting->template_form_id);
+		out["inheritance_flags"] = static_cast<int64_t>(lighting->inherited_fields);
+		out["cell_ambient_color"] = Color(authored.ambient_color[0] / 255.0f, authored.ambient_color[1] / 255.0f, authored.ambient_color[2] / 255.0f, 1.0f);
+		out["cell_directional_color"] = Color(authored.directional_color[0] / 255.0f, authored.directional_color[1] / 255.0f, authored.directional_color[2] / 255.0f, 1.0f);
+		out["cell_fog_color"] = Color(authored.fog_color[0] / 255.0f, authored.fog_color[1] / 255.0f, authored.fog_color[2] / 255.0f, 1.0f);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
@@ -908,4 +937,38 @@ Dictionary EsmReader::find_first_compressed_record() const {
 		last_error_ = String(e.what());
 		return out;
 	}
+}
+
+PackedStringArray EsmReader::get_all_item_candidates() const {
+	PackedStringArray arr;
+	if (!opened_) {
+		return arr;
+	}
+	try {
+		const auto items = file_.get_all_item_candidates();
+		arr.resize(static_cast<int64_t>(items.size()));
+		for (size_t i = 0; i < items.size(); ++i) {
+			arr[static_cast<int64_t>(i)] = String(items[i].c_str());
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return arr;
+}
+
+PackedStringArray EsmReader::get_all_cell_candidates() const {
+	PackedStringArray arr;
+	if (!opened_) {
+		return arr;
+	}
+	try {
+		const auto cells = file_.get_all_cell_candidates();
+		arr.resize(static_cast<int64_t>(cells.size()));
+		for (size_t i = 0; i < cells.size(); ++i) {
+			arr[static_cast<int64_t>(i)] = String(cells[i].c_str());
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return arr;
 }
