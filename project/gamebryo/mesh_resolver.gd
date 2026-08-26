@@ -1,6 +1,8 @@
 class_name GamebryoMeshResolver
 extends RefCounted
 
+const NO_LIGHTING_FALLOFF_SHADER := preload("res://gamebryo/no_lighting_falloff.gdshader")
+
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
 ## BSA-priority search + NIF/DDS resolution, shared by every object factory.
@@ -430,6 +432,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"alpha_info": alpha_info,
 			"has_vertex_colors": nif.get_colors(i).size() > 0,
 			"is_unlit": nif.is_unlit(i),
+			"no_lighting_falloff": nif.get_no_lighting_falloff(i),
 			"double_sided": nif.is_double_sided(i),
 			"diffuse_image": _load_image(tex_path, needs_alpha),
 			"normal_image": _load_image(normal_path),
@@ -518,7 +521,15 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 			if mat != null:
 				mesh.surface_set_material(0, mat)
 			_mesh_cache[mesh_key] = mesh
-		mesh_entries.append({ "mesh": mesh, "transform": e["transform"], "submesh_index": e["submesh_index"] })
+		mesh_entries.append({
+			"mesh": mesh,
+			"transform": e["transform"],
+			"submesh_index": e["submesh_index"],
+			# Keep the source shader classification alongside the final mesh.
+			# REFR.XEMI is a visual-effect tint, and must not recolour the
+			# ordinary lit construction around an unlit pane/effect shape.
+			"is_unlit": bool(e.get("is_unlit", false)),
+		})
 	return mesh_entries
 
 ## Builds every MeshInstance3D child (one per NIF submesh, with resolved
@@ -561,6 +572,7 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		mi.name = "sub%d" % int(entry["submesh_index"])
 		mi.mesh = entry["mesh"]
 		mi.transform = entry["transform"]
+		mi.set_meta("gamebryo_is_unlit", bool(entry.get("is_unlit", false)))
 		if not lod_entries.is_empty():
 			_apply_lod_visibility_range(mi, true)
 		parent.add_child(mi)
@@ -569,6 +581,7 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		var mi := MeshInstance3D.new()
 		mi.name = "lod%d" % i
 		mi.mesh = entry["mesh"]
+		mi.set_meta("gamebryo_is_unlit", bool(entry.get("is_unlit", false)))
 		mi.transform = entry["transform"]
 		_apply_lod_visibility_range(mi, false)
 		parent.add_child(mi)
@@ -681,6 +694,7 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 		var mi := MeshInstance3D.new()
 		mi.name = ("sub%d_%s" % [submesh_index, nif.get_submesh_name(submesh_index)]).validate_node_name()
 		mi.mesh = entry["mesh"]
+		mi.set_meta("gamebryo_is_unlit", bool(entry.get("is_unlit", false)))
 		mesh_parent.add_child(mi)
 
 	# Real hierarchy for collision too -- see this function's own doc
@@ -1090,7 +1104,7 @@ func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
 ## data rather than inferred from "no texture" alone (a shadow/AO blob's
 ## intended dark-to-transparent gradient washes out to lit gray under normal
 ## ambient/directional shading, which is what NoLighting exists to prevent).
-func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
+func _build_material_from_raw(e: Dictionary) -> Material:
 	var tex_path: String = e["texture_path"]
 	var normal_path: String = e["normal_texture_path"]
 	var glow_path: String = e["glow_texture_path"]
@@ -1098,46 +1112,47 @@ func _build_material_from_raw(e: Dictionary) -> StandardMaterial3D:
 	var has_vertex_colors: bool = e["has_vertex_colors"]
 	var is_unlit: bool = e["is_unlit"]
 	var double_sided: bool = e.get("double_sided", false)
+	var no_lighting_falloff: Dictionary = e.get("no_lighting_falloff", {})
 
 	if tex_path == "" and normal_path == "" and glow_path == "" and not has_vertex_colors and not bool(alpha.get("has_alpha_property", false)):
 		return null
-	var key := "%s|%s|%s|%s|%s|%.4f|%d|%s|%s|%s" % [tex_path, normal_path, glow_path,
+	var key := "%s|%s|%s|%s|%s|%.4f|%d|%s|%s|%s|%s" % [tex_path, normal_path, glow_path,
 			bool(alpha.get("blend_enabled", false)), bool(alpha.get("test_enabled", false)),
-			float(alpha.get("threshold", 0.5)), int(alpha.get("blend_func", 0)), has_vertex_colors, is_unlit, double_sided]
+			float(alpha.get("threshold", 0.5)), int(alpha.get("blend_func", 0)), has_vertex_colors, is_unlit, double_sided, no_lighting_falloff]
 	if _material_cache.has(key):
 		material_cache_hits += 1
 		return _material_cache[key]
 	material_cache_misses += 1
+	# NoLighting's authored falloff is a per-fragment view-angle alpha fade,
+	# not a generic object-distance setting. StandardMaterial3D has no
+	# equivalent, so use the small dedicated additive effect shader only for
+	# NIFs that explicitly request it (FXLightBeamW03 and peers).
+	if is_unlit and bool(no_lighting_falloff.get("enabled", false)) \
+			and bool(alpha.get("blend_enabled", false)) \
+			and int(alpha.get("blend_func", 0)) == 1:
+		var effect := ShaderMaterial.new()
+		effect.shader = NO_LIGHTING_FALLOFF_SHADER
+		effect.set_shader_parameter("falloff_start_angle", float(no_lighting_falloff.get("start_angle", 1.0)))
+		effect.set_shader_parameter("falloff_stop_angle", float(no_lighting_falloff.get("stop_angle", 0.0)))
+		effect.set_shader_parameter("falloff_start_opacity", float(no_lighting_falloff.get("start_opacity", 1.0)))
+		effect.set_shader_parameter("falloff_stop_opacity", float(no_lighting_falloff.get("stop_opacity", 1.0)))
+		var effect_texture := _get_texture_from_image(String(e.get("texture_key", tex_path)), e.get("diffuse_image"))
+		if effect_texture != null:
+			effect.set_shader_parameter("albedo_texture", effect_texture)
+		_material_cache[key] = effect
+		return effect
 
 	var mat := StandardMaterial3D.new()
 	var have_content := false
 
-	# is_unlit (BSShaderNoLightingProperty) covers two real, visually opposite
-	# use cases that share one shader block type -- distinguished here by the
-	# real blend function (already parsed, not a new signal): kMultiply/kMix
-	# soft shadow/AO decals (phases/2/06-vertex-color-transparency.md --
-	# NVCraftsmanFireplace's shadow blob, confirmed src=ZERO dst=SRC_COLOR)
-	# genuinely need SHADING_MODE_UNSHADED, or normal ambient/directional
-	# light washes their dark gradient out to flat gray. kAdd additive glow
-	# "cookie" billboards (IndFXLightRays*.nif light-shaft effects, confirmed
-	# src=SRC_ALPHA dst=ONE) are the opposite problem: fully unshaded renders
-	# them at flat full texture brightness regardless of the room's actual
-	# light level -- reported overbright in Doc Mitchell's house. Found by
-	# hand in interior_viewer.gd's material inspector (not derived from NIF
-	# data -- a tuned visual-match fix, same as INTERACT_REACH_METERS is):
-	# leaving these normally shaded (so real omnilights modulate their
-	# brightness instead of a flat unlit blast), disabling ambient/GI
-	# contribution specifically (so SDFGI/flat ambient doesn't ALSO uniformly
-	# boost them on top of that), and capping albedo alpha at 0.75 (further
-	# reining in the additive stack) together matched the original game's
-	# look in play.
-	var is_additive_glow := is_unlit and bool(alpha.get("blend_enabled", false)) and int(alpha.get("blend_func", 0)) == 1 # BlendFunc::kAdd
-	if is_unlit and not is_additive_glow:
+	# BSShaderNoLightingProperty is Bethesda's explicit per-shape instruction
+	# that scene lights do not affect the material. This includes additive
+	# light-beam effects: allowing a nearby OmniLight to shade their volume
+	# produces a blown-out floating sphere (issue #26, GSGeneralStore).
+	# Preserve texture/vertex alpha and the authored blend mode below; only
+	# direct scene lighting is disabled here.
+	if is_unlit:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		have_content = true
-	elif is_additive_glow:
-		mat.disable_ambient_light = true
-		mat.albedo_color.a = 0.75
 		have_content = true
 
 	# BSShaderProperty::IsDoubleSided() (nif_loader.cpp) -- real per-shape

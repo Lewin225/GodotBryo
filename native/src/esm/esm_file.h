@@ -3,6 +3,7 @@
 
 #include "esm_types.h"
 
+#include <array>
 #include <cstdio>
 #include <functional>
 #include <optional>
@@ -124,6 +125,7 @@ public:
 	// std::nullopt if the FormID doesn't resolve to a LIGH record or has no
 	// DATA subrecord.
 	std::optional<LightData> get_light_data(uint32_t light_form_id) const;
+	std::optional<std::array<uint8_t, 4>> get_emittance_color(uint32_t emittance_form_id) const;
 	std::optional<ItemData> get_item_data(uint32_t item_form_id) const;
 	std::optional<GrassData> get_grass_data(uint32_t grass_form_id) const;
 	// An LTEX can link several grass definitions through repeated GNAM fields.
@@ -131,6 +133,12 @@ public:
 	std::vector<uint32_t> get_ltex_grass_form_ids(uint32_t ltex_form_id) const;
 	std::optional<TerminalData> get_terminal_data(uint32_t terminal_form_id) const;
 	std::optional<NoteData> get_note_data(uint32_t note_form_id) const;
+
+	// Returns all item candidate identifiers (EditorID, full name, hex FormID) from WEAP, ARMO, AMMO, ALCH, MISC, KEYM, BOOK records.
+	std::vector<std::string> get_all_item_candidates() const;
+
+	// Returns all non-empty CELL EditorIDs in the file.
+	std::vector<std::string> get_all_cell_candidates() const;
 
 	// phases/1/04-exterior-cell-terrain.md additions:
 
@@ -172,12 +180,11 @@ public:
 	// std::nullopt if the FormID isn't a SCPT.
 	std::optional<ScriptData> get_script_data(uint32_t scpt_form_id) const;
 
-	// Reads a CELL's own XCLL ("Lighting") subrecord -- per-cell authored
-	// ambient/directional/fog data, distinct from the flat global ambient
-	// this codebase currently applies via interior_environment.tres.
+	// Reads a CELL's XCLL ("Lighting") and resolves its optional LTMP/LNAM
+	// field-level inheritance from an LGTM record.
 	// std::nullopt if the FormID isn't a CELL, or is a CELL with no XCLL (a
 	// real, common case for exterior cells).
-	std::optional<CellLightingData> get_cell_lighting_data(uint32_t cell_form_id) const;
+	std::optional<ResolvedCellLightingData> get_cell_lighting_data(uint32_t cell_form_id) const;
 
 	// A worldspace's own "persistent" cell — the Construction Set's bucket
 	// for always-loaded references (quest markers, fast-travel triggers, LOD
@@ -244,6 +251,11 @@ private:
 	mutable std::unordered_map<uint32_t, RecordInfo> form_id_index_;
 	mutable bool form_id_index_built_ = false;
 	void ensure_form_id_index() const;
+
+	mutable std::vector<std::string> item_candidates_cache_;
+	mutable bool item_candidates_cached_ = false;
+	mutable std::vector<std::string> cell_candidates_cache_;
+	mutable bool cell_candidates_cached_ = false;
 
 	std::vector<uint8_t> read_at(long offset, size_t size) const;
 

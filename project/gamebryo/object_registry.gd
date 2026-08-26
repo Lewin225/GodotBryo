@@ -1,6 +1,9 @@
 class_name GamebryoObjectRegistry
 extends RefCounted
 
+const XEMI_NO_LIGHTING_SHADER := preload("res://gamebryo/xemi_no_lighting.gdshader")
+const XEMI_NO_LIGHTING_OPAQUE_SHADER := preload("res://gamebryo/xemi_no_lighting_opaque.gdshader")
+
 ## type_tag -> factory registry (phases/1/01-object-type-registry.md /
 ## phases/1/architecture.md's "Registry extensibility"). Runtime-populated,
 ## not a compiled switch — adding a type is one register() call, nothing
@@ -9,6 +12,18 @@ extends RefCounted
 var resolver: GamebryoMeshResolver
 var esm: EsmReader
 var _factories := {} # String -> Callable(Dictionary, GamebryoMeshResolver) -> Node3D
+
+# Debug-tunable while validating how Gamebryo's packed LIGH RGB reaches
+# Godot. Kept on the registry so newly streamed/loaded lights use the same
+# interpretation as existing ones, rather than the toggle affecting only
+# the currently resident cell.
+var ligh_bytes_are_linear := true
+
+# XEMI supplies a colour but no separate intensity. For ordinary authored
+# NoLighting window/backing layers, make that colour HDR self-lit so the
+# project's already-enabled bloom can represent the deliberate sunlight
+# blowout. Additive falloff effects retain their dedicated shader path.
+var xemi_no_lighting_emission_energy := 12.0
 
 ## Optional (null by default -- every @tool viewer and most test_*.tscn
 ## scenes construct a GamebryoObjectRegistry with no ScriptEngine at all,
@@ -132,6 +147,8 @@ func resolve_placement(placement: Dictionary, ctx: GamebryoResolveContext, full_
 			return _resolve_item(placement, ctx)
 		"ALCH":
 			return _resolve_item(placement, ctx)
+		"WEAP":
+			return _resolve_item(placement, ctx)
 		"TERM":
 			return _resolve_terminal(placement, ctx)
 		"CONT", "ACTI", "FURN", "TACT", "MSTT":
@@ -170,6 +187,14 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# animation_sequences, none of which resolve_raw_geometry() itself
 	# captures) -- every other type ignores it, cheap to carry regardless.
 	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement, "nif": nif }
+	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
+	if emittance_form_id != 0:
+		var emittance_data: Dictionary = ctx.esm.get_emittance_data(emittance_form_id)
+		if not emittance_data.is_empty():
+			# XEMI belongs to this REFR, not its shared STAT. Carry the resolved
+			# colour across the worker boundary so construction can make a small,
+			# per-instance material override without defeating raw mesh caching.
+			result["emittance_color"] = emittance_data["color"]
 	var lod_geometry := _resolve_lod_geometry(placement, model, ctx.resolver)
 	if not lod_geometry.is_empty():
 		result["lod_geometry"] = lod_geometry
@@ -303,7 +328,10 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 				"MSTT":
 					return _construct_visual(MovableStaticNode, result)
 				_: # structural fallback
-					if batch != null:
+					# DirectGeometryBatch shares materials across all instances, but
+					# REFR.XEMI is an explicitly per-placement tint. Such effects must
+					# remain ordinary nodes so their material can be overridden safely.
+					if batch != null and not result.has("emittance_color"):
 						_construct_direct(result, batch)
 						return null
 					return _construct_visual(GamebryoVisual, result)
@@ -325,11 +353,47 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	# change from before step 6.
 	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	resolver.populate_mesh_children(node, null, "", geometry)
+	if result.has("emittance_color"):
+		_apply_emittance_tint(node, result["emittance_color"])
 	resolver.populate_collision_children(node, null, "", geometry)
 	node = _finalize(node, result["placement"])
 	if node is TerminalNode:
 		node.configure_terminal(result.get("terminal_data", {}))
 	return node
+
+## XEMI is an authored colour link on a REFR. Duplicate only the final
+## material Resource for this one visual; mesh/texture decoding stays shared.
+## Using material_override preserves its real alpha mode and vertex alpha.
+func _apply_emittance_tint(node: Node3D, tint: Color) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D and child.get_meta("gamebryo_is_unlit", false):
+			var source: Material = child.mesh.surface_get_material(0)
+			if source != null:
+				var material := source.duplicate() as Material
+				if material is StandardMaterial3D:
+					var standard := material as StandardMaterial3D
+					var effect := ShaderMaterial.new()
+					effect.shader = XEMI_NO_LIGHTING_OPAQUE_SHADER if standard.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED else XEMI_NO_LIGHTING_SHADER
+					effect.set_shader_parameter("albedo_texture", standard.albedo_texture)
+					effect.set_shader_parameter("use_albedo_texture", standard.albedo_texture != null)
+					# RCLR uses the same packed Gamebryo modulation convention as
+					# LIGH.DATA: preserve its byte values as linear light before the
+					# source_color shader uniform converts them for Godot.
+					effect.set_shader_parameter("emittance_tint", tint.linear_to_srgb())
+					effect.set_shader_parameter("emission_energy", xemi_no_lighting_emission_energy)
+					material = effect
+					child.set_meta("gamebryo_xemi_emission", true)
+					child.set_meta("gamebryo_xemi_tint", tint)
+				elif material is ShaderMaterial:
+					# Existing specialised NoLighting shaders (light cookies/rays)
+					# expose the same source_color uniform. Keep the XEMI RCLR
+					# convention consistent with ordinary window backings.
+					material.set_shader_parameter("emittance_tint", tint.linear_to_srgb())
+				else:
+					continue
+				child.material_override = material
+		if child is Node3D:
+			_apply_emittance_tint(child, tint)
 
 ## phases/3/00-door-completion.md step 7: doors are Dynamic (can script,
 ## and can animate -- see enginedocs/nv_class_hierarchy.md's Dynamic/Static
@@ -457,10 +521,11 @@ func _register_defaults() -> void:
 	register("MISC", func(p, r): return _build_item(p, r))
 	register("KEYM", func(p, r): return _build_item(p, r))
 	register("ALCH", func(p, r): return _build_item(p, r))
+	register("WEAP", func(p, r): return _build_item(p, r))
 	register("SCOL", func(p, r): return _build_scol(p, r))
 	register("LIGH", func(p, r): return _build_light(p, r))
-	# Every other Tier 1 type (WEAP/ARMO/AMMO/BOOK/KEYM/ALCH/NOTE/TREE/CCRD/
-	# IMOD/CMNY) is deliberately NOT registered — they share
+	# Every other Tier 1 type (ARMO/AMMO/BOOK/NOTE/TREE/CCRD/IMOD/CMNY) is
+	# deliberately NOT registered — they share
 	# the plain GamebryoVisual shape (confirmed identical EDID/OBND/MODL
 	# structure per phases/1/architecture.md's evidence table) and fall
 	# through to build()'s structural fallback tier. This exercises that
@@ -483,6 +548,11 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	var lod_raw := _resolve_lod_geometry(placement, model, mesh_resolver)
 	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model), lod_raw)
 	mesh_resolver.populate_mesh_children(node, nif, model, geometry)
+	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
+	if emittance_form_id != 0:
+		var emittance_data: Dictionary = esm.get_emittance_data(emittance_form_id)
+		if not emittance_data.is_empty():
+			_apply_emittance_tint(node, emittance_data["color"])
 	mesh_resolver.populate_collision_children(node, nif, model, geometry)
 	return _finalize(node, placement)
 
@@ -615,7 +685,14 @@ func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 	if light_data.is_empty():
 		return
 	var radius: float = max(float(light_data.get("radius", 5.0)), 0.1) * 2.0
-	var color: Color = light_data.get("color", Color.WHITE)
+	# LIGH.DATA is packed 8-bit Gamebryo light modulation, not a Godot color
+	# property. Godot's Light3D expects nonlinear sRGB and linearizes it for
+	# lighting; treating the authored bytes as sRGB therefore applies an extra
+	# gamma curve and makes the real warm office rig unnaturally yellow/green.
+	# Preserve the authored component balance as linear light, then encode only
+	# at Godot's Light3D API boundary.
+	var authored_color: Color = light_data.get("color", Color.WHITE)
+	var color: Color = authored_color.linear_to_srgb() if ligh_bytes_are_linear else authored_color
 	var is_spot: bool = light_data.get("is_spot", false)
 
 	var light: Light3D
@@ -638,7 +715,11 @@ func _apply_light_data(node: LightNode, light_data: Dictionary) -> void:
 
 	light.name = "SpotLight3D" if is_spot else "OmniLight3D"
 	light.light_color = color
-	light.light_energy = 2.1 # 30% below the previous approximate value; see phases/1/03-light-sources.md
+	# LIGH.DATA has no separate intensity field: its authored RGB luminance is
+	# the source strength.  Do not multiply every ambient/fill/key/kicker by a
+	# fabricated global energy value; Godot's default 1.0 preserves that
+	# relative authored intensity through the active HDR/tonemap pipeline.
+	light.light_energy = 1.0
 	light.shadow_enabled = true
 	light.visible = not bool(light_data.get("off_by_default", false))
 	node.add_child(light)

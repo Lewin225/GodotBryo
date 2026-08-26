@@ -95,6 +95,11 @@ public:
 	// bool, "off_by_default": bool }, or an empty Dictionary if the FormID
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
+
+	// Resolves REFR.XEMI's authored colour source. XEMI may point to LIGH
+	// (its DATA colour) or REGN (its RCLR colour); returns { "color": Color }
+	// or {} if the target is absent or has no colour data.
+	Dictionary get_emittance_data(int64_t emittance_form_id) const;
 	Dictionary get_item_data(int64_t item_form_id) const;
 	Dictionary get_terminal_data(int64_t terminal_form_id) const;
 	Dictionary get_note_data(int64_t note_form_id) const;
@@ -215,6 +220,9 @@ public:
 	// "decompressed_size": int }, or empty if none found / decompression
 	// failed / file isn't open.
 	Dictionary find_first_compressed_record() const;
+
+	PackedStringArray get_all_item_candidates() const;
+	PackedStringArray get_all_cell_candidates() const;
 
 private:
 	esm::EsmFile file_;

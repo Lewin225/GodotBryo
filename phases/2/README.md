@@ -51,11 +51,19 @@ task files.
 
 ## Open issues (parked, not yet investigated)
 
-- **External lighting — window emissive backdrops.** Interior visuals are at/near
-  parity with the base game as of 2.6, but exterior-facing lighting (light seen
-  through windows from outside, and/or window-shaped emissive backdrop meshes used to
-  fake exterior light/scenery) hasn't been looked at. Parked at the user's request to
-  keep interior work unblocked — pick up next once resumed.
+- ~~**External lighting — window emissive backdrops.**~~ **Resolved** by
+  [PR #31](https://github.com/Lewin225/GodotBryo/pull/31) (closing
+  [issue #26](https://github.com/Lewin225/GodotBryo/issues/26)):
+  `EsmFile`/`EsmReader` now resolve `REFR.XEMI` ("External Emittance") links to
+  their authored `LIGH`/`REGN` tint color, and additive `NoLighting` effect
+  materials (light beams, window-glow backdrop meshes) render through a
+  dedicated shader that applies that tint while ignoring dynamic `LIGH`
+  overlap — the general mechanism Bethesda uses for window-shaped emissive
+  backdrops. Real-data coverage against `GSGeneralStore` and Doc Mitchell's
+  House confirmed both the cookie tint and beam behavior. Genuine light
+  bleeding through window glass geometry (a distinct rendering concern from
+  the authored XEMI tint mechanism) was not in scope for this PR and remains
+  unverified.
 
 - ~~**Per-cell lighting/tint data.**~~ **Done.** `EsmFile::get_cell_lighting_data()`
   parses the real `CELL.XCLL` subrecord (ambient/directional/fog color, fog near/far,
