@@ -76,6 +76,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("resolve_soun_filename", "soun_form_id"), &EsmReader::resolve_soun_filename);
 	ClassDB::bind_method(D_METHOD("get_door_data", "door_form_id"), &EsmReader::get_door_data);
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
+	ClassDB::bind_method(D_METHOD("get_all_item_candidates"), &EsmReader::get_all_item_candidates);
+	ClassDB::bind_method(D_METHOD("get_all_cell_candidates"), &EsmReader::get_all_cell_candidates);
 }
 
 bool EsmReader::open(const String &path) {
@@ -873,4 +875,38 @@ Dictionary EsmReader::find_first_compressed_record() const {
 		last_error_ = String(e.what());
 		return out;
 	}
+}
+
+PackedStringArray EsmReader::get_all_item_candidates() const {
+	PackedStringArray arr;
+	if (!opened_) {
+		return arr;
+	}
+	try {
+		const auto items = file_.get_all_item_candidates();
+		arr.resize(static_cast<int64_t>(items.size()));
+		for (size_t i = 0; i < items.size(); ++i) {
+			arr[static_cast<int64_t>(i)] = String(items[i].c_str());
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return arr;
+}
+
+PackedStringArray EsmReader::get_all_cell_candidates() const {
+	PackedStringArray arr;
+	if (!opened_) {
+		return arr;
+	}
+	try {
+		const auto cells = file_.get_all_cell_candidates();
+		arr.resize(static_cast<int64_t>(cells.size()));
+		for (size_t i = 0; i < cells.size(); ++i) {
+			arr[static_cast<int64_t>(i)] = String(cells[i].c_str());
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return arr;
 }
