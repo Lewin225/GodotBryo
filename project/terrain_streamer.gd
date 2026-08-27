@@ -640,7 +640,6 @@ func _ensure_worker_pool() -> void:
 func _start_worker_pool_initialization(count: int) -> void:
 	var configuration := GameDataConfigScript.resolve()
 	var esm_path := String(configuration.get("data_dir", "")) + GameDataConfigScript.ESM_FILE
-	var worldspace := _active_wrld_form_id
 	var generation := _generation
 	for unused in range(count):
 		var holder := [{}]
@@ -649,9 +648,10 @@ func _start_worker_pool_initialization(count: int) -> void:
 			if not stager.open_esm(esm_path):
 				holder[0] = {"error": stager.get_last_error()}
 				return
-			var indexed := stager.index_worldspace(worldspace)
-			var error := String(indexed.get("error", ""))
-			holder[0] = {"stager": stager, "error": error}
+			# The catalogue is built once by _start_catalogue_job(). Native
+			# TerrainRegionStager shares that immutable catalogue across private
+			# worker readers; do not walk every CELL record again here.
+			holder[0] = {"stager": stager, "error": ""}
 		)
 		_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "pool_init", "stager_pool": _idle_stagers})
 
