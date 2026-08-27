@@ -725,5 +725,11 @@ func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Ar
 			return false
 		_ltex_slot_by_form_id[ltex_id] = logical_slot
 		_render_slot_by_ltex_slot[logical_slot] = render_slot
+	# ID 0 denotes an unpainted/gap vertex in the detached maps. Point it at
+	# the first real logical texture rather than Terrain3D's magenta placeholder
+	# so sparse edges remain visually grounded without changing map bytes.
+	if not _ltex_slot_by_form_id.is_empty():
+		var first_logical := int(_ltex_slot_by_form_id.values()[0])
+		_render_slot_by_ltex_slot[0] = _render_slot_by_ltex_slot[first_logical]
 	_update_ltex_render_lut(terrain)
 	return true
