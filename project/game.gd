@@ -96,6 +96,7 @@ var _pending_door_spawn: Dictionary = {}
 var _shared_esm: EsmReader
 var _shared_resolver: GamebryoMeshResolver
 var _transition_generation := 0
+var _transition_in_progress := false
 
 func _enter_tree() -> void:
 	var configuration: Dictionary = GameDataConfigScript.resolve()
@@ -165,6 +166,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	print("game.gd: cell 0x%X load complete, success=%s" % [cell_form_id, success])
 	if not success:
 		_pending_door_spawn = {}
+		_transition_in_progress = false
 		return
 
 	# CellLoader is only ever used for interior destinations from this scene
@@ -185,6 +187,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 		spawn = _find_fallback_spawn_transform()
 	if not spawn.is_empty():
 		reposition_player(spawn["position"], spawn["rotation"])
+	_transition_in_progress = false
 
 ## Interact raycast, called each frame -- press-E-to-use, same reach/gesture
 ## for every interactable type this grows to cover (doors now; hover
@@ -403,6 +406,8 @@ func debug_center_on_cell(args: Array) -> Variant:
 ## door behavior at all, sidestepping the outcome-propagation gap above
 ## entirely for this real, narrower fix.
 func _try_interact() -> void:
+	if _transition_in_progress:
+		return
 	var hit := _interact_raycast()
 	if hit.is_empty():
 		return
@@ -440,6 +445,7 @@ func _try_interact() -> void:
 		# forced. See WorldStreamer.set_paused()'s own doc comment for what
 		# "paused" actually has to cover (RenderingServer AND PhysicsServer,
 		# not just Node visibility).
+		_transition_in_progress = true
 		_transition_generation += 1
 		terrain_streamer.set_paused(true)
 		world_streamer.set_paused(true)
@@ -456,6 +462,9 @@ func _try_interact() -> void:
 ## _convert_dest_spawn_transform_exterior()), THEN activate() so its very
 ## first streaming check already sees the player's new position.
 func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: Vector3) -> void:
+	if _transition_in_progress:
+		return
+	_transition_in_progress = true
 	_transition_generation += 1
 	var my_transition := _transition_generation
 	var terrain_diag := terrain_streamer.get_diagnostics()
@@ -502,6 +511,7 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	if world_streamer.streaming_settled.is_connected(settled_callback):
 		world_streamer.streaming_settled.disconnect(settled_callback)
 	if not _can_release_exterior_transition(my_transition, terrain_status, object_ready[0]):
+		_transition_in_progress = false
 		return
 
 	if player != null:
@@ -512,6 +522,7 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	var cell_form_id := world_streamer.get_current_cell_form_id()
 	if cell_form_id != 0:
 		_update_cell_hud(cell_form_id)
+	_transition_in_progress = false
 
 func _can_release_exterior_transition(generation: int, terrain_status: TerrainStreamer.ReadyStatus, object_ready: bool) -> bool:
 	return generation == _transition_generation \
