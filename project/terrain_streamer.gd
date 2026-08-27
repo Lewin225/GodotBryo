@@ -669,7 +669,13 @@ func _publish_worker_region(payload: Dictionary, location: Vector2i) -> bool:
 		return true
 	var started_us := Time.get_ticks_usec()
 	if not bridge.prepare_logical_slots(terrain, payload.get("used_ltex_form_ids", PackedInt64Array()), _logical_slots):
-		return false
+		# Slot resolution is a deterministic main-thread operation. A false
+		# result is therefore a permanent publication failure, not a transient
+		# worker/resource condition; consuming the payload prevents a retry loop.
+		push_error("TerrainStreamer: cancelling region %s after permanent logical texture-slot failure" % location)
+		_region_states[location] = "cancelled"
+		state_changed.emit()
+		return true
 	var publish_started_us := Time.get_ticks_usec()
 	var publish_error := terrain.data.publish_region_maps(location, payload.get("maps", []))
 	diagnostic_publication_ms.append(float(Time.get_ticks_usec() - publish_started_us) / 1000.0)
