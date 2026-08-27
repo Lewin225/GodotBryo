@@ -66,7 +66,16 @@ func build(placement: Dictionary) -> Node3D:
 	var type_tag: String = placement.get("base_type", "")
 	if _factories.has(type_tag):
 		return _factories[type_tag].call(placement, resolver)
-	if String(placement.get("model", "")) != "":
+	var model: String = placement.get("model", "")
+	if model != "":
+		# issue #44: no DirectGeometryBatch indoors, so the only thing this
+		# path is missing for an animated structural-fallback placement is
+		# a real scene_nodes hierarchy + AnimationPlayer to target -- see
+		# _construct_animated_visual()'s own doc comment for why
+		# _instantiate_visual()'s flattened mesh can't carry that.
+		var nif := resolver.load_nif(model) # cached by path -- cheap, _instantiate_*() below reloads it regardless
+		if nif != null and not nif.get_animation_sequences().is_empty():
+			return _autoplay_special_idle(_instantiate_dynamic(GamebryoVisual, placement, resolver))
 		return _instantiate_visual(GamebryoVisual, placement, resolver)
 	return null
 
@@ -187,6 +196,19 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# animation_sequences, none of which resolve_raw_geometry() itself
 	# captures) -- every other type ignores it, cheap to carry regardless.
 	var result := { "kind": "visual", "type_tag": type_tag, "geometry": geometry, "placement": placement, "nif": nif }
+	# issue #44: a structural-fallback placement whose NIF carries real
+	# NiControllerSequence data fails the "Moves" half of nv_class_hierarchy.
+	# md's Dynamic/Static test at runtime (its transform diverges from its
+	# NIF-authored reference pose) even though its base_type never does.
+	# `animated` itself isn't the batching decision -- see
+	# `ineligible_for_batching` below for that -- it's kept separately
+	# because construct_from_resolved() still needs to know WHICH real-Node
+	# shape an ineligible placement requires (dynamic children +
+	# AnimationPlayer, not just "a Node instead of a batch entry").
+	# Worker-safe: NifReader.get_animation_sequences() touches no
+	# RenderingServer/PhysicsServer3D API, same as this whole resolve step.
+	if not nif.get_animation_sequences().is_empty():
+		result["animated"] = true
 	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
 	if emittance_form_id != 0:
 		var emittance_data: Dictionary = ctx.esm.get_emittance_data(emittance_form_id)
@@ -198,6 +220,14 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	var lod_geometry := _resolve_lod_geometry(placement, model, ctx.resolver)
 	if not lod_geometry.is_empty():
 		result["lod_geometry"] = lod_geometry
+	# The single positive-eligibility gate construct_from_resolved() checks
+	# before ever considering DirectGeometryBatch -- deliberately a named
+	# concept computed once here, not separate ad hoc checks accumulating at
+	# the construct site (the exact "bolt another exception on" pattern
+	# issue #44 rejected for the batch-default in the first place). Extend
+	# this line, not the construct-site branch, if a third disqualifying
+	# reason ever comes up.
+	result["ineligible_for_batching"] = result.get("animated", false) or result.has("emittance_color")
 	return result
 
 ## phases/2/12-distant-object-lod.md, step 4: a second, optional RAW geometry
@@ -328,10 +358,22 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 				"MSTT":
 					return _construct_visual(MovableStaticNode, result)
 				_: # structural fallback
-					# DirectGeometryBatch shares materials across all instances, but
-					# REFR.XEMI is an explicitly per-placement tint. Such effects must
-					# remain ordinary nodes so their material can be overridden safely.
-					if batch != null and not result.has("emittance_color"):
+					# issue #44: ineligible_for_batching (_resolve_visual()'s own
+					# single positive-eligibility gate -- animated OR XEMI-tinted
+					# today) decides ONLY whether this can go in DirectGeometryBatch
+					# at all. `animated` is then consulted separately, purely to pick
+					# WHICH real-Node shape an ineligible placement needs: an
+					# animated one needs the real scene_nodes hierarchy
+					# _construct_door() already proves works (dynamic children +
+					# AnimationPlayer -- _construct_visual()'s flattened mesh has no
+					# preserved per-node pivots for a track to target), while any
+					# other ineligible reason (XEMI today) just needs an ordinary
+					# Node instead of a shared-material batch entry.
+					if result.get("ineligible_for_batching", false):
+						if result.get("animated", false):
+							return _autoplay_special_idle(_construct_animated_visual(result))
+						return _construct_visual(GamebryoVisual, result)
+					if batch != null:
 						_construct_direct(result, batch)
 						return null
 					return _construct_visual(GamebryoVisual, result)
@@ -419,6 +461,39 @@ func _construct_door(result: Dictionary) -> Node3D:
 	if node is DoorNode:
 		node.apply_destination(result.get("destination", {}))
 		node.apply_door_data(resolver, result.get("door_data", {}))
+	return node
+
+## issue #44: the same real scene_nodes hierarchy + AnimationPlayer
+## _construct_door() builds above, for a placement that reached this via
+## the structural-fallback branch but was flagged `animated` by
+## _resolve_visual() (a real NiControllerSequence, not just a base_type
+## that's always Dynamic like DOOR). No destination/door-data -- those are
+## DOOR-specific, not part of what "animated" means here.
+func _construct_animated_visual(result: Dictionary) -> Node3D:
+	var node := GamebryoVisual.new()
+	var nif: NifReader = result.get("nif")
+	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
+	var built := resolver.populate_dynamic_children(node, nif, "", geometry)
+	if result.has("emittance_color"):
+		_apply_emittance_tint(node, result["emittance_color"])
+	resolver.populate_animation_player(node, nif, built)
+	return _finalize(node, result["placement"])
+
+## Autoplay convention confirmed against real data (issue #44 comments):
+## every ambient/idle-animated NIF sampled so far (a spinning windmill, the
+## Goodsprings saloon sign) has exactly one sequence, always literally
+## named "SpecialIdle", always cycleType=Loop -- distinct from a
+## trigger-only object's sequences named for the action itself (a door's
+## Open/Close). Only that exact name autoplays; anything else gets a real,
+## populated AnimationPlayer with nothing wired up to trigger it yet --
+## the same "correct but visually inert until a real trigger exists" gap
+## _toggle_swing() fills for doors specifically, not a bug here.
+func _autoplay_special_idle(node: Node3D) -> Node3D:
+	if node == null:
+		return null
+	var player := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if player != null and player.has_animation("SpecialIdle"):
+		player.play("SpecialIdle")
 	return node
 
 func _construct_marker(result: Dictionary) -> Node3D:
