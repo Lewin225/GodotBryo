@@ -320,8 +320,9 @@ func request_terrain_priority(coord: Vector2i) -> void:
 			_priority_hints[location] = coord # Reprioritizes the existing entry; never duplicates it.
 	if is_active() and not _paused and _catalogue.is_empty() and not _catalogue_failed and _workers.is_empty():
 		_start_catalogue_job()
-	else:
-		_dispatch_available_workers()
+	# WorldStreamer can submit hundreds of hints in one tick. Dispatch is
+	# intentionally deferred to TerrainStreamer's process pass, where all hints
+	# are present and the region queue is ranked exactly once.
 
 func await_ready_for(worldspace_form_id: int, coord: Vector2i, generation: int) -> ReadyStatus:
 	if generation == _generation and worldspace_form_id == _active_wrld_form_id and _ready_collision_centers.has(coord):
@@ -429,6 +430,7 @@ func _process(delta: float) -> void:
 	if _check_timer <= 0.0:
 		_check_timer = CHECK_INTERVAL_SEC
 		_check_streaming()
+	_dispatch_available_workers()
 
 func _cancel_current_generation() -> void:
 	_cancelled_generations[_generation] = true
@@ -467,7 +469,6 @@ func _check_streaming() -> void:
 			_desired_cells[coord] = true
 	if center_changed:
 		_update_grass_coverage()
-	_dispatch_available_workers()
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():
