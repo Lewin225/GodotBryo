@@ -81,6 +81,7 @@ var _mesh_cache := {} # "model_path#submesh_index" -> ArrayMesh
 var _texture_cache := {} # tex_path -> ImageTexture or null
 var _material_cache := {} # material key -> StandardMaterial3D
 var _collision_cache := {} # model_path -> Array of { "shape": Shape3D, "transform": Transform3D, "name": String }
+var _skin_mesh_cache := {} # "model_path#submesh_index#skin" -> ArrayMesh (see populate_skeleton()) -- kept separate from _mesh_cache since these surfaces carry ARRAY_BONES/ARRAY_WEIGHTS a non-skinned build of the same submesh must never pick up
 
 ## Cache hit/miss counters — phases/2/00-resource-caching-instancing.md asks
 ## for a measured before/after, not just an assumed improvement.
@@ -747,6 +748,177 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 		bodies_by_owner[owning].add_child(col)
 
 	return built
+
+## Issue #46: builds a real Skeleton3D + per-submesh Skin/MeshInstance3D for
+## a skinned NIF (BSDismemberSkinInstance/NiSkinInstance + NiSkinData +
+## NiSkinPartition — see nif_types.h's own SkinData doc comment), as
+## children of `parent`. Deliberately a SEPARATE construction path from
+## populate_dynamic_children() above, not a reuse of it: that function
+## builds one Node3D per NiAVObject for a pivot-animated RIGID hierarchy
+## (doors, the animated-static case from issue #44) where each mesh follows
+## its own owning node's transform; a skinned mesh instead needs exactly one
+## Skeleton3D (shared across the body's several skinned submeshes — real
+## data confirms this sharing matters: upperbody.nif's 6
+## BSDismemberSkinInstances all reference the same 27-bone pool) plus a
+## Skin + MeshInstance3D per submesh, with the mesh's own node transform
+## left at IDENTITY (the vertex position ends up in Skeleton3D's local space
+## purely via each vertex's bone weights * that bone's current pose * its
+## bind pose — the same architecture real-time GPU skinning always uses,
+## matching Godot's own Skin/Skeleton3D contract, which composes no
+## additional "global-to-skin" factor into the live vertex calc beyond the
+## per-bone bind pose already captured in SkinData::bone_bind_transforms).
+##
+## Bone hierarchy comes from this same NIF's own scene_nodes parent_index
+## chain — same source populate_dynamic_children() uses — NOT assumed to
+## always be a real chain: confirmed real that a body-part mesh like
+## upperbody.nif stores every one of its skinned bones as a FLAT list, each
+## parent_index == -1 (directly under the file's own root), not nested under
+## each other at all — the real hierarchical "Bip01" chain lives in a
+## separate shared skeleton.nif this issue never loads (see the "out of
+## scope" list below). Each flat bone's own recorded transform is still its
+## correct bind-pose position relative to this file's root, so the REST pose
+## still renders correctly with no chain composition needed — building an
+## animatable "Bip01 Spine1 rotates its children" hierarchy is exactly the
+## future .kf/skeleton.nif work this issue explicitly excludes, not a gap in
+## this function. A small standalone skinned prop (e.g. a flag) DOES carry
+## its own real nested hierarchy in the same file, since it has no external
+## skeleton to depend on — this function makes no assumption either way,
+## just follows whatever parent_index actually says.
+##
+## Returns null if the NIF has no skin data at all (the common case — only
+## real humanoid/creature meshes populate this).
+func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Skeleton3D:
+	var skin_entries: Array = nif.get_skin_data()
+	if skin_entries.is_empty():
+		return null
+
+	var scene_node_entries: Array = nif.get_scene_nodes()
+	var scene_index_by_name: Dictionary = {}
+	for i in scene_node_entries.size():
+		scene_index_by_name[String(scene_node_entries[i]["name"])] = i
+
+	# Union of every bone name any skin entry references, PLUS every one of
+	# its ancestors — a bone's parent chain up to the NIF root commonly
+	# includes real skeleton structure (e.g. "Bip01" itself) that no
+	# individual skin entry lists as one of ITS OWN weighted bones, but
+	# which must still exist in Skeleton3D for the hierarchy/rest pose
+	# composition to be correct.
+	var needed: Dictionary = {} # scene_node index -> true
+	for skin in skin_entries:
+		for bone_name_v in skin["bone_names"]:
+			var bone_name := String(bone_name_v)
+			if not scene_index_by_name.has(bone_name):
+				push_error("populate_skeleton: bone '%s' not found in this NIF's own scene_nodes -- %s" % [bone_name, model_path])
+				continue
+			var idx: int = scene_index_by_name[bone_name]
+			while idx != -1 and not needed.has(idx):
+				needed[idx] = true
+				idx = int(scene_node_entries[idx]["parent_index"])
+
+	var skeleton := Skeleton3D.new()
+	skeleton.name = "Skeleton3D"
+
+	# Same iterative "attach once its own parent is already placed" pass
+	# populate_dynamic_children() uses for its own Node3D hierarchy above --
+	# real NIFs always emit a parent block before its children, but this
+	# still tolerates any order at no real cost (bounded by one skeleton's
+	# own bone count).
+	var bone_index_by_scene_index: Dictionary = {}
+	var remaining: Array = needed.keys()
+	var progressed := true
+	while not remaining.is_empty() and progressed:
+		progressed = false
+		var still_remaining: Array = []
+		for idx in remaining:
+			var parent_index: int = int(scene_node_entries[idx]["parent_index"])
+			if parent_index != -1 and not bone_index_by_scene_index.has(parent_index):
+				still_remaining.append(idx)
+				continue
+			var raw_name: String = String(scene_node_entries[idx]["name"])
+			var bone_idx := skeleton.add_bone(raw_name if not raw_name.is_empty() else "Bone%d" % idx)
+			skeleton.set_bone_rest(bone_idx, scene_node_entries[idx]["transform"])
+			if parent_index != -1:
+				skeleton.set_bone_parent(bone_idx, bone_index_by_scene_index[parent_index])
+			bone_index_by_scene_index[idx] = bone_idx
+			progressed = true
+		remaining = still_remaining
+	if not remaining.is_empty():
+		push_error("populate_skeleton: bone parent_index cycle in '%s' -- %d bone(s) left unattached" % [model_path, remaining.size()])
+
+	parent.add_child(skeleton)
+
+	var submesh_index_by_name: Dictionary = {}
+	for i in nif.get_submesh_count():
+		submesh_index_by_name[nif.get_submesh_name(i)] = i
+
+	var raw := resolve_raw_geometry(nif, model_path)
+	var raw_entry_by_submesh_index: Dictionary = {}
+	for e in raw["mesh_entries"]:
+		raw_entry_by_submesh_index[int(e["submesh_index"])] = e
+
+	for skin in skin_entries:
+		var target_name: String = skin["target_node_name"]
+		if not submesh_index_by_name.has(target_name):
+			push_error("populate_skeleton: skin target submesh '%s' not found -- %s" % [target_name, model_path])
+			continue
+		var submesh_index: int = submesh_index_by_name[target_name]
+		if not raw_entry_by_submesh_index.has(submesh_index):
+			continue # filtered upstream (e.g. an EditorMarker submesh) -- not expected for a real skinned shape, but not fatal
+		var raw_entry: Dictionary = raw_entry_by_submesh_index[submesh_index]
+
+		var mesh_key := "%s#%d#skin" % [model_path, submesh_index]
+		var mesh: ArrayMesh
+		if _skin_mesh_cache.has(mesh_key):
+			mesh = _skin_mesh_cache[mesh_key]
+		else:
+			mesh = _build_skinned_mesh_from_raw(raw_entry, skin)
+			var mat := _build_material_from_raw(raw_entry)
+			if mat != null:
+				mesh.surface_set_material(0, mat)
+			_skin_mesh_cache[mesh_key] = mesh
+
+		var mi := MeshInstance3D.new()
+		mi.name = ("sub%d_%s" % [submesh_index, target_name]).validate_node_name()
+		mi.mesh = mesh
+		mi.set_meta("gamebryo_is_unlit", bool(raw_entry.get("is_unlit", false)))
+		parent.add_child(mi)
+		mi.skeleton = mi.get_path_to(skeleton) # MeshInstance3D.skeleton is relative to the MeshInstance3D itself, not `parent`
+
+		var skin_resource := Skin.new()
+		var bone_names: Array = skin["bone_names"]
+		var bind_transforms: Array = skin["bone_bind_transforms"]
+		skin_resource.set_bind_count(bone_names.size())
+		for i in bone_names.size():
+			skin_resource.set_bind_bone(i, skeleton.find_bone(String(bone_names[i])))
+			skin_resource.set_bind_pose(i, bind_transforms[i])
+		mi.skin = skin_resource
+
+	return skeleton
+
+## Same base-array construction as _build_mesh_from_raw(), plus
+## Mesh.ARRAY_BONES/ARRAY_WEIGHTS from the matching SkinData dict (see
+## NifReader.get_skin_data()'s own doc comment for the flattened
+## vertex_count*4 layout — already exactly the shape Godot's own ArrayMesh
+## expects, no remapping needed). A distinct function rather than an extra
+## parameter on _build_mesh_from_raw() so that function's own (shared,
+## Static-path-cached) contract never silently gains skin-shaped output.
+func _build_skinned_mesh_from_raw(e: Dictionary, skin: Dictionary) -> ArrayMesh:
+	var base := _build_mesh_from_raw(e)
+	var pos_flat: PackedFloat32Array = e["positions"]
+	var vert_count := pos_flat.size() / 3
+	var bone_indices: PackedInt32Array = skin["bone_indices"]
+	var bone_weights: PackedFloat32Array = skin["bone_weights"]
+	if bone_indices.size() != vert_count * 4 or bone_weights.size() != vert_count * 4:
+		push_error("_build_skinned_mesh_from_raw: bone array size mismatch (verts=%d bone_indices=%d)" % [vert_count, bone_indices.size()])
+		return base
+
+	var arrays := base.surface_get_arrays(0)
+	arrays[Mesh.ARRAY_BONES] = bone_indices
+	arrays[Mesh.ARRAY_WEIGHTS] = bone_weights
+
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 ## `node`'s transform as seen from `ancestor` (which MUST actually be an
 ## ancestor of `node` in the Node tree) -- composes only .transform (each
