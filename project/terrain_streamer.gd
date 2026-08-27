@@ -63,7 +63,10 @@ var _idle_stagers: Array[TerrainRegionStager] = []
 var _worker_count := 1
 var _dispatch_count := 0
 var _indexing := false
-var _abandoned_tasks: Array[int] = []
+## Reaping records retain the originating entry's stager array. A completed
+## detached task must return its ESM-backed stager to that entry, not whichever
+## worldspace happens to be active when the task finishes.
+var _abandoned_tasks: Array[Dictionary] = []
 var _check_timer := 0.0
 var _last_center: Variant = null
 var _cancelled_generations: Dictionary = {}
@@ -375,12 +378,14 @@ func get_diagnostics() -> Dictionary:
 			"grass_emitters": entry_grass._emitters.size() if entry_grass != null else 0,
 			"grass_coverage_updates": entry_grass.diagnostic_coverage_update_count if entry_grass != null else 0,
 			"emitting_emitters": _count_emitting_emitters(entry_grass),
+			"idle_stagers": (entry.get("idle_stagers", []) as Array).size(),
 			"collision_updates": int(entry.get("collision_updates", 0)),
 		}
 	return {
 		"active": is_active(), "paused": _paused, "worldspace_form_id": _active_wrld_form_id,
 		"generation": _generation, "resident_cells": _resident.size(), "resident_coords": _resident.keys(),
 		"queued_cells": _count_region_state("queued") + _count_region_state("preparing") + _count_region_state("prepared"),
+		"idle_stagers": _idle_stagers.size(),
 		"empty_cells": 0, "catalogue_ready": not _catalogue.is_empty(),
 		"committed_regions": _committed_regions.size(), "committed_region_locations": _committed_regions.keys(),
 		"total_regions": _touched_regions.size(), "logical_slots": _logical_slots.duplicate(),
@@ -475,10 +480,14 @@ func _start_catalogue_job() -> void:
 	_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "catalogue"})
 
 func _poll_workers() -> void:
-	for task_id in _abandoned_tasks.duplicate():
+	for abandoned: Dictionary in _abandoned_tasks.duplicate():
+		var task_id := int(abandoned.task)
 		if WorkerThreadPool.is_task_completed(task_id):
 			WorkerThreadPool.wait_for_task_completion(task_id)
-			_abandoned_tasks.erase(task_id)
+			_abandoned_tasks.erase(abandoned)
+			var payload: Dictionary = abandoned.holder[0]
+			if payload.has("stager"):
+				(abandoned.stager_pool as Array).append(payload.stager)
 	for worker: Dictionary in _workers.duplicate():
 		var task_id := int(worker.task)
 		if not WorkerThreadPool.is_task_completed(task_id):
@@ -640,7 +649,11 @@ func _publish_prepared_regions() -> void:
 
 func _abandon_workers() -> void:
 	for worker: Dictionary in _workers:
-		_abandoned_tasks.append(int(worker.task))
+		_abandoned_tasks.append({
+			"task": int(worker.task),
+			"holder": worker.holder,
+			"stager_pool": _idle_stagers,
+		})
 	_workers.clear()
 
 func _count_region_state(state: String) -> int:
