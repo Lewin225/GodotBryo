@@ -50,6 +50,13 @@ func _count_within_radius(radius: float) -> int:
 				count += 1
 	return count
 
+func _percentile(values: Array, fraction: float) -> float:
+	if values.is_empty():
+		return 0.0
+	var sorted := values.duplicate()
+	sorted.sort()
+	return float(sorted[mini(sorted.size() - 1, floori(float(sorted.size()) * fraction))])
+
 func _wait_settled(streamer: WorldStreamer, listen: Array) -> bool:
 	var settled: Array = listen[0]
 	var conn: Callable = listen[1]
@@ -107,6 +114,11 @@ func _ready() -> void:
 	check(streamer._resident.size() == expected_ring_size,
 			"circular ring (radius %s) resident after settling (got %d, expected %d)" %
 			[WorldStreamer.RADIUS_LOAD_DISTANT, streamer._resident.size(), expected_ring_size])
+	print("  INFO phase1_object_construct_p95_ms=%.3f max_ms=%.3f samples=%d" % [
+		_percentile(streamer.diagnostic_construct_ms, 0.95),
+		float(streamer.diagnostic_construct_ms.max()) if not streamer.diagnostic_construct_ms.is_empty() else 0.0,
+		streamer.diagnostic_construct_ms.size(),
+	])
 	check(streamer._resident.has(Vector2i(-17, 0)), "the camera's own tile is resident")
 	check(streamer._persistent_root != null, "PersistentRoot was built")
 

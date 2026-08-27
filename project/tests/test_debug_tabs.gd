@@ -133,6 +133,12 @@ func _ready() -> void:
 	check(status_card != null, "StatusCard resolved in Streaming State subtab")
 	var tex_tree: Node = ws_tab.get_node_or_null("Margin/SubTabs/Ground Textures/VBox/TextureTree")
 	check(tex_tree != null, "TextureTree resolved in Ground Textures subtab")
+	var terrain_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Terrain Streaming")
+	check(terrain_tab != null, "Terrain Streaming tab exists in game.tscn")
+	var terrain_queue_card: Node = terrain_tab.get_node_or_null("Margin/VBox/StateGrid/QueueCard") if terrain_tab != null else null
+	check(terrain_queue_card != null, "Terrain Streaming queue card is scene-authored")
+	var retained_worldspaces: Node = terrain_tab.get_node_or_null("Margin/VBox/RetainedWorldspaces") if terrain_tab != null else null
+	check(retained_worldspaces != null, "Terrain Streaming retained-worldspace tree is scene-authored")
 
 	# 5. Test Teleport tab in game.tscn
 	var teleport_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Teleport")

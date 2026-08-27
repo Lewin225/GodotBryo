@@ -62,8 +62,8 @@ func _ready() -> void:
 	check(_completed_events.size() == 1 and _completed_events[0][1] == true, "load completed successfully")
 	check(loader._current != first_current, "CurrentCell is a new node, not the old interior root")
 	check(not is_instance_valid(first_current) or first_current.get_parent() == null, "old interior root was actually freed, not just hidden")
-	var terrain_root: Node = loader._current.get_node("TerrainRoot")
-	check(terrain_root.get_child_count() > 0, "exterior cell built terrain (%d terrain children)" % terrain_root.get_child_count())
+	check(loader._current.get_node_or_null("TerrainRoot") == null,
+			"CellLoader does not construct terrain; TerrainStreamer owns exterior LAND")
 	var refr_root_2: Node = loader._current.get_node("RefrRoot")
 	check(refr_root_2.get_child_count() > 50, "exterior cell placed real objects (%d)" % refr_root_2.get_child_count())
 	# Node-name collision check (the exact bug class already found once this

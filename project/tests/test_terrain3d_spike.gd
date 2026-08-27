@@ -73,7 +73,9 @@ func _ready() -> void:
 		for col in range(GRID_SIZE):
 			height_img.set_pixel(col, row, Color(heights[row * GRID_SIZE + col], 0.0, 0.0, 1.0))
 
-	var images: Array[Image] = [height_img, null, null] # Terrain3DRegion.TYPE_HEIGHT/CONTROL/COLOR order
+	var images: Array[Image] = []
+	images.resize(Terrain3DRegion.TYPE_MAX)
+	images[Terrain3DRegion.TYPE_HEIGHT] = height_img
 	terrain.data.import_images(images, Vector3.ZERO, 0.0, 1.0)
 
 	var region_locations: Array = terrain.data.region_locations

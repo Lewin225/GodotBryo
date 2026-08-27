@@ -126,6 +126,17 @@ anything.
 | `test_terrain3d_spike` | 2.13 step 2: real-cell `VHGT` heightmap import into Terrain3D, bit-exact numeric round-trip + screenshot | headless (screenshot needs non-headless, see caveat above) |
 | `test_terrain3d_collision` | 2.13 step 5: real physics drop test against `Terrain3DCollision.FULL_GAME`, confirms no repeat of 1.4's `HeightMapShape3D` failure | headless |
 | `test_terrain3d_bridge_placement` | 2.13 step 6: `Terrain3DBridge`'s real per-cell world placement, cross-checked against `GamebryoTerrainBuilder`'s own real placement + real 2-cell edge continuity | headless |
+| `test_terrain3d_fixed_region_publish` | Issue #19 spike: blank-scene Terrain3D fixed-region publication contract — a steady-state height update uploads its layer without emitting `region_map_changed` | headless |
+| `test_terrain3d_batch_publish` | Issue #19 native API: blank-scene complete eight-map region publication and replacement contract | headless |
+| `test_terrain_shared_sample_owner` | Issue #19 shared LAND edge/corner rule: lexicographically lowest usable contributor with gap fallback | headless |
+| `test_terrain_streamer_phase1` | Issue #19 Phase 1/2 boundary: extracted owner radius parity, complete-region publication, readiness cancellation/supersession, transition release gate, and zero terrain implementation calls in `WorldStreamer` | headless |
+| `test_terrain_region_stager` | Issue #19 Phase 2: real WastelandNV native catalogue census, fixed logical LTEX domain, complete detached map formats, frozen eight-map oracle hashes, and completion-order determinism | headless |
+| `test_terrain_streamer_phase2_stress` | Issue #19 Phase 2: worker staging under live height/collision queries and camera motion, publication p95, pause/deactivation generation rejection, and detached-task reaping | headless |
+| `test_terrain_streamer_phase3_scheduler` | Issue #19 Phase 3: finite queue seeding, nearest-first selection, one-in-four far fairness, duplicate-free hints, terminal states, and worker-count clamp | headless |
+| `test_terrain_streamer_phase3_completion` | Issue #19 Phase 3: real WastelandNV stationary whole-domain fill (16,388 cells, 292 touched regions, 18×18 allocation), empty terminal queues, and zero decode/publication after later movement | headless |
+| `test_terrain_streamer_phase3_object_budget` | Issue #19 Phase 3: object-streaming construction p95/max during terrain fill compared with the recorded Phase 1 object-only baseline | headless |
+| `test_terrain_streamer_phase4_retention` | Issue #19 Phase 4: WastelandNV → FreesideWorld → WastelandNV retained Terrain3D/bridge/pool isolation, inactive physics/collision/grass shutdown, byte-identical return, and zero restaging | headless |
+| `test_game_loader_injection` | Issue #19 Phase 1: `Game._enter_tree()` injects one shared main-thread ESM reader/resolver into all three scene-authored loaders before child readiness | headless |
 | `test_terrain3d_texture_pool_overflow` | 2.13 step 6: real texture-budget overflow (961 real cells) confirms `Terrain3DTexturePool`'s pink fallback matches the real first texture's size/format/mipmap state (a real "all white" rendering bug otherwise) | headless |
 | `test_grass_esm` | Issue #12: real GRAS.DATA field decoding and a multi-GNAM LTEX grass fixture | headless |
 | `test_game_data_config` | Issue #22: portable data-directory discovery skips existing incomplete directories and reports an invalid explicit override | headless |

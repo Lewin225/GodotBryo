@@ -23,6 +23,10 @@ var _last_observed_cell_form_id := 0
 var _last_observed_ltex_ids: Array[int] = []
 var _debug_coverage_origin := Vector3.INF
 var _debug_coverage := {}
+var _catalogue_ltex_grass: Dictionary = {}
+var _coverage_cells: Dictionary = {}
+var diagnostic_material_bind_count := 0
+var diagnostic_coverage_update_count := 0
 var _particle_shader := preload("res://gamebryo/terrain_grass_particles.gdshader") as Shader
 
 # The restart origin must move in an integral number of particle-lattice steps.
@@ -42,6 +46,46 @@ func _init(p_terrain: Terrain3D, p_bridge: Terrain3DBridge, p_esm: EsmReader, p_
 ## grass definition can be linked by more than one terrain texture, hence the
 ## per-variant slot set rather than one guessed source texture.
 func observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
+	_observe_cell(cell_form_id, source_coord)
+	_update_coverage_visibility()
+
+## Region publication discovers several contributing cells at once. Defer the
+## expensive material rebind and coverage update until the batch is complete.
+func observe_cells(cells: Array[Dictionary]) -> void:
+	for cell: Dictionary in cells:
+		_observe_cell(int(cell.get("cell_form_id", 0)), cell.get("coord", Vector2i.ZERO))
+	_update_coverage_visibility()
+
+## Catalogue discovery records relationships only. Terrain assets and emitters
+## remain lazy until a committed cell enters near-camera coverage.
+func discover_catalogue(ltex_form_ids: PackedInt64Array) -> void:
+	for ltex_id: int in ltex_form_ids:
+		_catalogue_ltex_grass[ltex_id] = esm.get_ltex_grass_form_ids(ltex_id)
+
+func update_coverage(center: Vector2i, committed_nearby_cells: Array[Dictionary]) -> void:
+	var next_cells: Dictionary = {}
+	for cell: Dictionary in committed_nearby_cells:
+		var coord: Vector2i = cell.get("coord", Vector2i.ZERO)
+		next_cells[coord] = true
+		if not _coverage_cells.has(coord):
+			_observe_cell(int(cell.get("cell_form_id", 0)), coord)
+	if next_cells == _coverage_cells:
+		return
+	_coverage_cells = next_cells
+	_debug_coverage_origin = Vector3.INF # Region maps changed at the same camera origin.
+	diagnostic_coverage_update_count += 1
+	_update_coverage_visibility()
+
+## Resume can restore processing before coverage is recalculated without
+## briefly reviving emitters that belonged to the old camera coverage.
+func set_enabled(enabled: bool, restart_emitters := true) -> void:
+	visible = enabled
+	set_process(enabled)
+	set_physics_process(enabled)
+	for record: Dictionary in _emitters.values():
+		(record["node"] as GPUParticles3D).emitting = enabled and restart_emitters and (record["node"] as GPUParticles3D).visible
+
+func _observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
 	var land: Dictionary = esm.get_land_data(cell_form_id)
 	if land.is_empty():
 		return
@@ -57,7 +101,7 @@ func observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
 		var slot: int = bridge.get_ltex_slot(ltex_id)
 		if slot < 0:
 			continue
-		var linked_grass_ids: Array = esm.get_ltex_grass_form_ids(ltex_id)
+		var linked_grass_ids: Array = _catalogue_ltex_grass[ltex_id] if _catalogue_ltex_grass.has(ltex_id) else esm.get_ltex_grass_form_ids(ltex_id)
 		for choice_index in range(linked_grass_ids.size()):
 			var grass_id: int = linked_grass_ids[choice_index]
 			if not active_variants.has(grass_id):
@@ -71,19 +115,15 @@ func observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
 				active_variants[grass_id]["ltex_slots"] = slots
 			_ensure_emitter(grass_id, slot, choice_index, linked_grass_ids.size(), source_coord, false)
 			_ensure_emitter(grass_id, slot, choice_index, linked_grass_ids.size(), source_coord, true)
-	# Terrain3D replaces/updates its 32x32 region lookup as LAND tiles stream.
-	# A shader uniform receives the PackedInt32Array by value, so all existing
-	# variants must be rebound after each import rather than retaining the map
-	# that happened to exist when their emitter was first created.
-	for record: Dictionary in _emitters.values():
-		_bind_variant(record["material"], record["grass"], record["ltex_slot"], record["choice_index"], record["choice_count"], record["outer_lod"])
-	var camera := terrain.get_camera()
-	if camera != null:
-		_update_local_emitter_visibility(camera)
 	_last_observed_cell_form_id = cell_form_id
 	_last_observed_ltex_ids.clear()
 	for ltex_id: int in ltex_ids:
 		_last_observed_ltex_ids.append(ltex_id)
+
+func _update_coverage_visibility() -> void:
+	var camera := terrain.get_camera()
+	if camera != null:
+		_update_local_emitter_visibility(camera)
 
 func get_active_variant_count() -> int:
 	return active_variants.size()
@@ -183,14 +223,15 @@ func _update_local_emitter_visibility(camera: Camera3D) -> void:
 	# variant with zero local texture coverage must not submit its particles.
 	_get_debug_coverage(camera)
 	for record: Dictionary in _emitters.values():
-		(record["node"] as GPUParticles3D).visible = _debug_coverage.has(record["ltex_slot"])
+		var covered := _debug_coverage.has(record["ltex_slot"])
+		(record["node"] as GPUParticles3D).visible = covered
+		(record["node"] as GPUParticles3D).emitting = covered and is_processing()
 
 func _ensure_emitter(grass_id: int, ltex_slot: int, choice_index: int, choice_count: int, source_coord: Vector2i, outer_lod: bool) -> void:
 	var emitter_key := "%08X:%d:%s" % [grass_id, ltex_slot, "outer" if outer_lod else "inner"]
 	if _emitters.has(emitter_key):
 		var existing: Dictionary = _emitters[emitter_key]
 		existing["source_cells"][source_coord] = true
-		_bind_variant(existing["material"], existing["grass"], ltex_slot, choice_index, choice_count, outer_lod)
 		return
 	var grass: Dictionary = active_variants[grass_id]["data"]
 	var model_path := String(grass.get("model_path", ""))
@@ -206,6 +247,7 @@ func _ensure_emitter(grass_id: int, ltex_slot: int, choice_index: int, choice_co
 	var material := ShaderMaterial.new()
 	material.shader = _particle_shader
 	_bind_variant(material, grass, ltex_slot, choice_index, choice_count, outer_lod)
+	diagnostic_material_bind_count += 1
 	var emitter := GPUParticles3D.new()
 	emitter.name = "Grass_%s%s" % [String(grass.get("editor_id", "%08X" % grass_id)), "_Outer" if outer_lod else ""]
 	# Dense local ring plus a much sparser outer ring provide a useful fade
