@@ -477,7 +477,7 @@ func _start_catalogue_job() -> void:
 			return
 		holder[0] = {"stager": stager, "catalogue": stager.index_worldspace(worldspace)}
 	)
-	_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "catalogue"})
+	_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "catalogue", "stager_pool": _idle_stagers})
 
 func _poll_workers() -> void:
 	for abandoned: Dictionary in _abandoned_tasks.duplicate():
@@ -496,8 +496,8 @@ func _poll_workers() -> void:
 		_workers.erase(worker)
 		var payload: Dictionary = worker.holder[0]
 		var task_generation := int(worker.generation)
-		if String(worker.kind) != "catalogue" and payload.has("stager"):
-			_idle_stagers.append(payload.stager)
+		if payload.has("stager"):
+			(worker.stager_pool as Array).append(payload.stager)
 		if task_generation != _generation or not is_active() or _paused:
 			continue
 		if not String(payload.get("error", "")).is_empty():
@@ -521,7 +521,6 @@ func _poll_workers() -> void:
 
 func _finish_catalogue(payload: Dictionary) -> void:
 	_indexing = false
-	_idle_stagers.append(payload.stager)
 	_catalogue = payload.get("catalogue", {})
 	if not String(_catalogue.get("error", "")).is_empty():
 		_terrain_unavailable = true
@@ -608,7 +607,7 @@ func _start_region_job(location: Vector2i) -> void:
 		holder[0] = stager.compose_region(worldspace, location, slots)
 		holder[0]["stager"] = stager
 	)
-	_workers.append({"task": task, "holder": holder, "generation": generation, "region": location, "kind": "compose", "started_us": Time.get_ticks_usec()})
+	_workers.append({"task": task, "holder": holder, "generation": generation, "region": location, "kind": "compose", "started_us": Time.get_ticks_usec(), "stager_pool": _idle_stagers})
 
 func _ensure_worker_pool() -> void:
 	if _catalogue.is_empty() or _paused:
@@ -637,7 +636,7 @@ func _start_worker_pool_initialization(count: int) -> void:
 			var error := String(indexed.get("error", ""))
 			holder[0] = {"stager": stager, "error": error}
 		)
-		_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "pool_init"})
+		_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "pool_init", "stager_pool": _idle_stagers})
 
 func _publish_prepared_regions() -> void:
 	for unused in range(mini(regions_per_frame, _prepared_regions.size())):
