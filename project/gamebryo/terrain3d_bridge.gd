@@ -63,7 +63,13 @@ var texture_pool: Terrain3DTexturePool
 ## GNAM grass lists; preserving this identity is therefore required for the
 ## GPU grass filter.  Slot zero remains the unpainted/default sentinel.
 const MAX_LTEX_SLOTS := 128
+## Native region composition owns the frozen logical namespace. Legacy cell
+## import/grass discovery uses a separate namespace so a dropped overlay can
+## never overwrite or collide with a native logical slot.
 var _ltex_slot_by_form_id: Dictionary = {}
+var _legacy_ltex_slot_by_form_id: Dictionary = {}
+var _native_logical_slots: Dictionary = {}
+var _legacy_next_slot := 1
 var _render_slot_by_ltex_slot := PackedInt32Array()
 
 ## Opt-in per-cell phase timings for the isolated issue-19 benchmark. Kept off
@@ -632,14 +638,27 @@ func _resolve_ltex_slot(ltex_id: int) -> int:
 		return -1
 	if _ltex_slot_by_form_id.has(ltex_id):
 		return _ltex_slot_by_form_id[ltex_id]
+	if _native_logical_slots.has(ltex_id):
+		var frozen_slot := int(_native_logical_slots[ltex_id])
+		var frozen_render_slot := _resolve_to_slot(ltex_id)
+		if frozen_render_slot < 0:
+			return -1
+		_ltex_slot_by_form_id[ltex_id] = frozen_slot
+		_render_slot_by_ltex_slot[frozen_slot] = frozen_render_slot
+		return frozen_slot
+	if _legacy_ltex_slot_by_form_id.has(ltex_id):
+		return _legacy_ltex_slot_by_form_id[ltex_id]
 	var render_slot := _resolve_to_slot(ltex_id)
 	if render_slot < 0:
 		return -1
-	var ltex_slot := _ltex_slot_by_form_id.size() + 1
+	while _native_logical_slots.values().has(_legacy_next_slot) or _legacy_ltex_slot_by_form_id.values().has(_legacy_next_slot):
+		_legacy_next_slot += 1
+	var ltex_slot := _legacy_next_slot
+	_legacy_next_slot += 1
 	if ltex_slot >= MAX_LTEX_SLOTS:
 		push_warning("Terrain3DBridge: LTEX slot budget exhausted; FormID %08X cannot retain grass identity" % ltex_id)
 		return -1
-	_ltex_slot_by_form_id[ltex_id] = ltex_slot
+	_legacy_ltex_slot_by_form_id[ltex_id] = ltex_slot
 	_render_slot_by_ltex_slot[ltex_slot] = render_slot
 	return ltex_slot
 
@@ -657,12 +676,35 @@ func get_ltex_slot(ltex_id: int) -> int:
 	return _resolve_ltex_slot(ltex_id)
 
 func get_ltex_slot_count() -> int:
-	return _ltex_slot_by_form_id.size()
+	return _ltex_slot_by_form_id.size() + _legacy_ltex_slot_by_form_id.size()
 
 ## Phase 2 region payloads contain stable logical LTEX IDs rather than pool
 ## slots. Resolve only the identities actually used by this region, then bind
 ## the logical-to-render LUT before its maps become visible.
 func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Array, logical_slots: Dictionary) -> bool:
+	for key in logical_slots:
+		_native_logical_slots[int(key)] = int(logical_slots[key])
+	# Native slots may be discovered after a legacy grass lookup. Rehome any
+	# legacy alias occupying a newly-reserved logical number before publishing
+	# the native LUT, so the two namespaces remain disjoint.
+	for legacy_id in _legacy_ltex_slot_by_form_id.keys().duplicate():
+		if _native_logical_slots.has(legacy_id):
+			_render_slot_by_ltex_slot.erase(int(_legacy_ltex_slot_by_form_id[legacy_id]))
+			_legacy_ltex_slot_by_form_id.erase(legacy_id)
+			continue
+		var legacy_slot := int(_legacy_ltex_slot_by_form_id[legacy_id])
+		if not _native_logical_slots.values().has(legacy_slot):
+			continue
+		while _native_logical_slots.values().has(_legacy_next_slot) or _legacy_ltex_slot_by_form_id.values().has(_legacy_next_slot):
+			_legacy_next_slot += 1
+		var replacement := _legacy_next_slot
+		_legacy_next_slot += 1
+		if replacement >= MAX_LTEX_SLOTS:
+			push_error("Terrain3DBridge: cannot rehome legacy LTEX %08X after native slot reservation" % int(legacy_id))
+			return false
+		_legacy_ltex_slot_by_form_id[legacy_id] = replacement
+		_render_slot_by_ltex_slot[replacement] = _render_slot_by_ltex_slot[legacy_slot] if _render_slot_by_ltex_slot.has(legacy_slot) else -1
+		_render_slot_by_ltex_slot.erase(legacy_slot)
 	for raw_id in used_ltex_form_ids:
 		var ltex_id := int(raw_id)
 		var logical_slot := int(logical_slots.get(ltex_id, 0))
@@ -674,6 +716,9 @@ func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Ar
 				push_error("Terrain3DBridge: logical slot changed for LTEX %08X" % ltex_id)
 				return false
 			continue
+		# A legacy lookup may have seen this identity first. The frozen native
+		# slot is authoritative; discard only that identity's legacy alias.
+		_legacy_ltex_slot_by_form_id.erase(ltex_id)
 		var render_slot := _resolve_to_slot(ltex_id)
 		if render_slot < 0:
 			push_error("Terrain3DBridge: failed to resolve LTEX %08X for logical slot %d" % [ltex_id, logical_slot])
