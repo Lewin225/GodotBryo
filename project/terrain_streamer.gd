@@ -38,7 +38,6 @@ var diagnostic_staging_ms: Array[float] = []
 var diagnostic_collision_updates := 0
 
 var _configured := false
-var _cache_family_by_worldspace: Dictionary = {}
 var _cache_family := ""
 ## worldspace FormID -> complete retained terrain runtime entry. Worker tasks
 ## are deliberately not retained: inactive entries preserve committed maps and
@@ -83,7 +82,6 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 		# GameDataConfig is the authoritative selected master for this runtime.
 		# The value is a source identifier, not a list of content records.
 		_cache_family = CACHE_FAMILY_PREFIX + GameDataConfigScript.ESM_FILE
-		_cache_family_by_worldspace.clear()
 
 func _ready() -> void:
 	if _configured:
@@ -102,7 +100,6 @@ func activate(worldspace_form_id: int) -> void:
 	# Worldspaces are discovered by the worker-side ESM catalogue. Do not reject
 	# IDs here: DLC/mod worldspaces must still complete the transition even when
 	# this runtime cannot stage terrain for them.
-	_cache_family_by_worldspace[worldspace_form_id] = _cache_family
 	if is_active():
 		_suspend_active_entry()
 	if _worldspace_entries.has(worldspace_form_id):
@@ -194,7 +191,7 @@ func _resume_active_entry() -> void:
 func _capture_active_entry() -> Dictionary:
 	return {
 		"worldspace_form_id": _active_wrld_form_id,
-		"cache_family": _cache_family_by_worldspace.get(_active_wrld_form_id, ""),
+		"cache_family": _cache_family,
 		"active": true, "terrain": terrain, "texture_pool": texture_pool, "bridge": bridge, "grass": grass,
 		"generation": _generation, "resident": _resident, "desired_cells": _desired_cells,
 		"usable_cells": _usable_cells, "touched_regions": _touched_regions,
@@ -299,7 +296,7 @@ func set_paused(paused: bool) -> void:
 		_bind_camera()
 		if terrain != null:
 			terrain.collision.update(true)
-		if _catalogue.is_empty() and not _catalogue_failed:
+		if _catalogue_needs_rebuild():
 			_start_catalogue_job()
 		else:
 			_update_grass_coverage()
@@ -318,11 +315,14 @@ func request_terrain_priority(coord: Vector2i) -> void:
 	for location in _regions_for_cell(coord):
 		if _region_states.get(location) == "queued":
 			_priority_hints[location] = coord # Reprioritizes the existing entry; never duplicates it.
-	if is_active() and not _paused and _catalogue.is_empty() and not _catalogue_failed and _workers.is_empty():
+	if is_active() and not _paused and _catalogue_needs_rebuild() and _workers.is_empty():
 		_start_catalogue_job()
 	# WorldStreamer can submit hundreds of hints in one tick. Dispatch is
 	# intentionally deferred to TerrainStreamer's process pass, where all hints
 	# are present and the region queue is ranked exactly once.
+
+func _catalogue_needs_rebuild() -> bool:
+	return _catalogue.is_empty() and not _catalogue_failed
 
 func await_ready_for(worldspace_form_id: int, coord: Vector2i, generation: int) -> ReadyStatus:
 	if generation == _generation and worldspace_form_id == _active_wrld_form_id and _ready_collision_centers.has(coord):
@@ -338,7 +338,7 @@ func await_ready_for(worldspace_form_id: int, coord: Vector2i, generation: int) 
 			return ReadyStatus.SUPERSEDED
 		_ready_collision_centers[coord] = true
 		return ReadyStatus.READY
-	while true:
+	while is_active():
 		if _cancelled_generations.has(generation):
 			return ReadyStatus.CANCELLED
 		if generation != _generation or worldspace_form_id != _active_wrld_form_id:
@@ -354,6 +354,7 @@ func await_ready_for(worldspace_form_id: int, coord: Vector2i, generation: int) 
 			_ready_collision_centers[coord] = true
 			return ReadyStatus.READY
 		await state_changed
+	# Deactivation ends the wait loop without changing the generation again.
 	return ReadyStatus.SUPERSEDED
 
 func get_generation() -> int:
@@ -468,7 +469,9 @@ func _check_streaming() -> void:
 			var coord: Vector2i = center + Vector2i(dx, dy)
 			_desired_cells[coord] = true
 	if center_changed:
+		var _t_grass := ProfileScope.begin()
 		_update_grass_coverage()
+		ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():

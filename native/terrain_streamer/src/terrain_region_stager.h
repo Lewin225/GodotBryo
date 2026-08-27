@@ -47,6 +47,9 @@ class TerrainRegionStager : public RefCounted {
 	std::string esm_path_;
 	std::map<uint32_t, std::shared_ptr<WorldCatalogue>> catalogues_;
 	static std::mutex shared_catalogue_mutex_;
+	// Process-lifetime cache for the current finite-master scope. If DLC/mod
+	// worldspaces expand this set, add an explicit eviction/ownership policy;
+	// TerrainStreamer.deactivate() cannot currently reclaim these shared values.
 	static std::map<std::pair<std::string, uint32_t>, std::shared_ptr<WorldCatalogue>> shared_catalogues_;
 	String last_error_;
 
