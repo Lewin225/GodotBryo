@@ -112,8 +112,8 @@ func activate(worldspace_form_id: int) -> void:
 		_create_entry(worldspace_form_id)
 	state_changed.emit()
 
-## Explicit final teardown. Normal Mojave-family switches use activate(), which
-## suspends and retains the outgoing entry; only this call releases entries.
+## Explicit final teardown. Normal same-cache-family switches use activate(),
+## which suspends and retains the outgoing entry; only this call releases entries.
 func deactivate() -> void:
 	if is_active():
 		_suspend_active_entry()
