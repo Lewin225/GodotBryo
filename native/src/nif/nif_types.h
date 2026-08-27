@@ -1,6 +1,7 @@
 #ifndef NIF_TYPES_H
 #define NIF_TYPES_H
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -320,6 +321,75 @@ struct SceneNode {
 	float scale = 1.0f;
 };
 
+// A single spatial transform in the same convention as every other
+// transform field in this file (row-major 3x3 rotation, translation already
+// meters-converted) — kept as its own named struct (rather than reusing
+// SceneNode's) since it isn't a scene-graph node, just a bind-pose or
+// global<->skin transform.
+struct SkinBoneTransform {
+	float translation[3] = { 0.0f, 0.0f, 0.0f };
+	float rotation[9] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+	float scale = 1.0f;
+};
+
+// Issue #46: real skeletal skinning data (BSDismemberSkinInstance/
+// NiSkinInstance + NiSkinData + NiSkinPartition), one entry per skinned
+// NiShape in the file. Confirmed real that BSDismemberSkinInstance (not
+// plain NiSkinInstance) is what actual FNV humanoid/creature meshes use,
+// and that NiSkinData+NiSkinPartition are always paired together in real
+// content — see the issue's own research artifact. BSSkinInstance/
+// BSSkinBoneData (Fallout 4's skinning format) confirmed NOT used in New
+// Vegas and out of scope.
+struct SkinData {
+	// The owning NiShape's own name — same convention as SubMesh::name, and
+	// how a caller should join this back to the SubMesh it skins (a shape
+	// can have at most one skin instance, so this is a 1:1 join by name).
+	std::string target_node_name;
+
+	// Per-shape bone order (nifly::NifFile::GetShapeBoneList — resolved via
+	// the skin instance's boneRefs to each bone NiNode's own name). NOT a
+	// global index across the whole NIF — vertex_bone_indices below indexes
+	// into THIS vector. A body's several skinned submeshes each carry their
+	// own subset/order of a larger shared bone pool (confirmed real:
+	// upperbody.nif's 6 BSDismemberSkinInstances all reference the same
+	// 27-bone NiNode set, but nothing guarantees that in general) —
+	// reconciling multiple SkinData entries against one shared Skeleton3D by
+	// bone NAME, not by index, is later (Phase C) work, not this struct's.
+	std::vector<std::string> bone_names;
+
+	// NiSkinData.bones[].boneTransform (skin space -> bone space, i.e.
+	// nifly's GetShapeTransformSkinToBone), one per bone_names entry.
+	std::vector<SkinBoneTransform> bone_bind_transforms;
+
+	// NiSkinData.skinTransform (global space -> skin space, i.e. nifly's
+	// GetShapeTransformGlobalToSkin). Despite the name this is a normal
+	// MatTransform like any bone's, not a 4x4 — same SkinBoneTransform shape
+	// reused for both.
+	SkinBoneTransform skin_to_global_transform;
+
+	// Per-shape-vertex, parallel to the owning SubMesh's positions/normals/
+	// uvs arrays (same vertex order/count). Each entry holds up to 4 bone
+	// influences — confirmed real that no real FNV vertex needs more than 4
+	// (native/tools/nif_skin_weights.cpp: 66 NiSkinPartition partitions
+	// checked across human/Cazador/Brahmin/a real animated-flag mesh, all
+	// numWeightsPerVertex == 4), matching Godot's own default ARRAY_BONES/
+	// ARRAY_WEIGHTS width. Indices are into bone_names above, NOT a global
+	// bone index. Unused slots (a vertex with fewer than 4 real influences —
+	// the common case) are index 0 / weight 0.0, the same "unused slot"
+	// convention Godot's own mesh arrays use.
+	std::vector<std::array<uint16_t, 4>> vertex_bone_indices;
+	std::vector<std::array<float, 4>> vertex_bone_weights;
+
+	// BSDismemberSkinInstance::partitions[].partID, one per NiSkinPartition
+	// partition — Bethesda's own dismemberment/gore-cap body-part tagging
+	// (BSDismemberBodyPartType). Empty for a plain NiSkinInstance (no real
+	// FNV humanoid/creature mesh observed to use one, but not assumed).
+	// Captured here but not consumed by anything yet — dismemberment logic
+	// and the ESM-side BPTD cross-reference are explicitly out of scope for
+	// this issue.
+	std::vector<uint16_t> partition_body_part_ids;
+};
+
 struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
@@ -366,6 +436,11 @@ struct Mesh {
 	// own doc comment. Empty is a valid, common state (most Static content
 	// never populates this at all; only the Dynamic-path resolver reads it).
 	std::vector<SceneNode> scene_nodes;
+
+	// Issue #46: real skeletal skinning — see SkinData's own doc comment.
+	// Empty for the overwhelming majority of NIFs; only real skinned meshes
+	// (humanoid/creature bodies) populate this.
+	std::vector<SkinData> skin_data;
 };
 
 } // namespace nif
