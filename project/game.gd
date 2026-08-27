@@ -471,9 +471,9 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	var same_worldspace := terrain_streamer.is_active() and int(terrain_diag.get("worldspace_form_id", -1)) == wrld_form_id
 	if not same_worldspace:
 		world_streamer.deactivate()
-		# TerrainStreamer retains supported Mojave-family entries itself. Its
-		# following activate() suspends the outgoing terrain before selecting or
-		# creating the destination entry; do not final-teardown it here.
+		# TerrainStreamer retains entries within the active ESM's cache family
+		# itself. Its following activate() suspends the outgoing terrain before
+		# selecting or creating the destination entry; do not final-teardown it here.
 	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
 	_set_exterior_environment(true)
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)

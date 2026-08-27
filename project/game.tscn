@@ -995,7 +995,7 @@ value = 20.0
 [node name="RetainedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
 layout_mode = 2
 bbcode_enabled = true
-text = "[b]Retained Mojave-family worldspaces[/b]"
+text = "[b]Retained cache-family worldspaces[/b]"
 fit_content = true
 scroll_active = false
 
