@@ -65,6 +65,20 @@ placements. The real dividing line is **Dynamic vs. Static** — not "interactiv
 > can't represent. **Static**: neither — its state never differs from what the ESM already says, for
 > as long as the game runs, so a shared RID is not just cheaper but *correct*.
 
+"Can move" is deliberately not limited to Havok/script-driven repositioning (`MovableStatic`'s own
+case, below) — a baked NIF animation (`NiControllerSequence`) qualifies too: at any t>0 in its
+playback, the object's actual transform differs from its ESM/NIF-authored reference pose, the same
+kind of runtime divergence a shared-RID batch can't represent, just via a different mechanism
+(issue #44). This can make an individual `STAT` placement fail "Moves" even though `STAT` as a
+*type* still passes it (see `Static itself is not part of this list` below) — the distinction is
+per-placement (does *this* NIF carry animation data), not per-type, unlike every other row in the
+table above it.
+
+This test is about **runtime state representability** — can a RID/`MultiMesh` slot hold what the
+object needs while the game is running — not about save/persistence. This project has no save/load
+system at all today; if one is ever built, what gets serialized is an orthogonal concern layered on
+top of whichever representation (Node vs. RID) was already chosen, not the reason for choosing it.
+
 `DirectGeometryBatch` (phases/2.9) exists specifically so that dense, genuinely Static set dressing —
 the thousands of rocks, fence posts, and generic `STAT` clutter per tile — never pays per-Node
 construction cost at all; it becomes shared-RID `MultiMesh` entries instead, with real per-placement
@@ -112,9 +126,17 @@ player-grabbed, Havok-shoved crate is exactly the kind of per-instance runtime d
 can't hold, so it still needs a real Node.
 
 `Static` itself is **not** part of this list, deliberately — per its own Dynamic/Static test it has
-no Script field and never moves, so it needs no registered subclass at all. Its current path through
-`DirectGeometryBatch` isn't a gap to close; it's the permanently correct answer, and the earlier
-framing that grouped it in with Terminal/MovableStatic as "needs a factory eventually" was wrong.
+no Script field and, as a *type*, never moves, so it needs no registered subclass and no permanent
+place in this table. `DirectGeometryBatch` remains the permanently correct answer for `STAT` as a
+type, and the earlier framing that grouped it in with Terminal/MovableStatic as "needs a factory
+eventually" was wrong.
+
+That's a statement about the type, not a guarantee about every individual placement: a specific
+`STAT` placement whose NIF carries baked animation data still fails "Moves" at the placement level
+(see the note above) and still needs the same real Node `Door`/`MovableStatic` get, via
+`GamebryoObjectRegistry`'s existing structural-fallback routing rather than a new registered
+subclass (issue #44) — `STAT` itself isn't reclassified, and the vast majority of real placements
+that have no animation data are entirely unaffected.
 
 `TalkingActivator` is worth flagging specifically for a different reason: GECK files it under
 `Category:Actors` (it can run dialogue and own a Voice Type) but structurally it's an `Activator`
