@@ -28,7 +28,7 @@ func _ready() -> void:
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened real master")
 	var wasteland: Dictionary = esm.find_worldspace_by_editor_id("WastelandNV")
 	var freeside: Dictionary = esm.find_worldspace_by_editor_id("FreesideWorld")
-	check(not wasteland.is_empty() and not freeside.is_empty(), "resolved explicit Mojave-family worldspaces")
+	check(not wasteland.is_empty() and not freeside.is_empty(), "resolved authored worldspaces from the ESM")
 	var camera := Camera3D.new()
 	add_child(camera)
 	camera.global_position = Terrain3DBridge.cell_terrain3d_global_position(-17, 0) + Vector3(8, 40, 8)
@@ -36,13 +36,8 @@ func _ready() -> void:
 	var streamer := TerrainStreamer.new()
 	streamer.configure(esm, GamebryoMeshResolver.new(DATA_DIR))
 	add_child(streamer)
-	var catalogued_worldspaces := 0
-	for editor_id: String in TerrainStreamer.BASE_GAME_WORLDSPACE_EDITOR_IDS:
-		var worldspace := esm.find_worldspace_by_editor_id(editor_id)
-		if not worldspace.is_empty() and streamer._cache_family_by_worldspace.get(int(worldspace.form_id), "") == TerrainStreamer.MOJAVE_FAMILY:
-			catalogued_worldspaces += 1
-	check(catalogued_worldspaces == TerrainStreamer.BASE_GAME_WORLDSPACE_EDITOR_IDS.size(),
-		"explicit Mojave catalogue covers every base-master terrain worldspace without FormID inference")
+	check(streamer._cache_family == TerrainStreamer.CACHE_FAMILY_PREFIX + GameDataConfig.ESM_FILE,
+		"cache family is derived from the configured master, without embedded worldspace IDs")
 
 	streamer.activate(int(wasteland.form_id))
 	check(await wait_until(func() -> bool:
@@ -69,8 +64,8 @@ func _ready() -> void:
 	check(int(freeside_before_switch.queued_regions) + int(freeside_before_switch.preparing_regions) + int(freeside_before_switch.prepared_regions) > 0,
 		"Freeside has outstanding work to invalidate on the switch back")
 	var retained: Dictionary = streamer.get_diagnostics().retained_worldspaces[int(wasteland.form_id)]
-	check(retained.cache_family == TerrainStreamer.MOJAVE_FAMILY and not retained.active,
-		"outgoing Wasteland entry is retained in the explicit Mojave cache family")
+	check(retained.cache_family == streamer._cache_family and not retained.active,
+		"outgoing Wasteland entry is retained in the configured-master cache family")
 	check(not retained.terrain_visible and not retained.terrain_physics and int(retained.collision_mode) == Terrain3DCollision.DISABLED
 			and not retained.grass_processing and int(retained.emitting_emitters) == 0,
 		"inactive terrain disables visibility, physics, collision, grass processing, and emitters")

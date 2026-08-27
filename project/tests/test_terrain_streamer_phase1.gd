@@ -92,7 +92,20 @@ func _ready() -> void:
 	check(not game._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, false),
 			"terrain readiness alone cannot release before objects settle")
 	check(game._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, true),
-			"the current transition releases only after object and collision-safe terrain readiness")
+		"the current transition releases only after object and collision-safe terrain readiness")
+
+	# Unknown/DLC/mod worldspaces must not strand Game's transition await. They
+	# are accepted and complete through a no-LAND fallback when this selected
+	# master has no terrain catalogue for the destination.
+	var unlisted_worldspace := 0x0BADF00D
+	streamer.activate(unlisted_worldspace)
+	var unlisted_generation := streamer.get_generation()
+	var unlisted_deadline := Time.get_ticks_msec() + 10000
+	while not bool(streamer.get_diagnostics().catalogue_ready) and Time.get_ticks_msec() < unlisted_deadline:
+		await get_tree().process_frame
+	var unlisted_status := await streamer.await_ready_for(unlisted_worldspace, CENTER, unlisted_generation)
+	check(unlisted_status == TerrainStreamer.ReadyStatus.READY,
+		"unlisted worldspace completes a no-LAND readiness fallback instead of freezing the player")
 
 	print("=======================")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

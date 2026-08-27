@@ -16,17 +16,10 @@ const MAX_WORKERS := 8
 const DEFAULT_REGIONS_PER_FRAME := 1
 const CELL_SIZE_METERS := CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
 
-## Explicit authored-family catalogue. This is intentionally resolved through
-## EditorIDs during configure(), never guessed from a FormID range/prefix.
-## FalloutNV.esm is the sole runtime master for v1.5, so every supported
-## retained entry belongs to this one Mojave/base-game family.
-const MOJAVE_FAMILY := "mojave_base_game"
-const BASE_GAME_WORLDSPACE_EDITOR_IDS := [
-	"TestMap01", "WastelandNV", "FreesideWorld", "GamorrahWorld",
-	"GreenhouseWorld01", "FreesideNorthWorld", "FreesideFortWorld",
-	"TheStripWorldNew", "TheFortWorld", "WastelandNVmini", "BoulderCityWorld",
-	"Lucky38World",
-]
+## Cache families are derived from the configured master, never from authored
+## EditorIDs/FormID ranges embedded in source. This keeps worldspace discovery
+## data-driven and allows the same streamer to run against another game's ESM.
+const CACHE_FAMILY_PREFIX := "esm:"
 
 @export var tiles_per_frame := 3
 @export var load_radius := RADIUS_LOAD
@@ -46,6 +39,7 @@ var diagnostic_collision_updates := 0
 
 var _configured := false
 var _cache_family_by_worldspace: Dictionary = {}
+var _cache_family := ""
 ## worldspace FormID -> complete retained terrain runtime entry. Worker tasks
 ## are deliberately not retained: inactive entries preserve committed maps and
 ## queue domain, while any in-flight detached task is generation-rejected.
@@ -74,20 +68,17 @@ var _check_timer := 0.0
 var _last_center: Variant = null
 var _cancelled_generations: Dictionary = {}
 var _ready_collision_centers: Dictionary = {}
+var _terrain_unavailable := false
 
 func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> void:
 	esm = esm_reader
 	resolver = mesh_resolver
 	_configured = esm != null and resolver != null
 	if _configured:
-		_build_cache_family_catalogue()
-
-func _build_cache_family_catalogue() -> void:
-	_cache_family_by_worldspace.clear()
-	for editor_id: String in BASE_GAME_WORLDSPACE_EDITOR_IDS:
-		var worldspace := esm.find_worldspace_by_editor_id(editor_id)
-		if not worldspace.is_empty():
-			_cache_family_by_worldspace[int(worldspace.form_id)] = MOJAVE_FAMILY
+		# GameDataConfig is the authoritative selected master for this runtime.
+		# The value is a source identifier, not a list of content records.
+		_cache_family = CACHE_FAMILY_PREFIX + GameDataConfigScript.ESM_FILE
+		_cache_family_by_worldspace.clear()
 
 func _ready() -> void:
 	if _configured:
@@ -103,9 +94,10 @@ func activate(worldspace_form_id: int) -> void:
 	if _active_wrld_form_id == worldspace_form_id:
 		set_paused(false)
 		return
-	if not _cache_family_by_worldspace.has(worldspace_form_id):
-		push_error("TerrainStreamer: worldspace 0x%X is not in the explicit base-game cache-family catalogue" % worldspace_form_id)
-		return
+	# Worldspaces are discovered by the worker-side ESM catalogue. Do not reject
+	# IDs here: DLC/mod worldspaces must still complete the transition even when
+	# this runtime cannot stage terrain for them.
+	_cache_family_by_worldspace[worldspace_form_id] = _cache_family
 	if is_active():
 		_suspend_active_entry()
 	if _worldspace_entries.has(worldspace_form_id):
@@ -136,6 +128,7 @@ func _create_entry(worldspace_form_id: int) -> void:
 	diagnostic_staging_ms.clear()
 	diagnostic_collision_updates = 0
 	_ready_collision_centers.clear()
+	_terrain_unavailable = false
 	terrain = Terrain3DBridge.create_terrain(self)
 	texture_pool = Terrain3DTexturePool.new(terrain)
 	bridge = Terrain3DBridge.new(esm, resolver, texture_pool)
@@ -206,6 +199,7 @@ func _capture_active_entry() -> Dictionary:
 		"idle_stagers": _idle_stagers, "worker_count": _worker_count,
 		"dispatch_count": _dispatch_count, "indexing": _indexing, "last_center": _last_center,
 		"cancelled_generations": _cancelled_generations, "ready_collision_centers": _ready_collision_centers,
+		"terrain_unavailable": _terrain_unavailable,
 		"terrain_ms": diagnostic_terrain_ms, "staging_ms": diagnostic_staging_ms,
 		"publication_ms": diagnostic_publication_ms, "collision_updates": diagnostic_collision_updates,
 	}
@@ -235,6 +229,7 @@ func _restore_entry(entry: Dictionary) -> void:
 	_last_center = entry.last_center
 	_cancelled_generations = entry.cancelled_generations
 	_ready_collision_centers = entry.ready_collision_centers
+	_terrain_unavailable = bool(entry.get("terrain_unavailable", false))
 	diagnostic_terrain_ms = entry.terrain_ms
 	diagnostic_staging_ms = entry.staging_ms
 	diagnostic_publication_ms = entry.publication_ms
@@ -252,6 +247,7 @@ func _clear_active_references() -> void:
 	_prepared_regions = []; _logical_slots = {}; _catalogue = {}; _idle_stagers = []
 	_worker_count = 1; _dispatch_count = 0; _indexing = false; _last_center = null
 	_cancelled_generations = {}; _ready_collision_centers = {}
+	_terrain_unavailable = false
 	diagnostic_terrain_ms = []
 	diagnostic_staging_ms = []
 	diagnostic_publication_ms = []
@@ -321,6 +317,17 @@ func request_terrain_priority(coord: Vector2i) -> void:
 
 func await_ready_for(worldspace_form_id: int, coord: Vector2i, generation: int) -> ReadyStatus:
 	if generation == _generation and worldspace_form_id == _active_wrld_form_id and _ready_collision_centers.has(coord):
+		return ReadyStatus.READY
+	if generation == _generation and worldspace_form_id == _active_wrld_form_id and _terrain_unavailable:
+		# No authored LAND was found (or the selected master could not be opened).
+		# Terrain has no collision to wait for, so release the transition after a
+		# physics frame rather than leaving the player frozen indefinitely.
+		await get_tree().physics_frame
+		if _cancelled_generations.has(generation):
+			return ReadyStatus.CANCELLED
+		if generation != _generation or worldspace_form_id != _active_wrld_form_id:
+			return ReadyStatus.SUPERSEDED
+		_ready_collision_centers[coord] = true
 		return ReadyStatus.READY
 	while true:
 		if _cancelled_generations.has(generation):
@@ -508,7 +515,9 @@ func _finish_catalogue(payload: Dictionary) -> void:
 	_idle_stagers.append(payload.stager)
 	_catalogue = payload.get("catalogue", {})
 	if not String(_catalogue.get("error", "")).is_empty():
+		_terrain_unavailable = true
 		push_error("TerrainStreamer catalogue: " + String(_catalogue.error))
+		state_changed.emit()
 		return
 	for cell: Dictionary in _catalogue.get("usable_cells", []):
 		_usable_cells[cell.coord] = int(cell.cell_form_id)
@@ -516,6 +525,7 @@ func _finish_catalogue(payload: Dictionary) -> void:
 		_touched_regions[location] = true
 		_region_states[location] = "unseen"
 		_region_cells[location] = []
+	_terrain_unavailable = _touched_regions.is_empty()
 	for coord: Vector2i in _usable_cells:
 		for location in _regions_for_cell(coord):
 			(_region_cells[location] as Array).append(coord)
