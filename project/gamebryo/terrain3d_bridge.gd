@@ -597,7 +597,11 @@ func _resolve_to_slot(ltex_id: int) -> int:
 		return -1
 	var tex_path := esm.resolve_ltex_texture_path(ltex_id)
 	if tex_path == "":
-		return -1
+		# Keep the region publishable even when a malformed/missing LTEX record
+		# cannot resolve to a DDS. The pool's synthetic fallback is explicit and
+		# visible, while the diagnostic identifies the authored identity.
+		push_error("Terrain3DBridge: LTEX %08X has no resolvable texture path; using pink fallback" % ltex_id)
+		return texture_pool.get_slot(null, "LTEX %08X (unresolved)" % ltex_id)
 	var phase_started_us := Time.get_ticks_usec() if collect_import_timings else 0
 	var tex := resolver.load_texture("textures\\" + tex_path)
 	if collect_import_timings:
@@ -672,6 +676,7 @@ func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Ar
 			continue
 		var render_slot := _resolve_to_slot(ltex_id)
 		if render_slot < 0:
+			push_error("Terrain3DBridge: failed to resolve LTEX %08X for logical slot %d" % [ltex_id, logical_slot])
 			return false
 		_ltex_slot_by_form_id[ltex_id] = logical_slot
 		_render_slot_by_ltex_slot[logical_slot] = render_slot
