@@ -14,6 +14,8 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <mutex>
+#include <string>
 
 namespace godot {
 
@@ -42,7 +44,10 @@ class TerrainRegionStager : public RefCounted {
 	};
 
 	std::unique_ptr<esm::EsmFile> esm_file_;
-	std::map<uint32_t, WorldCatalogue> catalogues_;
+	std::string esm_path_;
+	std::map<uint32_t, std::shared_ptr<WorldCatalogue>> catalogues_;
+	static std::mutex shared_catalogue_mutex_;
+	static std::map<std::pair<std::string, uint32_t>, std::shared_ptr<WorldCatalogue>> shared_catalogues_;
 	String last_error_;
 
 	bool build_catalogue(uint32_t p_worldspace_form_id, WorldCatalogue &r_catalogue);

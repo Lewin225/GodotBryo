@@ -11,6 +11,8 @@
 #include <cstring>
 
 namespace godot {
+std::mutex TerrainRegionStager::shared_catalogue_mutex_;
+std::map<std::pair<std::string, uint32_t>, std::shared_ptr<TerrainRegionStager::WorldCatalogue>> TerrainRegionStager::shared_catalogues_;
 namespace {
 constexpr int REGION_SIZE = 256;
 constexpr int CELL_SPAN = esm::kLandGridSize - 1;
@@ -63,9 +65,9 @@ bool TerrainRegionStager::open_esm(const String &path) {
 	try {
 		esm_file_ = std::make_unique<esm::EsmFile>();
 		esm_file_->open(path.utf8().get_data());
-		catalogues_.clear(); last_error_ = ""; return true;
+		esm_path_ = path.utf8().get_data(); catalogues_.clear(); last_error_ = ""; return true;
 	} catch (const std::exception &e) {
-		esm_file_.reset(); catalogues_.clear(); last_error_ = String(e.what()); return false;
+		esm_file_.reset(); esm_path_.clear(); catalogues_.clear(); last_error_ = String(e.what()); return false;
 	}
 }
 
@@ -136,11 +138,21 @@ Dictionary TerrainRegionStager::index_worldspace(int64_t form_id) {
 	const uint32_t worldspace = static_cast<uint32_t>(form_id);
 	auto found = catalogues_.find(worldspace);
 	if (found == catalogues_.end()) {
-		WorldCatalogue catalogue;
-		if (!build_catalogue(worldspace, catalogue)) { result["error"] = last_error_; return result; }
+		std::shared_ptr<WorldCatalogue> catalogue;
+		{
+			std::lock_guard<std::mutex> lock(shared_catalogue_mutex_);
+			const auto key = std::make_pair(esm_path_, worldspace);
+			auto shared = shared_catalogues_.find(key);
+			if (shared != shared_catalogues_.end()) catalogue = shared->second;
+			else {
+				catalogue = std::make_shared<WorldCatalogue>();
+				if (!build_catalogue(worldspace, *catalogue)) { result["error"] = last_error_; return result; }
+				shared_catalogues_.emplace(key, catalogue);
+			}
+		}
 		found = catalogues_.emplace(worldspace, std::move(catalogue)).first;
 	}
-	const auto &catalogue = found->second;
+	const auto &catalogue = *found->second;
 	Array cells;
 	for (const auto &[coord, payload] : catalogue.cells) {
 		Dictionary cell; cell["coord"] = Vector2i(coord.first, coord.second); cell["cell_form_id"] = int64_t(payload.cell_form_id); cells.push_back(cell);
@@ -162,7 +174,7 @@ Dictionary TerrainRegionStager::compose_region(int64_t form_id, const Vector2i &
 	Dictionary indexed = index_worldspace(form_id);
 	const String index_error = indexed.get("error", String());
 	if (!index_error.is_empty()) { result["error"] = index_error; return result; }
-	const auto &catalogue = catalogues_.at(static_cast<uint32_t>(form_id));
+	const auto &catalogue = *catalogues_.at(static_cast<uint32_t>(form_id));
 	if (!catalogue.touched_regions.count({ location.x, location.y })) { result["error"] = "Region is not touched by usable LAND"; return result; }
 	std::map<uint32_t, uint8_t> slots;
 	int expected_slot = 1;
