@@ -37,6 +37,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("has_collision_data"), &NifReader::has_collision_data);
 	ClassDB::bind_method(D_METHOD("get_animation_sequences"), &NifReader::get_animation_sequences);
 	ClassDB::bind_method(D_METHOD("get_scene_nodes"), &NifReader::get_scene_nodes);
+	ClassDB::bind_method(D_METHOD("get_skin_data"), &NifReader::get_skin_data);
 }
 
 bool NifReader::load(const PackedByteArray &bytes) {
@@ -327,6 +328,71 @@ Array NifReader::get_scene_nodes() const {
 				r[6] * scale, r[7] * scale, r[8] * scale);
 		Vector3 origin(node.translation[0], node.translation[1], node.translation[2]);
 		d["transform"] = Transform3D(basis, origin);
+		out.push_back(d);
+	}
+	return out;
+}
+
+// Issue #46: nif::SkinBoneTransform -> Transform3D, same basis*scale
+// convention get_transform()/get_scene_nodes() already use for their own
+// row-major-3x3-plus-scale transform fields.
+namespace {
+Transform3D skin_bone_transform_to_godot(const nif::SkinBoneTransform &t) {
+	const float *r = t.rotation;
+	float scale = t.scale;
+	Basis basis(
+			r[0] * scale, r[1] * scale, r[2] * scale,
+			r[3] * scale, r[4] * scale, r[5] * scale,
+			r[6] * scale, r[7] * scale, r[8] * scale);
+	Vector3 origin(t.translation[0], t.translation[1], t.translation[2]);
+	return Transform3D(basis, origin);
+}
+} // namespace
+
+Array NifReader::get_skin_data() const {
+	Array out;
+	if (!loaded_) {
+		return out;
+	}
+	for (const nif::SkinData &skin : mesh_.skin_data) {
+		Dictionary d;
+		d["target_node_name"] = String(skin.target_node_name.c_str());
+
+		PackedStringArray bone_names;
+		bone_names.resize(static_cast<int>(skin.bone_names.size()));
+		for (size_t i = 0; i < skin.bone_names.size(); ++i) {
+			bone_names[static_cast<int>(i)] = String(skin.bone_names[i].c_str());
+		}
+		d["bone_names"] = bone_names;
+
+		Array bind_transforms;
+		for (const nif::SkinBoneTransform &t : skin.bone_bind_transforms) {
+			bind_transforms.push_back(skin_bone_transform_to_godot(t));
+		}
+		d["bone_bind_transforms"] = bind_transforms;
+
+		d["skin_to_global_transform"] = skin_bone_transform_to_godot(skin.skin_to_global_transform);
+
+		PackedInt32Array bone_indices;
+		PackedFloat32Array bone_weights;
+		bone_indices.resize(static_cast<int>(skin.vertex_bone_indices.size()) * 4);
+		bone_weights.resize(static_cast<int>(skin.vertex_bone_weights.size()) * 4);
+		for (size_t v = 0; v < skin.vertex_bone_indices.size(); ++v) {
+			for (int i = 0; i < 4; ++i) {
+				bone_indices[static_cast<int>(v) * 4 + i] = skin.vertex_bone_indices[v][i];
+				bone_weights[static_cast<int>(v) * 4 + i] = skin.vertex_bone_weights[v][i];
+			}
+		}
+		d["bone_indices"] = bone_indices;
+		d["bone_weights"] = bone_weights;
+
+		PackedInt32Array body_part_ids;
+		body_part_ids.resize(static_cast<int>(skin.partition_body_part_ids.size()));
+		for (size_t i = 0; i < skin.partition_body_part_ids.size(); ++i) {
+			body_part_ids[static_cast<int>(i)] = skin.partition_body_part_ids[i];
+		}
+		d["partition_body_part_ids"] = body_part_ids;
+
 		out.push_back(d);
 	}
 	return out;
