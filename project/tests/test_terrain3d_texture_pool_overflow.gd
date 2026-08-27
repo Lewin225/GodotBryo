@@ -79,8 +79,8 @@ func _check_real_data_fits_budget() -> void:
 			"real texture usage fits comfortably within budget (%d/%d slots used)" % [pool.used_slot_count(), Terrain3DTexturePool.USABLE_SLOTS])
 
 	var texture_list: Array = terrain.assets.get_texture_list()
-	check(texture_list.size() == pool.used_slot_count(),
-			"no pink fallback needed for real data (%d texture(s) in list, expected %d)" % [texture_list.size(), pool.used_slot_count()])
+	check(texture_list.size() == pool.used_slot_count() + 1,
+			"no overflow fallback needed for real data (%d assets = %d real + reserved default)" % [texture_list.size(), pool.used_slot_count()])
 
 ## Synthetic check: USABLE_SLOTS+1 distinct fabricated textures (not tied to
 ## real game files, so this doesn't depend on how many distinct textures the
