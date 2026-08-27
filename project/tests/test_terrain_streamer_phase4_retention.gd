@@ -107,4 +107,4 @@ func _ready() -> void:
 		"explicit final deactivate releases every retained entry")
 	print("=======================")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
-	get_tree().quit(1 if failures == 0 else 1)
+	get_tree().quit(0 if failures == 0 else 1)
