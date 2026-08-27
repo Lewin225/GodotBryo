@@ -651,11 +651,8 @@ func _resolve_ltex_slot(ltex_id: int) -> int:
 	var render_slot := _resolve_to_slot(ltex_id)
 	if render_slot < 0:
 		return -1
-	while _native_logical_slots.values().has(_legacy_next_slot) or _legacy_ltex_slot_by_form_id.values().has(_legacy_next_slot):
-		_legacy_next_slot += 1
-	var ltex_slot := _legacy_next_slot
-	_legacy_next_slot += 1
-	if ltex_slot >= MAX_LTEX_SLOTS:
+	var ltex_slot := _next_free_legacy_slot()
+	if ltex_slot < 0:
 		push_warning("Terrain3DBridge: LTEX slot budget exhausted; FormID %08X cannot retain grass identity" % ltex_id)
 		return -1
 	_legacy_ltex_slot_by_form_id[ltex_id] = ltex_slot
@@ -678,6 +675,24 @@ func get_ltex_slot(ltex_id: int) -> int:
 func get_ltex_slot_count() -> int:
 	return _ltex_slot_by_form_id.size() + _legacy_ltex_slot_by_form_id.size()
 
+func _legacy_slot_occupied(slot: int) -> bool:
+	for value in _native_logical_slots.values():
+		if int(value) == slot:
+			return true
+	for value in _legacy_ltex_slot_by_form_id.values():
+		if int(value) == slot:
+			return true
+	return false
+
+func _next_free_legacy_slot() -> int:
+	while _legacy_slot_occupied(_legacy_next_slot):
+		_legacy_next_slot += 1
+	if _legacy_next_slot >= MAX_LTEX_SLOTS:
+		return -1
+	var slot := _legacy_next_slot
+	_legacy_next_slot += 1
+	return slot
+
 ## Phase 2 region payloads contain stable logical LTEX IDs rather than pool
 ## slots. Resolve only the identities actually used by this region, then bind
 ## the logical-to-render LUT before its maps become visible.
@@ -695,11 +710,8 @@ func prepare_logical_slots(terrain: Terrain3D, used_ltex_form_ids: PackedInt64Ar
 		var legacy_slot := int(_legacy_ltex_slot_by_form_id[legacy_id])
 		if not _native_logical_slots.values().has(legacy_slot):
 			continue
-		while _native_logical_slots.values().has(_legacy_next_slot) or _legacy_ltex_slot_by_form_id.values().has(_legacy_next_slot):
-			_legacy_next_slot += 1
-		var replacement := _legacy_next_slot
-		_legacy_next_slot += 1
-		if replacement >= MAX_LTEX_SLOTS:
+		var replacement := _next_free_legacy_slot()
+		if replacement < 0:
 			push_error("Terrain3DBridge: cannot rehome legacy LTEX %08X after native slot reservation" % int(legacy_id))
 			return false
 		_legacy_ltex_slot_by_form_id[legacy_id] = replacement
