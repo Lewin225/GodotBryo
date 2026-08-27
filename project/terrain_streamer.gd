@@ -58,6 +58,8 @@ var _priority_hints: Dictionary = {}
 var _prepared_regions: Array[Dictionary] = []
 var _logical_slots: Dictionary = {}
 var _catalogue: Dictionary = {}
+var _catalogue_failed := false
+var _catalogue_error := ""
 var _workers: Array[Dictionary] = []
 var _idle_stagers: Array[TerrainRegionStager] = []
 var _worker_count := 1
@@ -199,6 +201,7 @@ func _capture_active_entry() -> Dictionary:
 		"committed_regions": _committed_regions, "region_states": _region_states,
 		"region_cells": _region_cells, "priority_hints": _priority_hints,
 		"prepared_regions": _prepared_regions, "logical_slots": _logical_slots, "catalogue": _catalogue,
+		"catalogue_failed": _catalogue_failed, "catalogue_error": _catalogue_error,
 		"idle_stagers": _idle_stagers, "worker_count": _worker_count,
 		"dispatch_count": _dispatch_count, "indexing": _indexing, "last_center": _last_center,
 		"cancelled_generations": _cancelled_generations, "ready_collision_centers": _ready_collision_centers,
@@ -225,6 +228,8 @@ func _restore_entry(entry: Dictionary) -> void:
 	_prepared_regions = entry.prepared_regions
 	_logical_slots = entry.logical_slots
 	_catalogue = entry.catalogue
+	_catalogue_failed = bool(entry.get("catalogue_failed", false))
+	_catalogue_error = String(entry.get("catalogue_error", ""))
 	_idle_stagers = entry.idle_stagers
 	_worker_count = int(entry.worker_count)
 	_dispatch_count = int(entry.dispatch_count)
@@ -247,7 +252,7 @@ func _clear_active_references() -> void:
 	grass = null
 	_resident = {}; _desired_cells = {}; _usable_cells = {}; _touched_regions = {}
 	_committed_regions = {}; _region_states = {}; _region_cells = {}; _priority_hints = {}
-	_prepared_regions = []; _logical_slots = {}; _catalogue = {}; _idle_stagers = []
+	_prepared_regions = []; _logical_slots = {}; _catalogue = {}; _catalogue_failed = false; _catalogue_error = ""; _idle_stagers = []
 	_worker_count = 1; _dispatch_count = 0; _indexing = false; _last_center = null
 	_cancelled_generations = {}; _ready_collision_centers = {}
 	_terrain_unavailable = false
@@ -294,7 +299,7 @@ func set_paused(paused: bool) -> void:
 		_bind_camera()
 		if terrain != null:
 			terrain.collision.update(true)
-		if _catalogue.is_empty():
+		if _catalogue.is_empty() and not _catalogue_failed:
 			_start_catalogue_job()
 		else:
 			_update_grass_coverage()
@@ -313,7 +318,7 @@ func request_terrain_priority(coord: Vector2i) -> void:
 	for location in _regions_for_cell(coord):
 		if _region_states.get(location) == "queued":
 			_priority_hints[location] = coord # Reprioritizes the existing entry; never duplicates it.
-	if is_active() and not _paused and _catalogue.is_empty() and _workers.is_empty():
+	if is_active() and not _paused and _catalogue.is_empty() and not _catalogue_failed and _workers.is_empty():
 		_start_catalogue_job()
 	else:
 		_dispatch_available_workers()
@@ -369,6 +374,8 @@ func get_diagnostics() -> Dictionary:
 		var entry_pool := entry.get("texture_pool") as Terrain3DTexturePool
 		retained_entries[worldspace_id] = {
 			"cache_family": entry.get("cache_family", ""), "active": bool(entry.get("active", false)),
+			"catalogue_ready": not entry.get("catalogue", {}).is_empty() and not bool(entry.get("catalogue_failed", false)),
+			"catalogue_error": String(entry.get("catalogue_error", "")),
 			"committed_regions": entry_committed.size(),
 			"texture_slots_used": entry_pool.used_slot_count() if entry_pool != null else 0,
 			"terrain_visible": entry_terrain.visible if entry_terrain != null else false,
@@ -386,7 +393,8 @@ func get_diagnostics() -> Dictionary:
 		"generation": _generation, "resident_cells": _resident.size(), "resident_coords": _resident.keys(),
 		"queued_cells": _count_region_state("queued") + _count_region_state("preparing") + _count_region_state("prepared"),
 		"idle_stagers": _idle_stagers.size(),
-		"empty_cells": 0, "catalogue_ready": not _catalogue.is_empty(),
+		"empty_cells": 0, "catalogue_ready": not _catalogue.is_empty() and not _catalogue_failed,
+		"catalogue_error": _catalogue_error,
 		"committed_regions": _committed_regions.size(), "committed_region_locations": _committed_regions.keys(),
 		"total_regions": _touched_regions.size(), "logical_slots": _logical_slots.duplicate(),
 		"region_states": _region_states.duplicate(), "worker_count": _worker_count,
@@ -501,7 +509,10 @@ func _poll_workers() -> void:
 		if task_generation != _generation or not is_active() or _paused:
 			continue
 		if not String(payload.get("error", "")).is_empty():
-			push_error("TerrainStreamer worker: " + String(payload.error))
+			if String(worker.kind) == "catalogue":
+				_finish_catalogue({"catalogue": {"error": String(payload.error)}})
+			else:
+				push_error("TerrainStreamer worker: " + String(payload.error))
 			state_changed.emit()
 			continue
 		if String(worker.kind) == "catalogue":
@@ -514,7 +525,7 @@ func _poll_workers() -> void:
 			diagnostic_staging_ms.append(float(Time.get_ticks_usec() - int(worker.started_us)) / 1000.0)
 			_region_states[location] = "prepared"
 			_prepared_regions.append({"location": location, "payload": payload, "generation": task_generation})
-	if is_active() and not _paused and _catalogue.is_empty() and _workers.is_empty():
+	if is_active() and not _paused and _catalogue.is_empty() and not _catalogue_failed and _workers.is_empty():
 		_start_catalogue_job()
 	else:
 		_dispatch_available_workers()
@@ -522,9 +533,14 @@ func _poll_workers() -> void:
 func _finish_catalogue(payload: Dictionary) -> void:
 	_indexing = false
 	_catalogue = payload.get("catalogue", {})
+	_catalogue_failed = false
+	_catalogue_error = ""
 	if not String(_catalogue.get("error", "")).is_empty():
+		_catalogue_error = String(_catalogue.error)
+		_catalogue = {}
+		_catalogue_failed = true
 		_terrain_unavailable = true
-		push_error("TerrainStreamer catalogue: " + String(_catalogue.error))
+		push_error("TerrainStreamer catalogue: " + _catalogue_error)
 		state_changed.emit()
 		return
 	for cell: Dictionary in _catalogue.get("usable_cells", []):
