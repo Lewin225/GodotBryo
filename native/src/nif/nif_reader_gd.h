@@ -140,6 +140,29 @@ public:
 	//       plain NiSkinInstance }
 	Array get_skin_data() const;
 
+	// Issue #47: real vertex morph targets (NiGeomMorpherController +
+	// NiMorphData, plus their NiFloatInterpolator/NiFloatData weight-
+	// animation curves) — see nif_types.h's own MorphData doc comment. One
+	// Dictionary per morph-capable NiShape:
+	//   { "target_node_name": String — the owning shape's own name, joins
+	//       to get_submesh_name() (1:1, a shape has at most one morph
+	//       controller in every real file sampled),
+	//     "relative_targets": bool — NiMorphData::relativeTargets; true in
+	//       every real file sampled so far,
+	//     "cycle_type": int (0=loop/1=reverse/2=clamp, same convention as
+	//       get_animation_sequences()'s own "cycle_type"),
+	//     "start_time": float, "stop_time": float — this controller's OWN
+	//       clock, independent of get_animation_sequences()'s,
+	//     "targets": Array of { "name": String, "vertex_deltas":
+	//       PackedFloat32Array, flat xyz, length vertex_count*3 } — includes
+	//       index 0 (the base shape's own copy, see nif_types.h's
+	//       MorphTarget doc comment for why a caller should skip building a
+	//       blend shape from it),
+	//     "weight_tracks": Array of { "target_name": String — joins to
+	//       "targets"[i]["name"], "keys": Array of float_key (same shape as
+	//       get_animation_sequences()'s own float_key) } }
+	Array get_morph_data() const;
+
 private:
 	nif::Mesh mesh_;
 	bool loaded_ = false;
