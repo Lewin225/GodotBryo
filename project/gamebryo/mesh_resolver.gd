@@ -391,6 +391,15 @@ func load_sound(sound_path: String) -> AudioStreamWAV:
 ## effect placements uses, is unregistered and always routes through the
 ## RID path at runtime).
 func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
+	# Issue #47: real vertex morph targets -- keyed by the owning shape's own
+	# name (NifReader.get_morph_data()'s own "target_node_name"), same join
+	# convention as get_submesh_name(). Empty for the overwhelming majority
+	# of NIFs; only real morph-capable content (e.g. cloth-ripple flags)
+	# populates this.
+	var morph_by_name: Dictionary = {}
+	for morph in nif.get_morph_data():
+		morph_by_name[String(morph["target_node_name"])] = morph
+
 	var mesh_entries := []
 	for i in range(nif.get_submesh_count()):
 		if _is_editor_marker_submesh(nif.get_submesh_name(i)) and not Engine.is_editor_hint():
@@ -438,6 +447,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"diffuse_image": _load_image(tex_path, needs_alpha),
 			"normal_image": _load_image(normal_path),
 			"glow_image": _load_image(glow_path),
+			"morph": morph_by_name.get(nif.get_submesh_name(i), {}),
 		})
 	return {
 		"model_path": model_path,
@@ -518,6 +528,9 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 		else:
 			mesh_cache_misses += 1
 			mesh = _build_mesh_from_raw(e)
+			var morph: Dictionary = e.get("morph", {})
+			if not morph.is_empty():
+				mesh = _apply_morph_targets(mesh, morph)
 			var mat := _build_material_from_raw(e)
 			if mat != null:
 				mesh.surface_set_material(0, mat)
@@ -885,6 +898,9 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 			mesh = _skin_mesh_cache[mesh_key]
 		else:
 			mesh = _build_skinned_mesh_from_raw(raw_entry, skin)
+			var morph: Dictionary = raw_entry.get("morph", {})
+			if not morph.is_empty():
+				mesh = _apply_morph_targets(mesh, morph)
 			var mat := _build_material_from_raw(raw_entry)
 			if mat != null:
 				mesh.surface_set_material(0, mat)
@@ -931,6 +947,69 @@ func _build_skinned_mesh_from_raw(e: Dictionary, skin: Dictionary) -> ArrayMesh:
 
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## Issue #47: rebuilds `base_mesh` with real Godot blend shapes added, one
+## per NifReader.get_morph_data() "targets" entry — see nif_types.h's own
+## MorphTarget doc comment for why index 0 (the base shape's own copy, not
+## a real target) is skipped. `morph["targets"][i]["vertex_deltas"]` are
+## per-vertex OFFSETS (NiMorphData's own convention, confirmed real:
+## relative_targets == true in every file sampled); Godot's own
+## BLEND_SHAPE_MODE_NORMALIZED (the default, set explicitly here since a
+## fresh ArrayMesh's default mode isn't assumed) expects each blend shape's
+## ARRAY_VERTEX to be the target's ABSOLUTE position, so base + delta is
+## computed here once at mesh-build time rather than deferred to the shader.
+##
+## Godot requires every add_blend_shape() call before the surface that
+## references them is added (blend shape COUNT is fixed at surface-add
+## time) — same reason _build_skinned_mesh_from_raw() above rebuilds a
+## fresh ArrayMesh via surface_get_arrays() rather than mutating
+## `base_mesh` in place; ARRAY_BONES/ARRAY_WEIGHTS already on `base_mesh`
+## (a skinned+morphed submesh, the real motivating case — the Nevada flag
+## carries both) pass through unchanged via that same surface_get_arrays()
+## call, so a skinned mesh keeps its skinning after this runs.
+func _apply_morph_targets(base_mesh: ArrayMesh, morph: Dictionary) -> ArrayMesh:
+	var targets: Array = morph.get("targets", [])
+	if targets.size() <= 1:
+		return base_mesh # only (or not even) the base-copy entry -- nothing to blend
+
+	var arrays := base_mesh.surface_get_arrays(0)
+	var base_positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	# Godot requires a blend shape's Vertex/Normal/Tangent arrays to match
+	# the main surface's own format -- NIF's NiMorphData only ever gives us
+	# per-vertex POSITION deltas, never per-morph normals, so every blend
+	# shape reuses the base mesh's own normals unchanged (a real, if minor,
+	# fidelity approximation for a mesh whose morph deltas are small ripples
+	# -- not incorrect for anything sharper, just not re-derived per morph).
+	var base_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+
+	var blend_arrays: Array = []
+	var mesh := ArrayMesh.new()
+	mesh.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
+	for i in targets.size():
+		if i == 0:
+			continue
+		var target: Dictionary = targets[i]
+		var target_name: String = String(target.get("name", ""))
+		mesh.add_blend_shape(target_name if target_name != "" else "Morph%d" % i)
+
+		var deltas: PackedFloat32Array = target["vertex_deltas"]
+		if deltas.size() != base_positions.size() * 3:
+			push_error("_apply_morph_targets: vertex_deltas size mismatch for '%s' (verts=%d deltas=%d)" % [target_name, base_positions.size(), deltas.size()])
+			continue
+		var target_positions := PackedVector3Array()
+		target_positions.resize(base_positions.size())
+		for v in base_positions.size():
+			target_positions[v] = base_positions[v] + Vector3(deltas[v * 3], deltas[v * 3 + 1], deltas[v * 3 + 2])
+
+		var blend_surface := []
+		blend_surface.resize(Mesh.ARRAY_MAX)
+		blend_surface[Mesh.ARRAY_VERTEX] = target_positions
+		if not base_normals.is_empty():
+			blend_surface[Mesh.ARRAY_NORMAL] = base_normals
+		blend_arrays.append(blend_surface)
+
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, blend_arrays)
 	return mesh
 
 ## `node`'s transform as seen from `ancestor` (which MUST actually be an
