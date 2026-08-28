@@ -15,9 +15,24 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 ## placed NPC_ — a deliberate exception to this codebase's "everything
 ## built purely in code" convention, since actors are meaningfully more
 ## complex (skeleton/animation, and eventually armor/items) than anything
-## else placed in the world. Hand-authored scaffolding (e.g. future armor/
-## weapon attach markers) belongs directly in npc_node.tscn, saved there —
-## not reconstructed in code every time.
+## else placed in the world.
+##
+## populate() builds ALL of its own generated content (skeleton, meshes,
+## LocomotionAnimationPlayer) inside one dedicated child container, named
+## BODY_NODE_NAME ("Body") — never directly under `self`. This is
+## deliberate: populate()/_editor_load() need to freely clear and rebuild
+## whatever they generated on a reload, but must NOT touch anything
+## hand-authored directly in npc_node.tscn as a SIBLING of Body (e.g. a
+## future AnimationTree wired to LocomotionAnimationPlayer via a NodePath,
+## or armor/weapon attach markers) — a real problem hit in practice: an
+## earlier version of this file cleared every child indiscriminately,
+## which would destroy any such hand-authored node on every reload. A
+## NodePath into Body (e.g. "Body/LocomotionAnimationPlayer") stays valid
+## across rebuilds even though the actual AnimationPlayer instance gets
+## destroyed and recreated each time, since NodePath resolution happens at
+## the moment it's used, not once at authoring time — so hand-authored
+## scaffolding CAN safely reference generated content by path, just not
+## hold a direct node reference to it.
 ##
 ## Also a standalone @tool preview: open npc_node.tscn directly, pick a
 ## preset (or type a custom base_form_id) in the Inspector, press
@@ -37,40 +52,40 @@ const PRESET_FORM_IDS := {
 	"Doc Mitchell (Goodsprings)": 0x00104C0C,
 }
 
+## Name of the dedicated child container populate() builds all of its own
+## generated content into — see this file's own top doc comment.
+const BODY_NODE_NAME := "Body"
+
 ## Real movement locomotion .kf files -- confirmed against the actual
 ## Meshes/Update BSAs (native/tools/find_kf_animations.cpp): a bare .kf
-## carries exactly one top-level NiControllerSequence
-## with NO owning NiControllerManager (see nif_loader.cpp's own
-## extract_sequence() doc comment for why that needed a native fix), meant
-## to be applied against a skeleton loaded from elsewhere -- unlike a
-## self-contained NIF's own embedded animation (populate_skeleton()'s
-## _populate_skeleton_animation_player()). "mt" = the base/unarmed
-## locomotion set (every weapon-type-specific set -- 1hm/1hp/2ha/... --
-## lives alongside it under the same folder for later work). mtidle has no
-## gender-specific variant (shared, confirmed real); forward/backward/left/
-## right do (separate male/female subfolders, same convention as RACE's own
-## gendered body parts).
-const LOCOMOTION_CLIPS_MALE := {
-	"idle": "characters\\_male\\locomotion\\mtidle.kf",
-	"forward": "characters\\_male\\locomotion\\male\\mtforward.kf",
-	"backward": "characters\\_male\\locomotion\\male\\mtbackward.kf",
-	"left": "characters\\_male\\locomotion\\male\\mtleft.kf",
-	"right": "characters\\_male\\locomotion\\male\\mtright.kf",
-}
-const LOCOMOTION_CLIPS_FEMALE := {
-	"idle": "characters\\_male\\locomotion\\mtidle.kf",
-	"forward": "characters\\_male\\locomotion\\female\\mtforward.kf",
-	"backward": "characters\\_male\\locomotion\\female\\mtbackward.kf",
-	"left": "characters\\_male\\locomotion\\female\\mtleft.kf",
-	"right": "characters\\_male\\locomotion\\female\\mtright.kf",
-}
+## carries exactly one top-level NiControllerSequence with NO owning
+## NiControllerManager (see nif_loader.cpp's own extract_sequence() doc
+## comment for why that needed a native fix), meant to be applied against a
+## skeleton loaded from elsewhere -- unlike a self-contained NIF's own
+## embedded animation (populate_skeleton()'s
+## _populate_skeleton_animation_player()).
+##
+## Every real file under this folder is imported (via
+## GamebryoMeshResolver.list_files_with_prefix()), not a hand-picked subset
+## -- the full weapon-type-specific sets (1hm/1hp/2ha/2hh/2hl/2hr/h2h/1gt/
+## ...) alongside the base "mt" unarmed set, plus their hurt/child/female/
+## male subfolders, all real, all kept under their own real names (no
+## remapping to invented aliases like "forward"/"backward" -- confirmed via
+## review that Godot's AnimationLibrary rejects "/" in a name outright, so
+## a file's real relative path becomes its clip name with "/" -> "__").
+## set_move_input() below only targets the base "mt" cardinal-direction
+## subset for now; everything else stays loaded and available (e.g. for a
+## later equipped-weapon-driven animation-set switch) without being played
+## automatically.
+const LOCOMOTION_FOLDER_PREFIX := "meshes/characters/_male/locomotion/"
 
-## Below this magnitude, set_move_input() plays "idle" rather than trying to
-## pick a direction from near-zero noise.
+## Below this magnitude, set_move_input() plays the idle clip rather than
+## trying to pick a direction from near-zero noise.
 const MOVE_INPUT_DEADZONE := 0.15
 
 var _locomotion_player: AnimationPlayer = null
 var _current_locomotion_clip := ""
+var _is_female := false
 
 ## Real NPC_ construction — the full humanoid assembly confirmed real in
 ## issue #52 chunks 2/4. `placement["model"]` is the NPC_'s own MODL (the
@@ -81,9 +96,9 @@ var _current_locomotion_clip := ""
 ## own ESM-declared INDX blocks, not a guessed convention. Deliberately no
 ## head/face mesh (FaceGen is out of scope for this issue).
 ##
-## Also wires a real LocomotionAnimationPlayer (see
-## populate_locomotion_animations() in mesh_resolver.gd) from the gender-
-## appropriate LOCOMOTION_CLIPS_* set — see set_move_input() for driving
+## Also wires a real LocomotionAnimationPlayer holding EVERY real file
+## found under LOCOMOTION_FOLDER_PREFIX (see _discover_locomotion_clips())
+## — see set_move_input() for driving the base cardinal-direction subset of
 ## it. Animation only: this does NOT move the actor through the world (no
 ## CharacterBody3D — see GamebryoActor's own doc comment for why that's
 ## deferred); a caller wanting real translation drives that separately and
@@ -93,32 +108,70 @@ func populate(placement: Dictionary, esm: EsmReader, mesh_resolver: GamebryoMesh
 	var race_form_id := int(placement.get("race_form_id", 0))
 	if skeleton_path == "" or race_form_id == 0:
 		return
-	var is_female := bool(placement.get("is_female", false))
+	_is_female = bool(placement.get("is_female", false))
 	var body_part_paths: Array = []
-	for part in esm.get_race_body_parts(race_form_id, is_female):
+	for part in esm.get_race_body_parts(race_form_id, _is_female):
 		body_part_paths.append(String(part["model"]))
 	if body_part_paths.is_empty():
 		return
 
-	var skeleton := mesh_resolver.populate_humanoid_skeleton(self, skeleton_path, body_part_paths)
+	var body := _rebuild_body_container()
+	var skeleton := mesh_resolver.populate_humanoid_skeleton(body, skeleton_path, body_part_paths)
 	if skeleton == null:
 		return
 
-	var clips: Dictionary = LOCOMOTION_CLIPS_FEMALE if is_female else LOCOMOTION_CLIPS_MALE
-	_locomotion_player = mesh_resolver.populate_locomotion_animations(self, skeleton, clips)
+	var clips := _discover_locomotion_clips(mesh_resolver)
+	_locomotion_player = mesh_resolver.populate_locomotion_animations(body, skeleton, clips)
 	_current_locomotion_clip = ""
 	set_move_input(Vector2.ZERO) # starts idle
 
+## Clears and recreates the Body container (see this file's own top doc
+## comment) — the ONLY thing populate() ever destroys, leaving every
+## sibling (hand-authored scaffolding saved directly in npc_node.tscn)
+## untouched. Immediate free, not queue_free() -- same "avoids a same-name
+## collision on reload" reasoning nif_viewer.gd's own doc comment gives for
+## its identical pattern.
+func _rebuild_body_container() -> Node3D:
+	var existing := get_node_or_null(NodePath(BODY_NODE_NAME))
+	if existing:
+		remove_child(existing)
+		existing.free()
+	var body := Node3D.new()
+	body.name = BODY_NODE_NAME
+	add_child(body)
+	return body
+
+## Discovers every real .kf under LOCOMOTION_FOLDER_PREFIX (no hand-picked
+## subset -- see this file's own doc comment on LOCOMOTION_FOLDER_PREFIX)
+## and maps each to { real_relative_path_with_"__"_separators: load_path }.
+## Same naming convention project/_diag/_diag_locomotion_review.gd uses
+## (kept identical deliberately, so a clip name found there matches one
+## found here exactly) -- "/" is stripped down to the LOCOMOTION_FOLDER_PREFIX's
+## own subfolders (e.g. "male/mtforward.kf" -> "male__mtforward.kf";
+## "mtidle.kf" at the shared top level stays "mtidle.kf" unprefixed).
+func _discover_locomotion_clips(mesh_resolver: GamebryoMeshResolver) -> Dictionary:
+	var clips := {}
+	for entry in mesh_resolver.list_files_with_prefix(LOCOMOTION_FOLDER_PREFIX):
+		var e := String(entry)
+		if not e.ends_with(".kf"):
+			continue
+		var rel := e.trim_prefix(LOCOMOTION_FOLDER_PREFIX)
+		var load_path := "characters\\_male\\locomotion\\" + rel.replace("/", "\\")
+		clips[rel.replace("/", "__")] = load_path
+	return clips
+
 ## Pre-blendspace movement driving (issue #52 follow-up): picks the single
-## closest of the 4 real cardinal locomotion clips (or "idle" inside the
-## deadzone) and switches the LocomotionAnimationPlayer to it -- no
-## blending between clips yet, just discrete selection. `input`: same
-## convention as this project's own Input.get_vector(left, right, forward,
-## backward) (see player_controller.gd) -- x: positive = right/strafe
-## right, negative = left; y: NEGATIVE = forward, positive = backward
-## (Godot's own get_vector() convention, not an arbitrary choice here). A
-## no-op if populate() never built a real LocomotionAnimationPlayer (e.g.
-## none of the gender's clips resolved on this install).
+## closest of the 4 real cardinal "mt" (base/unarmed) locomotion clips (or
+## the shared idle clip inside the deadzone) and switches the
+## LocomotionAnimationPlayer to it -- no blending between clips yet, just
+## discrete selection, and no weapon-type-specific set (1hm/1hp/...) yet
+## either, both real future work. `input`: same convention as this
+## project's own Input.get_vector(left, right, forward, backward) (see
+## player_controller.gd) -- x: positive = right/strafe right, negative =
+## left; y: NEGATIVE = forward, positive = backward (Godot's own
+## get_vector() convention, not an arbitrary choice here). A no-op if
+## populate() never built a real LocomotionAnimationPlayer, or the specific
+## clip this input maps to didn't resolve on this install.
 func set_move_input(input: Vector2) -> void:
 	if _locomotion_player == null:
 		return
@@ -126,29 +179,27 @@ func set_move_input(input: Vector2) -> void:
 	if clip == _current_locomotion_clip:
 		return
 	if not _locomotion_player.has_animation(clip):
-		return # a real, possible gap -- not every clip in LOCOMOTION_CLIPS_* is guaranteed to have resolved (see populate_locomotion_animations()'s own doc comment)
+		return # a real, possible gap -- not every discovered file is guaranteed to have resolved to real animation data (see populate_locomotion_animations()'s own doc comment)
 	_current_locomotion_clip = clip
 	_locomotion_player.play(clip)
 
 func _locomotion_clip_for_input(input: Vector2) -> String:
 	if input.length() < MOVE_INPUT_DEADZONE:
-		return "idle"
+		return "mtidle.kf" # shared, no gender subfolder -- confirmed real
+	var gender_prefix := "female__" if _is_female else "male__"
 	if absf(input.y) >= absf(input.x):
-		return "backward" if input.y > 0.0 else "forward"
-	return "right" if input.x > 0.0 else "left"
+		return gender_prefix + ("mtbackward.kf" if input.y > 0.0 else "mtforward.kf")
+	return gender_prefix + ("mtright.kf" if input.x > 0.0 else "mtleft.kf")
 
 ## Standalone preview entry point (see this file's own doc comment). Opens
 ## FalloutNV.esm directly, resolves the configured base_form_id via
 ## esm.get_actor_by_form_id() (no cell/placement context needed), and calls
-## the exact same populate() real placements use.
+## the exact same populate() real placements use. Deliberately does NOT
+## clear this node's children itself -- populate() -> _rebuild_body_
+## container() already clears exactly the one container it owns, and
+## clearing anything broader here would destroy hand-authored sibling
+## scaffolding (see this file's own top doc comment).
 func _editor_load() -> void:
-	# Clear any previously built children before rebuilding -- same
-	# "immediate free, not queue_free" convention nif_viewer.gd uses (avoids
-	# a same-name collision on reload, see that file's own doc comment).
-	for child in get_children():
-		remove_child(child)
-		child.free()
-
 	var esm := EsmReader.new()
 	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
 	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):

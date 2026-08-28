@@ -198,6 +198,31 @@ func _get_reader(bsa_name: String) -> BsaReader:
 	_bsa_readers[bsa_name] = r
 	return r
 
+## Lists every real file whose normalized path (lowercase, forward
+## slashes -- BsaReader.list_entries()'s own convention) starts with
+## `folder_prefix`, across every BSA in the same priority order
+## resolve_bytes() uses -- for review/discovery tooling that needs to find
+## real files by folder rather than load one already-known path (e.g. "what
+## movement .kf files actually exist" rather than a hand-picked guess at
+## their names). Deduplicated across archives -- first BSA in priority
+## order wins for a given path, same precedence resolve_bytes() itself
+## uses. Worker-safe (BsaReader I/O only).
+func list_files_with_prefix(folder_prefix: String) -> PackedStringArray:
+	var prefix := folder_prefix.to_lower().replace("\\", "/")
+	var seen := {}
+	var out := PackedStringArray()
+	for bsa_name in _bsa_order:
+		var r := _get_reader(bsa_name)
+		if r == null:
+			continue
+		for entry_path in r.list_entries():
+			if seen.has(entry_path):
+				continue
+			if entry_path.begins_with(prefix):
+				seen[entry_path] = true
+				out.append(entry_path)
+	return out
+
 ## Returns { "bsa": String, "data": PackedByteArray } or {} if not found in
 ## any archive. Worker-safe -- BsaReader I/O only, no RenderingServer/
 ## PhysicsServer3D involvement.
@@ -1359,6 +1384,7 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 		if sequences.is_empty():
 			continue
 		var anim := _build_sequence_animation(sequences[0], resolve_bone)
+		_strip_root_bone_translation(anim, skeleton, skeleton_path)
 		if anim.get_track_count() > 0:
 			library.add_animation(String(clip_name), anim)
 
@@ -1371,6 +1397,36 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 	player.root_node = NodePath("..")
 	player.add_animation_library("", library)
 	return player
+
+## Real Bethesda convention, confirmed against actual movement .kf data and
+## direct in-editor review (e.g. characters\_male\locomotion\male\
+## mtforward.kf): the skeleton's own root bone ("Bip01") carries genuine
+## baked translation across the whole clip -- 0 -> ~1.46 units over a 1.2s
+## forward loop, a real walk-speed displacement, not noise -- meant to be
+## EXTRACTED by game code to drive the actor's actual world position, while
+## the rest of the skeleton hangs off a separate "Bip01 NonAccum" bone that
+## stays visually static (its own name is short for "does not accumulate
+## root motion"). Playing the root bone's own translation track back onto
+## the live Skeleton3D -- which is what naively applying every track would
+## do -- makes the whole mesh visually slide during in-place playback,
+## since nothing here extracts and reapplies that displacement to a
+## physics body yet (this is deliberately animation-selection only for
+## now, no CharacterBody3D -- see GamebryoActor's own doc comment). Stripped
+## here rather than inside _build_sequence_animation() itself, since a
+## self-contained animated prop's (e.g. a door's) own root NiNode
+## legitimately needs its translation played back — this is specific to a
+## skeleton's root BONE, not a blanket rule for every animated root node in
+## this codebase.
+func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleton_path: NodePath) -> void:
+	var prefix := str(skeleton_path) + ":"
+	var i := anim.get_track_count() - 1
+	while i >= 0:
+		if anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
+			var bone_name := str(anim.track_get_path(i)).trim_prefix(prefix)
+			var bone_idx := skeleton.find_bone(bone_name)
+			if bone_idx != -1 and skeleton.get_bone_parent(bone_idx) == -1:
+				anim.remove_track(i)
+		i -= 1
 
 ## Shared per-sequence Animation-building body for populate_animation_player()
 ## and _populate_skeleton_animation_player() — identical track-construction

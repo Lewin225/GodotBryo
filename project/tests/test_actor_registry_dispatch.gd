@@ -49,18 +49,38 @@ func _ready() -> void:
 			if node != null:
 				check(node.editor_id == "DocMitchell", "identity carried through _finalize()")
 
+				var body: Node = node.get_node_or_null(^"Body")
+				check(body != null, "generated content lives under a dedicated Body container (see npc_node.gd's own doc comment)")
 				var skeleton: Skeleton3D = null
 				var mesh_instances := 0
-				for child in node.get_children():
-					if child is Skeleton3D:
-						skeleton = child
-					elif child is MeshInstance3D:
-						mesh_instances += 1
+				if body != null:
+					for child in body.get_children():
+						if child is Skeleton3D:
+							skeleton = child
+						elif child is MeshInstance3D:
+							mesh_instances += 1
 				check(skeleton != null, "real Skeleton3D built from NPC_.MODL")
 				if skeleton != null:
 					check(skeleton.get_bone_count() == 66, "real 66-bone skeleton (same as test_humanoid_assembly.gd's own direct check, got %d)" % skeleton.get_bone_count())
 				check(mesh_instances == 8, "8 real MeshInstance3D from RACE's male body parts (upper body + 2 hands, got %d)" % mesh_instances)
 				add_child(node)
+
+				# Real regression guard for the actual reason Body exists as
+				# its own container (see npc_node.gd's own top doc comment):
+				# a hand-authored SIBLING of Body (e.g. a future
+				# AnimationTree) must survive populate() being called again
+				# on an already-built node, not get wiped by an
+				# indiscriminate "clear every child" pass.
+				var fake_sibling := Node.new()
+				fake_sibling.name = "FakeHandAuthoredSibling"
+				node.add_child(fake_sibling)
+				var old_body := body
+				node.populate(doc_placement, esm, registry.resolver)
+				check(is_instance_valid(fake_sibling) and fake_sibling.get_parent() == node,
+						"a hand-authored sibling of Body survives populate() being called again")
+				var new_body: Node = node.get_node_or_null(^"Body")
+				check(new_body != null and new_body != old_body,
+						"Body itself is genuinely rebuilt (a new instance), not left stale")
 
 	# --- Goodsprings raven: real ACRE -> CREA -> thin leaf ---
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id("WastelandNV")
