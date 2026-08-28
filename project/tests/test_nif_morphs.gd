@@ -41,8 +41,8 @@ func _ready() -> void:
 	for child in root.get_children():
 		if child is MeshInstance3D:
 			mesh_instances.append(child)
-		elif child is AnimationPlayer:
-			player = child
+		elif child is AnimationPlayer and child.name == "MorphAnimationPlayer":
+			player = child # the flag also builds a SkeletonAnimationPlayer for its own real bone "Idle" pose animation -- not this test's concern, matched by name so it isn't picked up here
 	check(mesh_instances.size() == 2, "2 MeshInstance3D built (got %d)" % mesh_instances.size())
 	check(player != null, "a MorphAnimationPlayer was built")
 

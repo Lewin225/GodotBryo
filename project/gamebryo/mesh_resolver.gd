@@ -941,6 +941,8 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	if not morphed_mesh_instances.is_empty():
 		_populate_morph_animation_player(parent, morphed_mesh_instances)
 
+	_populate_skeleton_animation_player(parent, nif, skeleton)
+
 	return skeleton
 
 ## Same base-array construction as _build_mesh_from_raw(), plus
@@ -1175,54 +1177,119 @@ func populate_animation_player(parent: Node3D, nif: NifReader, built: Array) -> 
 	# values was wrong, see phases/3/00-door-completion.md step 6/8).
 	player.speed_scale = 1.25
 
+	var resolve_target := func(target_name: String):
+		if not name_to_index.has(target_name):
+			return null # target isn't one of THIS NIF's own scene_nodes -- a real, if unexpected, case; skip rather than crash
+		return parent.get_path_to(built[name_to_index[target_name]])
+
 	var library := AnimationLibrary.new()
 	for seq in sequences:
-		var anim := Animation.new()
-		anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
-		match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
-			0: anim.loop_mode = Animation.LOOP_LINEAR
-			_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
-
-		for track in seq["tracks"]:
-			var target_name: String = track["target_node_name"]
-			if not name_to_index.has(target_name):
-				continue # target isn't one of THIS NIF's own scene_nodes -- a real, if unexpected, case; skip rather than crash
-			var target_node: Node3D = built[name_to_index[target_name]]
-			var node_path: NodePath = parent.get_path_to(target_node)
-
-			if bool(track["has_quaternion_keys"]):
-				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
-				anim.track_set_path(idx, node_path)
-				var keys: Array = track["quaternion_keys"]
-				anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
-				for k in keys:
-					anim.track_insert_key(idx, float(k["time"]), k["value"])
-			elif bool(track["has_axis_keys"]):
-				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR) # resampled below -- see this function's own doc comment
-				for sample in _resample_axis_rotation(track["x_rotation_keys"], track["y_rotation_keys"], track["z_rotation_keys"]):
-					anim.track_insert_key(idx, sample["time"], sample["quat"])
-
-			var translation_keys: Array = track["translation_keys"]
-			if not translation_keys.is_empty():
-				var idx := anim.add_track(Animation.TYPE_POSITION_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, _godot_interp(int(translation_keys[0]["interp"])))
-				for k in translation_keys:
-					anim.track_insert_key(idx, float(k["time"]), k["value"])
-
-			var scale_keys: Array = track["scale_keys"]
-			if not scale_keys.is_empty():
-				var idx := anim.add_track(Animation.TYPE_SCALE_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
-				for k in scale_keys:
-					anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
-
-		library.add_animation(String(seq["name"]), anim)
+		library.add_animation(String(seq["name"]), _build_sequence_animation(seq, resolve_target))
 	player.add_animation_library("", library)
 	return player
+
+## Issue #46 follow-up, surfaced by real play on the Nevada flag (#47's own
+## test asset): a skinned NIF's bones can ALSO carry ordinary keyframed
+## rotation/translation/scale animation via the SAME NiControllerSequence
+## mechanism doors use (get_animation_sequences()) — confirmed real: the
+## flag's own "Idle" sequence has 9 quaternion-rotation tracks targeting its
+## exact bone names (TTail1, MTail1, ...), ~1270 keys each. This is NOT
+## Havok cloth physics (an earlier, wrong assumption made before actually
+## checking get_animation_sequences() against this file) — ordinary
+## transform-track animation, already fully supported by
+## get_animation_sequences()/_build_sequence_animation(), just never wired
+## to a Skeleton3D's own bones until now. Godot resolves a Skeleton3D bone
+## track via the same "<path>:<property>" NodePath convention as any other
+## property track, using the bone's own name as the property (the
+## "Skeleton3D:BoneName" convention Godot's own glTF/FBX importers use) —
+## same pattern as _populate_morph_animation_player()'s own blend-shape-
+## weight tracks. Called from populate_skeleton() itself; returns null if
+## the NIF has no animation sequences, or none of them target a real bone
+## on `skeleton` (e.g. a skinned mesh with no authored pose animation at
+## all, the common case).
+func _populate_skeleton_animation_player(parent: Node3D, nif: NifReader, skeleton: Skeleton3D) -> AnimationPlayer:
+	var sequences: Array = nif.get_animation_sequences()
+	if sequences.is_empty():
+		return null
+
+	var skeleton_path: NodePath = parent.get_path_to(skeleton)
+	var resolve_bone := func(target_name: String):
+		if skeleton.find_bone(target_name) == -1:
+			return null
+		return NodePath(str(skeleton_path) + ":" + target_name)
+
+	var library := AnimationLibrary.new()
+	for seq in sequences:
+		var anim := _build_sequence_animation(seq, resolve_bone)
+		if anim.get_track_count() > 0:
+			library.add_animation(String(seq["name"]), anim)
+	if library.get_animation_list().is_empty():
+		return null # no sequence in this file targets any of `skeleton`'s own bones
+
+	var player := AnimationPlayer.new()
+	player.name = "SkeletonAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..")
+	player.speed_scale = 1.25 # same real-play-observed correction populate_animation_player() applies
+	player.add_animation_library("", library)
+	return player
+
+## Shared per-sequence Animation-building body for populate_animation_player()
+## and _populate_skeleton_animation_player() — identical track-construction
+## logic (see populate_animation_player()'s own doc comment for the
+## interpolation/axis-key-resampling rationale), differing only in HOW a
+## track's target_node_name resolves to a NodePath: a Node3D child
+## (populate_animation_player, via `built`) vs. a Skeleton3D bone
+## (_populate_skeleton_animation_player, via "Skeleton3D:BoneName").
+## `resolve_target_path` is a Callable(String) -> Variant (NodePath or null
+## if the track's target isn't one this caller can resolve — skipped, not
+## an error, since a real sequence commonly targets a mix of nodes/bones
+## only some of which exist in a given construction path).
+func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable) -> Animation:
+	var anim := Animation.new()
+	anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
+	match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
+		0: anim.loop_mode = Animation.LOOP_LINEAR
+		_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
+
+	for track in seq["tracks"]:
+		var target_name: String = track["target_node_name"]
+		var resolved = resolve_target_path.call(target_name)
+		if resolved == null:
+			continue
+		var node_path: NodePath = resolved
+
+		if bool(track["has_quaternion_keys"]):
+			var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(idx, node_path)
+			var keys: Array = track["quaternion_keys"]
+			anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
+			for k in keys:
+				anim.track_insert_key(idx, float(k["time"]), k["value"])
+		elif bool(track["has_axis_keys"]):
+			var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR) # resampled below -- see populate_animation_player()'s own doc comment
+			for sample in _resample_axis_rotation(track["x_rotation_keys"], track["y_rotation_keys"], track["z_rotation_keys"]):
+				anim.track_insert_key(idx, sample["time"], sample["quat"])
+
+		var translation_keys: Array = track["translation_keys"]
+		if not translation_keys.is_empty():
+			var idx := anim.add_track(Animation.TYPE_POSITION_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, _godot_interp(int(translation_keys[0]["interp"])))
+			for k in translation_keys:
+				anim.track_insert_key(idx, float(k["time"]), k["value"])
+
+		var scale_keys: Array = track["scale_keys"]
+		if not scale_keys.is_empty():
+			var idx := anim.add_track(Animation.TYPE_SCALE_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
+			for k in scale_keys:
+				anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
+
+	return anim
 
 ## nif::KeyInterpolation (0=none/1=linear/2=quadratic/3=tbc/4=constant) ->
 ## Godot's own Animation.InterpolationType. See populate_animation_player()'s
