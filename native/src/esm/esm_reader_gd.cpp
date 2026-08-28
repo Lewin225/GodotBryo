@@ -48,6 +48,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
+	ClassDB::bind_method(D_METHOD("get_cell_actors", "cell_form_id"), &EsmReader::get_cell_actors);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
@@ -337,6 +338,27 @@ Array EsmReader::get_cell_references(int64_t cell_form_id) const {
 			return out;
 		}
 		for (const auto &pl : file_.get_cell_references(*cell)) {
+			out.push_back(placement_to_dict(pl));
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+// issue #52 chunk 1: same Dictionary shape as get_cell_references(), but for
+// ACHR/ACRE (placed NPC_/CREA) instead of REFR — see EsmFile::get_cell_actors().
+Array EsmReader::get_cell_actors(int64_t cell_form_id) const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto cell = file_.find_cell_by_form_id(static_cast<uint32_t>(cell_form_id));
+		if (!cell) {
+			return out;
+		}
+		for (const auto &pl : file_.get_cell_actors(*cell)) {
 			out.push_back(placement_to_dict(pl));
 		}
 	} catch (const std::exception &e) {

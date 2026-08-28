@@ -71,6 +71,11 @@ public:
 	// reuses this unfiltered).
 	Array get_cell_references(int64_t cell_form_id) const;
 
+	// issue #52 chunk 1: same Dictionary shape as get_cell_references(), but
+	// resolves ACHR/ACRE (placed NPC_/CREA) instead of REFR — see
+	// EsmFile::get_cell_actors(). "base_type" will be "NPC_" or "CREA".
+	Array get_cell_actors(int64_t cell_form_id) const;
+
 	// Same Dictionary shape as get_cell_references(), but the given cell's
 	// owning worldspace's own "persistent" cell instead — the refs a caller
 	// loading cell_form_id also needs to place alongside its own

@@ -572,6 +572,75 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 	return out;
 }
 
+std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell) const {
+	std::vector<ReferencePlacement> out;
+	for (const RecordInfo &child : get_child_records(cell)) {
+		if (child.type != "ACHR" && child.type != "ACRE") {
+			continue;
+		}
+
+		std::vector<uint8_t> data = read_record_data(child);
+		std::vector<Subrecord> subs = parse_subrecords(data);
+
+		uint32_t base_form_id = 0;
+		float position[3] = { 0.0f, 0.0f, 0.0f };
+		float rotation[3] = { 0.0f, 0.0f, 0.0f };
+		float scale = 1.0f;
+		bool has_data = false;
+
+		for (const auto &s : subs) {
+			if (s.type == "NAME" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				base_form_id = sr.read_u32();
+			} else if (s.type == "DATA" && s.size >= 24) {
+				util::ByteReader sr(s.data, s.size);
+				// Position, not rotation/scale: Gamebryo units -> meters (units.h).
+				position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				rotation[0] = read_f32(sr);
+				rotation[1] = read_f32(sr);
+				rotation[2] = read_f32(sr);
+				has_data = true;
+			} else if (s.type == "XSCL" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				scale = read_f32(sr);
+			}
+		}
+
+		if (base_form_id == 0 || !has_data) {
+			continue; // malformed — skip
+		}
+
+		ReferencePlacement pl;
+		pl.refr_form_id = child.form_id;
+		pl.base_form_id = base_form_id;
+		std::memcpy(pl.position, position, sizeof(position));
+		std::memcpy(pl.rotation, rotation, sizeof(rotation));
+		pl.scale = scale;
+		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+
+		if (auto base = find_record_by_form_id(base_form_id)) {
+			pl.base_type = base->type;
+			std::vector<uint8_t> base_data = read_record_data(*base);
+			std::vector<Subrecord> base_subs = parse_subrecords(base_data);
+			for (const auto &s : base_subs) {
+				if (s.type == "EDID") {
+					pl.base_editor_id = s.as_string();
+				} else if (s.type == "MODL") {
+					pl.model_path = s.as_string();
+				} else if (s.type == "SCRI" && s.size >= 4) {
+					util::ByteReader sr(s.data, s.size);
+					pl.script_form_id = sr.read_u32();
+				}
+			}
+		}
+
+		out.push_back(std::move(pl));
+	}
+	return out;
+}
+
 std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) const {
 	std::vector<ReferencePlacement> out;
 	std::vector<uint8_t> data = read_record_data(scol);
