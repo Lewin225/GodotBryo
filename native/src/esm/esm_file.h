@@ -121,6 +121,17 @@ public:
 	// own FormID (parts have no FormID of their own) for traceability.
 	std::vector<ReferencePlacement> get_scol_parts(const RecordInfo &scol) const;
 
+	// issue #52 chunk 1: resolves every ACHR (placed NPC_) and ACRE (placed
+	// CREA) directly under `cell` to a ReferencePlacement, the same way
+	// get_cell_references() resolves REFR. ACHR/ACRE share REFR's NAME/DATA/
+	// XSCL placement-subrecord layout (confirmed against real FalloutNV.esm
+	// data — see native/tools/esm_actor_survey.cpp); XEMI/XTEL are REFR-only
+	// and not read here. base_type will be "NPC_" or "CREA"; base_editor_id/
+	// model_path come from the same base-record EDID/MODL/SCRI resolution
+	// get_cell_references() uses (MODL is commonly absent on NPC_/CREA —
+	// body assembly is a later chunk's concern, not this one's).
+	std::vector<ReferencePlacement> get_cell_actors(const RecordInfo &cell) const;
+
 	// Reads a LIGH record's own DATA subrecord (phases/1/03-light-sources.md).
 	// std::nullopt if the FormID doesn't resolve to a LIGH record or has no
 	// DATA subrecord.
