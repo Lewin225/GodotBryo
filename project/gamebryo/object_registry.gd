@@ -525,7 +525,7 @@ func _construct_skinned_visual(result: Dictionary) -> Node3D:
 	resolver.populate_skeleton(node, nif, model_path)
 	if result.has("emittance_color"):
 		_apply_emittance_tint(node, result["emittance_color"])
-	return _finalize(node, result["placement"])
+	return _autoplay_ambient_animations(_finalize(node, result["placement"]))
 
 ## Autoplay convention confirmed against real data (issue #44 comments):
 ## every ambient/idle-animated NIF sampled so far (a spinning windmill, the
@@ -542,6 +542,34 @@ func _autoplay_special_idle(node: Node3D) -> Node3D:
 	var player := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if player != null and player.has_animation("SpecialIdle"):
 		player.play("SpecialIdle")
+	return node
+
+## Issues #46/#47's own counterpart to _autoplay_special_idle() above, for
+## populate_skeleton()'s two AnimationPlayers (MorphAnimationPlayer/
+## SkeletonAnimationPlayer) -- neither is named "AnimationPlayer" nor plays
+## a clip named "SpecialIdle" (confirmed real: the Nevada flag's own clips
+## are literally named "Idle" and "Morph", the latter not even a name
+## sourced from the NIF at all -- see populate_skeleton()'s own doc
+## comment), so that function's exact-name matching can't and shouldn't be
+## reused here. A general rule instead, using data already extracted
+## rather than a second hardcoded name only one real sample could confirm:
+## LOOP_LINEAR is this codebase's own established distinction for "ambient,
+## always-playing" animation (see populate_animation_player()'s doc
+## comment) vs LOOP_NONE for one-shot/triggered clips (a door's Open/Close)
+## -- a skinned placement has no interaction/trigger mechanism of its own
+## the way a door does, so every looping clip on it is autoplayed
+## unconditionally, whichever player and whatever it's named.
+func _autoplay_ambient_animations(node: Node3D) -> Node3D:
+	if node == null:
+		return null
+	for child in node.get_children():
+		if not (child is AnimationPlayer):
+			continue
+		var player: AnimationPlayer = child
+		for anim_name in player.get_animation_list():
+			var anim: Animation = player.get_animation(anim_name)
+			if anim != null and anim.loop_mode == Animation.LOOP_LINEAR:
+				player.play(anim_name)
 	return node
 
 func _construct_marker(result: Dictionary) -> Node3D:
@@ -765,7 +793,7 @@ func _instantiate_skinned(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 		return null
 	var node = cls.new()
 	mesh_resolver.populate_skeleton(node, nif, model)
-	return _finalize(node, placement)
+	return _autoplay_ambient_animations(_finalize(node, placement))
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see
 ## MarkerNode's doc comment) — GamebryoReference is Node3D, so it has no
