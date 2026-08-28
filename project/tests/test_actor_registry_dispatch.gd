@@ -48,7 +48,6 @@ func _ready() -> void:
 			check(node is NPCNode, "built node is an NPCNode")
 			if node != null:
 				check(node.editor_id == "DocMitchell", "identity carried through _finalize()")
-				check(node.get_character_body() != null, "NPCNode got its composed CharacterBody")
 
 				var skeleton: Skeleton3D = null
 				var mesh_instances := 0
@@ -81,7 +80,6 @@ func _ready() -> void:
 				check(node != null, "registry.build() on a CREA placement returns a node")
 				check(node is CreatureNode, "built node is a CreatureNode")
 				if node != null:
-					check(node.get_character_body() != null, "CreatureNode got its composed CharacterBody")
 					var has_skeleton := false
 					for child in node.get_children():
 						if child is Skeleton3D:

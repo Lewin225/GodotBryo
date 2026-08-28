@@ -8,51 +8,22 @@ extends GamebryoObject
 ## submeshes" shape; they need a skeleton/animation controller instead
 ## (issue #52 chunk 4, real data — see the "ESM humanoid assembly
 ## structure" finding from chunk 2: skeleton comes from NPC_.MODL, body/head
-## parts from RACE's gender-selected INDX blocks). This chunk is scaffolding
-## only: the composed CharacterBody3D child, no real skeleton/mesh data yet.
+## parts from RACE's gender-selected INDX blocks).
 ##
-## Same composition trick GamebryoVisual uses for its internal StaticBody3D
-## (mesh_resolver.gd's populate_collision_children()): the physics body is a
-## composed child, not inherited, so GamebryoReference can stay Node3D for
-## every other branch.
-
-## Human-scale placeholder capsule (same dimensions as project/player/
-## player.tscn's own CollisionShape3D) — real per-actor dimensions belong to
-## a later chunk once OBND/race data actually drives them; using the
-## player's own numbers here rather than inventing new ones keeps player
-## and NPC collision consistent in the meantime.
-const DEFAULT_CAPSULE_RADIUS := 0.4
-const DEFAULT_CAPSULE_HEIGHT := 1.8
-
-## Builds and attaches this actor's internal CharacterBody3D child (named
-## "CharacterBody", following GamebryoCollisionBody's "CollisionBody"/
-## GamebryoRigidBody's "RigidBody3D" naming precedent) with a placeholder
-## capsule shape. Idempotent no-op if already populated — safe to call more
-## than once without stacking duplicate children.
-func populate_character_body() -> GamebryoCharacterBody:
-	var existing := get_node_or_null(^"CharacterBody")
-	if existing is GamebryoCharacterBody:
-		return existing
-
-	var body := GamebryoCharacterBody.new()
-	body.name = "CharacterBody"
-	body.owner_ref = self
-	add_child(body)
-
-	var shape := CapsuleShape3D.new()
-	shape.radius = DEFAULT_CAPSULE_RADIUS
-	shape.height = DEFAULT_CAPSULE_HEIGHT
-
-	var col := CollisionShape3D.new()
-	col.name = "CollisionShape3D"
-	col.shape = shape
-	# CapsuleShape3D is centered on its own origin; lift it so the actor's
-	# own Node3D origin sits at the feet (matching REFR placement transforms
-	# — DATA's position is the ground-contact point, not the model's center).
-	col.position = Vector3(0.0, DEFAULT_CAPSULE_HEIGHT * 0.5, 0.0)
-	body.add_child(col)
-
-	return body
-
-func get_character_body() -> GamebryoCharacterBody:
-	return get_node_or_null(^"CharacterBody") as GamebryoCharacterBody
+## Deliberately NO composed CharacterBody3D/collider (unlike GamebryoVisual's
+## StaticBody3D composition trick, which this class started out mirroring —
+## see git history for the removed GamebryoCharacterBody). Physical
+## movement/collision for actors is real future work, not this class's
+## concern yet: the player's own existing controller already owns a
+## CharacterBody3D, and the plan is for one of these actor nodes to
+## eventually live INSIDE that controller (not just for third-person model/
+## shadows, but because that's also where character stats/SPECIAL/inventory
+## belong) rather than each actor composing a second, independent physics
+## body of its own. Adding a throwaway placeholder capsule here now would
+## just be something to reconcile with (or discard from) that later design.
+##
+## Identity fields only for now (form_id/base_form_id/editor_id/record_type,
+## inherited from GamebryoReference/GamebryoObject) — construction of the
+## real skeleton/mesh lives in GamebryoObjectRegistry._build_npc()/
+## _build_creature(), same "Node classes are shape-only" split every other
+## branch in this codebase already follows.
