@@ -38,6 +38,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_animation_sequences"), &NifReader::get_animation_sequences);
 	ClassDB::bind_method(D_METHOD("get_scene_nodes"), &NifReader::get_scene_nodes);
 	ClassDB::bind_method(D_METHOD("get_skin_data"), &NifReader::get_skin_data);
+	ClassDB::bind_method(D_METHOD("get_morph_data"), &NifReader::get_morph_data);
 }
 
 bool NifReader::load(const PackedByteArray &bytes) {
@@ -392,6 +393,47 @@ Array NifReader::get_skin_data() const {
 			body_part_ids[static_cast<int>(i)] = skin.partition_body_part_ids[i];
 		}
 		d["partition_body_part_ids"] = body_part_ids;
+
+		out.push_back(d);
+	}
+	return out;
+}
+
+Array NifReader::get_morph_data() const {
+	Array out;
+	if (!loaded_) {
+		return out;
+	}
+	for (const nif::MorphData &morph : mesh_.morph_data) {
+		Dictionary d;
+		d["target_node_name"] = String(morph.target_node_name.c_str());
+		d["relative_targets"] = morph.relative_targets;
+		d["cycle_type"] = static_cast<int>(morph.cycle_type);
+		d["start_time"] = morph.start_time;
+		d["stop_time"] = morph.stop_time;
+
+		Array targets;
+		for (const nif::MorphTarget &target : morph.targets) {
+			Dictionary td;
+			td["name"] = String(target.name.c_str());
+			PackedFloat32Array deltas;
+			deltas.resize(static_cast<int>(target.vertex_deltas.size()));
+			for (size_t i = 0; i < target.vertex_deltas.size(); ++i) {
+				deltas[static_cast<int>(i)] = target.vertex_deltas[i];
+			}
+			td["vertex_deltas"] = deltas;
+			targets.push_back(td);
+		}
+		d["targets"] = targets;
+
+		Array weight_tracks;
+		for (const nif::MorphWeightTrack &track : morph.weight_tracks) {
+			Dictionary wd;
+			wd["target_name"] = String(track.target_name.c_str());
+			wd["keys"] = float_keys_to_array(track.keys);
+			weight_tracks.push_back(wd);
+		}
+		d["weight_tracks"] = weight_tracks;
 
 		out.push_back(d);
 	}
