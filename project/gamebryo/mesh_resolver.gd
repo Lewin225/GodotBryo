@@ -1323,6 +1323,55 @@ func _populate_skeleton_animation_player(parent: Node3D, nif: NifReader, skeleto
 	player.add_animation_library("", library)
 	return player
 
+## Movement-animation counterpart to _populate_skeleton_animation_player():
+## that function wires a skinned NIF's OWN embedded animation sequences
+## (e.g. the flag's own "Idle" cloth sway) against its own skeleton; this
+## one wires SEPARATE, standalone .kf animation files (real movement
+## locomotion, e.g. characters\_male\locomotion\male\mtforward.kf) against
+## an externally-built shared skeleton — the actual real-world shape of
+## human/creature movement animation (confirmed: a bare .kf carries exactly
+## one top-level NiControllerSequence with no owning NiControllerManager at
+## all — see nif_loader.cpp's own extract_sequence() doc comment — meant to
+## be applied to a skeleton loaded from elsewhere, unlike an
+## embedded-in-a-mesh sequence).
+##
+## `clips`: { clip_name: String -> kf_model_path: String }. Each .kf's
+## FIRST animation sequence becomes one named Animation in the returned
+## player's library (real .kf files carry exactly one — confirmed against
+## every real locomotion file checked; a file with none is skipped, not an
+## error, since that's a real possible case for e.g. a malformed/DLC-only
+## path that doesn't resolve on this install). Returns null if no clip
+## resolved to a real animation.
+func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips: Dictionary) -> AnimationPlayer:
+	var skeleton_path: NodePath = parent.get_path_to(skeleton)
+	var resolve_bone := func(target_name: String):
+		if skeleton.find_bone(target_name) == -1:
+			return null
+		return NodePath(str(skeleton_path) + ":" + target_name)
+
+	var library := AnimationLibrary.new()
+	for clip_name in clips:
+		var kf_path: String = clips[clip_name]
+		var kf_nif := load_nif(kf_path)
+		if kf_nif == null:
+			continue
+		var sequences: Array = kf_nif.get_animation_sequences()
+		if sequences.is_empty():
+			continue
+		var anim := _build_sequence_animation(sequences[0], resolve_bone)
+		if anim.get_track_count() > 0:
+			library.add_animation(String(clip_name), anim)
+
+	if library.get_animation_list().is_empty():
+		return null
+
+	var player := AnimationPlayer.new()
+	player.name = "LocomotionAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..")
+	player.add_animation_library("", library)
+	return player
+
 ## Shared per-sequence Animation-building body for populate_animation_player()
 ## and _populate_skeleton_animation_player() — identical track-construction
 ## logic (see populate_animation_player()'s own doc comment for the
@@ -1354,7 +1403,14 @@ func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable) -
 			var keys: Array = track["quaternion_keys"]
 			anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
 			for k in keys:
-				anim.track_insert_key(idx, float(k["time"]), k["value"])
+				# Real data (movement locomotion .kf files, e.g.
+				# characters\_male\locomotion\male\mtforward.kf): nifly's own
+				# compressed-quaternion decompression leaves keys a fraction
+				# of a percent off unit length (confirmed: length_squared as
+				# low as ~0.9979) -- fine for nifly's own tolerance, but
+				# Godot's Animation track interpolation hard-errors
+				# ("end quaternion must be normalized") without this.
+				anim.track_insert_key(idx, float(k["time"]), (k["value"] as Quaternion).normalized())
 		elif bool(track["has_axis_keys"]):
 			var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
 			anim.track_set_path(idx, node_path)

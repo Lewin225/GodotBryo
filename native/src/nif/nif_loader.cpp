@@ -13,6 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace nif {
@@ -703,43 +704,70 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// real transform tracks with particle/visibility tracks (confirmed
 	// real — e.g. a door-adjacent dust-blast effect NIF) still yields
 	// exactly the transform tracks that matter here.
+	auto extract_sequence = [&](nifly::NiControllerSequence *seq) -> AnimationSequence {
+		AnimationSequence sequence;
+		sequence.name = seq->name.get();
+		sequence.start_time = seq->startTime;
+		sequence.stop_time = seq->stopTime;
+		switch (seq->cycleType) {
+			case nifly::CYCLE_LOOP: sequence.cycle_type = SequenceCycleType::kLoop; break;
+			case nifly::CYCLE_REVERSE: sequence.cycle_type = SequenceCycleType::kReverse; break;
+			case nifly::CYCLE_CLAMP:
+			default: sequence.cycle_type = SequenceCycleType::kClamp; break;
+		}
+		for (auto &link : seq->controlledBlocks) {
+			auto *interp = nif.GetHeader().GetBlock<nifly::NiInterpolator>(link.interpolatorRef);
+			if (!interp) {
+				continue;
+			}
+			auto *xform_interp = dynamic_cast<nifly::NiTransformInterpolator *>(interp);
+			if (!xform_interp) {
+				continue; // a real, common case (particle/visibility/color track on the same sequence) -- not an error
+			}
+			auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
+			if (!td) {
+				continue; // NiTransformInterpolator with no data block -- confirmed possible in real data, an empty/no-op track
+			}
+			sequence.tracks.push_back(extract_track(link.nodeName.get(), td));
+		}
+		return sequence;
+	};
+
+	std::unordered_set<uint32_t> manager_referenced_sequences;
 	for (uint32_t i = 0; i < num_blocks; ++i) {
 		auto *manager = nif.GetHeader().GetBlock<nifly::NiControllerManager>(i);
 		if (!manager) {
 			continue;
 		}
 		for (auto &seq_ref : manager->controllerSequenceRefs) {
+			manager_referenced_sequences.insert(seq_ref.index);
 			auto *seq = nif.GetHeader().GetBlock<nifly::NiControllerSequence>(seq_ref);
 			if (!seq) {
 				continue;
 			}
-			AnimationSequence sequence;
-			sequence.name = seq->name.get();
-			sequence.start_time = seq->startTime;
-			sequence.stop_time = seq->stopTime;
-			switch (seq->cycleType) {
-				case nifly::CYCLE_LOOP: sequence.cycle_type = SequenceCycleType::kLoop; break;
-				case nifly::CYCLE_REVERSE: sequence.cycle_type = SequenceCycleType::kReverse; break;
-				case nifly::CYCLE_CLAMP:
-				default: sequence.cycle_type = SequenceCycleType::kClamp; break;
-			}
-			for (auto &link : seq->controlledBlocks) {
-				auto *interp = nif.GetHeader().GetBlock<nifly::NiInterpolator>(link.interpolatorRef);
-				if (!interp) {
-					continue;
-				}
-				auto *xform_interp = dynamic_cast<nifly::NiTransformInterpolator *>(interp);
-				if (!xform_interp) {
-					continue; // a real, common case (particle/visibility/color track on the same sequence) -- not an error
-				}
-				auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
-				if (!td) {
-					continue; // NiTransformInterpolator with no data block -- confirmed possible in real data, an empty/no-op track
-				}
-				sequence.tracks.push_back(extract_track(link.nodeName.get(), td));
-			}
-			mesh.animation_sequences.push_back(std::move(sequence));
+			mesh.animation_sequences.push_back(extract_sequence(seq));
 		}
+	}
+
+	// A standalone .kf animation file (e.g. real movement locomotion —
+	// characters\_male\locomotion\male\mtforward.kf) is NOT embedded in a
+	// mesh NIF with its own NiControllerManager the way a door's/flag's
+	// animation is -- confirmed real via nif_block_dump.cpp: exactly one
+	// top-level NiControllerSequence block, zero NiControllerManager
+	// blocks, meant to be applied against a skeleton loaded from elsewhere.
+	// Any sequence already reached via a manager above is skipped here to
+	// avoid double-counting the (real, less common) case where a
+	// manager-owning NIF's sequence is also independently enumerable at
+	// top level.
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		if (manager_referenced_sequences.count(i)) {
+			continue;
+		}
+		auto *seq = nif.GetHeader().GetBlock<nifly::NiControllerSequence>(i);
+		if (!seq) {
+			continue;
+		}
+		mesh.animation_sequences.push_back(extract_sequence(seq));
 	}
 
 	// Issue #47: vertex morph targets. A NiGeomMorpherController is attached
