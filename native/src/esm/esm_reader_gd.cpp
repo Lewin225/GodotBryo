@@ -58,6 +58,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_race_body_parts", "race_form_id", "female"), &EsmReader::get_race_body_parts);
+	ClassDB::bind_method(D_METHOD("get_actor_by_form_id", "base_form_id"), &EsmReader::get_actor_by_form_id);
 	ClassDB::bind_method(D_METHOD("get_emittance_data", "emittance_form_id"), &EsmReader::get_emittance_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
@@ -471,6 +472,23 @@ Array EsmReader::get_race_body_parts(int64_t race_form_id, bool female) const {
 			d["model"] = String(part.model_path.c_str());
 			out.push_back(d);
 		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_actor_by_form_id(int64_t base_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		auto pl = file_.get_actor_by_form_id(static_cast<uint32_t>(base_form_id));
+		if (!pl) {
+			return out;
+		}
+		out = placement_to_dict(*pl);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

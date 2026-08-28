@@ -4,6 +4,12 @@ extends RefCounted
 const XEMI_NO_LIGHTING_SHADER := preload("res://gamebryo/xemi_no_lighting.gdshader")
 const XEMI_NO_LIGHTING_OPAQUE_SHADER := preload("res://gamebryo/xemi_no_lighting_opaque.gdshader")
 
+## Issue #52 (+ later): actors are instantiated from a hand-authored
+## template scene rather than built purely in code (`NPCNode.new()`) the
+## way every other type here is — see NPCNode's own doc comment for why.
+const NPC_TEMPLATE := preload("res://gamebryo/npc_node.tscn")
+const CREATURE_TEMPLATE := preload("res://gamebryo/creature_node.tscn")
+
 ## type_tag -> factory registry (phases/1/01-object-type-registry.md /
 ## phases/1/architecture.md's "Registry extensibility"). Runtime-populated,
 ## not a compiled switch — adding a type is one register() call, nothing
@@ -802,45 +808,36 @@ func _instantiate_skinned(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 	mesh_resolver.populate_skeleton(node, nif, model)
 	return _autoplay_ambient_animations(_finalize(node, placement))
 
-## Issue #52 chunk 5: real NPC_ construction -- the full humanoid assembly
-## confirmed real in chunks 2/4. `placement["model"]` is the NPC_'s own
-## MODL (the shared skeleton path, e.g. Characters\_Male\Skeleton.NIF --
-## see EsmFile::get_cell_actors()'s doc comment, NOT a self-contained
-## mesh); `placement["race_form_id"]`/`["is_female"]` (also get_cell_actors()-
-## only fields) resolve the real gender-selected body-part list via
-## esm.get_race_body_parts() -- RACE's own ESM-declared INDX blocks, not a
-## guessed convention (contrast _build_creature() below). Deliberately no
-## SkeletonAnimationPlayer (populate_humanoid_skeleton() never builds one)
-## and no head/face mesh (FaceGen is out of scope for this issue) --
+## Issue #52 chunk 5 (+ later): real NPC_ construction. Instantiates
+## npc_node.tscn (the hand-authored actor template — see NPCNode's own doc
+## comment for why a real scene exists here instead of pure-code
+## construction) and calls its populate() with this placement, which
+## resolves the full humanoid assembly confirmed real in chunks 2/4
+## (skeleton from NPC_.MODL, gender-selected body parts from RACE's
+## ESM-declared INDX blocks via esm.get_race_body_parts()).
 ## _autoplay_ambient_animations() is still called for consistency with
-## every other construction path here, but is a safe no-op with nothing to
-## find. No CharacterBody3D/collider either -- see GamebryoActor's own doc
-## comment for why physical movement is deferred.
+## every other construction path here, but is a safe no-op — populate()
+## never builds a SkeletonAnimationPlayer (.kf playback is out of scope for
+## this issue) or a head/face mesh (FaceGen likewise out of scope). No
+## CharacterBody3D/collider either — see GamebryoActor's own doc comment
+## for why physical movement is deferred.
 func _build_npc(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
-	var node := NPCNode.new()
-
-	var skeleton_path: String = placement.get("model", "")
-	var race_form_id := int(placement.get("race_form_id", 0))
-	if skeleton_path != "" and race_form_id != 0:
-		var is_female := bool(placement.get("is_female", false))
-		var body_part_paths: Array = []
-		for part in esm.get_race_body_parts(race_form_id, is_female):
-			body_part_paths.append(String(part["model"]))
-		if not body_part_paths.is_empty():
-			mesh_resolver.populate_humanoid_skeleton(node, skeleton_path, body_part_paths)
-
+	var node: NPCNode = NPC_TEMPLATE.instantiate()
+	node.populate(placement, esm, mesh_resolver)
 	return _autoplay_ambient_animations(_finalize(node, placement))
 
 ## Issue #52 chunk 5: CREA construction -- deliberately thin, unlike
-## _build_npc() above. See CreatureNode's own doc comment for why: a
-## creature's real body mesh (as opposed to its CREA.MODL, which only ever
-## points at a bone-only Skeleton.nif) is only discoverable by a
+## _build_npc() above. Instantiates creature_node.tscn, but populate() is
+## CreatureNode's inherited no-op — see that class's own doc comment for
+## why: a creature's real body mesh (as opposed to its CREA.MODL, which
+## only ever points at a bone-only Skeleton.nif) is only discoverable by a
 ## same-folder file-naming CONVENTION confirmed against a single real
 ## sample (creatures\NVRaven), not anything RACE-style the ESM itself
 ## states -- automatic skeleton/mesh wiring is a real, deliberate gap here,
 ## not an oversight.
-func _build_creature(placement: Dictionary, _mesh_resolver: GamebryoMeshResolver) -> Node3D:
-	var node := CreatureNode.new()
+func _build_creature(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var node: CreatureNode = CREATURE_TEMPLATE.instantiate()
+	node.populate(placement, esm, mesh_resolver)
 	return _finalize(node, placement)
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see

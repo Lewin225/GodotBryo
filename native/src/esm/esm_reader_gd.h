@@ -108,6 +108,12 @@ public:
 	// are out of scope for this issue.
 	Array get_race_body_parts(int64_t race_form_id, bool female) const;
 
+	// Actor template scene work: resolves a bare NPC_/CREA directly by
+	// FormID (no placement/cell context) -- see EsmFile::get_actor_by_form_id().
+	// Same Dictionary shape as get_cell_actors()'s entries, refr_form_id=0.
+	// {} if base_form_id isn't a real NPC_/CREA.
+	Dictionary get_actor_by_form_id(int64_t base_form_id) const;
+
 	// Resolves REFR.XEMI's authored colour source. XEMI may point to LIGH
 	// (its DATA colour) or REGN (its RCLR colour); returns { "color": Color }
 	// or {} if the target is absent or has no colour data.
