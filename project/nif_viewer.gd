@@ -34,7 +34,10 @@ extends Node3D
 	"Door - Animated (DLC04 Shack)",
 	"Elevator - Silo (complex)",
 	"Door - Static/Teleport (Craftsman)",
-	"Light - Chandelier (NiAmbientLight)"
+	"Light - Chandelier (NiAmbientLight)",
+	"Skinned - Human Upper Body (issue #46)",
+	"Skinned - Cazador Creature (issue #46)",
+	"Skinned - NCR Flag (issue #46)"
 ) var preset: String = "Door - Animated (DLC04 Shack)"
 
 ## Only read when preset == "Custom". MODL-style relative path, no
@@ -61,6 +64,16 @@ const PRESET_PATHS := {
 	# doesn't extract light data at all) -- this is here to inspect the
 	# node graph, not to render the light.
 	"Light - Chandelier (NiAmbientLight)": "dungeons\\caves\\lamplight\\lamplightchandelier.nif",
+	# Issue #46: real skeletal skinning -- see populate_skeleton()'s own doc
+	# comment in mesh_resolver.gd. The actual visual bug that started this
+	# whole investigation: a real flag NIF outside Goodsprings docs house
+	# showed every bone rendering as an unposed literal cube because this
+	# project's NIF parser didn't extract skinning data at all. Confirm here
+	# that it no longer does -- the skinned mesh should render as its normal
+	# shape at its bind pose, not cubes.
+	"Skinned - Human Upper Body (issue #46)": "characters\\_male\\upperbody.nif",
+	"Skinned - Cazador Creature (issue #46)": "creatures\\nvcazadores\\nvcazadores.nif",
+	"Skinned - NCR Flag (issue #46)": "clutter\\flags\\nv_ncr_flag.nif",
 }
 
 func _ready() -> void:
@@ -118,14 +131,22 @@ func _do_load() -> void:
 	nif_root.rotation_degrees.x = -90
 	_add_child(self, nif_root)
 
-	var geometry := resolver.build_geometry_entries(resolver.resolve_raw_geometry(nif, model_path))
-	var built := resolver.populate_dynamic_children(nif_root, nif, model_path, geometry)
-	resolver.populate_animation_player(nif_root, nif, built)
-	if not show_collision:
-		for body in _collision_bodies(nif_root):
-			body.free()
+	# Issue #46: a skinned NIF (real bone weights present) goes through
+	# populate_skeleton() instead of the rigid populate_dynamic_children()
+	# path below -- a Skeleton3D + Skin + MeshInstance3D construction, not a
+	# Node-per-NiAVObject one. See populate_skeleton()'s own doc comment in
+	# mesh_resolver.gd for why these are deliberately separate paths.
+	if not nif.get_skin_data().is_empty():
+		resolver.populate_skeleton(nif_root, nif, model_path)
+	else:
+		var geometry := resolver.build_geometry_entries(resolver.resolve_raw_geometry(nif, model_path))
+		var built := resolver.populate_dynamic_children(nif_root, nif, model_path, geometry)
+		resolver.populate_animation_player(nif_root, nif, built)
+		if not show_collision:
+			for body in _collision_bodies(nif_root):
+				body.free()
 	if Engine.is_editor_hint():
-		_own_recursive(nif_root) # populate_dynamic_children()/populate_animation_player() add their own children directly, bypassing _add_child()
+		_own_recursive(nif_root) # populate_dynamic_children()/populate_animation_player()/populate_skeleton() all add their own children directly, bypassing _add_child()
 
 	_print_report(model_path, nif)
 
