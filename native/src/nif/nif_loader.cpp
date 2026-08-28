@@ -742,6 +742,81 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		}
 	}
 
+	// Issue #47: vertex morph targets. A NiGeomMorpherController is attached
+	// directly to its owning NiShape via that shape's own controllerRef
+	// (NiObjectNET's own controller linked-list head, walked via
+	// nextControllerRef the same way a real shape could chain more than one
+	// controller) — NOT via NiControllerManager/NiControllerSequence like
+	// the rigid-animation walk above, so this is a separate top-level pass
+	// over every NiAVObject, mirroring how collision extraction above walks
+	// every NiAVObject's own collisionRef rather than assuming a single
+	// shared owner.
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
+		if (!av || av->controllerRef.IsEmpty()) {
+			continue;
+		}
+		for (auto *ctrl = nif.GetHeader().GetBlock<nifly::NiTimeController>(av->controllerRef); ctrl;
+				ctrl = nif.GetHeader().GetBlock<nifly::NiTimeController>(ctrl->nextControllerRef)) {
+			auto *morpher = dynamic_cast<nifly::NiGeomMorpherController *>(ctrl);
+			if (!morpher) {
+				continue; // a real, common case on the same shape (e.g. a NiTransformController for pivot sway) -- not an error
+			}
+			auto *morph_data_block = nif.GetHeader().GetBlock<nifly::NiMorphData>(morpher->dataRef);
+			if (!morph_data_block) {
+				continue; // NiGeomMorpherController with no data block -- confirmed possible in principle, an empty/no-op controller
+			}
+
+			MorphData morph;
+			morph.target_node_name = av->name.get();
+			morph.relative_targets = morph_data_block->relativeTargets != 0;
+			switch (morpher->flags & 0x3u) { // niftools NiTimeController flags bits 0-1, same CycleType convention as NiControllerSequence::cycleType
+				case 0: morph.cycle_type = SequenceCycleType::kLoop; break;
+				case 1: morph.cycle_type = SequenceCycleType::kReverse; break;
+				default: morph.cycle_type = SequenceCycleType::kClamp; break;
+			}
+			morph.start_time = morpher->startTime;
+			morph.stop_time = morpher->stopTime;
+
+			std::vector<nifly::Morph> morphs = morph_data_block->GetMorphs();
+			morph.targets.reserve(morphs.size());
+			for (const nifly::Morph &m : morphs) {
+				MorphTarget target;
+				target.name = m.frameName.get();
+				target.vertex_deltas.reserve(m.vectors.size() * 3);
+				for (const nifly::Vector3 &v : m.vectors) {
+					target.vertex_deltas.push_back(v.x * units::kGamebryoUnitsToMeters);
+					target.vertex_deltas.push_back(v.y * units::kGamebryoUnitsToMeters);
+					target.vertex_deltas.push_back(v.z * units::kGamebryoUnitsToMeters);
+				}
+				morph.targets.push_back(std::move(target));
+			}
+
+			for (size_t idx = 0; idx < morpher->interpWeights.size(); ++idx) {
+				const nifly::MorphWeight &mw = morpher->interpWeights[idx];
+				auto *float_interp = nif.GetHeader().GetBlock<nifly::NiFloatInterpolator>(mw.interpRef);
+				if (!float_interp) {
+					continue; // real: seen empty/unresolvable on some entries (e.g. the always-zero "Base" weight slot) -- not an error
+				}
+				auto *fd = nif.GetHeader().GetBlock<nifly::NiFloatData>(float_interp->dataRef);
+				if (!fd) {
+					continue;
+				}
+				MorphWeightTrack track;
+				// interpWeights[] is index-parallel to morphs[] in every real
+				// file sampled (nifly's own internal storage convention) --
+				// used only to resolve a NAME here, not carried forward as an
+				// implicit index contract (see MorphWeightTrack's own doc
+				// comment).
+				track.target_name = idx < morph.targets.size() ? morph.targets[idx].name : "";
+				track.keys = extract_float_keys(fd->data);
+				morph.weight_tracks.push_back(std::move(track));
+			}
+
+			mesh.morph_data.push_back(std::move(morph));
+		}
+	}
+
 	return mesh;
 }
 
