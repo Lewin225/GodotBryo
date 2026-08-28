@@ -882,6 +882,18 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	for e in raw["mesh_entries"]:
 		raw_entry_by_submesh_index[int(e["submesh_index"])] = e
 
+	# Issue #47: real vertex-morph weight-animation playback (the flag's own
+	# cloth ripple) -- collected here and wired up after the loop below via
+	# _populate_morph_animation_player(). Deliberately scoped to THIS
+	# construction path only, not also populate_mesh_children()/
+	# populate_dynamic_children(): the only real sample found (the
+	# Goodsprings NV_Nevadaflag.NIF) combines skinning AND morphing on the
+	# same shape, so this is the one path with a real, verified case to
+	# build and test against -- a morph-only (unskinned) object would need
+	# the same wiring added to those other two paths when a real one turns
+	# up, not preemptively guessed at here.
+	var morphed_mesh_instances: Array = []
+
 	for skin in skin_entries:
 		var target_name: String = skin["target_node_name"]
 		if not submesh_index_by_name.has(target_name):
@@ -921,6 +933,13 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 			skin_resource.set_bind_bone(i, skeleton.find_bone(String(bone_names[i])))
 			skin_resource.set_bind_pose(i, bind_transforms[i])
 		mi.skin = skin_resource
+
+		var morph_for_anim: Dictionary = raw_entry.get("morph", {})
+		if not morph_for_anim.get("weight_tracks", []).is_empty():
+			morphed_mesh_instances.append({ "mesh_instance": mi, "morph": morph_for_anim })
+
+	if not morphed_mesh_instances.is_empty():
+		_populate_morph_animation_player(parent, morphed_mesh_instances)
 
 	return skeleton
 
@@ -1011,6 +1030,68 @@ func _apply_morph_targets(base_mesh: ArrayMesh, morph: Dictionary) -> ArrayMesh:
 
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, blend_arrays)
 	return mesh
+
+## Issue #47: real weight-animation playback for morph targets -- e.g. the
+## Nevada flag's own cloth ripple. `entries` is an Array of
+## { "mesh_instance": MeshInstance3D, "morph": Dictionary (NifReader.
+## get_morph_data() entry) }, built by populate_skeleton() from the shapes
+## it just constructed. A NiGeomMorpherController's own clock
+## (morph["start_time"]/"stop_time"/"cycle_type") is a genuinely separate
+## timeline from get_animation_sequences()'s own NiControllerSequence-based
+## one (see nif_types.h's MorphData doc comment) -- this builds its own
+## AnimationPlayer/library rather than folding into
+## populate_animation_player()'s, and uses the FIRST entry's own
+## start/stop/cycle as the built clip's length/loop mode (confirmed real
+## that every morph controller on the one real sample checked shares the
+## same file-wide timeline, not assumed in general).
+func _populate_morph_animation_player(parent: Node3D, entries: Array) -> AnimationPlayer:
+	var player := AnimationPlayer.new()
+	player.name = "MorphAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..") # `parent` itself -- same convention as populate_animation_player()'s own; every NodePath below is parent.get_path_to(...)
+
+	var first_morph: Dictionary = entries[0]["morph"]
+	var anim := Animation.new()
+	anim.length = maxf(float(first_morph["stop_time"]) - float(first_morph["start_time"]), 0.01)
+	match int(first_morph["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
+		0: anim.loop_mode = Animation.LOOP_LINEAR
+		_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- same known gap as populate_animation_player()'s own reverse handling
+
+	for entry in entries:
+		var mi: MeshInstance3D = entry["mesh_instance"]
+		var morph: Dictionary = entry["morph"]
+		var mesh: ArrayMesh = mi.mesh
+		var blend_shape_index_by_name: Dictionary = {}
+		for i in mesh.get_blend_shape_count():
+			blend_shape_index_by_name[mesh.get_blend_shape_name(i)] = i
+
+		for track in morph["weight_tracks"]:
+			var target_name: String = track["target_name"]
+			if not blend_shape_index_by_name.has(target_name):
+				continue # e.g. the always-zero "Base" weight track -- index 0 was never built as a real blend shape, see _apply_morph_targets()'s own doc comment
+			var idx := anim.add_track(Animation.TYPE_BLEND_SHAPE)
+			# TYPE_BLEND_SHAPE's own path convention: "<path-to-MeshInstance3D>:<blend_shape_name>" --
+			# same parent-relative NodePath convention populate_animation_player() uses.
+			anim.track_set_path(idx, NodePath(str(parent.get_path_to(mi)) + ":" + target_name))
+			var keys: Array = track["keys"]
+			# Deliberately always LINEAR here, NOT _godot_interp()'s own
+			# quadratic/tbc->CUBIC mapping (populate_animation_player() uses
+			# that for smooth positional/rotational curves, where it's a
+			# reasonable fit) -- confirmed a real, bad mismatch for THIS kind
+			# of data: these weight curves are dense, near-spike keyframes
+			# (a value snapping to 1.0 for a single frame between long runs
+			# of 0.0, real key counts of 98-223 per track), and Godot's
+			# CUBIC auto-derives tangents from neighboring keys, which on a
+			# spike shape overshoots wildly -- measured a sampled weight of
+			# -18.79 (should be in 0..1) with CUBIC before this fix.
+			anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR)
+			for k in keys:
+				anim.track_insert_key(idx, float(k["time"]), float(k["value"]))
+
+	var library := AnimationLibrary.new()
+	library.add_animation("Morph", anim)
+	player.add_animation_library("", library)
+	return player
 
 ## `node`'s transform as seen from `ancestor` (which MUST actually be an
 ## ancestor of `node` in the Node tree) -- composes only .transform (each
