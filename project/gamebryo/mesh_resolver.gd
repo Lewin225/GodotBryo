@@ -787,16 +787,15 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 ## upperbody.nif stores every one of its skinned bones as a FLAT list, each
 ## parent_index == -1 (directly under the file's own root), not nested under
 ## each other at all — the real hierarchical "Bip01" chain lives in a
-## separate shared skeleton.nif this issue never loads (see the "out of
-## scope" list below). Each flat bone's own recorded transform is still its
-## correct bind-pose position relative to this file's root, so the REST pose
-## still renders correctly with no chain composition needed — building an
-## animatable "Bip01 Spine1 rotates its children" hierarchy is exactly the
-## future .kf/skeleton.nif work this issue explicitly excludes, not a gap in
-## this function. A small standalone skinned prop (e.g. a flag) DOES carry
-## its own real nested hierarchy in the same file, since it has no external
-## skeleton to depend on — this function makes no assumption either way,
-## just follows whatever parent_index actually says.
+## separate shared skeleton.nif THIS function never loads (see
+## populate_humanoid_skeleton() below, issue #52 chunk 4, for the real
+## multi-file assembly that does). Each flat bone's own recorded transform is
+## still its correct bind-pose position relative to this file's root, so the
+## REST pose still renders correctly with no chain composition needed here.
+## A small standalone skinned prop (e.g. a flag) DOES carry its own real
+## nested hierarchy in the same file, since it has no external skeleton to
+## depend on — this function makes no assumption either way, just follows
+## whatever parent_index actually says.
 ##
 ## Returns null if the NIF has no skin data at all (the common case — only
 ## real humanoid/creature meshes populate this).
@@ -805,28 +804,111 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	if skin_entries.is_empty():
 		return null
 
+	var skeleton := _build_skeleton_from_scene_nodes(nif, model_path, skin_entries)
+	parent.add_child(skeleton)
+
+	var morphed_mesh_instances: Array = []
+	_populate_skinned_mesh_instances(parent, skeleton, nif, model_path, morphed_mesh_instances)
+
+	if not morphed_mesh_instances.is_empty():
+		_populate_morph_animation_player(parent, morphed_mesh_instances)
+
+	_populate_skeleton_animation_player(parent, nif, skeleton)
+
+	return skeleton
+
+## Issue #52 chunk 4: a "full humanoid assembly" (enginedocs/
+## nv_class_hierarchy.md; the real ESM structure confirmed on issue #52's own
+## chunk 2 gate) — unlike populate_skeleton()'s single self-contained file,
+## a human NPC's skeleton and its body-part meshes are separate NIFs:
+## Characters\_Male\Skeleton.NIF carries the real hierarchical "Bip01" bone
+## tree and NO skin data of its own (confirmed against real data: 66 scene
+## nodes, 0 skin entries, 2 root nodes — a real nested chain, not the flat
+## per-file list populate_skeleton()'s own doc comment describes for a
+## standalone body-part mesh); UpperBody.nif/LeftHand.nif/RightHand.nif each
+## carry real BSDismemberSkinInstance data whose bone_names all resolve by
+## name against skeleton.nif's own bones (confirmed: zero missing names
+## across all 3 real files) — no numeric bone-index remapping needed, name
+## lookup is enough, same as populate_skeleton()'s existing Skin-binding code
+## already does.
+##
+## Deliberately does NOT wire a SkeletonAnimationPlayer (unlike
+## populate_skeleton()): real human idle/movement animation comes from
+## separate .kf NiControllerSequence files, not from skeleton.nif itself —
+## out of scope for this issue (see the issue #52 artifact's own chunk list;
+## to be split into its own issue once chunk 5 lands, same as #47 split off
+## #46).
+##
+## Returns null if skeleton_model_path fails to load.
+func populate_humanoid_skeleton(parent: Node3D, skeleton_model_path: String, body_part_model_paths: Array) -> Skeleton3D:
+	var skeleton_nif := load_nif(skeleton_model_path)
+	if skeleton_nif == null:
+		return null
+
+	# Empty skin_entries signals "no skin data to filter bones by — this IS
+	# the skeleton, every scene node in it is a real bone" (see
+	# _build_skeleton_from_scene_nodes()'s own doc comment).
+	var skeleton := _build_skeleton_from_scene_nodes(skeleton_nif, skeleton_model_path, [])
+	parent.add_child(skeleton)
+
+	var morphed_mesh_instances: Array = []
+	for part_path in body_part_model_paths:
+		var part_nif := load_nif(String(part_path))
+		if part_nif == null:
+			push_error("populate_humanoid_skeleton: failed to load body part '%s'" % part_path)
+			continue
+		_populate_skinned_mesh_instances(parent, skeleton, part_nif, String(part_path), morphed_mesh_instances)
+
+	if not morphed_mesh_instances.is_empty():
+		_populate_morph_animation_player(parent, morphed_mesh_instances)
+
+	return skeleton
+
+## Shared bone-building pass for populate_skeleton() (a single self-contained
+## skinned NIF) and populate_humanoid_skeleton() (issue #52 chunk 4: a
+## separate shared skeleton.nif with no skin data of its own). Bone hierarchy
+## comes from `nif`'s own scene_nodes parent_index chain — same source
+## populate_dynamic_children() uses — NOT assumed to always be a real chain:
+## confirmed real that a body-part mesh like upperbody.nif stores every one
+## of its skinned bones as a FLAT list, each parent_index == -1, while a
+## small standalone skinned prop (e.g. a flag) or a real skeleton.nif DOES
+## carry a real nested hierarchy — this function makes no assumption either
+## way, just follows whatever parent_index actually says.
+##
+## `skin_entries`: when non-empty, only bones any entry actually references
+## (plus their ancestors, for hierarchy/rest-pose composition) become real
+## Skeleton3D bones — populate_skeleton()'s existing behavior, unchanged.
+## When EMPTY, every scene node becomes a bone — for a file confirmed to
+## carry no skin data of its own (skeleton.nif), "which bones are needed"
+## can't be derived from skin data at all; the file's own contents already
+## ARE exactly the skeleton.
+func _build_skeleton_from_scene_nodes(nif: NifReader, model_path: String, skin_entries: Array) -> Skeleton3D:
 	var scene_node_entries: Array = nif.get_scene_nodes()
 	var scene_index_by_name: Dictionary = {}
 	for i in scene_node_entries.size():
 		scene_index_by_name[String(scene_node_entries[i]["name"])] = i
 
-	# Union of every bone name any skin entry references, PLUS every one of
-	# its ancestors — a bone's parent chain up to the NIF root commonly
-	# includes real skeleton structure (e.g. "Bip01" itself) that no
-	# individual skin entry lists as one of ITS OWN weighted bones, but
-	# which must still exist in Skeleton3D for the hierarchy/rest pose
-	# composition to be correct.
 	var needed: Dictionary = {} # scene_node index -> true
-	for skin in skin_entries:
-		for bone_name_v in skin["bone_names"]:
-			var bone_name := String(bone_name_v)
-			if not scene_index_by_name.has(bone_name):
-				push_error("populate_skeleton: bone '%s' not found in this NIF's own scene_nodes -- %s" % [bone_name, model_path])
-				continue
-			var idx: int = scene_index_by_name[bone_name]
-			while idx != -1 and not needed.has(idx):
-				needed[idx] = true
-				idx = int(scene_node_entries[idx]["parent_index"])
+	if skin_entries.is_empty():
+		for i in scene_node_entries.size():
+			needed[i] = true
+	else:
+		# Union of every bone name any skin entry references, PLUS every one
+		# of its ancestors — a bone's parent chain up to the NIF root
+		# commonly includes real skeleton structure (e.g. "Bip01" itself)
+		# that no individual skin entry lists as one of ITS OWN weighted
+		# bones, but which must still exist in Skeleton3D for the
+		# hierarchy/rest pose composition to be correct.
+		for skin in skin_entries:
+			for bone_name_v in skin["bone_names"]:
+				var bone_name := String(bone_name_v)
+				if not scene_index_by_name.has(bone_name):
+					push_error("_build_skeleton_from_scene_nodes: bone '%s' not found in this NIF's own scene_nodes -- %s" % [bone_name, model_path])
+					continue
+				var idx: int = scene_index_by_name[bone_name]
+				while idx != -1 and not needed.has(idx):
+					needed[idx] = true
+					idx = int(scene_node_entries[idx]["parent_index"])
 
 	var skeleton := Skeleton3D.new()
 	skeleton.name = "Skeleton3D"
@@ -848,7 +930,16 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 				still_remaining.append(idx)
 				continue
 			var raw_name: String = String(scene_node_entries[idx]["name"])
-			var bone_idx := skeleton.add_bone(raw_name if not raw_name.is_empty() else "Bone%d" % idx)
+			# Real data (skeleton.nif, "all bones" mode): a non-weighted
+			# marker/anim-note leaf node ("HeadAnims:0") carries a ':' in its
+			# own Gamebryo name -- Skeleton3D.add_bone() hard-rejects ':' and
+			# '/' outright. Sanitized here rather than skipped so descendants
+			# (none in this real file, but not guaranteed for every future
+			# one) stay attached; safe for skin-bind name lookups too since
+			# no real skin data was ever found referencing such a name (see
+			# _diag_humanoid_assembly.gd's "missing_in_skeleton_nif" check).
+			var safe_name := raw_name.replace(":", "_").replace("/", "_")
+			var bone_idx := skeleton.add_bone(safe_name if not safe_name.is_empty() else "Bone%d" % idx)
 			skeleton.set_bone_rest(bone_idx, scene_node_entries[idx]["transform"])
 			if parent_index != -1:
 				skeleton.set_bone_parent(bone_idx, bone_index_by_scene_index[parent_index])
@@ -856,7 +947,7 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 			progressed = true
 		remaining = still_remaining
 	if not remaining.is_empty():
-		push_error("populate_skeleton: bone parent_index cycle in '%s' -- %d bone(s) left unattached" % [model_path, remaining.size()])
+		push_error("_build_skeleton_from_scene_nodes: bone parent_index cycle in '%s' -- %d bone(s) left unattached" % [model_path, remaining.size()])
 
 	# A REAL, CONFIRMED bug lived here: Skeleton3D's per-bone POSE (what
 	# get_bone_global_pose()/GPU skinning actually use) does NOT default to
@@ -871,7 +962,24 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	# to, got pulled toward the same world-origin pose.
 	skeleton.reset_bone_poses()
 
-	parent.add_child(skeleton)
+	return skeleton
+
+## Shared per-skin submesh loop for populate_skeleton() and
+## populate_humanoid_skeleton(): builds one Skin + MeshInstance3D per skin
+## entry `nif` carries, bound against the ALREADY-BUILT `skeleton` by bone
+## NAME (Skin.set_bind_bone() via skeleton.find_bone()) — this is already
+## skeleton-source-agnostic (it never assumes `skeleton` was built from
+## `nif` itself), which is exactly what makes reusing it for a separate
+## shared skeleton.nif (chunk 4) safe. Appends to `morphed_mesh_instances`
+## (caller decides whether/when to flush it via
+## _populate_morph_animation_player() — populate_humanoid_skeleton() flushes
+## once after every body part, populate_skeleton() once after its own single
+## file) rather than building it here, since a caller processing several
+## files needs one shared player, not one per file.
+func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, morphed_mesh_instances: Array) -> void:
+	var skin_entries: Array = nif.get_skin_data()
+	if skin_entries.is_empty():
+		return
 
 	var submesh_index_by_name: Dictionary = {}
 	for i in nif.get_submesh_count():
@@ -882,22 +990,10 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	for e in raw["mesh_entries"]:
 		raw_entry_by_submesh_index[int(e["submesh_index"])] = e
 
-	# Issue #47: real vertex-morph weight-animation playback (the flag's own
-	# cloth ripple) -- collected here and wired up after the loop below via
-	# _populate_morph_animation_player(). Deliberately scoped to THIS
-	# construction path only, not also populate_mesh_children()/
-	# populate_dynamic_children(): the only real sample found (the
-	# Goodsprings NV_Nevadaflag.NIF) combines skinning AND morphing on the
-	# same shape, so this is the one path with a real, verified case to
-	# build and test against -- a morph-only (unskinned) object would need
-	# the same wiring added to those other two paths when a real one turns
-	# up, not preemptively guessed at here.
-	var morphed_mesh_instances: Array = []
-
 	for skin in skin_entries:
 		var target_name: String = skin["target_node_name"]
 		if not submesh_index_by_name.has(target_name):
-			push_error("populate_skeleton: skin target submesh '%s' not found -- %s" % [target_name, model_path])
+			push_error("_populate_skinned_mesh_instances: skin target submesh '%s' not found -- %s" % [target_name, model_path])
 			continue
 		var submesh_index: int = submesh_index_by_name[target_name]
 		if not raw_entry_by_submesh_index.has(submesh_index):
@@ -937,13 +1033,6 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 		var morph_for_anim: Dictionary = raw_entry.get("morph", {})
 		if not morph_for_anim.get("weight_tracks", []).is_empty():
 			morphed_mesh_instances.append({ "mesh_instance": mi, "morph": morph_for_anim })
-
-	if not morphed_mesh_instances.is_empty():
-		_populate_morph_animation_player(parent, morphed_mesh_instances)
-
-	_populate_skeleton_animation_player(parent, nif, skeleton)
-
-	return skeleton
 
 ## Same base-array construction as _build_mesh_from_raw(), plus
 ## Mesh.ARRAY_BONES/ARRAY_WEIGHTS from the matching SkinData dict (see
