@@ -622,30 +622,46 @@ std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell)
 		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
 
 		if (auto base = find_record_by_form_id(base_form_id)) {
-			pl.base_type = base->type;
-			std::vector<uint8_t> base_data = read_record_data(*base);
-			std::vector<Subrecord> base_subs = parse_subrecords(base_data);
-			for (const auto &s : base_subs) {
-				if (s.type == "EDID") {
-					pl.base_editor_id = s.as_string();
-				} else if (s.type == "MODL") {
-					pl.model_path = s.as_string();
-				} else if (s.type == "SCRI" && s.size >= 4) {
-					util::ByteReader sr(s.data, s.size);
-					pl.script_form_id = sr.read_u32();
-				} else if (base->type == "NPC_" && s.type == "RNAM" && s.size >= 4) {
-					util::ByteReader sr(s.data, s.size);
-					pl.race_form_id = sr.read_u32();
-				} else if (base->type == "NPC_" && s.type == "ACBS" && s.size >= 4) {
-					util::ByteReader sr(s.data, s.size);
-					pl.is_female = (sr.read_u32() & 1u) != 0;
-				}
-			}
+			fill_actor_base_fields(*base, pl);
 		}
 
 		out.push_back(std::move(pl));
 	}
 	return out;
+}
+
+void EsmFile::fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const {
+	pl.base_type = base.type;
+	std::vector<uint8_t> base_data = read_record_data(base);
+	std::vector<Subrecord> base_subs = parse_subrecords(base_data);
+	for (const auto &s : base_subs) {
+		if (s.type == "EDID") {
+			pl.base_editor_id = s.as_string();
+		} else if (s.type == "MODL") {
+			pl.model_path = s.as_string();
+		} else if (s.type == "SCRI" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.script_form_id = sr.read_u32();
+		} else if (base.type == "NPC_" && s.type == "RNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.race_form_id = sr.read_u32();
+		} else if (base.type == "NPC_" && s.type == "ACBS" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.is_female = (sr.read_u32() & 1u) != 0;
+		}
+	}
+}
+
+std::optional<ReferencePlacement> EsmFile::get_actor_by_form_id(uint32_t base_form_id) const {
+	auto base = find_record_by_form_id(base_form_id);
+	if (!base || (base->type != "NPC_" && base->type != "CREA")) {
+		return std::nullopt;
+	}
+	ReferencePlacement pl;
+	pl.base_form_id = base_form_id;
+	pl.scale = 1.0f;
+	fill_actor_base_fields(*base, pl);
+	return pl;
 }
 
 std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) const {

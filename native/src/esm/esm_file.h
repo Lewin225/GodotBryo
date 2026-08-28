@@ -263,7 +263,24 @@ public:
 	// found").
 	std::optional<DoorData> get_door_data(uint32_t door_form_id) const;
 
+	// Actor template scene work: resolves a bare NPC_/CREA base record
+	// directly by FormID -- the same fields get_cell_actors() reads off a
+	// placed ACHR/ACRE's base record (EDID/MODL/SCRI, plus RNAM/ACBS for
+	// NPC_), but with no REFR/ACHR/ACRE placement context at all
+	// (refr_form_id=0, position/rotation zero, scale=1). For previewing/
+	// configuring a specific actor directly (e.g. an editor tool script),
+	// not for anything actually placed in the world. std::nullopt if
+	// base_form_id doesn't resolve, or resolves to something other than
+	// NPC_/CREA.
+	std::optional<ReferencePlacement> get_actor_by_form_id(uint32_t base_form_id) const;
+
 private:
+	// Shared by get_cell_actors() and get_actor_by_form_id() -- reads
+	// EDID/MODL/SCRI (every base record) plus RNAM/ACBS (NPC_ only) off
+	// `base` into `pl`. See ReferencePlacement's own doc comment for why
+	// RNAM isn't read for CREA (means something unrelated there).
+	void fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const;
+
 	std::FILE *file_ = nullptr;
 	long file_size_ = 0;
 	FileHeader header_;

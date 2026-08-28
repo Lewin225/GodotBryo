@@ -23,7 +23,22 @@ extends GamebryoObject
 ## just be something to reconcile with (or discard from) that later design.
 ##
 ## Identity fields only for now (form_id/base_form_id/editor_id/record_type,
-## inherited from GamebryoReference/GamebryoObject) — construction of the
-## real skeleton/mesh lives in GamebryoObjectRegistry._build_npc()/
-## _build_creature(), same "Node classes are shape-only" split every other
-## branch in this codebase already follows.
+## inherited from GamebryoReference/GamebryoObject).
+##
+## Real construction now lives in a hand-authored template scene per leaf
+## (npc_node.tscn/creature_node.tscn) plus this populate() method, NOT
+## purely on-the-fly code the way every other GamebryoObject branch is
+## built — a deliberate exception, since actors are meaningfully more
+## complex (skeleton/animation/armor/items) than anything else placed in
+## the world, and a real scene lets that setup be authored/previewed in
+## the editor instead of only inspectable by running a script.
+## GamebryoObjectRegistry._build_npc()/_build_creature() instantiate the
+## template and call populate() on it; each leaf's own .gd script (also
+## @tool) can additionally be opened standalone as a preview/config tool,
+## the same "same code path in-editor and at runtime" discipline
+## nif_viewer.gd already follows for NIFs.
+##
+## Base no-op: CreatureNode doesn't override this yet (issue #52's own
+## documented gap — see creature_node.gd). NPCNode does.
+func populate(_placement: Dictionary, _esm: EsmReader, _mesh_resolver: GamebryoMeshResolver) -> void:
+	pass
