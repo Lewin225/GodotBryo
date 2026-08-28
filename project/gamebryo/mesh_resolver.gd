@@ -845,6 +845,19 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 	if not remaining.is_empty():
 		push_error("populate_skeleton: bone parent_index cycle in '%s' -- %d bone(s) left unattached" % [model_path, remaining.size()])
 
+	# A REAL, CONFIRMED bug lived here: Skeleton3D's per-bone POSE (what
+	# get_bone_global_pose()/GPU skinning actually use) does NOT default to
+	# the REST transform set_bone_rest() above just wrote -- it silently
+	# stays at its own zeroed-out default (world origin, identity) until
+	# reset_bone_poses() is called at least once. Confirmed via direct
+	# inspection (get_bone_rest() returned the correct varied translations
+	# while get_bone_global_pose() returned (0,0,0) for every single bone,
+	# even after letting real frames process) -- this, not a transform-math
+	# error, was the actual cause of a skinned mesh rendering "scrunched
+	# into a tube": every vertex, regardless of which bone(s) it's weighted
+	# to, got pulled toward the same world-origin pose.
+	skeleton.reset_bone_poses()
+
 	parent.add_child(skeleton)
 
 	var submesh_index_by_name: Dictionary = {}
