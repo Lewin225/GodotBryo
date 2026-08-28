@@ -81,6 +81,7 @@ var _mesh_cache := {} # "model_path#submesh_index" -> ArrayMesh
 var _texture_cache := {} # tex_path -> ImageTexture or null
 var _material_cache := {} # material key -> StandardMaterial3D
 var _collision_cache := {} # model_path -> Array of { "shape": Shape3D, "transform": Transform3D, "name": String }
+var _skin_mesh_cache := {} # "model_path#submesh_index#skin" -> ArrayMesh (see populate_skeleton()) -- kept separate from _mesh_cache since these surfaces carry ARRAY_BONES/ARRAY_WEIGHTS a non-skinned build of the same submesh must never pick up
 
 ## Cache hit/miss counters — phases/2/00-resource-caching-instancing.md asks
 ## for a measured before/after, not just an assumed improvement.
@@ -390,6 +391,15 @@ func load_sound(sound_path: String) -> AudioStreamWAV:
 ## effect placements uses, is unregistered and always routes through the
 ## RID path at runtime).
 func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
+	# Issue #47: real vertex morph targets -- keyed by the owning shape's own
+	# name (NifReader.get_morph_data()'s own "target_node_name"), same join
+	# convention as get_submesh_name(). Empty for the overwhelming majority
+	# of NIFs; only real morph-capable content (e.g. cloth-ripple flags)
+	# populates this.
+	var morph_by_name: Dictionary = {}
+	for morph in nif.get_morph_data():
+		morph_by_name[String(morph["target_node_name"])] = morph
+
 	var mesh_entries := []
 	for i in range(nif.get_submesh_count()):
 		if _is_editor_marker_submesh(nif.get_submesh_name(i)) and not Engine.is_editor_hint():
@@ -437,6 +447,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"diffuse_image": _load_image(tex_path, needs_alpha),
 			"normal_image": _load_image(normal_path),
 			"glow_image": _load_image(glow_path),
+			"morph": morph_by_name.get(nif.get_submesh_name(i), {}),
 		})
 	return {
 		"model_path": model_path,
@@ -517,6 +528,9 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 		else:
 			mesh_cache_misses += 1
 			mesh = _build_mesh_from_raw(e)
+			var morph: Dictionary = e.get("morph", {})
+			if not morph.is_empty():
+				mesh = _apply_morph_targets(mesh, morph)
 			var mat := _build_material_from_raw(e)
 			if mat != null:
 				mesh.surface_set_material(0, mat)
@@ -748,6 +762,339 @@ func populate_dynamic_children(parent: Node3D, nif: NifReader, model_path: Strin
 
 	return built
 
+## Issue #46: builds a real Skeleton3D + per-submesh Skin/MeshInstance3D for
+## a skinned NIF (BSDismemberSkinInstance/NiSkinInstance + NiSkinData +
+## NiSkinPartition — see nif_types.h's own SkinData doc comment), as
+## children of `parent`. Deliberately a SEPARATE construction path from
+## populate_dynamic_children() above, not a reuse of it: that function
+## builds one Node3D per NiAVObject for a pivot-animated RIGID hierarchy
+## (doors, the animated-static case from issue #44) where each mesh follows
+## its own owning node's transform; a skinned mesh instead needs exactly one
+## Skeleton3D (shared across the body's several skinned submeshes — real
+## data confirms this sharing matters: upperbody.nif's 6
+## BSDismemberSkinInstances all reference the same 27-bone pool) plus a
+## Skin + MeshInstance3D per submesh, with the mesh's own node transform
+## left at IDENTITY (the vertex position ends up in Skeleton3D's local space
+## purely via each vertex's bone weights * that bone's current pose * its
+## bind pose — the same architecture real-time GPU skinning always uses,
+## matching Godot's own Skin/Skeleton3D contract, which composes no
+## additional "global-to-skin" factor into the live vertex calc beyond the
+## per-bone bind pose already captured in SkinData::bone_bind_transforms).
+##
+## Bone hierarchy comes from this same NIF's own scene_nodes parent_index
+## chain — same source populate_dynamic_children() uses — NOT assumed to
+## always be a real chain: confirmed real that a body-part mesh like
+## upperbody.nif stores every one of its skinned bones as a FLAT list, each
+## parent_index == -1 (directly under the file's own root), not nested under
+## each other at all — the real hierarchical "Bip01" chain lives in a
+## separate shared skeleton.nif this issue never loads (see the "out of
+## scope" list below). Each flat bone's own recorded transform is still its
+## correct bind-pose position relative to this file's root, so the REST pose
+## still renders correctly with no chain composition needed — building an
+## animatable "Bip01 Spine1 rotates its children" hierarchy is exactly the
+## future .kf/skeleton.nif work this issue explicitly excludes, not a gap in
+## this function. A small standalone skinned prop (e.g. a flag) DOES carry
+## its own real nested hierarchy in the same file, since it has no external
+## skeleton to depend on — this function makes no assumption either way,
+## just follows whatever parent_index actually says.
+##
+## Returns null if the NIF has no skin data at all (the common case — only
+## real humanoid/creature meshes populate this).
+func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Skeleton3D:
+	var skin_entries: Array = nif.get_skin_data()
+	if skin_entries.is_empty():
+		return null
+
+	var scene_node_entries: Array = nif.get_scene_nodes()
+	var scene_index_by_name: Dictionary = {}
+	for i in scene_node_entries.size():
+		scene_index_by_name[String(scene_node_entries[i]["name"])] = i
+
+	# Union of every bone name any skin entry references, PLUS every one of
+	# its ancestors — a bone's parent chain up to the NIF root commonly
+	# includes real skeleton structure (e.g. "Bip01" itself) that no
+	# individual skin entry lists as one of ITS OWN weighted bones, but
+	# which must still exist in Skeleton3D for the hierarchy/rest pose
+	# composition to be correct.
+	var needed: Dictionary = {} # scene_node index -> true
+	for skin in skin_entries:
+		for bone_name_v in skin["bone_names"]:
+			var bone_name := String(bone_name_v)
+			if not scene_index_by_name.has(bone_name):
+				push_error("populate_skeleton: bone '%s' not found in this NIF's own scene_nodes -- %s" % [bone_name, model_path])
+				continue
+			var idx: int = scene_index_by_name[bone_name]
+			while idx != -1 and not needed.has(idx):
+				needed[idx] = true
+				idx = int(scene_node_entries[idx]["parent_index"])
+
+	var skeleton := Skeleton3D.new()
+	skeleton.name = "Skeleton3D"
+
+	# Same iterative "attach once its own parent is already placed" pass
+	# populate_dynamic_children() uses for its own Node3D hierarchy above --
+	# real NIFs always emit a parent block before its children, but this
+	# still tolerates any order at no real cost (bounded by one skeleton's
+	# own bone count).
+	var bone_index_by_scene_index: Dictionary = {}
+	var remaining: Array = needed.keys()
+	var progressed := true
+	while not remaining.is_empty() and progressed:
+		progressed = false
+		var still_remaining: Array = []
+		for idx in remaining:
+			var parent_index: int = int(scene_node_entries[idx]["parent_index"])
+			if parent_index != -1 and not bone_index_by_scene_index.has(parent_index):
+				still_remaining.append(idx)
+				continue
+			var raw_name: String = String(scene_node_entries[idx]["name"])
+			var bone_idx := skeleton.add_bone(raw_name if not raw_name.is_empty() else "Bone%d" % idx)
+			skeleton.set_bone_rest(bone_idx, scene_node_entries[idx]["transform"])
+			if parent_index != -1:
+				skeleton.set_bone_parent(bone_idx, bone_index_by_scene_index[parent_index])
+			bone_index_by_scene_index[idx] = bone_idx
+			progressed = true
+		remaining = still_remaining
+	if not remaining.is_empty():
+		push_error("populate_skeleton: bone parent_index cycle in '%s' -- %d bone(s) left unattached" % [model_path, remaining.size()])
+
+	# A REAL, CONFIRMED bug lived here: Skeleton3D's per-bone POSE (what
+	# get_bone_global_pose()/GPU skinning actually use) does NOT default to
+	# the REST transform set_bone_rest() above just wrote -- it silently
+	# stays at its own zeroed-out default (world origin, identity) until
+	# reset_bone_poses() is called at least once. Confirmed via direct
+	# inspection (get_bone_rest() returned the correct varied translations
+	# while get_bone_global_pose() returned (0,0,0) for every single bone,
+	# even after letting real frames process) -- this, not a transform-math
+	# error, was the actual cause of a skinned mesh rendering "scrunched
+	# into a tube": every vertex, regardless of which bone(s) it's weighted
+	# to, got pulled toward the same world-origin pose.
+	skeleton.reset_bone_poses()
+
+	parent.add_child(skeleton)
+
+	var submesh_index_by_name: Dictionary = {}
+	for i in nif.get_submesh_count():
+		submesh_index_by_name[nif.get_submesh_name(i)] = i
+
+	var raw := resolve_raw_geometry(nif, model_path)
+	var raw_entry_by_submesh_index: Dictionary = {}
+	for e in raw["mesh_entries"]:
+		raw_entry_by_submesh_index[int(e["submesh_index"])] = e
+
+	# Issue #47: real vertex-morph weight-animation playback (the flag's own
+	# cloth ripple) -- collected here and wired up after the loop below via
+	# _populate_morph_animation_player(). Deliberately scoped to THIS
+	# construction path only, not also populate_mesh_children()/
+	# populate_dynamic_children(): the only real sample found (the
+	# Goodsprings NV_Nevadaflag.NIF) combines skinning AND morphing on the
+	# same shape, so this is the one path with a real, verified case to
+	# build and test against -- a morph-only (unskinned) object would need
+	# the same wiring added to those other two paths when a real one turns
+	# up, not preemptively guessed at here.
+	var morphed_mesh_instances: Array = []
+
+	for skin in skin_entries:
+		var target_name: String = skin["target_node_name"]
+		if not submesh_index_by_name.has(target_name):
+			push_error("populate_skeleton: skin target submesh '%s' not found -- %s" % [target_name, model_path])
+			continue
+		var submesh_index: int = submesh_index_by_name[target_name]
+		if not raw_entry_by_submesh_index.has(submesh_index):
+			continue # filtered upstream (e.g. an EditorMarker submesh) -- not expected for a real skinned shape, but not fatal
+		var raw_entry: Dictionary = raw_entry_by_submesh_index[submesh_index]
+
+		var mesh_key := "%s#%d#skin" % [model_path, submesh_index]
+		var mesh: ArrayMesh
+		if _skin_mesh_cache.has(mesh_key):
+			mesh = _skin_mesh_cache[mesh_key]
+		else:
+			mesh = _build_skinned_mesh_from_raw(raw_entry, skin)
+			var morph: Dictionary = raw_entry.get("morph", {})
+			if not morph.is_empty():
+				mesh = _apply_morph_targets(mesh, morph)
+			var mat := _build_material_from_raw(raw_entry)
+			if mat != null:
+				mesh.surface_set_material(0, mat)
+			_skin_mesh_cache[mesh_key] = mesh
+
+		var mi := MeshInstance3D.new()
+		mi.name = ("sub%d_%s" % [submesh_index, target_name]).validate_node_name()
+		mi.mesh = mesh
+		mi.set_meta("gamebryo_is_unlit", bool(raw_entry.get("is_unlit", false)))
+		parent.add_child(mi)
+		mi.skeleton = mi.get_path_to(skeleton) # MeshInstance3D.skeleton is relative to the MeshInstance3D itself, not `parent`
+
+		var skin_resource := Skin.new()
+		var bone_names: Array = skin["bone_names"]
+		var bind_transforms: Array = skin["bone_bind_transforms"]
+		skin_resource.set_bind_count(bone_names.size())
+		for i in bone_names.size():
+			skin_resource.set_bind_bone(i, skeleton.find_bone(String(bone_names[i])))
+			skin_resource.set_bind_pose(i, bind_transforms[i])
+		mi.skin = skin_resource
+
+		var morph_for_anim: Dictionary = raw_entry.get("morph", {})
+		if not morph_for_anim.get("weight_tracks", []).is_empty():
+			morphed_mesh_instances.append({ "mesh_instance": mi, "morph": morph_for_anim })
+
+	if not morphed_mesh_instances.is_empty():
+		_populate_morph_animation_player(parent, morphed_mesh_instances)
+
+	_populate_skeleton_animation_player(parent, nif, skeleton)
+
+	return skeleton
+
+## Same base-array construction as _build_mesh_from_raw(), plus
+## Mesh.ARRAY_BONES/ARRAY_WEIGHTS from the matching SkinData dict (see
+## NifReader.get_skin_data()'s own doc comment for the flattened
+## vertex_count*4 layout — already exactly the shape Godot's own ArrayMesh
+## expects, no remapping needed). A distinct function rather than an extra
+## parameter on _build_mesh_from_raw() so that function's own (shared,
+## Static-path-cached) contract never silently gains skin-shaped output.
+func _build_skinned_mesh_from_raw(e: Dictionary, skin: Dictionary) -> ArrayMesh:
+	var base := _build_mesh_from_raw(e)
+	var pos_flat: PackedFloat32Array = e["positions"]
+	var vert_count := pos_flat.size() / 3
+	var bone_indices: PackedInt32Array = skin["bone_indices"]
+	var bone_weights: PackedFloat32Array = skin["bone_weights"]
+	if bone_indices.size() != vert_count * 4 or bone_weights.size() != vert_count * 4:
+		push_error("_build_skinned_mesh_from_raw: bone array size mismatch (verts=%d bone_indices=%d)" % [vert_count, bone_indices.size()])
+		return base
+
+	var arrays := base.surface_get_arrays(0)
+	arrays[Mesh.ARRAY_BONES] = bone_indices
+	arrays[Mesh.ARRAY_WEIGHTS] = bone_weights
+
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## Issue #47: rebuilds `base_mesh` with real Godot blend shapes added, one
+## per NifReader.get_morph_data() "targets" entry — see nif_types.h's own
+## MorphTarget doc comment for why index 0 (the base shape's own copy, not
+## a real target) is skipped. `morph["targets"][i]["vertex_deltas"]` are
+## per-vertex OFFSETS (NiMorphData's own convention, confirmed real:
+## relative_targets == true in every file sampled); Godot's own
+## BLEND_SHAPE_MODE_NORMALIZED (the default, set explicitly here since a
+## fresh ArrayMesh's default mode isn't assumed) expects each blend shape's
+## ARRAY_VERTEX to be the target's ABSOLUTE position, so base + delta is
+## computed here once at mesh-build time rather than deferred to the shader.
+##
+## Godot requires every add_blend_shape() call before the surface that
+## references them is added (blend shape COUNT is fixed at surface-add
+## time) — same reason _build_skinned_mesh_from_raw() above rebuilds a
+## fresh ArrayMesh via surface_get_arrays() rather than mutating
+## `base_mesh` in place; ARRAY_BONES/ARRAY_WEIGHTS already on `base_mesh`
+## (a skinned+morphed submesh, the real motivating case — the Nevada flag
+## carries both) pass through unchanged via that same surface_get_arrays()
+## call, so a skinned mesh keeps its skinning after this runs.
+func _apply_morph_targets(base_mesh: ArrayMesh, morph: Dictionary) -> ArrayMesh:
+	var targets: Array = morph.get("targets", [])
+	if targets.size() <= 1:
+		return base_mesh # only (or not even) the base-copy entry -- nothing to blend
+
+	var arrays := base_mesh.surface_get_arrays(0)
+	var base_positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	# Godot requires a blend shape's Vertex/Normal/Tangent arrays to match
+	# the main surface's own format -- NIF's NiMorphData only ever gives us
+	# per-vertex POSITION deltas, never per-morph normals, so every blend
+	# shape reuses the base mesh's own normals unchanged (a real, if minor,
+	# fidelity approximation for a mesh whose morph deltas are small ripples
+	# -- not incorrect for anything sharper, just not re-derived per morph).
+	var base_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+
+	var blend_arrays: Array = []
+	var mesh := ArrayMesh.new()
+	mesh.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
+	for i in targets.size():
+		if i == 0:
+			continue
+		var target: Dictionary = targets[i]
+		var target_name: String = String(target.get("name", ""))
+		mesh.add_blend_shape(target_name if target_name != "" else "Morph%d" % i)
+
+		var deltas: PackedFloat32Array = target["vertex_deltas"]
+		if deltas.size() != base_positions.size() * 3:
+			push_error("_apply_morph_targets: vertex_deltas size mismatch for '%s' (verts=%d deltas=%d)" % [target_name, base_positions.size(), deltas.size()])
+			continue
+		var target_positions := PackedVector3Array()
+		target_positions.resize(base_positions.size())
+		for v in base_positions.size():
+			target_positions[v] = base_positions[v] + Vector3(deltas[v * 3], deltas[v * 3 + 1], deltas[v * 3 + 2])
+
+		var blend_surface := []
+		blend_surface.resize(Mesh.ARRAY_MAX)
+		blend_surface[Mesh.ARRAY_VERTEX] = target_positions
+		if not base_normals.is_empty():
+			blend_surface[Mesh.ARRAY_NORMAL] = base_normals
+		blend_arrays.append(blend_surface)
+
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, blend_arrays)
+	return mesh
+
+## Issue #47: real weight-animation playback for morph targets -- e.g. the
+## Nevada flag's own cloth ripple. `entries` is an Array of
+## { "mesh_instance": MeshInstance3D, "morph": Dictionary (NifReader.
+## get_morph_data() entry) }, built by populate_skeleton() from the shapes
+## it just constructed. A NiGeomMorpherController's own clock
+## (morph["start_time"]/"stop_time"/"cycle_type") is a genuinely separate
+## timeline from get_animation_sequences()'s own NiControllerSequence-based
+## one (see nif_types.h's MorphData doc comment) -- this builds its own
+## AnimationPlayer/library rather than folding into
+## populate_animation_player()'s, and uses the FIRST entry's own
+## start/stop/cycle as the built clip's length/loop mode (confirmed real
+## that every morph controller on the one real sample checked shares the
+## same file-wide timeline, not assumed in general).
+func _populate_morph_animation_player(parent: Node3D, entries: Array) -> AnimationPlayer:
+	var player := AnimationPlayer.new()
+	player.name = "MorphAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..") # `parent` itself -- same convention as populate_animation_player()'s own; every NodePath below is parent.get_path_to(...)
+
+	var first_morph: Dictionary = entries[0]["morph"]
+	var anim := Animation.new()
+	anim.length = maxf(float(first_morph["stop_time"]) - float(first_morph["start_time"]), 0.01)
+	match int(first_morph["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
+		0: anim.loop_mode = Animation.LOOP_LINEAR
+		_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- same known gap as populate_animation_player()'s own reverse handling
+
+	for entry in entries:
+		var mi: MeshInstance3D = entry["mesh_instance"]
+		var morph: Dictionary = entry["morph"]
+		var mesh: ArrayMesh = mi.mesh
+		var blend_shape_index_by_name: Dictionary = {}
+		for i in mesh.get_blend_shape_count():
+			blend_shape_index_by_name[mesh.get_blend_shape_name(i)] = i
+
+		for track in morph["weight_tracks"]:
+			var target_name: String = track["target_name"]
+			if not blend_shape_index_by_name.has(target_name):
+				continue # e.g. the always-zero "Base" weight track -- index 0 was never built as a real blend shape, see _apply_morph_targets()'s own doc comment
+			var idx := anim.add_track(Animation.TYPE_BLEND_SHAPE)
+			# TYPE_BLEND_SHAPE's own path convention: "<path-to-MeshInstance3D>:<blend_shape_name>" --
+			# same parent-relative NodePath convention populate_animation_player() uses.
+			anim.track_set_path(idx, NodePath(str(parent.get_path_to(mi)) + ":" + target_name))
+			var keys: Array = track["keys"]
+			# Deliberately always LINEAR here, NOT _godot_interp()'s own
+			# quadratic/tbc->CUBIC mapping (populate_animation_player() uses
+			# that for smooth positional/rotational curves, where it's a
+			# reasonable fit) -- confirmed a real, bad mismatch for THIS kind
+			# of data: these weight curves are dense, near-spike keyframes
+			# (a value snapping to 1.0 for a single frame between long runs
+			# of 0.0, real key counts of 98-223 per track), and Godot's
+			# CUBIC auto-derives tangents from neighboring keys, which on a
+			# spike shape overshoots wildly -- measured a sampled weight of
+			# -18.79 (should be in 0..1) with CUBIC before this fix.
+			anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR)
+			for k in keys:
+				anim.track_insert_key(idx, float(k["time"]), float(k["value"]))
+
+	var library := AnimationLibrary.new()
+	library.add_animation("Morph", anim)
+	player.add_animation_library("", library)
+	return player
+
 ## `node`'s transform as seen from `ancestor` (which MUST actually be an
 ## ancestor of `node` in the Node tree) -- composes only .transform (each
 ## Node3D's own LOCAL value, relative to its immediate parent), never
@@ -830,54 +1177,119 @@ func populate_animation_player(parent: Node3D, nif: NifReader, built: Array) -> 
 	# values was wrong, see phases/3/00-door-completion.md step 6/8).
 	player.speed_scale = 1.25
 
+	var resolve_target := func(target_name: String):
+		if not name_to_index.has(target_name):
+			return null # target isn't one of THIS NIF's own scene_nodes -- a real, if unexpected, case; skip rather than crash
+		return parent.get_path_to(built[name_to_index[target_name]])
+
 	var library := AnimationLibrary.new()
 	for seq in sequences:
-		var anim := Animation.new()
-		anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
-		match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
-			0: anim.loop_mode = Animation.LOOP_LINEAR
-			_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
-
-		for track in seq["tracks"]:
-			var target_name: String = track["target_node_name"]
-			if not name_to_index.has(target_name):
-				continue # target isn't one of THIS NIF's own scene_nodes -- a real, if unexpected, case; skip rather than crash
-			var target_node: Node3D = built[name_to_index[target_name]]
-			var node_path: NodePath = parent.get_path_to(target_node)
-
-			if bool(track["has_quaternion_keys"]):
-				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
-				anim.track_set_path(idx, node_path)
-				var keys: Array = track["quaternion_keys"]
-				anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
-				for k in keys:
-					anim.track_insert_key(idx, float(k["time"]), k["value"])
-			elif bool(track["has_axis_keys"]):
-				var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR) # resampled below -- see this function's own doc comment
-				for sample in _resample_axis_rotation(track["x_rotation_keys"], track["y_rotation_keys"], track["z_rotation_keys"]):
-					anim.track_insert_key(idx, sample["time"], sample["quat"])
-
-			var translation_keys: Array = track["translation_keys"]
-			if not translation_keys.is_empty():
-				var idx := anim.add_track(Animation.TYPE_POSITION_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, _godot_interp(int(translation_keys[0]["interp"])))
-				for k in translation_keys:
-					anim.track_insert_key(idx, float(k["time"]), k["value"])
-
-			var scale_keys: Array = track["scale_keys"]
-			if not scale_keys.is_empty():
-				var idx := anim.add_track(Animation.TYPE_SCALE_3D)
-				anim.track_set_path(idx, node_path)
-				anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
-				for k in scale_keys:
-					anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
-
-		library.add_animation(String(seq["name"]), anim)
+		library.add_animation(String(seq["name"]), _build_sequence_animation(seq, resolve_target))
 	player.add_animation_library("", library)
 	return player
+
+## Issue #46 follow-up, surfaced by real play on the Nevada flag (#47's own
+## test asset): a skinned NIF's bones can ALSO carry ordinary keyframed
+## rotation/translation/scale animation via the SAME NiControllerSequence
+## mechanism doors use (get_animation_sequences()) — confirmed real: the
+## flag's own "Idle" sequence has 9 quaternion-rotation tracks targeting its
+## exact bone names (TTail1, MTail1, ...), ~1270 keys each. This is NOT
+## Havok cloth physics (an earlier, wrong assumption made before actually
+## checking get_animation_sequences() against this file) — ordinary
+## transform-track animation, already fully supported by
+## get_animation_sequences()/_build_sequence_animation(), just never wired
+## to a Skeleton3D's own bones until now. Godot resolves a Skeleton3D bone
+## track via the same "<path>:<property>" NodePath convention as any other
+## property track, using the bone's own name as the property (the
+## "Skeleton3D:BoneName" convention Godot's own glTF/FBX importers use) —
+## same pattern as _populate_morph_animation_player()'s own blend-shape-
+## weight tracks. Called from populate_skeleton() itself; returns null if
+## the NIF has no animation sequences, or none of them target a real bone
+## on `skeleton` (e.g. a skinned mesh with no authored pose animation at
+## all, the common case).
+func _populate_skeleton_animation_player(parent: Node3D, nif: NifReader, skeleton: Skeleton3D) -> AnimationPlayer:
+	var sequences: Array = nif.get_animation_sequences()
+	if sequences.is_empty():
+		return null
+
+	var skeleton_path: NodePath = parent.get_path_to(skeleton)
+	var resolve_bone := func(target_name: String):
+		if skeleton.find_bone(target_name) == -1:
+			return null
+		return NodePath(str(skeleton_path) + ":" + target_name)
+
+	var library := AnimationLibrary.new()
+	for seq in sequences:
+		var anim := _build_sequence_animation(seq, resolve_bone)
+		if anim.get_track_count() > 0:
+			library.add_animation(String(seq["name"]), anim)
+	if library.get_animation_list().is_empty():
+		return null # no sequence in this file targets any of `skeleton`'s own bones
+
+	var player := AnimationPlayer.new()
+	player.name = "SkeletonAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..")
+	player.speed_scale = 1.25 # same real-play-observed correction populate_animation_player() applies
+	player.add_animation_library("", library)
+	return player
+
+## Shared per-sequence Animation-building body for populate_animation_player()
+## and _populate_skeleton_animation_player() — identical track-construction
+## logic (see populate_animation_player()'s own doc comment for the
+## interpolation/axis-key-resampling rationale), differing only in HOW a
+## track's target_node_name resolves to a NodePath: a Node3D child
+## (populate_animation_player, via `built`) vs. a Skeleton3D bone
+## (_populate_skeleton_animation_player, via "Skeleton3D:BoneName").
+## `resolve_target_path` is a Callable(String) -> Variant (NodePath or null
+## if the track's target isn't one this caller can resolve — skipped, not
+## an error, since a real sequence commonly targets a mix of nodes/bones
+## only some of which exist in a given construction path).
+func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable) -> Animation:
+	var anim := Animation.new()
+	anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
+	match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
+		0: anim.loop_mode = Animation.LOOP_LINEAR
+		_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
+
+	for track in seq["tracks"]:
+		var target_name: String = track["target_node_name"]
+		var resolved = resolve_target_path.call(target_name)
+		if resolved == null:
+			continue
+		var node_path: NodePath = resolved
+
+		if bool(track["has_quaternion_keys"]):
+			var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(idx, node_path)
+			var keys: Array = track["quaternion_keys"]
+			anim.track_set_interpolation_type(idx, _godot_interp(int(keys[0]["interp"])) if not keys.is_empty() else Animation.INTERPOLATION_LINEAR)
+			for k in keys:
+				anim.track_insert_key(idx, float(k["time"]), k["value"])
+		elif bool(track["has_axis_keys"]):
+			var idx := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR) # resampled below -- see populate_animation_player()'s own doc comment
+			for sample in _resample_axis_rotation(track["x_rotation_keys"], track["y_rotation_keys"], track["z_rotation_keys"]):
+				anim.track_insert_key(idx, sample["time"], sample["quat"])
+
+		var translation_keys: Array = track["translation_keys"]
+		if not translation_keys.is_empty():
+			var idx := anim.add_track(Animation.TYPE_POSITION_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, _godot_interp(int(translation_keys[0]["interp"])))
+			for k in translation_keys:
+				anim.track_insert_key(idx, float(k["time"]), k["value"])
+
+		var scale_keys: Array = track["scale_keys"]
+		if not scale_keys.is_empty():
+			var idx := anim.add_track(Animation.TYPE_SCALE_3D)
+			anim.track_set_path(idx, node_path)
+			anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
+			for k in scale_keys:
+				anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
+
+	return anim
 
 ## nif::KeyInterpolation (0=none/1=linear/2=quadratic/3=tbc/4=constant) ->
 ## Godot's own Animation.InterpolationType. See populate_animation_player()'s
