@@ -390,6 +390,59 @@ struct SkinData {
 	std::vector<uint16_t> partition_body_part_ids;
 };
 
+// Issue #47: one named morph/blend-shape target (NiMorphData's own
+// per-shape morphs[] entry), extracted from a NiGeomMorpherController +
+// NiMorphData pair. Real data (native/tools/nif_morph_dump.cpp, the real
+// Goodsprings NV_Nevadaflag.NIF) confirms: with relative_targets == true
+// (the only value seen in real FNV content so far, not assumed), index 0
+// is always a literal copy of the base shape's own vertex positions
+// (name == "Base", magnitude matching the raw geometry scale, not a small
+// delta) — callers should skip index 0 as a buildable blend-shape target;
+// indices 1..N are real small per-vertex offset deltas relative to that
+// base. Carried through unfiltered here (native extraction doesn't drop
+// index 0) so a caller can still inspect/validate it if needed.
+struct MorphTarget {
+	std::string name; // Morph::frameName, e.g. "NV_NCRFlag01BASE02" — may be empty for older content nifly's own Morph::Sync doesn't populate a frameName for
+	std::vector<float> vertex_deltas; // flat xyz, length == vertex_count * 3, already meters-converted (see units.h) — vertex_count matches the owning SubMesh's own position count exactly, same shape as SkinData's per-vertex arrays
+};
+
+// One float-valued weight-animation curve driving a single MorphTarget's
+// blend weight over time (0..1) — NiGeomMorpherController::interpWeights[i]
+// -> NiFloatInterpolator -> NiFloatData, confirmed the real mechanism FNV
+// content uses (NOT the older parallel interpolatorRefs[] array — that was
+// empty in every real file sampled). `target_name` joins back to the
+// MorphTarget with the same name in the same MorphData, exactly like
+// AnimationTrack::target_node_name joins to a SceneNode — deliberately not
+// assumed index-parallel with MorphData::targets, since interpWeights[i]
+// pairing with morphs[i] by position is nifly's own internal storage detail,
+// not a contract this project's own extraction should lean on further than
+// necessary.
+struct MorphWeightTrack {
+	std::string target_name;
+	std::vector<FloatKey> keys;
+};
+
+// One morph-capable NiShape's full morph setup: its target geometry deltas
+// plus whatever weight-animation curves drive them. A NiGeomMorpherController
+// is attached directly to its owning NiShape via that shape's own
+// controllerRef (NOT via NiControllerManager/NiControllerSequence like
+// AnimationSequence above) — confirmed real: the Nevada flag's two morph
+// controllers each hang directly off their own NiTriShape, and that shape
+// ALSO independently carries a NiTransformController for its own pivot-sway
+// animation, wholly unrelated to this. This is therefore a genuinely
+// separate animation clock from AnimationSequence's own start/stop/cycle
+// time, sourced from the controller's own NiTimeController base fields, not
+// assumed to share timing with anything else in the file.
+struct MorphData {
+	std::string target_node_name; // owning shape's own name — same join convention as SkinData::target_node_name (a shape has at most one morph controller in every real file sampled)
+	bool relative_targets = true; // NiMorphData::relativeTargets
+	std::vector<MorphTarget> targets; // includes index 0 (the base copy) — see MorphTarget's own doc comment
+	std::vector<MorphWeightTrack> weight_tracks; // only entries with a real resolvable NiFloatInterpolator/NiFloatData — may be fewer than targets.size() if some are missing/unresolvable
+	SequenceCycleType cycle_type = SequenceCycleType::kLoop;
+	float start_time = 0.0f;
+	float stop_time = 0.0f;
+};
+
 struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
@@ -441,6 +494,11 @@ struct Mesh {
 	// Empty for the overwhelming majority of NIFs; only real skinned meshes
 	// (humanoid/creature bodies) populate this.
 	std::vector<SkinData> skin_data;
+
+	// Issue #47: real vertex morph targets — see MorphData's own doc
+	// comment. Empty for the overwhelming majority of NIFs; only real
+	// morph-capable content (e.g. cloth-ripple flags) populates this.
+	std::vector<MorphData> morph_data;
 };
 
 } // namespace nif
