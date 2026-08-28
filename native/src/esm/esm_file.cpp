@@ -3,6 +3,7 @@
 #include "../common/byte_reader.h"
 #include "../common/units.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -632,6 +633,12 @@ std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell)
 				} else if (s.type == "SCRI" && s.size >= 4) {
 					util::ByteReader sr(s.data, s.size);
 					pl.script_form_id = sr.read_u32();
+				} else if (base->type == "NPC_" && s.type == "RNAM" && s.size >= 4) {
+					util::ByteReader sr(s.data, s.size);
+					pl.race_form_id = sr.read_u32();
+				} else if (base->type == "NPC_" && s.type == "ACBS" && s.size >= 4) {
+					util::ByteReader sr(s.data, s.size);
+					pl.is_female = (sr.read_u32() & 1u) != 0;
 				}
 			}
 		}
@@ -683,6 +690,71 @@ std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) 
 
 			out.push_back(std::move(pl));
 			have_pending = false;
+		}
+	}
+	return out;
+}
+
+// Issue #52 chunk 5: real, confirmed RACE subrecord layout (dumped raw via
+// native/tools/actor_assembly_survey.cpp against CaucasianOld, findings
+// posted on issue #52's chunk 2 comment) — a sequence of 0-byte marker
+// subrecords delimits four blocks, in this exact order: NAM0 opens the Head
+// Data block, MNAM within it means "male head parts follow", FNAM within it
+// means "female head parts follow"; NAM1 then opens the Body Data block,
+// where MNAM/FNAM mean the same thing for body parts. Each part is a real
+// INDX (the part's own index) immediately followed by whichever of
+// MODL/ICON/MODT/MODD that part actually carries (a part can have MODL
+// absent — e.g. Ears only ever carries ICON in real data). Only entries
+// with both a real INDX and a real ".nif" MODL are kept (a non-.nif MODL,
+// e.g. the body block's own ".egt" texture-only fourth entry, is not a mesh
+// and is skipped) — this deliberately stops parsing new part data once
+// subrecords stop being INDX/MODL pairs (HNAM/ENAM/FGGS/... at the end of
+// the record are real, but never carry an INDX, so they're naturally never
+// captured as a part).
+std::vector<RaceBodyPart> EsmFile::get_race_body_parts(uint32_t race_form_id, bool female) const {
+	std::vector<RaceBodyPart> out;
+	auto race = find_record_by_form_id(race_form_id);
+	if (!race || race->type != "RACE") {
+		return out;
+	}
+
+	enum class Block { kNone, kHead, kBody };
+	Block block = Block::kNone;
+	bool want_female = false; // which gender's parts to collect, once inside a block
+	bool collecting = false; // true once MNAM/FNAM has told us which gender the following INDX/MODL pairs belong to
+	bool have_pending_index = false;
+	uint32_t pending_index = 0;
+
+	std::vector<uint8_t> data = read_record_data(*race);
+	for (const auto &s : parse_subrecords(data)) {
+		if (s.type == "NAM0") {
+			block = Block::kHead;
+			collecting = false;
+		} else if (s.type == "NAM1") {
+			block = Block::kBody;
+			collecting = false;
+		} else if (s.type == "MNAM" && block != Block::kNone) {
+			want_female = false;
+			collecting = true;
+		} else if (s.type == "FNAM" && block != Block::kNone) {
+			want_female = true;
+			collecting = true;
+		} else if (s.type == "INDX" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pending_index = sr.read_u32();
+			have_pending_index = true;
+		} else if (s.type == "MODL" && collecting && block == Block::kBody && want_female == female && have_pending_index) {
+			std::string path = s.as_string();
+			if (path.size() >= 4) {
+				std::string ext = path.substr(path.size() - 4);
+				for (auto &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+				if (ext == ".nif") {
+					RaceBodyPart part;
+					part.index = pending_index;
+					part.model_path = path;
+					out.push_back(std::move(part));
+				}
+			}
 		}
 	}
 	return out;

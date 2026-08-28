@@ -33,6 +33,10 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 		d["dest_position"] = Vector3(pl.dest_position[0], pl.dest_position[1], pl.dest_position[2]);
 		d["dest_rotation"] = Vector3(pl.dest_rotation[0], pl.dest_rotation[1], pl.dest_rotation[2]);
 	}
+	// issue #52 chunk 5: only ever non-zero/true when get_cell_actors()
+	// resolved an NPC_ base (see ReferencePlacement's own doc comment).
+	d["race_form_id"] = static_cast<int64_t>(pl.race_form_id);
+	d["is_female"] = pl.is_female;
 	return d;
 }
 } // namespace
@@ -53,6 +57,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_race_body_parts", "race_form_id", "female"), &EsmReader::get_race_body_parts);
 	ClassDB::bind_method(D_METHOD("get_emittance_data", "emittance_form_id"), &EsmReader::get_emittance_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
@@ -448,6 +453,24 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		out["fov_degrees"] = light->fov_degrees;
 		out["is_spot"] = light->is_spot();
 		out["off_by_default"] = light->off_by_default();
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Array EsmReader::get_race_body_parts(int64_t race_form_id, bool female) const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		for (const auto &part : file_.get_race_body_parts(static_cast<uint32_t>(race_form_id), female)) {
+			Dictionary d;
+			d["index"] = static_cast<int64_t>(part.index);
+			d["model"] = String(part.model_path.c_str());
+			out.push_back(d);
+		}
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
