@@ -121,6 +121,16 @@ public:
 	// own FormID (parts have no FormID of their own) for traceability.
 	std::vector<ReferencePlacement> get_scol_parts(const RecordInfo &scol) const;
 
+	// Issue #52 chunk 5: a RACE record's body-part MODLs for one gender
+	// (`female`), e.g. UpperBody/LeftHand/RightHand for a human race --
+	// see the "ESM humanoid assembly structure" finding from chunk 2 and
+	// RaceBodyPart's own doc comment for the real, confirmed layout this
+	// parses. Head parts (Head/Ears/Mouth/Teeth/Tongue/Eyes) are
+	// deliberately NOT returned -- FaceGen is out of scope for this issue
+	// (see the issue #52 artifact's own note). Empty if race_form_id isn't
+	// a RACE record or carries no real body mesh parts.
+	std::vector<RaceBodyPart> get_race_body_parts(uint32_t race_form_id, bool female) const;
+
 	// issue #52 chunk 1: resolves every ACHR (placed NPC_) and ACRE (placed
 	// CREA) directly under `cell` to a ReferencePlacement, the same way
 	// get_cell_references() resolves REFR. ACHR/ACRE share REFR's NAME/DATA/

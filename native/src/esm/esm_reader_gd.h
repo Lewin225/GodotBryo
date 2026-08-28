@@ -101,6 +101,13 @@ public:
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
 
+	// Issue #52 chunk 5: a RACE record's real body-part model paths for one
+	// gender (UpperBody/LeftHand/RightHand for a human race) -- see
+	// EsmFile::get_race_body_parts(). Array of Dictionary: { "index": int,
+	// "model": String }. Deliberately body parts only -- FaceGen head parts
+	// are out of scope for this issue.
+	Array get_race_body_parts(int64_t race_form_id, bool female) const;
+
 	// Resolves REFR.XEMI's authored colour source. XEMI may point to LIGH
 	// (its DATA colour) or REGN (its RCLR colour); returns { "color": Color }
 	// or {} if the target is absent or has no colour data.
