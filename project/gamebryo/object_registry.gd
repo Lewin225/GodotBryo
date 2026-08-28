@@ -74,6 +74,17 @@ func build(placement: Dictionary) -> Node3D:
 		# _construct_animated_visual()'s own doc comment for why
 		# _instantiate_visual()'s flattened mesh can't carry that.
 		var nif := resolver.load_nif(model) # cached by path -- cheap, _instantiate_*() below reloads it regardless
+		# issues #46/#47: real skeletal skinning (a humanoid/creature body, or
+		# -- the real case that surfaced this path -- a skinned+morphed prop
+		# like the Goodsprings NV_Nevadaflag.NIF) checked BEFORE the animated
+		# case: populate_skeleton() already wires its own bone-pose
+		# AnimationPlayer from get_animation_sequences() internally (see that
+		# function's own doc comment), so a skinned NIF that's ALSO
+		# "animated" (the flag is both) needs Skeleton3D construction, not
+		# the rigid Node-per-NiAVObject hierarchy _instantiate_dynamic() below
+		# builds -- that has no bone data at all.
+		if nif != null and not nif.get_skin_data().is_empty():
+			return _instantiate_skinned(GamebryoVisual, placement, resolver)
 		if nif != null and not nif.get_animation_sequences().is_empty():
 			return _autoplay_special_idle(_instantiate_dynamic(GamebryoVisual, placement, resolver))
 		return _instantiate_visual(GamebryoVisual, placement, resolver)
@@ -209,6 +220,16 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# RenderingServer/PhysicsServer3D API, same as this whole resolve step.
 	if not nif.get_animation_sequences().is_empty():
 		result["animated"] = true
+	# issues #46/#47: real skeletal skinning (BSDismemberSkinInstance/
+	# NiSkinInstance) -- takes priority over `animated` at the construct
+	# site (populate_skeleton() already wires its own bone-pose
+	# AnimationPlayer from get_animation_sequences() internally, see that
+	# function's own doc comment) since a skinned NIF has no scene_nodes-
+	# per-NiAVObject hierarchy the `animated`-only path could target
+	# anyway. Worker-safe: NifReader.get_skin_data() touches no
+	# RenderingServer/PhysicsServer3D API, same as get_animation_sequences().
+	if not nif.get_skin_data().is_empty():
+		result["skinned"] = true
 	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
 	if emittance_form_id != 0:
 		var emittance_data: Dictionary = ctx.esm.get_emittance_data(emittance_form_id)
@@ -227,7 +248,7 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# issue #44 rejected for the batch-default in the first place). Extend
 	# this line, not the construct-site branch, if a third disqualifying
 	# reason ever comes up.
-	result["ineligible_for_batching"] = result.get("animated", false) or result.has("emittance_color")
+	result["ineligible_for_batching"] = result.get("animated", false) or result.get("skinned", false) or result.has("emittance_color")
 	return result
 
 ## phases/2/12-distant-object-lod.md, step 4: a second, optional RAW geometry
@@ -370,6 +391,8 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 					# other ineligible reason (XEMI today) just needs an ordinary
 					# Node instead of a shared-material batch entry.
 					if result.get("ineligible_for_batching", false):
+						if result.get("skinned", false):
+							return _construct_skinned_visual(result)
 						if result.get("animated", false):
 							return _autoplay_special_idle(_construct_animated_visual(result))
 						return _construct_visual(GamebryoVisual, result)
@@ -479,6 +502,31 @@ func _construct_animated_visual(result: Dictionary) -> Node3D:
 	resolver.populate_animation_player(node, nif, built)
 	return _finalize(node, result["placement"])
 
+## Issues #46/#47: the same real Skeleton3D/Skin/blend-shape construction
+## nif_viewer.tscn's "Skinned - ..." presets already exercise, for a
+## placement that reached this via the structural-fallback branch but was
+## flagged `skinned` by _resolve_visual() -- real skeletal skinning data
+## present (a humanoid/creature body, or -- the real case that surfaced
+## this path, the Goodsprings NV_Nevadaflag.NIF -- a skinned+morphed prop).
+## Deliberately NOT _construct_animated_visual()'s rigid Node-per-NiAVObject
+## hierarchy (no bone data at all) or _construct_visual()'s flattened
+## single-transform-per-submesh path -- see populate_skeleton()'s own doc
+## comment for why skinning needs a genuinely separate construction path.
+## `model_path` is threaded through for real (not "" like the other
+## _construct_*() functions above pass when they already have a pre-built
+## `geometry`) since populate_skeleton() resolves its own raw geometry
+## internally rather than accepting one, and needs a real path for its own
+## per-submesh mesh cache keys to actually be shared across repeat
+## placements of the same base object.
+func _construct_skinned_visual(result: Dictionary) -> Node3D:
+	var node := GamebryoVisual.new()
+	var nif: NifReader = result.get("nif")
+	var model_path: String = String(result["placement"].get("model", ""))
+	resolver.populate_skeleton(node, nif, model_path)
+	if result.has("emittance_color"):
+		_apply_emittance_tint(node, result["emittance_color"])
+	return _autoplay_ambient_animations(_finalize(node, result["placement"]))
+
 ## Autoplay convention confirmed against real data (issue #44 comments):
 ## every ambient/idle-animated NIF sampled so far (a spinning windmill, the
 ## Goodsprings saloon sign) has exactly one sequence, always literally
@@ -494,6 +542,34 @@ func _autoplay_special_idle(node: Node3D) -> Node3D:
 	var player := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if player != null and player.has_animation("SpecialIdle"):
 		player.play("SpecialIdle")
+	return node
+
+## Issues #46/#47's own counterpart to _autoplay_special_idle() above, for
+## populate_skeleton()'s two AnimationPlayers (MorphAnimationPlayer/
+## SkeletonAnimationPlayer) -- neither is named "AnimationPlayer" nor plays
+## a clip named "SpecialIdle" (confirmed real: the Nevada flag's own clips
+## are literally named "Idle" and "Morph", the latter not even a name
+## sourced from the NIF at all -- see populate_skeleton()'s own doc
+## comment), so that function's exact-name matching can't and shouldn't be
+## reused here. A general rule instead, using data already extracted
+## rather than a second hardcoded name only one real sample could confirm:
+## LOOP_LINEAR is this codebase's own established distinction for "ambient,
+## always-playing" animation (see populate_animation_player()'s doc
+## comment) vs LOOP_NONE for one-shot/triggered clips (a door's Open/Close)
+## -- a skinned placement has no interaction/trigger mechanism of its own
+## the way a door does, so every looping clip on it is autoplayed
+## unconditionally, whichever player and whatever it's named.
+func _autoplay_ambient_animations(node: Node3D) -> Node3D:
+	if node == null:
+		return null
+	for child in node.get_children():
+		if not (child is AnimationPlayer):
+			continue
+		var player: AnimationPlayer = child
+		for anim_name in player.get_animation_list():
+			var anim: Animation = player.get_animation(anim_name)
+			if anim != null and anim.loop_mode == Animation.LOOP_LINEAR:
+				player.play(anim_name)
 	return node
 
 func _construct_marker(result: Dictionary) -> Node3D:
@@ -700,6 +776,24 @@ func _instantiate_dynamic(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 	var built := mesh_resolver.populate_dynamic_children(node, nif, model, geometry)
 	mesh_resolver.populate_animation_player(node, nif, built)
 	return _finalize(node, placement)
+
+## Issues #46/#47's synchronous-build() counterpart to _construct_skinned_
+## visual() (same signature convention as _instantiate_visual()/
+## _instantiate_dynamic() above) -- real Skeleton3D/Skin/blend-shape
+## construction (populate_skeleton()) for a placement whose NIF carries
+## real skeletal skinning data, instead of _instantiate_dynamic()'s rigid
+## Node-per-NiAVObject hierarchy (no bone data) or _instantiate_visual()'s
+## flattened Static path.
+func _instantiate_skinned(cls, placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var model: String = placement.get("model", "")
+	if model == "":
+		return null
+	var nif := mesh_resolver.load_nif(model)
+	if nif == null or nif.get_submesh_count() == 0:
+		return null
+	var node = cls.new()
+	mesh_resolver.populate_skeleton(node, nif, model)
+	return _autoplay_ambient_animations(_finalize(node, placement))
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see
 ## MarkerNode's doc comment) — GamebryoReference is Node3D, so it has no

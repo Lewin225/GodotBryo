@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -116,6 +117,51 @@ public:
 	// directly under the NIF's root), "transform": Transform3D (LOCAL to
 	// the immediate parent — NOT flattened to root, unlike get_transform()) }.
 	Array get_scene_nodes() const;
+
+	// Issue #46: real skeletal skinning data (BSDismemberSkinInstance/
+	// NiSkinInstance + NiSkinData + NiSkinPartition) — see nif_types.h's
+	// SkinData doc comment. One Dictionary per skinned NiShape:
+	//   { "target_node_name": String — the owning shape's own name, joins
+	//       to get_submesh_name() (1:1, a shape has at most one skin
+	//       instance),
+	//     "bone_names": PackedStringArray — per-shape bone order; indices
+	//       below are into THIS array, not global across the NIF,
+	//     "bone_bind_transforms": Array of Transform3D, parallel to
+	//       bone_names (skin space -> bone space),
+	//     "skin_to_global_transform": Transform3D (global space -> skin
+	//       space),
+	//     "bone_indices": PackedInt32Array, length vertex_count * 4 — same
+	//       flattened convention Godot's own ArrayMesh ARRAY_BONES expects,
+	//     "bone_weights": PackedFloat32Array, length vertex_count * 4 — same
+	//       convention as ARRAY_WEIGHTS; unused slots (fewer than 4 real
+	//       influences) are index 0 / weight 0.0,
+	//     "partition_body_part_ids": PackedInt32Array — BSDismemberSkinInstance
+	//       body-part tags, one per NiSkinPartition partition; empty for a
+	//       plain NiSkinInstance }
+	Array get_skin_data() const;
+
+	// Issue #47: real vertex morph targets (NiGeomMorpherController +
+	// NiMorphData, plus their NiFloatInterpolator/NiFloatData weight-
+	// animation curves) — see nif_types.h's own MorphData doc comment. One
+	// Dictionary per morph-capable NiShape:
+	//   { "target_node_name": String — the owning shape's own name, joins
+	//       to get_submesh_name() (1:1, a shape has at most one morph
+	//       controller in every real file sampled),
+	//     "relative_targets": bool — NiMorphData::relativeTargets; true in
+	//       every real file sampled so far,
+	//     "cycle_type": int (0=loop/1=reverse/2=clamp, same convention as
+	//       get_animation_sequences()'s own "cycle_type"),
+	//     "start_time": float, "stop_time": float — this controller's OWN
+	//       clock, independent of get_animation_sequences()'s,
+	//     "targets": Array of { "name": String, "vertex_deltas":
+	//       PackedFloat32Array, flat xyz, length vertex_count*3 } — includes
+	//       index 0 (the base shape's own copy, see nif_types.h's
+	//       MorphTarget doc comment for why a caller should skip building a
+	//       blend shape from it),
+	//     "weight_tracks": Array of { "target_name": String — joins to
+	//       "targets"[i]["name"], "keys": Array of float_key (same shape as
+	//       get_animation_sequences()'s own float_key) } }
+	Array get_morph_data() const;
 
 private:
 	nif::Mesh mesh_;

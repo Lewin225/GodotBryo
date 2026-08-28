@@ -7,9 +7,13 @@
 #include <bhk.hpp>
 #include <Animation.hpp>
 
+#include <Skin.hpp>
+
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 
 namespace nif {
 
@@ -126,6 +130,103 @@ void write_local_transform(const nifly::MatTransform &t, SceneNode &out) {
 	out.rotation[7] = t.rotation[2].y;
 	out.rotation[8] = t.rotation[2].z;
 	out.scale = t.scale;
+}
+
+// SkinBoneTransform's own transform (bone bind pose / global<->skin) — same
+// layout convention as write_local_transform's SceneNode overload, just a
+// distinctly-named function/type since a bind transform isn't a scene-graph
+// node.
+void write_bind_transform(const nifly::MatTransform &t, SkinBoneTransform &out) {
+	out.translation[0] = t.translation.x * units::kGamebryoUnitsToMeters;
+	out.translation[1] = t.translation.y * units::kGamebryoUnitsToMeters;
+	out.translation[2] = t.translation.z * units::kGamebryoUnitsToMeters;
+	out.rotation[0] = t.rotation[0].x;
+	out.rotation[1] = t.rotation[0].y;
+	out.rotation[2] = t.rotation[0].z;
+	out.rotation[3] = t.rotation[1].x;
+	out.rotation[4] = t.rotation[1].y;
+	out.rotation[5] = t.rotation[1].z;
+	out.rotation[6] = t.rotation[2].x;
+	out.rotation[7] = t.rotation[2].y;
+	out.rotation[8] = t.rotation[2].z;
+	out.scale = t.scale;
+}
+
+// Issue #46: extracts one SkinData from a skinned NiShape, via nifly's own
+// high-level NifFile::GetShapeBoneList/GetShapeTransformSkinToBone/
+// GetShapeTransformGlobalToSkin/GetShapeBoneWeights helpers rather than
+// re-deriving NiSkinPartition's partition-local bone-palette remap by hand
+// — those helpers already merge whichever real source the file stores
+// weights in (BSTriShape vs. NiSkinData/NiSkinPartition, see NifFile.hpp's
+// own doc comments on GetShapeBoneWeights) and are the same code nifly's own
+// CreateSkinning/UpdateSkinPartitions round-trip through, so this reuses a
+// proven path instead of a second, independently-coded partition merge that
+// could quietly diverge from it. Returns a SkinData with empty bone_names if
+// the shape has no resolvable bones — caller skips those.
+SkinData extract_skin_data(const nifly::NifFile &nif, nifly::NiShape *shape, const std::vector<nifly::Vector3> &verts) {
+	SkinData skin;
+
+	std::vector<std::string> bone_names;
+	uint32_t num_bones = nif.GetShapeBoneList(shape, bone_names);
+	if (num_bones == 0) {
+		return skin;
+	}
+	skin.target_node_name = shape->name.get();
+	skin.bone_names = std::move(bone_names);
+
+	nifly::MatTransform skin_to_global;
+	if (nif.GetShapeTransformGlobalToSkin(shape, skin_to_global)) {
+		write_bind_transform(skin_to_global, skin.skin_to_global_transform);
+	}
+
+	skin.bone_bind_transforms.resize(num_bones);
+	for (uint32_t b = 0; b < num_bones; ++b) {
+		nifly::MatTransform bind;
+		if (nif.GetShapeTransformSkinToBone(shape, b, bind)) {
+			write_bind_transform(bind, skin.bone_bind_transforms[b]);
+		}
+	}
+
+	// Per-vertex accumulation of (bone index, weight) pairs across every
+	// bone, before collapsing to the fixed 4-wide arrays Godot's own
+	// ARRAY_BONES/ARRAY_WEIGHTS expects (see SkinData's own doc comment for
+	// why 4 is confirmed sufficient for real FNV content).
+	uint32_t vertex_count = static_cast<uint32_t>(verts.size());
+	std::vector<std::vector<std::pair<uint16_t, float>>> per_vertex(vertex_count);
+	for (uint32_t b = 0; b < num_bones; ++b) {
+		std::unordered_map<uint16_t, float> weights;
+		nif.GetShapeBoneWeights(shape, b, weights);
+		for (const auto &entry : weights) {
+			if (entry.first < vertex_count && entry.second > 0.0f) {
+				per_vertex[entry.first].emplace_back(static_cast<uint16_t>(b), entry.second);
+			}
+		}
+	}
+
+	skin.vertex_bone_indices.assign(vertex_count, { 0, 0, 0, 0 });
+	skin.vertex_bone_weights.assign(vertex_count, { 0.0f, 0.0f, 0.0f, 0.0f });
+	for (uint32_t v = 0; v < vertex_count; ++v) {
+		auto &entries = per_vertex[v];
+		std::sort(entries.begin(), entries.end(),
+				[](const std::pair<uint16_t, float> &a, const std::pair<uint16_t, float> &b) { return a.second > b.second; });
+		if (entries.size() > 4) {
+			entries.resize(4); // not observed in real data (see doc comment above) -- a safety cap, not the expected path
+		}
+		for (size_t i = 0; i < entries.size(); ++i) {
+			skin.vertex_bone_indices[v][i] = entries[i].first;
+			skin.vertex_bone_weights[v][i] = entries[i].second;
+		}
+	}
+
+	if (auto *dismember = dynamic_cast<nifly::BSDismemberSkinInstance *>(
+				nif.GetHeader().GetBlock<nifly::NiBoneContainer>(shape->SkinInstanceRef()))) {
+		skin.partition_body_part_ids.reserve(dismember->partitions.size());
+		for (const auto &p : dismember->partitions) {
+			skin.partition_body_part_ids.push_back(p.partID);
+		}
+	}
+
+	return skin;
 }
 
 // bhkRigidBodyT (the "T" == has its own Transform variant) carries a real
@@ -537,6 +638,13 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			sub.owning_node_index = (node_it != scene_node_index.end()) ? node_it->second : -1;
 		}
 
+		if (shape->HasSkinInstance()) {
+			SkinData skin = extract_skin_data(nif, shape, *verts);
+			if (!skin.bone_names.empty()) {
+				mesh.skin_data.push_back(std::move(skin));
+			}
+		}
+
 		mesh.submeshes.push_back(std::move(sub));
 	}
 
@@ -631,6 +739,81 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 				sequence.tracks.push_back(extract_track(link.nodeName.get(), td));
 			}
 			mesh.animation_sequences.push_back(std::move(sequence));
+		}
+	}
+
+	// Issue #47: vertex morph targets. A NiGeomMorpherController is attached
+	// directly to its owning NiShape via that shape's own controllerRef
+	// (NiObjectNET's own controller linked-list head, walked via
+	// nextControllerRef the same way a real shape could chain more than one
+	// controller) — NOT via NiControllerManager/NiControllerSequence like
+	// the rigid-animation walk above, so this is a separate top-level pass
+	// over every NiAVObject, mirroring how collision extraction above walks
+	// every NiAVObject's own collisionRef rather than assuming a single
+	// shared owner.
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
+		if (!av || av->controllerRef.IsEmpty()) {
+			continue;
+		}
+		for (auto *ctrl = nif.GetHeader().GetBlock<nifly::NiTimeController>(av->controllerRef); ctrl;
+				ctrl = nif.GetHeader().GetBlock<nifly::NiTimeController>(ctrl->nextControllerRef)) {
+			auto *morpher = dynamic_cast<nifly::NiGeomMorpherController *>(ctrl);
+			if (!morpher) {
+				continue; // a real, common case on the same shape (e.g. a NiTransformController for pivot sway) -- not an error
+			}
+			auto *morph_data_block = nif.GetHeader().GetBlock<nifly::NiMorphData>(morpher->dataRef);
+			if (!morph_data_block) {
+				continue; // NiGeomMorpherController with no data block -- confirmed possible in principle, an empty/no-op controller
+			}
+
+			MorphData morph;
+			morph.target_node_name = av->name.get();
+			morph.relative_targets = morph_data_block->relativeTargets != 0;
+			switch (morpher->flags & 0x3u) { // niftools NiTimeController flags bits 0-1, same CycleType convention as NiControllerSequence::cycleType
+				case 0: morph.cycle_type = SequenceCycleType::kLoop; break;
+				case 1: morph.cycle_type = SequenceCycleType::kReverse; break;
+				default: morph.cycle_type = SequenceCycleType::kClamp; break;
+			}
+			morph.start_time = morpher->startTime;
+			morph.stop_time = morpher->stopTime;
+
+			std::vector<nifly::Morph> morphs = morph_data_block->GetMorphs();
+			morph.targets.reserve(morphs.size());
+			for (const nifly::Morph &m : morphs) {
+				MorphTarget target;
+				target.name = m.frameName.get();
+				target.vertex_deltas.reserve(m.vectors.size() * 3);
+				for (const nifly::Vector3 &v : m.vectors) {
+					target.vertex_deltas.push_back(v.x * units::kGamebryoUnitsToMeters);
+					target.vertex_deltas.push_back(v.y * units::kGamebryoUnitsToMeters);
+					target.vertex_deltas.push_back(v.z * units::kGamebryoUnitsToMeters);
+				}
+				morph.targets.push_back(std::move(target));
+			}
+
+			for (size_t idx = 0; idx < morpher->interpWeights.size(); ++idx) {
+				const nifly::MorphWeight &mw = morpher->interpWeights[idx];
+				auto *float_interp = nif.GetHeader().GetBlock<nifly::NiFloatInterpolator>(mw.interpRef);
+				if (!float_interp) {
+					continue; // real: seen empty/unresolvable on some entries (e.g. the always-zero "Base" weight slot) -- not an error
+				}
+				auto *fd = nif.GetHeader().GetBlock<nifly::NiFloatData>(float_interp->dataRef);
+				if (!fd) {
+					continue;
+				}
+				MorphWeightTrack track;
+				// interpWeights[] is index-parallel to morphs[] in every real
+				// file sampled (nifly's own internal storage convention) --
+				// used only to resolve a NAME here, not carried forward as an
+				// implicit index contract (see MorphWeightTrack's own doc
+				// comment).
+				track.target_name = idx < morph.targets.size() ? morph.targets[idx].name : "";
+				track.keys = extract_float_keys(fd->data);
+				morph.weight_tracks.push_back(std::move(track));
+			}
+
+			mesh.morph_data.push_back(std::move(morph));
 		}
 	}
 
