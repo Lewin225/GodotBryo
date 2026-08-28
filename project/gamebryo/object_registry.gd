@@ -814,10 +814,10 @@ func _instantiate_skinned(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 ## and no head/face mesh (FaceGen is out of scope for this issue) --
 ## _autoplay_ambient_animations() is still called for consistency with
 ## every other construction path here, but is a safe no-op with nothing to
-## find.
+## find. No CharacterBody3D/collider either -- see GamebryoActor's own doc
+## comment for why physical movement is deferred.
 func _build_npc(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
 	var node := NPCNode.new()
-	node.populate_character_body()
 
 	var skeleton_path: String = placement.get("model", "")
 	var race_form_id := int(placement.get("race_form_id", 0))
@@ -841,7 +841,6 @@ func _build_npc(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> N
 ## not an oversight.
 func _build_creature(placement: Dictionary, _mesh_resolver: GamebryoMeshResolver) -> Node3D:
 	var node := CreatureNode.new()
-	node.populate_character_body()
 	return _finalize(node, placement)
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see

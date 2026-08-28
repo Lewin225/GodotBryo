@@ -162,14 +162,24 @@ separates "raw data" from "constructed Node" for a different reason in this code
 on that Dictionary shape, not baked into a Node subclass that will spend half its life not existing
 as a Node at all.
 
-### Actors — a sibling of `GamebryoVisual`, same root, same composition trick
+### Actors — a sibling of `GamebryoVisual`, same root
+
+> **Amendment (issue #52, post-chunk-5):** the internal `CharacterBody3D` composition this section
+> originally proposed was implemented in chunk 3 and then deliberately removed. Physical movement
+> for actors is real future work, not a solved problem yet — and the actual plan is for one of
+> these actor nodes to eventually live *inside* the player's own existing controller (which already
+> owns a `CharacterBody3D`), not just for third-person model/shadows but because that's also where
+> character stats/SPECIAL/inventory belong. A standalone composed body on `GamebryoActor` would just
+> be something to reconcile with (or discard from) that design once it's real. `GamebryoActor`
+> currently carries identity fields only (see `project/gamebryo/gamebryo_actor.gd`'s own doc
+> comment) — treat the "+ internal CharacterBody3D child" notes below as the ORIGINAL plan, not
+> current reality.
 
 With `GamebryoReference` moved to `Node3D` (above), the reason Actors needed a *parallel* root goes
 away: `Node3D` carries no physics-body assumption for anything to fight. `GamebryoActor` can extend
 `GamebryoObject` directly — same identity fields (`form_id`, `base_form_id`, `editor_id`,
-`record_type`), same transform, one true base for everything placed in the world — and add its own
-internal `CharacterBody3D` child for movement, the same composition pattern `GamebryoVisual` uses
-for `StaticBody3D`. `GamebryoActor` sits as a **sibling** of `GamebryoVisual`, not underneath it:
+`record_type`), same transform, one true base for everything placed in the world. `GamebryoActor`
+sits as a **sibling** of `GamebryoVisual`, not underneath it:
 actors don't have the "MeshInstance3D children built straight from NIF submeshes" shape `GamebryoVisual`
 represents — they need a skeleton/animation controller instead, which is a different enough
 rendering story to earn its own branch rather than inherit one built for static geometry.
