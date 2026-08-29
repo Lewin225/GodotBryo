@@ -19,44 +19,54 @@ env = SConscript("../godot-cpp/SConstruct")
 # once per object file instead of one giant argv. Mirrored here for POSIX,
 # scoped to this extension's own build only (not touching the shared
 # godot-cpp submodule, so nv_engine/Terrain3D's own builds are unaffected).
-import subprocess
-
-
-def _strip_quotes(arg):
-	# SCons quotes each substituted token (TARGET/SOURCES) so a shell-joined
-	# command line survives paths containing spaces -- this repo's own path
-	# ("Claude New Vegas Port") is exactly such a case. subprocess.run's
-	# list form does its own argv passing with no shell involved, so those
-	# literal embedded quote characters must be stripped here, or ar
-	# receives a path with literal quotes baked into the filename and
-	# fails with "No such file or directory" -- confirmed directly.
-	if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"':
-		return arg[1:-1]
-	return arg
+import os
 
 
 def _posix_ar_spawn(sh, escape, cmd, args, env):
 	cmdline = " ".join(args)
 	if cmd.endswith("ar") and len(cmdline) > 32000:
 		clean = [_strip_quotes(a) for a in args]
-		# clean[0] = ar, clean[1] = ARFLAGS ("rc"), clean[2] = target archive,
-		# clean[3:] = the long object-file list -- append one at a time.
-		rv = 0
-		for obj in clean[3:]:
-			proc = subprocess.run([cmd, clean[1], clean[2], obj], env=env)
-			rv = proc.returncode
-			if rv:
-				break
-		return rv
+		# clean[0] = ar, clean[1] = ARFLAGS ("rc" or "cq"), clean[2] = target archive,
+		# clean[3:] = the long object-file list -- chunk into batches.
+		target_lib = clean[2]
+		if os.path.exists(target_lib):
+			try:
+				os.remove(target_lib)
+			except OSError:
+				pass
+		chunk_size = 200
+		objects = clean[3:]
+		for i in range(0, len(objects), chunk_size):
+			chunk = objects[i:i + chunk_size]
+			proc = subprocess.run([cmd, "cq", target_lib] + chunk, env=env)
+			if proc.returncode != 0:
+				return proc.returncode
+		return 0
 	proc = subprocess.run(cmdline, shell=True, env=env)
 	return proc.returncode
 
 
-env["SPAWN"] = _posix_ar_spawn
-env.Replace(ARFLAGS=["rc"])
+if env["platform"] != "macos":
+	env["SPAWN"] = _posix_ar_spawn
+	env.Replace(ARFLAGS=["rc"])
 
 env.Append(CPPPATH=["../src", "src"])
 env.Append(LIBS=["z"])
 sources = Glob("src/*.cpp") + Glob("../src/common/*.cpp") + Glob("../src/esm/esm_file.cpp")
-library = env.SharedLibrary("../../project/addons/terrain_streamer/bin/libterrain_streamer{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
+extension_name = "terrain_streamer"
+project_bin_dir = "../../project/addons/terrain_streamer/bin/"
+
+if env["platform"] == "macos":
+	library = env.SharedLibrary(
+		project_bin_dir + "lib{}.{}.{}.framework/lib{}.{}.{}".format(
+			extension_name, env["platform"], env["target"], extension_name, env["platform"], env["target"],
+		),
+		source=sources,
+	)
+else:
+	library = env.SharedLibrary(
+		project_bin_dir + "lib{}{}{}".format(extension_name, env["suffix"], env["SHLIBSUFFIX"]),
+		source=sources,
+	)
+
 Default(library)
