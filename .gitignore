@@ -12,6 +12,7 @@ project/bin/*.framework
 # never-commit-compiled-binaries convention as project/bin/ above. The
 # .gdextension manifest and GDScript-side addon files ARE source, kept.
 project/addons/terrain_3d/bin/
+project/addons/terrain_streamer/bin/
 *.o
 *.os
 *.obj

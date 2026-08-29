@@ -224,6 +224,36 @@ public:
 	PackedStringArray get_all_item_candidates() const;
 	PackedStringArray get_all_cell_candidates() const;
 
+	// day-night / weather (feature/day-night-cycle) --------------------------
+
+	// Returns a Dictionary with keys: "form_id" (int), "editor_id" (String),
+	// "sun_texture" (String), "sun_glare_texture" (String),
+	// "night_sky_model" (String), "sunrise_begin" (float), "sunrise_end"
+	// (float), "sunset_begin" (float), "sunset_end" (float), "volatility"
+	// (int), "moon_phase_length" (int), "weather_chances" (Array of
+	// {"weather_form_id": int, "chance": int}).  Empty {} if not a CLMT.
+	Dictionary get_climate_data(int64_t form_id) const;
+
+	// Returns a Dictionary with keys: "form_id" (int), "editor_id" (String),
+	// "cloud_texture_upper/horizon/lower1/lower2" (String), "colors"
+	// (PackedByteArray, 10×6×4 RGBA row-major), "fog_day_near/far" (float),
+	// "fog_night_near/far" (float), "fog_day_power/night_power" (float),
+	// "wind_speed" (int), "cloud_speed_lower/upper" (int), "classification"
+	// (int). Empty {} if not a WTHR.
+	Dictionary get_weather_data(int64_t form_id) const;
+
+	// Returns the CLMT FormID linked to the given WRLD via its CNAM subrecord,
+	// or 0 if the worldspace has no climate link.
+	int64_t get_worldspace_climate(int64_t wrld_form_id) const;
+
+	// Returns a Dictionary with keys: "form_id" (int), "editor_id" (String),
+	// "type" (String), "value" (float). Empty {} if not a GLOB.
+	Dictionary get_global_variable(int64_t form_id) const;
+
+	// Finds a GLOB record by its EditorID (e.g. "GameHour", "TimeScale").
+	// Returns a Dictionary with same keys as get_global_variable, or {} if not found.
+	Dictionary find_global_by_editor_id(const String &editor_id) const;
+
 private:
 	esm::EsmFile file_;
 	bool opened_ = false;

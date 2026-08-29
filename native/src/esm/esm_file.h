@@ -242,6 +242,28 @@ public:
 	// found").
 	std::optional<DoorData> get_door_data(uint32_t door_form_id) const;
 
+	// day-night / weather access (feature/day-night-cycle) --------------------
+
+	// Reads and decodes a CLMT record into ClimateData (timing, weather list,
+	// sun/moon texture paths). std::nullopt if form_id isn't a CLMT.
+	std::optional<ClimateData> get_climate_data(uint32_t form_id) const;
+
+	// Reads and decodes a WTHR record into WeatherData (color table, fog,
+	// cloud textures, DATA flags). std::nullopt if form_id isn't a WTHR.
+	std::optional<WeatherData> get_weather_data(uint32_t form_id) const;
+
+	// Resolves a WRLD record's CNAM field to the worldspace's linked CLMT
+	// FormID. Returns 0 if the WRLD has no CNAM (e.g. interior-only
+	// worldspaces) or if form_id isn't a WRLD.
+	uint32_t get_worldspace_climate(uint32_t wrld_form_id) const;
+
+	// Reads a GLOB record into GlobalVariableData (editor_id, type, value).
+	// std::nullopt if form_id isn't a GLOB.
+	std::optional<GlobalVariableData> get_global_variable(uint32_t form_id) const;
+
+	// Finds a GLOB record by its EditorID (e.g. "GameHour", "TimeScale").
+	std::optional<GlobalVariableData> find_global_by_editor_id(const std::string &editor_id) const;
+
 private:
 	std::FILE *file_ = nullptr;
 	long file_size_ = 0;

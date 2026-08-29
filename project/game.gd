@@ -44,6 +44,9 @@ var cell_loader: CellLoader
 var world_streamer: WorldStreamer
 var terrain_streamer: TerrainStreamer
 var script_engine: ScriptEngine
+var game_time_manager: GameTimeManager
+var weather_manager: WeatherManager
+var celestial_controller: CelestialController
 var terminal_session: TerminalSession
 var message_box: MessageBox
 var _cell_label: Label
@@ -122,6 +125,9 @@ func _ready() -> void:
 	world_streamer = $WorldStreamer
 	terrain_streamer = $TerrainStreamer
 	script_engine = $ScriptEngine
+	game_time_manager = $GameTimeManager
+	weather_manager = $WeatherManager
+	celestial_controller = $CelestialController
 	terminal_session = $TerminalSession
 	message_box = $MessageBox
 	script_engine.message_box = message_box
@@ -152,6 +158,13 @@ func _ready() -> void:
 	script_engine.player_node = _get_character_body() # real GECK "player" keyword -- see ScriptEngine's own doc comment
 	script_engine.function_registry.place_at_me_handler = debug_place_at_me
 	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
+	script_engine.function_registry.game_time_manager = game_time_manager
+
+	# day-night: configure time manager, weather + celestial, but don't activate
+	# exterior rendering until the WorldStreamer first goes exterior.
+	game_time_manager.configure(cell_loader.esm)
+	weather_manager.configure(cell_loader.esm)
+	celestial_controller.configure(_sun, _world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
 	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
@@ -174,6 +187,8 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	# WorldStreamer/_do_exterior_transition() instead), so every successful
 	# load_completed here means "the player is now indoors."
 	_set_exterior_environment(false)
+	celestial_controller.set_exterior(false) # stop driving sky/sun while indoors
+	weather_manager.set_paused(true)
 	_apply_cell_lighting(cell_form_id)
 	_update_cell_hud(cell_form_id)
 
@@ -209,6 +224,12 @@ func _process(_delta: float) -> void:
 	if cell_loader == null or cell_loader._loading:
 		return # a load is already in flight -- don't stack another
 	_update_item_interaction()
+	# day-night: advance clock-driven environment every frame.
+	if game_time_manager != null and celestial_controller != null:
+		var climate := weather_manager.climate if weather_manager != null else {}
+		if not climate.is_empty():
+			celestial_controller.update(game_time_manager.game_hour, climate)
+			weather_manager.advance(_delta * game_time_manager.timescale / 3600.0)
 
 ## Shared by _try_interact() and _update_look_at_label() -- the same
 ## reach/gesture raycast, run either on an actual interact press or every
@@ -476,6 +497,9 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 		# selecting or creating the destination entry; do not final-teardown it here.
 	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
 	_set_exterior_environment(true)
+	# day-night: load CLMT for this worldspace and tell celestial to drive the sky.
+	weather_manager.activate_worldspace(wrld_form_id)
+	celestial_controller.set_exterior(true)
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
 	reposition_player(spawn["position"], spawn["rotation"])
 

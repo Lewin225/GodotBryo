@@ -23,6 +23,11 @@ var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam th
 ## assigned) -- null-safe everywhere it's used below, since a registry can
 ## exist before an EsmReader is available (e.g. a bare unit test).
 var esm: EsmReader = null
+## Set by game.gd along with the other handlers. Null-safe: a bare unit
+## test or headless scene that has no GameTimeManager simply returns 0
+## for time-dependent functions, same behaviour as before this system
+## existed, with no crash.
+var game_time_manager: GameTimeManager = null
 ## Set by game.gd: this registry deliberately knows script semantics, not
 ## scene ownership or loader roots.  PlaceAtMe delegates the world mutation
 ## to the one runtime owner that has both.
@@ -55,8 +60,18 @@ func call_function(name: String, args: Array, ctx: ScriptExecutionContext) -> Va
 	return 0
 
 func _register_defaults() -> void:
-	register("GetSecondsPassed", func(_a, _c): return 0.0) # real per-frame delta -- no caller-supplied delta reaches here yet; a real, deliberate gap until frame integration threads one through
-	register("GameDaysPassed", func(_a, _c): return 0.0) # same gap: no game-clock system exists yet to source this from
+	register("GetSecondsPassed", func(_a, _c):
+		if game_time_manager != null:
+			return game_time_manager.consume_seconds_passed()
+		return 0.0)
+	register("GameDaysPassed", func(_a, _c):
+		if game_time_manager != null:
+			return game_time_manager.game_days_passed
+		return 0.0)
+	register("GetCurrentTime", func(_a, _c):
+		if game_time_manager != null:
+			return game_time_manager.game_hour
+		return 0.0)
 	register("GetRandomPercent", func(_a, _c): return randi_range(0, 99))
 
 	register("Enable", func(_a, ctx: ScriptExecutionContext):
