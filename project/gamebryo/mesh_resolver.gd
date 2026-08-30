@@ -1475,13 +1475,36 @@ func populate_locomotion_tree(parent: Node3D, skeleton: Skeleton3D, player: Anim
 		if not player.has_animation(String(required)):
 			return null
 
+	# Real, confirmed-via-testing bug: with only 5 points in an exact "plus"
+	# shape (4 cardinals + center, every point exactly axis-aligned),
+	# BlendSpace2D's own auto-triangulation is a real degenerate edge case
+	# -- it produced a working blend for "right" but a broken one for
+	# "left" despite mtleft.kf carrying the exact same real 58-track full
+	# leg data as mtforward/mtright (confirmed real, not a data gap). An
+	# explicit fan triangulation from the center point (idle) to each
+	# ADJACENT pair of cardinal points removes any ambiguity: each of the
+	# 4 quadrants gets exactly one, unambiguous, correctly-oriented
+	# triangle, so sampling directly at any cardinal point (or anywhere
+	# between it and its neighbors) always resolves to real, predictable
+	# barycentric weights instead of whatever the automatic triangulator
+	# happened to produce for this axis-aligned point set.
 	var locomotion := AnimationNodeBlendSpace2D.new()
 	locomotion.blend_mode = AnimationNodeBlendSpace2D.BLEND_MODE_INTERPOLATED
+	locomotion.auto_triangles = false
+	const FORWARD_IDX := 0
+	const BACKWARD_IDX := 1
+	const LEFT_IDX := 2
+	const RIGHT_IDX := 3
+	const IDLE_IDX := 4
 	locomotion.add_blend_point(_animation_node(String(cardinal_clips["forward"])), Vector2(0.0, 1.0))
 	locomotion.add_blend_point(_animation_node(String(cardinal_clips["backward"])), Vector2(0.0, -1.0))
 	locomotion.add_blend_point(_animation_node(String(cardinal_clips["left"])), Vector2(-1.0, 0.0))
 	locomotion.add_blend_point(_animation_node(String(cardinal_clips["right"])), Vector2(1.0, 0.0))
 	locomotion.add_blend_point(_animation_node(idle_clip), Vector2(0.0, 0.0))
+	locomotion.add_triangle(IDLE_IDX, FORWARD_IDX, RIGHT_IDX)
+	locomotion.add_triangle(IDLE_IDX, RIGHT_IDX, BACKWARD_IDX)
+	locomotion.add_triangle(IDLE_IDX, BACKWARD_IDX, LEFT_IDX)
+	locomotion.add_triangle(IDLE_IDX, LEFT_IDX, FORWARD_IDX)
 
 	var upper_body_layer := AnimationNodeBlend2.new()
 	upper_body_layer.filter_enabled = true

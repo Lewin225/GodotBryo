@@ -127,6 +127,35 @@ func _ready() -> void:
 	var pose_b := skeleton.get_bone_pose_rotation(thigh_idx) if thigh_idx != -1 else Quaternion.IDENTITY
 	check(thigh_idx != -1 and not pose_a.is_equal_approx(pose_b), "the leg's actual bone pose changes over time while 'forward' plays (real animation, not a static parameter)")
 
+	# Real regression guard for a real user-reported bug: with only 5
+	# points in an exact "plus" shape (4 cardinals + center, all
+	# axis-aligned), AnimationNodeBlendSpace2D's own auto-triangulation
+	# produced a working blend for "right" but a frozen/wrong one for
+	# "left" -- despite mtleft.kf carrying the exact same real 58-track
+	# full leg data as mtforward/mtright (confirmed real, not a data gap).
+	# Fixed with an explicit fan triangulation (auto_triangles = false +
+	# 4 manual add_triangle() calls). Verify every real cardinal direction
+	# (except backward, whose own real data has no leg tracks at all --
+	# confirmed separately) produces comparable, non-trivial pelvis motion.
+	if thigh_idx != -1:
+		var pelvis_idx := skeleton.find_bone("Bip01 Pelvis")
+		var deltas := {}
+		for dirname in ["forward", "left", "right"]:
+			var input: Vector2
+			match dirname:
+				"forward": input = Vector2(0.0, -1.0)
+				"left": input = Vector2(-1.0, 0.0)
+				"right": input = Vector2(1.0, 0.0)
+			node.set_move_input(input)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var start := skeleton.get_bone_pose_rotation(pelvis_idx)
+			for f in 15:
+				await get_tree().process_frame
+			deltas[dirname] = start.angle_to(skeleton.get_bone_pose_rotation(pelvis_idx))
+		for dirname in deltas:
+			check(deltas[dirname] > 0.01, "'%s' produces real, non-trivial pelvis motion (angle delta=%.4f) -- not frozen by a bad blend-space triangulation" % [dirname, deltas[dirname]])
+
 	# Real regression guard for a real user-reported bug: "Bip01 NonAccum"
 	# (the true parent of the whole rest of the skeleton) has no track at
 	# all in mtidle.kf/mtbackward.kf but does in mtforward/mtleft/mtright
