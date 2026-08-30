@@ -1403,20 +1403,35 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 ## mtforward.kf): the skeleton's own root bone ("Bip01") carries genuine
 ## baked translation across the whole clip -- 0 -> ~1.46 units over a 1.2s
 ## forward loop, a real walk-speed displacement, not noise -- meant to be
-## EXTRACTED by game code to drive the actor's actual world position, while
-## the rest of the skeleton hangs off a separate "Bip01 NonAccum" bone that
-## stays visually static (its own name is short for "does not accumulate
-## root motion"). Playing the root bone's own translation track back onto
-## the live Skeleton3D -- which is what naively applying every track would
-## do -- makes the whole mesh visually slide during in-place playback,
-## since nothing here extracts and reapplies that displacement to a
-## physics body yet (this is deliberately animation-selection only for
-## now, no CharacterBody3D -- see GamebryoActor's own doc comment). Stripped
-## here rather than inside _build_sequence_animation() itself, since a
+## EXTRACTED by game code to drive the actor's actual world position.
+##
+## "Bip01 NonAccum" (Bip01's own child, the real parent of the rest of the
+## skeleton -- pelvis, spine, every limb) needs the SAME treatment, for a
+## second, distinct, confirmed-real reason: its own translation track is
+## present in some real clips (mtforward/mtleft/mtright, baseline ~0.93-0.94)
+## but ABSENT in others (mtidle.kf, mtbackward.kf have no NonAccum track at
+## all) -- and NonAccum's own REST transform (from skeleton.nif itself) is
+## exactly (0,0,0). Blending between a clip that has the track and one that
+## doesn't makes AnimationTree interpolate NonAccum from that (0,0,0) rest
+## default toward ~0.93 proportional to blend weight -- since EVERYTHING
+## else in the skeleton is a descendant of NonAccum, this is not a small
+## local wobble, it's the WHOLE character's global pose rising by that
+## amount, exactly reproducing a real user-observed bug ("floats up into
+## the air... by the weight of the blend"). Its own name says why this is
+## the right fix: "does NOT accumulate root motion" -- the same role
+## Bip01 plays one level up, just inconsistently authored across files.
+##
+## Playing either bone's own translation track back onto the live
+## Skeleton3D -- what naively applying every track would do -- makes the
+## whole mesh visually slide/float during in-place playback, since nothing
+## here extracts and reapplies that displacement to a physics body yet
+## (this is deliberately animation-selection only for now, no
+## CharacterBody3D -- see GamebryoActor's own doc comment). Stripped here
+## rather than inside _build_sequence_animation() itself, since a
 ## self-contained animated prop's (e.g. a door's) own root NiNode
 ## legitimately needs its translation played back — this is specific to a
-## skeleton's root BONE, not a blanket rule for every animated root node in
-## this codebase.
+## skeleton's own root-motion-carrying bones, not a blanket rule for every
+## animated root node in this codebase.
 func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleton_path: NodePath) -> void:
 	var prefix := str(skeleton_path) + ":"
 	var i := anim.get_track_count() - 1
@@ -1424,9 +1439,107 @@ func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleto
 		if anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
 			var bone_name := str(anim.track_get_path(i)).trim_prefix(prefix)
 			var bone_idx := skeleton.find_bone(bone_name)
-			if bone_idx != -1 and skeleton.get_bone_parent(bone_idx) == -1:
+			var is_root := bone_idx != -1 and skeleton.get_bone_parent(bone_idx) == -1
+			if is_root or bone_name.ends_with("NonAccum"):
 				anim.remove_track(i)
 		i -= 1
+
+## Real Bethesda locomotion convention (per the user's own review of actual
+## gameplay): the legs and upper body are separate layers, not one clip
+## driving the whole skeleton -- legs come from the cardinal-direction
+## movement cycle, torso/arms come from a separate stance pose, combined so
+## the arms don't fight whatever the legs are doing. Builds a real
+## AnimationTree over `player`'s own already-loaded clips (see
+## populate_locomotion_animations()):
+##   - AnimationNodeBlendSpace2D "Locomotion": the 4 real cardinal clips
+##     (cardinal_clips: {"forward","backward","left","right"} -> real clip
+##     name already in player's library) at compass points, idle_clip at
+##     center (0,0), BLEND_MODE_INTERPOLATED for real continuous 2D
+##     blending (not discrete switching) -- driven by set_move_input()'s
+##     own `parameters/Locomotion/blend_position`.
+##   - AnimationNodeAnimation "UpperBodyPose": upper_body_clip (real generic
+##     standing pose -- no weapon-equip system yet to pick a per-weapon
+##     pose, see NPCNode's own doc comment).
+##   - AnimationNodeBlend2 "UpperBodyLayer": Locomotion as the base ("in"),
+##     UpperBodyPose as the filtered overlay ("blend", amount fixed at
+##     1.0) -- filter_enabled with every bone at/under
+##     `upper_body_root_bone` (walked via the live skeleton's own
+##     hierarchy, not a hardcoded list) added as a filtered path, so
+##     UpperBodyPose only ever touches spine/arms/head, never the legs
+##     Locomotion is driving.
+## Returns null if any of the 5 required clip names aren't actually in
+## `player`'s library (a real possible gap -- see
+## populate_locomotion_animations()'s own doc comment).
+func populate_locomotion_tree(parent: Node3D, skeleton: Skeleton3D, player: AnimationPlayer, cardinal_clips: Dictionary, idle_clip: String, upper_body_clip: String, upper_body_root_bone: String) -> AnimationTree:
+	for required in [cardinal_clips.get("forward", ""), cardinal_clips.get("backward", ""), cardinal_clips.get("left", ""), cardinal_clips.get("right", ""), idle_clip, upper_body_clip]:
+		if not player.has_animation(String(required)):
+			return null
+
+	var locomotion := AnimationNodeBlendSpace2D.new()
+	locomotion.blend_mode = AnimationNodeBlendSpace2D.BLEND_MODE_INTERPOLATED
+	locomotion.add_blend_point(_animation_node(String(cardinal_clips["forward"])), Vector2(0.0, 1.0))
+	locomotion.add_blend_point(_animation_node(String(cardinal_clips["backward"])), Vector2(0.0, -1.0))
+	locomotion.add_blend_point(_animation_node(String(cardinal_clips["left"])), Vector2(-1.0, 0.0))
+	locomotion.add_blend_point(_animation_node(String(cardinal_clips["right"])), Vector2(1.0, 0.0))
+	locomotion.add_blend_point(_animation_node(idle_clip), Vector2(0.0, 0.0))
+
+	var upper_body_layer := AnimationNodeBlend2.new()
+	upper_body_layer.filter_enabled = true
+	var skeleton_path: NodePath = parent.get_path_to(skeleton)
+	for bone_name in _bone_and_descendants(skeleton, upper_body_root_bone):
+		upper_body_layer.set_filter_path(NodePath(str(skeleton_path) + ":" + bone_name), true)
+
+	var tree_root := AnimationNodeBlendTree.new()
+	tree_root.add_node("Locomotion", locomotion)
+	tree_root.add_node("UpperBodyPose", _animation_node(upper_body_clip))
+	tree_root.add_node("UpperBodyLayer", upper_body_layer)
+	tree_root.connect_node("UpperBodyLayer", 0, "Locomotion")
+	tree_root.connect_node("UpperBodyLayer", 1, "UpperBodyPose")
+	tree_root.connect_node("output", 0, "UpperBodyLayer")
+
+	var tree := AnimationTree.new()
+	tree.name = "LocomotionAnimationTree"
+	tree.tree_root = tree_root
+	parent.add_child(tree)
+	# AnimationTree.anim_player is relative to the AnimationTree node
+	# ITSELF, not to `parent` -- a real bug caught here: `tree` and
+	# `player` are siblings (both children of `parent`), so the correct
+	# path is "../LocomotionAnimationPlayer", not the bare
+	# "LocomotionAnimationPlayer" parent.get_path_to(player) would give.
+	# Must be set AFTER add_child() too, since get_path_to() needs `tree`
+	# to already be in the tree to resolve a path from it.
+	tree.anim_player = tree.get_path_to(player)
+	tree.active = true
+	tree.set("parameters/UpperBodyLayer/blend_amount", 1.0)
+	return tree
+
+func _animation_node(clip_name: String) -> AnimationNodeAnimation:
+	var node := AnimationNodeAnimation.new()
+	node.animation = StringName(clip_name)
+	node.resource_name = clip_name # suppresses AnimationNodeBlendSpace2D's own "no name provided" warning
+	return node
+
+## `root_bone_name` plus every bone whose parent chain passes through it --
+## walked from the live Skeleton3D's own hierarchy (get_bone_parent()),
+## never a hardcoded bone list, so this stays correct for any real skeleton
+## shape, not just the one confirmed human one.
+func _bone_and_descendants(skeleton: Skeleton3D, root_bone_name: String) -> Array:
+	var root_idx := skeleton.find_bone(root_bone_name)
+	if root_idx == -1:
+		return []
+	var out: Array = [root_bone_name]
+	var included := { root_idx: true }
+	var progressed := true
+	while progressed:
+		progressed = false
+		for i in skeleton.get_bone_count():
+			if included.has(i):
+				continue
+			if included.has(skeleton.get_bone_parent(i)):
+				included[i] = true
+				out.append(skeleton.get_bone_name(i))
+				progressed = true
+	return out
 
 ## Shared per-sequence Animation-building body for populate_animation_player()
 ## and _populate_skeleton_animation_player() — identical track-construction

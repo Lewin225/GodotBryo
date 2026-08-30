@@ -79,12 +79,18 @@ const BODY_NODE_NAME := "Body"
 ## automatically.
 const LOCOMOTION_FOLDER_PREFIX := "meshes/characters/_male/locomotion/"
 
-## Below this magnitude, set_move_input() plays the idle clip rather than
-## trying to pick a direction from near-zero noise.
-const MOVE_INPUT_DEADZONE := 0.15
+## Real generic standing pose used to drive the upper body (spine/arms/
+## head) regardless of what the legs are doing -- see
+## populate_locomotion_tree()'s own doc comment in mesh_resolver.gd for why
+## this needs to be a separate layer at all (real Bethesda convention: legs
+## and upper body are separate animation layers, not one clip driving the
+## whole skeleton). "mtidle.kf" is the only real generic full-body standing
+## pose available without a weapon-equip system (real future work) to pick
+## a per-weapon stance from instead.
+const UPPER_BODY_POSE_CLIP := "mtidle.kf"
+const UPPER_BODY_ROOT_BONE := "Bip01 Spine"
 
-var _locomotion_player: AnimationPlayer = null
-var _current_locomotion_clip := ""
+var _locomotion_tree: AnimationTree = null
 var _is_female := false
 
 ## Real NPC_ construction — the full humanoid assembly confirmed real in
@@ -98,11 +104,13 @@ var _is_female := false
 ##
 ## Also wires a real LocomotionAnimationPlayer holding EVERY real file
 ## found under LOCOMOTION_FOLDER_PREFIX (see _discover_locomotion_clips())
-## — see set_move_input() for driving the base cardinal-direction subset of
-## it. Animation only: this does NOT move the actor through the world (no
-## CharacterBody3D — see GamebryoActor's own doc comment for why that's
-## deferred); a caller wanting real translation drives that separately and
-## feeds the same direction into set_move_input().
+## PLUS a real AnimationTree (populate_locomotion_tree()) layering the base
+## "mt" cardinal-direction clips (legs) under a fixed upper-body pose
+## (spine/arms/head) — see set_move_input() for driving it. Animation
+## only: this does NOT move the actor through the world (no CharacterBody3D
+## — see GamebryoActor's own doc comment for why that's deferred); a caller
+## wanting real translation drives that separately and feeds the same
+## direction into set_move_input().
 func populate(placement: Dictionary, esm: EsmReader, mesh_resolver: GamebryoMeshResolver) -> void:
 	var skeleton_path: String = placement.get("model", "")
 	var race_form_id := int(placement.get("race_form_id", 0))
@@ -121,8 +129,18 @@ func populate(placement: Dictionary, esm: EsmReader, mesh_resolver: GamebryoMesh
 		return
 
 	var clips := _discover_locomotion_clips(mesh_resolver)
-	_locomotion_player = mesh_resolver.populate_locomotion_animations(body, skeleton, clips)
-	_current_locomotion_clip = ""
+	var player := mesh_resolver.populate_locomotion_animations(body, skeleton, clips)
+	if player == null:
+		return
+
+	var gender_prefix := "female__" if _is_female else "male__"
+	var cardinal_clips := {
+		"forward": gender_prefix + "mtforward.kf",
+		"backward": gender_prefix + "mtbackward.kf",
+		"left": gender_prefix + "mtleft.kf",
+		"right": gender_prefix + "mtright.kf",
+	}
+	_locomotion_tree = mesh_resolver.populate_locomotion_tree(body, skeleton, player, cardinal_clips, "mtidle.kf", UPPER_BODY_POSE_CLIP, UPPER_BODY_ROOT_BONE)
 	set_move_input(Vector2.ZERO) # starts idle
 
 ## Clears and recreates the Body container (see this file's own top doc
@@ -160,36 +178,30 @@ func _discover_locomotion_clips(mesh_resolver: GamebryoMeshResolver) -> Dictiona
 		clips[rel.replace("/", "__")] = load_path
 	return clips
 
-## Pre-blendspace movement driving (issue #52 follow-up): picks the single
-## closest of the 4 real cardinal "mt" (base/unarmed) locomotion clips (or
-## the shared idle clip inside the deadzone) and switches the
-## LocomotionAnimationPlayer to it -- no blending between clips yet, just
-## discrete selection, and no weapon-type-specific set (1hm/1hp/...) yet
-## either, both real future work. `input`: same convention as this
-## project's own Input.get_vector(left, right, forward, backward) (see
+## Real blendspace movement driving (issue #52 follow-up, upgraded from an
+## earlier discrete-clip-switching version once populate_locomotion_tree()
+## landed): passes `input` through as the AnimationTree's own "Locomotion"
+## blend_position parameter (see mesh_resolver.gd) for genuine continuous
+## 2D blending between the 4 real cardinal clips -- no more snapping
+## between whole clips. `input`: same convention as this project's own
+## Input.get_vector(left, right, forward, backward) (see
 ## player_controller.gd) -- x: positive = right/strafe right, negative =
 ## left; y: NEGATIVE = forward, positive = backward (Godot's own
-## get_vector() convention, not an arbitrary choice here). A no-op if
-## populate() never built a real LocomotionAnimationPlayer, or the specific
-## clip this input maps to didn't resolve on this install.
+## get_vector() convention). The blend space's own points use ordinary
+## Y-positive-is-forward axes (Vector2(0,1) = forward), so Y is flipped
+## here to convert between the two conventions. Clamped to length 1 -- the
+## blend space has no sample points past the 4 cardinal directions, so
+## anything further would extrapolate rather than blend. A no-op if
+## populate() never built a real AnimationTree (e.g. one of the required
+## clips didn't resolve on this install — see
+## populate_locomotion_tree()'s own doc comment).
 func set_move_input(input: Vector2) -> void:
-	if _locomotion_player == null:
+	if _locomotion_tree == null:
 		return
-	var clip := _locomotion_clip_for_input(input)
-	if clip == _current_locomotion_clip:
-		return
-	if not _locomotion_player.has_animation(clip):
-		return # a real, possible gap -- not every discovered file is guaranteed to have resolved to real animation data (see populate_locomotion_animations()'s own doc comment)
-	_current_locomotion_clip = clip
-	_locomotion_player.play(clip)
-
-func _locomotion_clip_for_input(input: Vector2) -> String:
-	if input.length() < MOVE_INPUT_DEADZONE:
-		return "mtidle.kf" # shared, no gender subfolder -- confirmed real
-	var gender_prefix := "female__" if _is_female else "male__"
-	if absf(input.y) >= absf(input.x):
-		return gender_prefix + ("mtbackward.kf" if input.y > 0.0 else "mtforward.kf")
-	return gender_prefix + ("mtright.kf" if input.x > 0.0 else "mtleft.kf")
+	var blend_position := Vector2(input.x, -input.y)
+	if blend_position.length() > 1.0:
+		blend_position = blend_position.normalized()
+	_locomotion_tree.set("parameters/Locomotion/blend_position", blend_position)
 
 ## Standalone preview entry point (see this file's own doc comment). Opens
 ## FalloutNV.esm directly, resolves the configured base_form_id via
@@ -220,6 +232,23 @@ func _editor_load() -> void:
 
 	var resolver := GamebryoMeshResolver.new(data_dir)
 	populate(placement, esm, resolver)
+
+	# NIF/REFR data is Z-up; Godot is Y-up. In a REAL placement this
+	# correction comes for free from the cell's own root node
+	# (world_streamer.gd's "refr_root" -- see that file's own comment), the
+	# same way every other placed type relies on it rather than rotating
+	# itself. A standalone preview has no such ancestor, so it's applied
+	# here on Body specifically -- same "no cell root to inherit it from"
+	# reasoning nif_viewer.gd's own doc comment gives for rotating its own
+	# NifRoot child, and the exact convention actor_viewer.gd's "ActorRoot"
+	# wrapper already follows (this is what that scene gets right that a
+	# bare npc_node.tscn preview didn't). Rotating Body specifically, not
+	# `self`, keeps this purely a preview-only correction -- a real
+	# placement's own populate() never applies it, so nothing here would
+	# double-rotate once actors are wired into real cell loading.
+	var body := get_node_or_null(NodePath(BODY_NODE_NAME))
+	if body:
+		body.rotation_degrees.x = -90
 
 	if Engine.is_editor_hint():
 		for child in get_children():
