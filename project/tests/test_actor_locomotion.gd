@@ -1,14 +1,18 @@
 extends Node
 
-# Issue #52 follow-up: real-data verification that NPCNode wires a real
-# LocomotionAnimationPlayer holding EVERY real .kf found under
-# characters\_male\locomotion\ (not a hand-picked subset -- NOT
-# self-contained embedded animation either, see nif_loader.cpp's own
-# extract_sequence() doc comment for the real bare-NiControllerSequence
-# shape this required a native fix for), each under its own real relative
-# path as its clip name (no remapping to invented aliases), and that
-# set_move_input(Vector2) switches between the real base "mt" cardinal
-# clips (+ shared idle) correctly.
+# Issue #52 follow-up: real-data verification that NPCNode wires:
+# 1. A real LocomotionAnimationPlayer holding EVERY real .kf found under
+#    characters\_male\locomotion\ (not a hand-picked subset -- NOT
+#    self-contained embedded animation either, see nif_loader.cpp's own
+#    extract_sequence() doc comment for the real bare-NiControllerSequence
+#    shape this required a native fix for), each under its own real
+#    relative path as its clip name (no remapping to invented aliases).
+# 2. A real AnimationTree layering the cardinal-direction "mt" clips
+#    (legs) under a fixed upper-body pose (spine/arms/head), driven
+#    continuously by set_move_input(Vector2) -- real blendspace work, not
+#    discrete clip switching -- with root-bone translation stripped (real
+#    Bethesda root-motion-extraction convention, confirmed via direct
+#    review, not a wrong-file guess).
 
 const DATA_DIR := "../fresh_nv_copy/Data/"
 
@@ -56,31 +60,102 @@ func _ready() -> void:
 	var anim: Animation = player.get_animation("male__mtforward.kf")
 	check(anim != null and anim.get_track_count() > 0, "'male__mtforward.kf' clip has real bone tracks (got %d)" % (anim.get_track_count() if anim else -1))
 
-	# set_move_input() direction selection -- Input.get_vector() convention:
-	# y negative = forward, y positive = backward, x positive = right.
-	# Doc Mitchell is male, so it should target the "male__" clips.
+	var skeleton: Skeleton3D = node.get_node_or_null(^"Body/Skeleton3D")
+	check(skeleton != null, "found the real Skeleton3D")
+	if skeleton != null:
+		var bip01 := skeleton.find_bone("Bip01")
+		var root_has_translation := false
+		for i in anim.get_track_count():
+			if anim.track_get_type(i) == Animation.TYPE_POSITION_3D and String(anim.track_get_path(i)).ends_with(":Bip01"):
+				root_has_translation = true
+		check(not root_has_translation, "real root-bone (Bip01) translation stripped from 'male__mtforward.kf' -- see mesh_resolver.gd's _strip_root_bone_translation() doc comment")
+
+	# --- Real AnimationTree layering ---
+	var tree: AnimationTree = node.get_node_or_null(^"Body/LocomotionAnimationTree")
+	check(tree != null, "a real LocomotionAnimationTree was built")
+	if tree == null:
+		_finish()
+		return
+	check(tree.active, "the tree is active")
+	var tree_root := tree.tree_root
+	check(tree_root is AnimationNodeBlendTree, "tree_root is a real AnimationNodeBlendTree")
+	if tree_root is AnimationNodeBlendTree:
+		check(tree_root.has_node("Locomotion"), "'Locomotion' blend space node exists")
+		check(tree_root.has_node("UpperBodyPose"), "'UpperBodyPose' node exists")
+		check(tree_root.has_node("UpperBodyLayer"), "'UpperBodyLayer' filtered blend node exists")
+		var locomotion: AnimationNode = tree_root.get_node("Locomotion")
+		check(locomotion is AnimationNodeBlendSpace2D and locomotion.get_blend_point_count() == 5,
+				"Locomotion blend space has all 5 real points (4 cardinal + idle, got %d)" % (locomotion.get_blend_point_count() if locomotion is AnimationNodeBlendSpace2D else -1))
+		var upper_layer: AnimationNode = tree_root.get_node("UpperBodyLayer")
+		if upper_layer is AnimationNodeBlend2:
+			check(upper_layer.filter_enabled, "UpperBodyLayer has real bone filtering enabled")
+			if skeleton != null:
+				# Relative to the SAME parent populate_locomotion_tree()
+				# itself used to build its filter paths ("Body"), not `node`.
+				var body_node: Node = node.get_node(^"Body")
+				var skel_path: NodePath = body_node.get_path_to(skeleton)
+				var spine_path := NodePath(str(skel_path) + ":Bip01 Spine1")
+				var leg_path := NodePath(str(skel_path) + ":Bip01 L Thigh")
+				check(upper_layer.is_path_filtered(spine_path), "upper-body bone (Bip01 Spine1) IS filtered into the upper-body layer")
+				check(not upper_layer.is_path_filtered(leg_path), "leg bone (Bip01 L Thigh) is NOT filtered -- legs stay driven by Locomotion alone")
+
+	# set_move_input() sets the real blend_position parameter -- Input.get_vector()
+	# convention (y negative = forward) flipped to the blend space's own
+	# Y-positive-is-forward point layout.
+	node.set_move_input(Vector2(0.0, -1.0)) # forward
+	check(tree.get("parameters/Locomotion/blend_position") == Vector2(0.0, 1.0),
+			"Vector2(0,-1) (forward, Input.get_vector convention) sets blend_position to (0,1)")
+
+	node.set_move_input(Vector2(1.0, 0.0)) # right
+	check(tree.get("parameters/Locomotion/blend_position") == Vector2(1.0, 0.0),
+			"Vector2(1,0) (right) sets blend_position to (1,0)")
+
+	node.set_move_input(Vector2(3.0, 4.0)) # well past the blend space's own sample points
+	var clamped: Vector2 = tree.get("parameters/Locomotion/blend_position")
+	check(is_equal_approx(clamped.length(), 1.0), "an over-length input is clamped to length 1 (got length %.3f)" % clamped.length())
+
+	# --- Real playback behavior: process a few frames and confirm the leg
+	# pose actually changes over time while playing forward (proof the
+	# tree really drives the skeleton, not just that parameters are set).
 	node.set_move_input(Vector2(0.0, -1.0))
-	check(player.current_animation == "male__mtforward.kf", "Vector2(0,-1) selects 'male__mtforward.kf' (got '%s')" % player.current_animation)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var thigh_idx := skeleton.find_bone("Bip01 L Thigh") if skeleton != null else -1
+	var pose_a := skeleton.get_bone_pose_rotation(thigh_idx) if thigh_idx != -1 else Quaternion.IDENTITY
+	for i in 10:
+		await get_tree().process_frame
+	var pose_b := skeleton.get_bone_pose_rotation(thigh_idx) if thigh_idx != -1 else Quaternion.IDENTITY
+	check(thigh_idx != -1 and not pose_a.is_equal_approx(pose_b), "the leg's actual bone pose changes over time while 'forward' plays (real animation, not a static parameter)")
 
-	node.set_move_input(Vector2(0.0, 1.0))
-	check(player.current_animation == "male__mtbackward.kf", "Vector2(0,1) selects 'male__mtbackward.kf' (got '%s')" % player.current_animation)
-
-	node.set_move_input(Vector2(1.0, 0.0))
-	check(player.current_animation == "male__mtright.kf", "Vector2(1,0) selects 'male__mtright.kf' (got '%s')" % player.current_animation)
-
-	node.set_move_input(Vector2(-1.0, 0.0))
-	check(player.current_animation == "male__mtleft.kf", "Vector2(-1,0) selects 'male__mtleft.kf' (got '%s')" % player.current_animation)
-
-	node.set_move_input(Vector2(0.02, 0.01)) # inside the deadzone
-	check(player.current_animation == "mtidle.kf", "near-zero input selects the shared 'mtidle.kf' (got '%s')" % player.current_animation)
-
-	# Switching to the SAME direction twice shouldn't restart playback --
-	# real regression guard against calling play() every frame.
-	node.set_move_input(Vector2(0.0, -1.0))
-	var pos_before := player.current_animation_position
-	node.set_move_input(Vector2(0.0, -1.0))
-	check(player.current_animation == "male__mtforward.kf" and player.current_animation_position == pos_before,
-			"re-selecting the same direction doesn't restart the clip (position unchanged)")
+	# Real regression guard for a real user-reported bug: "Bip01 NonAccum"
+	# (the true parent of the whole rest of the skeleton) has no track at
+	# all in mtidle.kf/mtbackward.kf but does in mtforward/mtleft/mtright
+	# (confirmed real, baseline ~0.93), and its own REST position is
+	# (0,0,0) -- sweeping blend weight between idle and forward used to
+	# interpolate NonAccum from that (0,0,0) rest default toward ~0.93,
+	# which (since everything else hangs off NonAccum) made the WHOLE
+	# character's global pose rise proportional to blend weight ("floats
+	# up into the air... by the weight of the blend"). Fixed by stripping
+	# NonAccum's own translation track the same way the root bone's is
+	# stripped -- verify it now stays put across the full weight sweep.
+	var non_accum_idx := skeleton.find_bone("Bip01 NonAccum") if skeleton != null else -1
+	var pelvis_idx := skeleton.find_bone("Bip01 Pelvis") if skeleton != null else -1
+	if non_accum_idx != -1 and pelvis_idx != -1:
+		var pelvis_global_at_idle: Vector3
+		var drift_found := false
+		for w in [0.0, 0.25, 0.5, 0.75, 1.0]:
+			tree.set("parameters/Locomotion/blend_position", Vector2(0.0, w))
+			for f in 3:
+				await get_tree().process_frame
+			var na_pos := skeleton.get_bone_pose_position(non_accum_idx)
+			if not na_pos.is_equal_approx(Vector3.ZERO):
+				drift_found = true
+			var pelvis_global := skeleton.get_bone_global_pose(pelvis_idx).origin
+			if w == 0.0:
+				pelvis_global_at_idle = pelvis_global
+			elif not pelvis_global.is_equal_approx(pelvis_global_at_idle):
+				drift_found = true
+		check(not drift_found, "sweeping blend weight from idle to forward does NOT make NonAccum (or anything hanging off it) drift -- real fix for the reported float-up bug")
 
 	print("=======================")
 	if failures == 0:
