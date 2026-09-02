@@ -10,8 +10,9 @@ using namespace godot;
 
 void DirectGeometryBatch::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("init", "world_node"), &DirectGeometryBatch::init);
-	ClassDB::bind_method(D_METHOD("add_object", "world_transform", "mesh_entries", "shape_entries", "lod_mesh_entries"), &DirectGeometryBatch::add_object, DEFVAL(Array()));
-	ClassDB::bind_method(D_METHOD("set_lod_crossover", "distance_m", "margin_m"), &DirectGeometryBatch::set_lod_crossover);
+	ClassDB::bind_method(D_METHOD("add_object", "world_transform", "mesh_entries", "shape_entries", "lod_mesh_entries", "is_distant_tile"), &DirectGeometryBatch::add_object, DEFVAL(Array()), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("set_lod_crossover", "distance_m", "margin_m", "lod1_max_range_m"), &DirectGeometryBatch::set_lod_crossover, DEFVAL(0.0f));
+	ClassDB::bind_method(D_METHOD("set_distant_lod_range", "near_cutoff_m", "near_margin_m"), &DirectGeometryBatch::set_distant_lod_range);
 	ClassDB::bind_method(D_METHOD("build"), &DirectGeometryBatch::build);
 	ClassDB::bind_method(D_METHOD("set_enabled", "enabled"), &DirectGeometryBatch::set_enabled);
 	ClassDB::bind_method(D_METHOD("free_all"), &DirectGeometryBatch::free_all);
@@ -38,7 +39,7 @@ void DirectGeometryBatch::init(Node3D *world_node) {
 	initialized_ = true;
 }
 
-void DirectGeometryBatch::add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries, const Array &lod_mesh_entries) {
+void DirectGeometryBatch::add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries, const Array &lod_mesh_entries, bool is_distant_tile) {
 	if (!initialized_) {
 		return; // init() wasn't called -- nothing to attach these to
 	}
@@ -63,6 +64,9 @@ void DirectGeometryBatch::add_object(const Transform3D &world_transform, const A
 				if (placement_has_lod) {
 					group.has_lod = true;
 				}
+				if (is_distant_tile) {
+					group.is_distant_tile = true;
+				}
 				found = true;
 				break;
 			}
@@ -72,6 +76,7 @@ void DirectGeometryBatch::add_object(const Transform3D &world_transform, const A
 			group.mesh = mesh_rid;
 			group.transforms.push_back(instance_transform);
 			group.has_lod = placement_has_lod;
+			group.is_distant_tile = is_distant_tile;
 			pending_mesh_groups_.push_back(group);
 		}
 	}
@@ -140,12 +145,16 @@ void DirectGeometryBatch::build() {
 
 		RID instance = rs->instance_create2(multimesh, scenario_);
 		rs->instance_set_visible(instance, enabled_);
-		// phases/2/12-distant-object-lod.md, step 7: this MeshGroup is only
-		// visible within the crossover distance if a paired LOD group exists
-		// for it (has_lod) -- otherwise leave the visibility range at its
+		// phases/2/12-distant-object-lod.md, step 7 / issue #56: a distant
+		// skyline tile gets a begin-only near-fade cutoff (no far bound --
+		// meant to stay visible indefinitely); an ordinary full-detail
+		// placement paired with an LOD group (has_lod) gets the crossover
+		// end-bound; otherwise leave the visibility range at its
 		// RenderingServer default (always visible), the overwhelming common
-		// case, completely unaffected by this step.
-		if (group.has_lod) {
+		// case, completely unaffected by either of these.
+		if (group.is_distant_tile) {
+			rs->instance_geometry_set_visibility_range(instance, distant_near_cutoff_m_, 0.0f, distant_near_margin_m_, 0.0f, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
+		} else if (group.has_lod) {
 			rs->instance_geometry_set_visibility_range(instance, 0.0f, lod_crossover_distance_m_, 0.0f, lod_crossover_margin_m_, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
 		}
 		instances_.push_back(instance);
@@ -163,8 +172,9 @@ void DirectGeometryBatch::build() {
 		RID instance = rs->instance_create2(multimesh, scenario_);
 		rs->instance_set_visible(instance, enabled_);
 		// The LOD tier is always paired with a has_lod full-detail group
-		// (see add_object()) -- always visible only beyond the crossover.
-		rs->instance_geometry_set_visibility_range(instance, lod_crossover_distance_m_, 0.0f, lod_crossover_margin_m_, 0.0f, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
+		// (see add_object()) -- visible from the crossover out to
+		// lod1_max_range_m_ (0.0 == unbounded).
+		rs->instance_geometry_set_visibility_range(instance, lod_crossover_distance_m_, lod1_max_range_m_, lod_crossover_margin_m_, 0.0f, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
 		instances_.push_back(instance);
 		lod_instance_count_++;
 	}
@@ -173,9 +183,15 @@ void DirectGeometryBatch::build() {
 	pending_lod_mesh_groups_.clear();
 }
 
-void DirectGeometryBatch::set_lod_crossover(float distance_m, float margin_m) {
+void DirectGeometryBatch::set_lod_crossover(float distance_m, float margin_m, float lod1_max_range_m) {
 	lod_crossover_distance_m_ = distance_m;
 	lod_crossover_margin_m_ = margin_m;
+	lod1_max_range_m_ = lod1_max_range_m;
+}
+
+void DirectGeometryBatch::set_distant_lod_range(float near_cutoff_m, float near_margin_m) {
+	distant_near_cutoff_m_ = near_cutoff_m;
+	distant_near_margin_m_ = near_margin_m;
 }
 
 void DirectGeometryBatch::set_enabled(bool enabled) {

@@ -659,7 +659,12 @@ func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	var rot: Vector3 = placement.get("rotation", Vector3.ZERO)
 	var scale: float = placement.get("scale", 1.0)
 	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
-	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"], geometry.get("lod_mesh_entries", []))
+	# Issue #56: the persistent-cell distant/skyline LOD tiles (Strip wall,
+	# McCarran, etc, meshes\landscape\lod\<world>\blocks\...) get a
+	# near-fade cutoff instead of the ordinary LOD0/LOD1 crossover -- see
+	# GamebryoMeshResolver.is_distant_object_lod_tile_path()'s doc comment.
+	var is_distant_tile := GamebryoMeshResolver.is_distant_object_lod_tile_path(String(placement.get("model", "")))
+	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"], geometry.get("lod_mesh_entries", []), is_distant_tile)
 
 func _register_defaults() -> void:
 	register("DOOR", func(p, r): return _build_door(p, r))
