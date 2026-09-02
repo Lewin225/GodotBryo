@@ -531,6 +531,18 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# expensive per-object work (mesh/material Resource construction) still
 	# happens spread across frames inside the construct loop below, only the
 	# final reveal (confirmed cheap, diagnostic_batch_build_ms) stays bundled.
+	# Issue #56 debug-tab follow-up: the Node-based path's `resolver` only
+	# ever had its crossover/distant-fade values set once, in _ready() --
+	# a live GodotBryoSettings change from the debug tab never reached any
+	# placement built via construct_from_resolved()'s Node-based path
+	# (which is where every VWD/lod_geometry-eligible AND distant-skyline-
+	# marker placement is routed, see object_registry.gd's own doc
+	# comment). Re-set on every stream so "forward-only" tuning actually
+	# reaches newly-streamed content on this path too, matching what
+	# `batch` below already does per-tile.
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m)
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
+
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
 	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
@@ -595,6 +607,14 @@ func _stream_persistent_root() -> void:
 	root.add_child(refr_root)
 
 	var refs: Array = esm.get_persistent_refs_for_worldspace(_active_wrld_form_id)
+
+	# Issue #56 debug-tab follow-up: see the matching comment in
+	# _stream_tile() -- resolver's own crossover/distant-fade values must
+	# be re-set here too, not just once in _ready(), or a live
+	# GodotBryoSettings change never reaches the Node-based path any
+	# persistent-cell VWD/skyline-marker placement actually goes through.
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m)
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
 
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
