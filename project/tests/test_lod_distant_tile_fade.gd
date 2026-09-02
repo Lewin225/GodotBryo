@@ -11,10 +11,10 @@ extends Node3D
 # ref has one, zero without; the only other refs that carry it are the
 # same conceptual class of distant Strip-skyline dressing under a
 # different naming scheme). See ReferencePlacement::
-# has_distant_skyline_marker's own doc comment (native/src/esm/esm_types.h)
+# has_xsrf_or_xsrd's own doc comment (native/src/esm/esm_types.h)
 # for the full census.
 #
-# Verifies: EsmReader actually surfaces has_distant_skyline_marker on a
+# Verifies: EsmReader actually surfaces has_xsrf_or_xsrd on a
 # real REFR carrying XSRF/XSRD and NOT on an ordinary one, and that
 # GamebryoMeshResolver.populate_mesh_children()'s is_distant_tile param
 # actually writes a begin-only (no far bound) visibility range.
@@ -34,7 +34,7 @@ func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
 
-	print("=== real ESM data: an Imposter-model REFR carries has_distant_skyline_marker, an ordinary wall REFR doesn't ===")
+	print("=== real ESM data: an Imposter-model REFR carries has_xsrf_or_xsrd, an ordinary wall REFR doesn't ===")
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id("WastelandNV")
 	check(not wrld.is_empty(), "found WastelandNV")
 	var wrld_id := int(wrld["form_id"])
@@ -47,7 +47,7 @@ func _ready() -> void:
 			break
 	check(not imposter_placement.is_empty(), "found a real McCarranWallLongImposter persistent placement")
 	if not imposter_placement.is_empty():
-		check(bool(imposter_placement.get("has_distant_skyline_marker", false)), "McCarranWallLongImposter has has_distant_skyline_marker == true")
+		check(bool(imposter_placement.get("has_xsrf_or_xsrd", false)), "McCarranWallLongImposter has has_xsrf_or_xsrd == true")
 		check(not bool(imposter_placement.get("visible_when_distant", false)), "McCarranWallLongImposter is NOT VWD-flagged (confirms it has no fade mechanism of its own via the usual per-object pairing)")
 
 	var ordinary_placement: Dictionary = {}
@@ -59,7 +59,7 @@ func _ready() -> void:
 			break
 	check(not ordinary_placement.is_empty(), "found a real NVMcCarranWall02 placement (the ordinary, non-imposter wall)")
 	if not ordinary_placement.is_empty():
-		check(not bool(ordinary_placement.get("has_distant_skyline_marker", false)), "NVMcCarranWall02 does NOT have has_distant_skyline_marker (it's an ordinary VWD-paired wall, not a skyline stand-in)")
+		check(not bool(ordinary_placement.get("has_xsrf_or_xsrd", false)), "NVMcCarranWall02 does NOT have has_xsrf_or_xsrd (it's an ordinary VWD-paired wall, not a skyline stand-in)")
 
 	print("=== populate_mesh_children() applies a begin-only near-fade range when is_distant_tile is true ===")
 	var resolver := GamebryoMeshResolver.new()
