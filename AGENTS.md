@@ -1,5 +1,9 @@
 # AGENTS.md
 
+**Never use a git worktree (or any worktree-isolation workflow) in this
+repo without the user's explicit, per-instance permission.** Not a style
+preference — ask first, every time, no exceptions for "it seemed safer."
+
 Guide for coding agents (and humans) working in this repository. See also
 `ROADMAP.md` (phased plan + current status) and `phases/*/README.md` (per-phase
 task docs with real acceptance criteria) for deeper history — this file is the
