@@ -177,8 +177,8 @@ func _ready() -> void:
 	# GodotBryoSettings (issue #56) is the single source of truth -- threaded
 	# into both the Node-based path (resolver, here) and the RID-based path
 	# (batch, in _stream_tile()/_stream_persistent_root() below).
-	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
-	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m) # issue #56
+	resolver.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
+	resolver.set_distant_lod_range(GodotBryoSettings.get_distant_lod_near_cutoff_raw(), GodotBryoSettings.get_distant_lod_near_margin_raw()) # issue #56
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
 
@@ -533,7 +533,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# final reveal (confirmed cheap, diagnostic_batch_build_ms) stays bundled.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
+	batch.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -612,8 +612,8 @@ func _stream_persistent_root() -> void:
 
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
-	batch.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m) # issue #56 -- only PersistentRoot's batch actually contains distant/skyline LOD tiles
+	batch.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
+	batch.set_distant_lod_range(GodotBryoSettings.get_distant_lod_near_cutoff_raw(), GodotBryoSettings.get_distant_lod_near_margin_raw()) # issue #56 -- only PersistentRoot's batch actually contains distant/skyline LOD tiles
 
 	_in_flight_count += 1
 	var results = await _resolve_refs_threaded(refs, my_generation)
