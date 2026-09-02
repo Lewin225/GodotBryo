@@ -122,6 +122,27 @@ struct ReferencePlacement {
 	uint32_t dest_refr_form_id = 0;
 	float dest_position[3] = { 0.0f, 0.0f, 0.0f };
 	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
+
+	// Issue #56: REFR.XSRF/XSRD -- both undocumented even in the community's
+	// own xEdit/fopdoc reference (confirmed: FalloutNV/Records/REFR.md lists
+	// both with unknown name/type/purpose), but their mere PRESENCE is a
+	// real, ESM-encoded, 100%-consistent marker for a class of placement
+	// Bethesda used for distant Strip/McCarran skyline dressing: confirmed
+	// against a real 4468-ref WastelandNV persistent-cell census, every
+	// single "*Imposter*"-named model (215/215) carries XSRF and/or XSRD,
+	// zero without it, and the only OTHER refs that carry it are the exact
+	// same conceptual category under a different naming scheme (distant-view
+	// glow/light-pollution dressing: UltraLuxDome_GlowsWL*, Lucky38Lights*,
+	// NVStripLightPollution*, NV_TheTops-Hotel_NeonWL*, GomorrahLights*, ...).
+	// These are placed at essentially the SAME coordinates as their real,
+	// separately-placed high-detail counterparts, are never VWD-flagged, and
+	// have no fade mechanism of their own via the ordinary per-object
+	// _lod.nif/VWD pairing -- this is what stayed visible up close no matter
+	// how the ordinary LOD0/LOD1 crossover was tuned. The exact bit-level
+	// meaning of XSRF/XSRD (e.g. whether they encode a real per-object fade
+	// distance) is NOT decoded here -- only presence is used as the trigger;
+	// the actual near-fade distance stays GodotBryoSettings-configured.
+	bool has_distant_skyline_marker = false;
 };
 
 // phases/2/07-runtime-cell-loader.md: an exterior CELL's own XCLC grid

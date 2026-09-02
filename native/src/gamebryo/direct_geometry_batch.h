@@ -85,7 +85,17 @@ public:
 	// own "one crossover distance per distinct mesh, not per placement"
 	// design (a MultiMesh instance can't have two different visibility
 	// ranges within itself). Empty for the overwhelming majority of calls.
-	void add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries, const Array &lod_mesh_entries = Array());
+	// `is_distant_tile` (issue #56): marks every MeshGroup this call touches
+	// as a persistent-cell distant/skyline LOD tile (e.g. the Strip wall /
+	// McCarran building-block meshes under
+	// meshes\landscape\lod\<world>\blocks\) -- build() gives these a
+	// begin-only visibility range (GodotBryoSettings.distant_lod_near_cutoff_m/
+	// _margin_m via set_distant_lod_range()) instead of the ordinary
+	// has_lod crossover, so they stay visible indefinitely at distance but
+	// hide once the camera is close enough that real geometry should show
+	// instead. Mutually exclusive with lod_mesh_entries in practice (a
+	// distant tile has no per-object _lod.nif companion).
+	void add_object(const Transform3D &world_transform, const Array &mesh_entries, const Array &shape_entries, const Array &lod_mesh_entries = Array(), bool is_distant_tile = false);
 
 	// Creates the actual RenderingServer MultiMesh instances from every
 	// mesh entry accumulated by add_object() calls so far -- one instance
@@ -129,13 +139,19 @@ public:
 	// Defaults to a sane, real distance (matching GamebryoMeshResolver's own
 	// default) if never called at all, e.g. a test constructing a batch
 	// directly.
-	void set_lod_crossover(float distance_m, float margin_m);
+	void set_lod_crossover(float distance_m, float margin_m, float lod1_max_range_m = 0.0f);
+
+	// Issue #56: crossover for persistent-cell distant/skyline LOD tiles
+	// (see add_object()'s is_distant_tile doc comment). No far bound -- these
+	// tiles are meant to stay visible indefinitely, like terrain.
+	void set_distant_lod_range(float near_cutoff_m, float near_margin_m);
 
 private:
 	struct MeshGroup {
 		RID mesh;
 		std::vector<Transform3D> transforms;
 		bool has_lod = false; // phases/2/12-distant-object-lod.md, step 7 -- true if ANY add_object() call contributing to this group also had a non-empty lod_mesh_entries; see add_object()'s own doc comment for why this is tracked per-group, not per-transform
+		bool is_distant_tile = false; // issue #56 -- see add_object()'s is_distant_tile doc comment
 	};
 
 	// A distinct-LOD-mesh counterpart to MeshGroup -- same accumulate-by-
@@ -152,8 +168,18 @@ private:
 	RID space_;
 	bool initialized_ = false;
 	bool enabled_ = true;
-	float lod_crossover_distance_m_ = 100.0f; // matches GamebryoMeshResolver's own default (step 8) -- only relevant if a caller never calls set_lod_crossover(); WorldStreamer/CellLoader always do, sourced from their own single real @export value
-	float lod_crossover_margin_m_ = 5.0f; // see lod_crossover_distance_m_ above
+	// Issue #56: GodotBryoSettings is now the single source of truth for all
+	// of these -- WorldStreamer/CellLoader always call set_lod_crossover()/
+	// set_distant_lod_range() sourced from it. 0.0 is a visibly "unset"
+	// default (not a duplicated tuning literal) for a caller that never
+	// does, e.g. a test constructing a batch directly -- 0.0 distance/end
+	// leaves visibility_range unrestricted (RenderingServer default,
+	// always visible), a safe no-op rather than a silently-stale magic number.
+	float lod_crossover_distance_m_ = 0.0f;
+	float lod_crossover_margin_m_ = 0.0f;
+	float lod1_max_range_m_ = 0.0f; // 0.0 == infinite
+	float distant_near_cutoff_m_ = 0.0f;
+	float distant_near_margin_m_ = 0.0f;
 
 	std::vector<MeshGroup> pending_mesh_groups_; // accumulated by add_object(), consumed and cleared by build()
 	std::vector<LodMeshGroup> pending_lod_mesh_groups_; // accumulated by add_object()'s own lod_mesh_entries, consumed and cleared by build()

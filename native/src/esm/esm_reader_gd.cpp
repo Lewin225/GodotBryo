@@ -28,6 +28,7 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	// their own to carry the flag.
 	d["visible_when_distant"] = pl.visible_when_distant;
 	d["has_xtel"] = pl.has_xtel;
+	d["has_distant_skyline_marker"] = pl.has_distant_skyline_marker;
 	if (pl.has_xtel) {
 		d["dest_refr_form_id"] = static_cast<int64_t>(pl.dest_refr_form_id);
 		d["dest_position"] = Vector3(pl.dest_position[0], pl.dest_position[1], pl.dest_position[2]);
