@@ -52,10 +52,10 @@ an established fact.
 ## What this project actually does with it
 
 Only PRESENCE (XSRF or XSRD subrecord exists on the REFR) is used, as a
-boolean trigger — `ReferencePlacement::has_distant_skyline_marker` in
+boolean trigger — `ReferencePlacement::has_xsrf_or_xsrd` in
 native/src/esm/esm_types.h, populated in EsmFile::get_cell_references()
 (native/src/esm/esm_file.cpp), surfaced to GDScript as the placement dict's
-"has_distant_skyline_marker" key. The actual near-fade distance used is a
+"has_xsrf_or_xsrd" key. The actual near-fade distance used is a
 separate, GodotBryoSettings-configured value (project/godot_bryo_settings.gd),
 NOT decoded from XSRF's own bytes — see issue #56 on GitHub for the
 implementation.
