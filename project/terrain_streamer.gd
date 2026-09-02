@@ -407,7 +407,7 @@ func get_diagnostics() -> Dictionary:
 		"staging_ms": diagnostic_staging_ms.duplicate(),
 		"publication_ms": diagnostic_publication_ms.duplicate(),
 		"collision_updates": diagnostic_collision_updates,
-		"cache_family": _cache_family_by_worldspace.get(_active_wrld_form_id, ""),
+		"cache_family": _cache_family,
 		"retained_worldspaces": retained_entries,
 		"texture_slots_used": texture_pool.used_slot_count() if texture_pool != null else 0,
 		"texture_entries": texture_pool.get_debug_texture_list() if texture_pool != null else [],
@@ -469,9 +469,9 @@ func _check_streaming() -> void:
 			var coord: Vector2i = center + Vector2i(dx, dy)
 			_desired_cells[coord] = true
 	if center_changed:
-		var _t_grass := ProfileScope.begin()
+		#var _t_grass := ProfileScope.begin()
 		_update_grass_coverage()
-		ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
+		#ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():

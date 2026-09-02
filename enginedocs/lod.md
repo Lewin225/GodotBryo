@@ -97,6 +97,38 @@ This is a CK-wide authoring convention (an artist-visible gizmo for placing/orie
 effect in the editor), not specific to one file, and the real engine does not render it
 in actual gameplay.
 
+## A third, separate system: standalone "distant skyline" stand-in props (issue #56)
+
+Neither the paired-`_lod.nif` convention above nor VWD explain everything visible at
+distance. Bethesda also placed entirely separate, standalone props — same rough world
+position as a real high-detail object, but their own distinct base record and mesh, no
+`_lod.nif` pairing to anything, and (confirmed directly, every sample) **not**
+VWD-flagged. Example: `McCarranWallLongImposter` (`REFR` `0x15D24B`,
+`architecture\Strip\Imposter\McCarranWallLong_Imposter.NIF`) sits at
+`(-183.5, 832.7, 65.6)`, essentially co-located with the real, separately-placed
+`NV_McCarran-Wall02` (`architecture\McCarran\NV_McCarran-Wall02.NIF`) at
+`(-271.1, 964.8, 65.6)` two cells over — same wall, two unrelated placements.
+
+The real, data-driven marker for this class of placement is **presence of the `REFR`
+subrecords `XSRF`/`XSRD`** — both undocumented even in the community's own xEdit/fopdoc
+reference (marked unknown name/type/purpose there too). Confirmed via a full census of
+`WastelandNV`'s persistent-cell `REFR`s (4468 total): 235 carry `XSRF` and/or `XSRD`; of
+those, 215 have `"Imposter"` in their base model's filename (100% of imposter-model
+refs — zero without the marker), and the remaining 20 are the same conceptual class
+under different naming (Strip-skyline glow/light-pollution dressing:
+`UltraLuxDome_GlowsWL*`, `Lucky38Lights*`, `NVStripLightPollution*`,
+`NV_TheTops-Hotel_NeonWL*`, `GomorrahLights*`, `FortFireFX`, ...). Full byte-level
+findings, including the (unconfirmed) hypothesis that `XSRF`'s high 16 bits may encode a
+per-object distance, are in `enginedocs/Data Types/XSRF.txt` and `XSRD.txt`.
+
+These are placed in the persistent cell (loaded regardless of the player's position) and
+have no fade mechanism of their own via either the `_lod.nif`/VWD pairing above or an
+`NiLODNode`/`NiRangeLODData` in-NIF switch node (checked directly against the real Strip
+wall/imposter NIFs — none present; every root is a plain `BSFadeNode`). Without a fade
+applied by the consuming engine/project, a standalone skyline stand-in like this stays
+fully visible at any distance, including up close, occluding the real high-detail object
+it's meant to represent only from far away.
+
 ## Exterior cell spatial index (Block/Sub-Block GRUPs)
 
 Documented in depth in `phases/2/11-exterior-cell-lookup-index.md` (that doc is the

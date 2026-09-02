@@ -6,8 +6,8 @@
 [ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_terrainstreamer"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
+[ext_resource type="Script" uid="uid://cio1g7pp5m0b1" path="res://terrain_streaming_debug_tab.gd" id="5_terrainstreamingdebug"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
-[ext_resource type="Script" path="res://terrain_streaming_debug_tab.gd" id="5_terrainstreamingdebug"]
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
 [ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
@@ -779,6 +779,15 @@ fit_content = true
 scroll_active = false
 autowrap_mode = 0
 
+[node name="DistantLod" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1063840942]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Distant Fade: 300m"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
 [node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=636008105]
 layout_mode = 2
 
@@ -814,6 +823,64 @@ value = 1.0
 layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
 text = "freeze trace"
+
+[node name="LodTuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1472278247]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Lod0DistLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833266]
+layout_mode = 2
+text = "LOD0→1 (m):"
+vertical_alignment = 1
+
+[node name="Lod0DistSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531617]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_distance_m -- distance where LOD0 (full detail) hands off to LOD1. Applied to newly-streamed content going forward; does not retroactively update already-resident objects."
+max_value = 2000.0
+value = 100.0
+
+[node name="Lod0MarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326329]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="Lod0MarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787345]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_margin_m -- fade-band width around the LOD0/LOD1 handoff."
+max_value = 200.0
+value = 5.0
+
+[node name="Lod1MaxLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833267]
+layout_mode = 2
+text = "LOD1 max (m, 0=∞):"
+vertical_alignment = 1
+
+[node name="Lod1MaxSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531618]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod1_max_range_m -- distance where LOD1 itself disappears. 0 = infinite."
+max_value = 5000.0
+
+[node name="DistantCutoffLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326330]
+layout_mode = 2
+text = "Distant fade (m):"
+vertical_alignment = 1
+
+[node name="DistantCutoffSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787346]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_cutoff_m -- distance where persistent-cell distant/skyline stand-ins (issue #56) fade IN as the camera moves away."
+max_value = 5000.0
+value = 300.0
+
+[node name="DistantMarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833268]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="DistantMarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531619]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_margin_m -- fade-band width for the distant-tile near cutoff."
+max_value = 500.0
+value = 20.0
 
 [node name="Ground Textures" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1706202073]
 visible = false
@@ -862,7 +929,7 @@ columns = 2
 column_titles_visible = true
 hide_root = true
 
-[node name="Terrain Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer"]
+[node name="Terrain Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=417666227]
 visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
@@ -870,7 +937,7 @@ vertical_scroll_mode = 2
 script = ExtResource("5_terrainstreamingdebug")
 metadata/_tab_index = 5
 
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Terrain Streaming"]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Terrain Streaming" unique_id=2044128035]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -879,26 +946,26 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin" unique_id=1734639912]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2129774186]
 layout_mode = 2
 bbcode_enabled = true
 text = "[b]🏔 Terrain Streaming[/b]"
 fit_content = true
 scroll_active = false
 
-[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1177763728]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/h_separation = 12
 theme_override_constants/v_separation = 4
 columns = 3
 
-[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=788956301]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -906,7 +973,7 @@ text = "Status: Inactive"
 fit_content = true
 scroll_active = false
 
-[node name="WorldCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="WorldCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=436794935]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -914,7 +981,7 @@ text = "World: (none)"
 fit_content = true
 scroll_active = false
 
-[node name="DomainCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="DomainCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=1767130708]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -922,7 +989,7 @@ text = "Domain: 0 / 0 committed regions"
 fit_content = true
 scroll_active = false
 
-[node name="QueueCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="QueueCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=569816811]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -930,7 +997,7 @@ text = "Queue: 0"
 fit_content = true
 scroll_active = false
 
-[node name="WorkerCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="WorkerCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=1290049867]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -938,7 +1005,7 @@ text = "Workers: 0"
 fit_content = true
 scroll_active = false
 
-[node name="ResourceCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid"]
+[node name="ResourceCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=576351328]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
@@ -946,60 +1013,59 @@ text = "Resources: 0"
 fit_content = true
 scroll_active = false
 
-[node name="TimingCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="TimingCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=790829184]
 layout_mode = 2
 bbcode_enabled = true
 text = "CPU samples: waiting for terrain publication"
 fit_content = true
 scroll_active = false
 
-[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1833098275]
 layout_mode = 2
 
-[node name="TuningTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="TuningTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1999586081]
 layout_mode = 2
 bbcode_enabled = true
 text = "[b]Scheduler tuning[/b] [color=#7f848e](applied live)[/color]"
 fit_content = true
 scroll_active = false
 
-[node name="TuningRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="TuningRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=764416296]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="RegionsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow"]
+[node name="RegionsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=431323336]
 layout_mode = 2
 text = "regions/frame:"
 vertical_alignment = 1
 
-[node name="RegionsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow"]
+[node name="RegionsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=1736814120]
 layout_mode = 2
 tooltip_text = "TerrainStreamer.regions_per_frame. Limits Terrain3D publication to this many prepared regions per frame."
 min_value = 1.0
 max_value = 8.0
 value = 1.0
 
-[node name="RadiusLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow"]
+[node name="RadiusLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=2112160162]
 layout_mode = 2
 text = "near radius (cells):"
 vertical_alignment = 1
 
-[node name="RadiusSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow"]
+[node name="RadiusSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=1489235199]
 layout_mode = 2
 tooltip_text = "TerrainStreamer.load_radius. Reprioritizes near terrain work when the next streaming check runs."
 min_value = 1.0
 max_value = 40.0
-step = 1.0
 value = 20.0
 
-[node name="RetainedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="RetainedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=740612220]
 layout_mode = 2
 bbcode_enabled = true
 text = "[b]Retained cache-family worldspaces[/b]"
 fit_content = true
 scroll_active = false
 
-[node name="RetainedWorldspaces" type="Tree" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox"]
+[node name="RetainedWorldspaces" type="Tree" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=917016632]
 custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
 size_flags_vertical = 3

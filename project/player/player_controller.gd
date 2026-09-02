@@ -210,6 +210,8 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if debug_click_shake and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		return
+		# Incedibly annoying
 		var shake_val := CLICK_SHAKE_PATTERN[_click_shake_index]
 		apply_camera_shake(shake_val)
 		_click_shake_index = (_click_shake_index + 1) % CLICK_SHAKE_PATTERN.size()

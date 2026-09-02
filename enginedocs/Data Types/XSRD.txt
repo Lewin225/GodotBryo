@@ -1,0 +1,35 @@
+REFR subrecord: XSRD
+=====================
+
+Status: UNDOCUMENTED even in the community's own reverse-engineering reference
+(TES5Edit/fopdoc's FalloutNV/Records/REFR.md lists XSRD with no name, type, or
+purpose — marked unknown, same as XSRF). Findings below are from direct
+inspection of real FalloutNV.esm bytes in this project's own investigation
+(issue #56).
+
+## Presence, not decoded meaning, is what's actually established
+
+- Always 4 bytes when present.
+- Always appears alongside XSRF on the same REFR in every sample checked (see
+  XSRF.txt for the full presence census — same 235/4468 WastelandNV
+  persistent-cell REFRs, same 215/215 "Imposter"-model correlation).
+- Unlike XSRF's high 16 bits (which vary per-object and are suggestive of a
+  distance), XSRD's raw value was overwhelmingly `0` across the sample, with
+  the only other value observed being a small nonzero (`4`, seen on a handful
+  of REFRs) and one outlier that looked like a real form-ID-shaped u32
+  (651812520) on a single sample — inconsistent enough that no pattern is
+  confirmed. Most likely either a flag/mode byte with mostly-default value 0,
+  or a value this project's sample size (single-worldspace, ~235 hits) is too
+  small to characterize.
+
+## What this project actually does with it
+
+Same as XSRF: only PRESENCE is used (XSRF OR XSRD, either one, triggers the
+same `has_xsrf_or_xsrd` flag — see XSRF.txt for the full mechanism).
+XSRD's own byte value is not read or interpreted anywhere in this project.
+
+## Open question for future investigation
+
+What does the near-zero XSRD value actually encode, if anything? Worth a
+wider census (multiple worldspaces, DLC content) before drawing conclusions —
+the current sample is WastelandNV-only.

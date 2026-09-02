@@ -1,0 +1,70 @@
+REFR subrecord: XSRF
+=====================
+
+Status: UNDOCUMENTED even in the community's own reverse-engineering reference
+(TES5Edit/fopdoc's FalloutNV/Records/REFR.md lists XSRF with no name, type, or
+purpose — marked unknown). Not present in the xEdit wiki either. Findings below
+are from direct inspection of real FalloutNV.esm bytes in this project's own
+investigation (issue #56), not from any existing documentation.
+
+## Presence, not decoded meaning, is what's actually established
+
+We do NOT know the exact bit-level layout/semantics of this subrecord's 4 bytes.
+What IS established, exhaustively, against real data:
+
+- Always 4 bytes when present.
+- Co-occurs with XSRD on the same REFR in every sample checked (see XSRD.txt).
+- **100% correlated with a specific class of placement**: Bethesda's standalone
+  "distant skyline stand-in" props — objects positioned at essentially the same
+  world coordinates as a separately-placed, real, high-detail counterpart, never
+  VWD-flagged, with no _lod.nif companion pairing of their own. Confirmed via a
+  full census of WastelandNV's persistent-cell REFRs (4468 total):
+  - 235 REFRs carry XSRF and/or XSRD.
+  - 215 of those have "Imposter" in their base model's filename
+    (architecture\Strip\Imposter\..., architecture\...\Imposter\...) — ALL 215
+    "Imposter"-model REFRs in the census have the marker, ZERO without it.
+  - The remaining 20 are the same conceptual category under different naming:
+    distant Strip-skyline glow/light dressing (UltraLuxDome_GlowsWL*,
+    Lucky38Lights*, NVStripLightPollution*, NV_TheTops-Hotel_NeonWL*,
+    GomorrahLights*, NVMcCarranRWCornerStone02_Imposter, FortFireFX, ...).
+- Example: `McCarranWallLongImposter` REFR (0x15D24B) sits at (-183.5, 832.7,
+  65.6) in Godot/real-meter space, essentially co-located with the real
+  `NV_McCarran-Wall02` REFR at (-271.1, 964.8, 65.6) two cells over — same
+  wall, two separate placements.
+
+## Raw byte samples (real data)
+
+`McCarranWallLongImposter` (refr 0x15D24B): bytes `02 00 AE 10`
+  -> u32 (LE) = 0x10AE0002 = 279838722
+  -> as two u16 (LE): lo16 = 2, hi16 = 4270
+
+Across the broader 235-REFR sample, the low 16 bits were almost always `2`
+(a handful of exceptions: 10, 18, 463), while the high 16 bits varied widely
+per-object — 0, 3, 1800, 2056, 2312, 2568, 3, 8244, 8417, 8243, 9150, 12386,
+13597, 17066, 20354, ... This is SUGGESTIVE of a packed {flags/type: u16,
+value: u16} layout where the high u16 might be a distance (raw Bethesda
+units — dividing by 70 to get meters lands in a plausible 0–290m range for a
+"start showing this skyline stand-in beyond X" cutoff), but this has NOT been
+confirmed against engine behavior or cross-checked with a second independent
+source. Treat the hi16-as-distance reading as an unconfirmed hypothesis, not
+an established fact.
+
+## What this project actually does with it
+
+Only PRESENCE (XSRF or XSRD subrecord exists on the REFR) is used, as a
+boolean trigger — `ReferencePlacement::has_xsrf_or_xsrd` in
+native/src/esm/esm_types.h, populated in EsmFile::get_cell_references()
+(native/src/esm/esm_file.cpp), surfaced to GDScript as the placement dict's
+"has_xsrf_or_xsrd" key. The actual near-fade distance used is a
+separate, GodotBryoSettings-configured value (project/godot_bryo_settings.gd),
+NOT decoded from XSRF's own bytes — see issue #56 on GitHub for the
+implementation.
+
+## Open question for future investigation
+
+Does the XSRF hi16 field really encode a per-object fade distance? If
+confirmed, this project could read a real per-object value instead of a
+single global GodotBryoSettings default. Would need either: (a) a reference
+engine/tool that's known to interpret this field correctly, or (b) enough
+correlated samples (object size, distance from worldspace-border, etc.) to
+reverse-engineer the encoding with confidence.
