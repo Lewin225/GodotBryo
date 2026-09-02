@@ -85,8 +85,8 @@ func _ready() -> void:
 	add_child(streamer)
 	check(streamer.resolver != null, "WorldStreamer built its own resolver in _ready()")
 	if streamer.resolver != null:
-		check(streamer.resolver.lod_crossover_distance_m == GodotBryoSettings.get_lod0_crossover_distance_raw(), "GodotBryoSettings reached resolver.lod_crossover_distance_m, converted to raw Bethesda-unit space (issue #56 units fix) (got %s)" % streamer.resolver.lod_crossover_distance_m)
-		check(streamer.resolver.lod_crossover_margin_m == GodotBryoSettings.get_lod0_crossover_margin_raw(), "GodotBryoSettings reached resolver.lod_crossover_margin_m, converted to raw Bethesda-unit space (got %s)" % streamer.resolver.lod_crossover_margin_m)
+		check(streamer.resolver.lod_crossover_distance_m == 77.0, "GodotBryoSettings reached resolver.lod_crossover_distance_m (got %s)" % streamer.resolver.lod_crossover_distance_m)
+		check(streamer.resolver.lod_crossover_margin_m == 2.5, "GodotBryoSettings reached resolver.lod_crossover_margin_m (got %s)" % streamer.resolver.lod_crossover_margin_m)
 	streamer.queue_free()
 
 	print("=== GodotBryoSettings (issue #56) reaches CellLoader's own resolver in _ready() ===")
@@ -96,8 +96,8 @@ func _ready() -> void:
 	add_child(loader)
 	check(loader.resolver != null, "CellLoader built its own resolver in _ready()")
 	if loader.resolver != null:
-		check(loader.resolver.lod_crossover_distance_m == GodotBryoSettings.get_lod0_crossover_distance_raw(), "GodotBryoSettings reached resolver.lod_crossover_distance_m, converted to raw Bethesda-unit space (got %s)" % loader.resolver.lod_crossover_distance_m)
-		check(loader.resolver.lod_crossover_margin_m == GodotBryoSettings.get_lod0_crossover_margin_raw(), "GodotBryoSettings reached resolver.lod_crossover_margin_m, converted to raw Bethesda-unit space (got %s)" % loader.resolver.lod_crossover_margin_m)
+		check(loader.resolver.lod_crossover_distance_m == 33.0, "GodotBryoSettings reached resolver.lod_crossover_distance_m (got %s)" % loader.resolver.lod_crossover_distance_m)
+		check(loader.resolver.lod_crossover_margin_m == 1.5, "GodotBryoSettings reached resolver.lod_crossover_margin_m (got %s)" % loader.resolver.lod_crossover_margin_m)
 	loader.queue_free()
 	GodotBryoSettings.lod0_crossover_distance_m = orig_distance
 	GodotBryoSettings.lod0_crossover_margin_m = orig_margin
