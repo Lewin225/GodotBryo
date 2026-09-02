@@ -293,6 +293,7 @@ func lod_companion_path(model_path: String) -> String:
 	_lod_path_cache[model_path] = result
 	return result
 
+
 ## Black-background decal fix (see memory: black-background-decal-findings):
 ## a DXT1 (BC1) texture's 1-bit punch-through alpha survives CPU decode but
 ## is LOST on GPU upload (confirmed with a real-GPU render census -- a
@@ -596,7 +597,15 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 ## which one actually renders. The overwhelming common case (no LOD tier)
 ## is completely unaffected: no visibility range touched at all, same as
 ## before this step.
-func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+## `is_distant_tile` (issue #56): true for a placement whose REFR carries
+## the XSRF/XSRD "distant skyline stand-in" marker (see
+## ReferencePlacement::has_xsrf_or_xsrd's own doc comment,
+## native/src/esm/esm_types.h) -- the caller reads that flag off the
+## placement dict (`placement.get("has_xsrf_or_xsrd", false)`)
+## since this function only ever sees a bare model_path, not the full
+## placement. Gets a begin-only near-fade cutoff instead of the ordinary
+## LOD0/LOD1 crossover.
+func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}, is_distant_tile: bool = false) -> void:
 	if geometry.is_empty():
 		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
 	var lod_entries: Array = geometry.get("lod_mesh_entries", [])
@@ -612,7 +621,9 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		mi.mesh = entry["mesh"]
 		mi.transform = entry["transform"]
 		mi.set_meta("gamebryo_is_unlit", bool(entry.get("is_unlit", false)))
-		if not lod_entries.is_empty():
+		if is_distant_tile:
+			_apply_distant_lod_visibility_range(mi)
+		elif not lod_entries.is_empty():
 			_apply_lod_visibility_range(mi, true)
 		parent.add_child(mi)
 	var i := 0
@@ -1680,29 +1691,40 @@ func _eval_float_keys_linear(keys: Array, t: float) -> float:
 			return lerpf(float(keys[i]["value"]), float(keys[i + 1]["value"]), u)
 	return float(keys[keys.size() - 1]["value"]) # unreachable given the bounds checks above, kept as a safe fallback
 
-## phases/2/12-distant-object-lod.md, step 8: the real (single-sourced, not
-## duplicated across GDScript/C++) configurable crossover distance and
-## hysteresis margin, defaulting to the same placeholder values step 6/7
-## shipped with. One flat global number, not the real per-category/
-## size-proportional system enginedocs/lod.md's own [LOD] ini excerpt
-## describes — per that task doc's explicit scoping, a starting value to
-## get the mechanism correct, not a tuned one. Set via set_lod_crossover()
-## (a caller with a real @export, e.g. WorldStreamer/CellLoader, threads its
-## own inspector-tunable value in) rather than editing these fields
-## directly, mirroring DirectGeometryBatch's own identically-named method on
-## the RID-based side.
-var lod_crossover_distance_m := 100.0
-var lod_crossover_margin_m := 5.0
+## GodotBryoSettings (issue #56) is the single source of truth for these —
+## no default here means anything; a caller (WorldStreamer/CellLoader) must
+## call set_lod_crossover()/set_distant_lod_range() before these are used.
+## Previously these fields carried their own hardcoded 100.0/5.0 defaults,
+## duplicating the values WorldStreamer/CellLoader's own @export vars AND
+## DirectGeometryBatch's C++ defaults also carried — four copies of the same
+## number that had to be kept in sync by hand. GodotBryoSettings now owns
+## the one real value; these are 0.0 (visibly "unset") until a caller sets
+## them for real.
+var lod_crossover_distance_m := 0.0
+var lod_crossover_margin_m := 0.0
+var lod1_max_range_m := 0.0 # 0.0 == infinite, matches Godot's own end==0.0 "unbounded" convention
 
-func set_lod_crossover(distance_m: float, margin_m: float) -> void:
+## The distant-cell "skyline" LOD tiles (issue #56, e.g. the Strip wall /
+## McCarran building blocks under meshes\landscape\lod\<world>\blocks\) —
+## meant to stay visible indefinitely (no far bound), but hidden once the
+## camera gets close enough that real geometry should be showing instead.
+var distant_lod_near_cutoff_m := 0.0
+var distant_lod_near_margin_m := 0.0
+
+func set_lod_crossover(distance_m: float, margin_m: float, lod1_range_m: float = 0.0) -> void:
 	lod_crossover_distance_m = distance_m
 	lod_crossover_margin_m = margin_m
+	lod1_max_range_m = lod1_range_m
+
+func set_distant_lod_range(cutoff_m: float, margin_m: float) -> void:
+	distant_lod_near_cutoff_m = cutoff_m
+	distant_lod_near_margin_m = margin_m
 
 ## Sets one MeshInstance3D's crossover visibility range: `is_full_detail`
 ## true -> visible only within lod_crossover_distance_m
 ## (visibility_range_end, Godot's own "hide beyond this distance" field);
-## false -> visible only beyond it (visibility_range_begin, "hide closer
-## than this distance"). VISIBILITY_RANGE_FADE_DISABLED — hard cutover +
+## false -> visible from lod_crossover_distance_m out to lod1_max_range_m
+## (0.0 == unbounded). VISIBILITY_RANGE_FADE_DISABLED — hard cutover +
 ## margin-based hysteresis — per this task doc's own Design section: Godot's
 ## docs call this the cheapest manual-LOD approach; revisit FADE_SELF
 ## crossfading later (step 10) only if the hard cut looks bad in real play.
@@ -1714,6 +1736,17 @@ func _apply_lod_visibility_range(mi: MeshInstance3D, is_full_detail: bool) -> vo
 	else:
 		mi.visibility_range_begin = lod_crossover_distance_m
 		mi.visibility_range_begin_margin = lod_crossover_margin_m
+		mi.visibility_range_end = lod1_max_range_m
+
+## Issue #56: begin-only visibility range for a persistent-cell distant/
+## skyline LOD tile — visible from distant_lod_near_cutoff_m outward with
+## no far bound, the mirror image of _apply_lod_visibility_range's
+## full-detail case.
+func _apply_distant_lod_visibility_range(mi: MeshInstance3D) -> void:
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+	mi.visibility_range_begin = distant_lod_near_cutoff_m
+	mi.visibility_range_begin_margin = distant_lod_near_margin_m
+	mi.visibility_range_end = 0.0
 
 ## Builds a CollisionShape3D child per extracted bhk* shape (phases/1/02-
 ## collision-extraction.md), or one bounding-box fallback collider (from the
