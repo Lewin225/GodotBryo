@@ -1,4 +1,5 @@
 **GodotByro is attempting to be a from scratch, drop in replacement for GameByro** 
+
 *Targeting fallout new vegas (with fallout 3 and skyrim as future work)*
 
 Why Godot? Lightweight, zero cost and easily modifiable though gdextension, source available , multi platform
@@ -6,16 +7,20 @@ Why Godot? Lightweight, zero cost and easily modifiable though gdextension, sour
 
 **Current Status**
 * Gameplay
+  * Walk around only at the moment
   * Open world terrain rendering using Terrain3D sourced from LAND records, including the 7+1 layer terrain blending from gamebyro
   * Interior cell loading, Including fog, lighting and environment data
   * Script Engine (Currently very limited API support)
   * Proper cell transitions using DOOR Destination
+  * Cell caching for fast renter/exit
+
  
 * Some gameplay objects functional
   * DOOR + Anims and sounds
   * TERM - Pending proper ui, but parsing correctly
-  * ACTI - Scripts attached fire correctly through the script engine
+  * ACTI - Scripts attached fire correctly through the script engine, but api is very basic as is
   * MISC, WEAP, ALCH - Moveable Jolt physics objects. Can be picked up into a placeholder inventory
+
 
 
 * Internal
