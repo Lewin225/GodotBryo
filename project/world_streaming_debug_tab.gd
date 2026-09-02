@@ -22,6 +22,7 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _rad_unload: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/RadUnload"
 @onready var _check_interval: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/CheckInterval"
 @onready var _lod_crossover: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/LodCrossover"
+@onready var _distant_lod: RichTextLabel = $"Margin/SubTabs/Streaming State/VBox/RadiusGrid/DistantLod"
 
 @onready var _tiles_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/TilesPerFrameSpin"
 @onready var _objects_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/ObjectsPerFrameSpin"
@@ -133,7 +134,9 @@ func _refresh_radius_config() -> void:
 	_rad_load_distant.text = "Load Distant: [color=#61afef][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_LOAD_DISTANT
 	_rad_unload.text = "Unload: [color=#e06c75][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_UNLOAD
 	_check_interval.text = "Check: [b]%.2fs[/b]" % WorldStreamer.CHECK_INTERVAL_SEC
-	_lod_crossover.text = "LOD: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color]" % [GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m]
+	var lod1_max_text := "∞" if GodotBryoSettings.lod1_max_range_m <= 0.0 else "%.0fm" % GodotBryoSettings.lod1_max_range_m
+	_lod_crossover.text = "LOD0→LOD1: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color] → [b]%s[/b]" % [GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, lod1_max_text]
+	_distant_lod.text = "Distant Fade: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color]" % [GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m]
 
 
 func _refresh_tuning_spinboxes() -> void:
