@@ -574,9 +574,9 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 ## before this step.
 ## `is_distant_tile` (issue #56): true for a placement whose REFR carries
 ## the XSRF/XSRD "distant skyline stand-in" marker (see
-## ReferencePlacement::has_distant_skyline_marker's own doc comment,
+## ReferencePlacement::has_xsrf_or_xsrd's own doc comment,
 ## native/src/esm/esm_types.h) -- the caller reads that flag off the
-## placement dict (`placement.get("has_distant_skyline_marker", false)`)
+## placement dict (`placement.get("has_xsrf_or_xsrd", false)`)
 ## since this function only ever sees a bare model_path, not the full
 ## placement. Gets a begin-only near-fade cutoff instead of the ordinary
 ## LOD0/LOD1 crossover.
