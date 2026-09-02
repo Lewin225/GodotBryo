@@ -400,7 +400,7 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 					# companion, OR one whose REFR carries the XSRF/XSRD
 					# "distant skyline stand-in" marker (Strip wall / McCarran
 					# skyline imposters -- ReferencePlacement::
-					# has_distant_skyline_marker's own doc comment,
+					# has_xsrf_or_xsrd's own doc comment,
 					# native/src/esm/esm_types.h), is ALSO routed to the
 					# real-Node path, never DirectGeometryBatch --
 					# DirectGeometryBatch groups every placement of a shared
@@ -418,7 +418,7 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 					# placement its own MeshInstance3D with its own correctly-
 					# measured visibility_range, so this is a correctness fix,
 					# not a perf-neutral style choice.
-					if not result.get("lod_geometry", {}).is_empty() or bool(result.get("placement", {}).get("has_distant_skyline_marker", false)):
+					if not result.get("lod_geometry", {}).is_empty() or bool(result.get("placement", {}).get("has_xsrf_or_xsrd", false)):
 						return _construct_visual(GamebryoVisual, result)
 					if batch != null:
 						_construct_direct(result, batch)
@@ -441,7 +441,7 @@ func _construct_visual(cls, result: Dictionary) -> Node3D:
 	# populate_mesh_children() attaches no LOD tier at all, no behavior
 	# change from before step 6.
 	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
-	resolver.populate_mesh_children(node, null, "", geometry, bool(result.get("placement", {}).get("has_distant_skyline_marker", false)))
+	resolver.populate_mesh_children(node, null, "", geometry, bool(result.get("placement", {}).get("has_xsrf_or_xsrd", false)))
 	if result.has("emittance_color"):
 		_apply_emittance_tint(node, result["emittance_color"])
 	resolver.populate_collision_children(node, null, "", geometry)
@@ -685,7 +685,7 @@ func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	var world_transform := GamebryoMeshResolver.world_transform_no_parent(pos, rot, scale)
 	# Issue #56: a placement whose REFR carries the XSRF/XSRD "distant
 	# skyline stand-in" marker (Strip wall / McCarran skyline imposters
-	# etc, see ReferencePlacement::has_distant_skyline_marker's own doc
+	# etc, see ReferencePlacement::has_xsrf_or_xsrd's own doc
 	# comment, native/src/esm/esm_types.h) gets a near-fade cutoff instead
 	# of the ordinary LOD0/LOD1 crossover. In practice construct_from_
 	# resolved() already routes these to the Node-based path before this
@@ -694,7 +694,7 @@ func _construct_direct(result: Dictionary, batch: DirectGeometryBatch) -> void:
 	# placement visibility_range for spread-out repeated meshes), so this
 	# is defense-in-depth for a caller that reaches _construct_direct()
 	# some other way.
-	var is_distant_tile := bool(placement.get("has_distant_skyline_marker", false))
+	var is_distant_tile := bool(placement.get("has_xsrf_or_xsrd", false))
 	batch.add_object(world_transform, geometry["mesh_entries"], geometry["shape_entries"], geometry.get("lod_mesh_entries", []), is_distant_tile)
 
 func _register_defaults() -> void:
@@ -734,7 +734,7 @@ func _instantiate_visual(cls, placement: Dictionary, mesh_resolver: GamebryoMesh
 	var node = cls.new()
 	var lod_raw := _resolve_lod_geometry(placement, model, mesh_resolver)
 	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model), lod_raw)
-	mesh_resolver.populate_mesh_children(node, nif, model, geometry, bool(placement.get("has_distant_skyline_marker", false)))
+	mesh_resolver.populate_mesh_children(node, nif, model, geometry, bool(placement.get("has_xsrf_or_xsrd", false)))
 	var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
 	if emittance_form_id != 0:
 		var emittance_data: Dictionary = esm.get_emittance_data(emittance_form_id)

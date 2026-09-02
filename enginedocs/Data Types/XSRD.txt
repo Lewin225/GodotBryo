@@ -25,7 +25,7 @@ inspection of real FalloutNV.esm bytes in this project's own investigation
 ## What this project actually does with it
 
 Same as XSRF: only PRESENCE is used (XSRF OR XSRD, either one, triggers the
-same `has_distant_skyline_marker` flag — see XSRF.txt for the full mechanism).
+same `has_xsrf_or_xsrd` flag — see XSRF.txt for the full mechanism).
 XSRD's own byte value is not read or interpreted anywhere in this project.
 
 ## Open question for future investigation
