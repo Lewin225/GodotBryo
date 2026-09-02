@@ -28,30 +28,3 @@ extends Node
 
 ## Fade-band width (meters) for the distant-tile near cutoff.
 @export var distant_lod_near_margin_m: float = 20.0
-
-## Issue #56 root cause: GamebryoMeshResolver.world_transform_no_parent()/
-## refr_transform() place every REFR object using its RAW Bethesda-unit
-## position directly as the Godot transform origin -- unlike terrain/fog/
-## grass (CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS, 1/70), REFR placement
-## applies NO unit conversion. So visibility_range_begin/end, which compare
-## against that same raw-unit coordinate space, need the *_m fields above
-## converted from real meters into that space too, or a "100m" crossover
-## actually means ~1.4 real meters -- so small the full-detail mesh only
-## ever appeared once the camera was almost inside the object (the
-## "have to walk through them" symptom). These getters do that conversion
-## once, centrally, so every consumer (WorldStreamer/CellLoader) gets it
-## for free instead of risking a call site that forgets to convert.
-func get_lod0_crossover_distance_raw() -> float:
-	return lod0_crossover_distance_m / CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
-
-func get_lod0_crossover_margin_raw() -> float:
-	return lod0_crossover_margin_m / CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
-
-func get_lod1_max_range_raw() -> float:
-	return lod1_max_range_m / CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
-
-func get_distant_lod_near_cutoff_raw() -> float:
-	return distant_lod_near_cutoff_m / CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
-
-func get_distant_lod_near_margin_raw() -> float:
-	return distant_lod_near_margin_m / CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
