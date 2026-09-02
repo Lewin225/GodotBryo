@@ -824,6 +824,70 @@ layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
 text = "freeze trace"
 
+[node name="LodTuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1472278247]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Lod0DistLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833266]
+layout_mode = 2
+text = "LOD0→1 (m):"
+vertical_alignment = 1
+
+[node name="Lod0DistSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531617]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_distance_m -- distance where LOD0 (full detail) hands off to LOD1. Applied to newly-streamed content going forward; does not retroactively update already-resident objects."
+min_value = 0.0
+max_value = 2000.0
+value = 100.0
+
+[node name="Lod0MarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326329]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="Lod0MarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787345]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_margin_m -- fade-band width around the LOD0/LOD1 handoff."
+min_value = 0.0
+max_value = 200.0
+value = 5.0
+
+[node name="Lod1MaxLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833267]
+layout_mode = 2
+text = "LOD1 max (m, 0=∞):"
+vertical_alignment = 1
+
+[node name="Lod1MaxSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531618]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod1_max_range_m -- distance where LOD1 itself disappears. 0 = infinite."
+min_value = 0.0
+max_value = 5000.0
+value = 0.0
+
+[node name="DistantCutoffLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326330]
+layout_mode = 2
+text = "Distant fade (m):"
+vertical_alignment = 1
+
+[node name="DistantCutoffSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787346]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_cutoff_m -- distance where persistent-cell distant/skyline stand-ins (issue #56) fade IN as the camera moves away."
+min_value = 0.0
+max_value = 5000.0
+value = 300.0
+
+[node name="DistantMarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833268]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="DistantMarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531619]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_margin_m -- fade-band width for the distant-tile near cutoff."
+min_value = 0.0
+max_value = 500.0
+value = 20.0
+
 [node name="Ground Textures" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1706202073]
 visible = false
 layout_mode = 2
