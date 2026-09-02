@@ -1,16 +1,25 @@
 extends Node3D
 
 # Issue #56 ("Find and Implement reading near fade"): persistent-cell
-# distant/skyline LOD tiles (meshes\landscape\lod\<world>\blocks\...,
-# e.g. the Strip wall / McCarran) had no near-distance cutoff at all, so
-# they stayed fully visible and occluded LOD0 geometry up close. Verifies:
-# GamebryoMeshResolver.is_terrain_only_lod_tile_path()/
-# is_distant_object_lod_tile_path() classify real BSA paths correctly
-# (including the confirmed-safe exclusions: ordinary objects and the
-# Strip's "always visible" glow card), and that
-# populate_mesh_children()/_apply_distant_lod_visibility_range() actually
-# write a begin-only (no far bound) visibility range onto a distant tile's
-# MeshInstance3D children.
+# distant/skyline stand-in props (the Strip wall / McCarran skyline
+# imposters etc, architecture\...\Imposter\...NIF) stayed fully visible up
+# close, occluding real geometry. Real root cause, confirmed against live
+# ESM data: these are standalone placements (not VWD-flagged, no
+# _lod.nif pairing of their own) whose REFR carries the undocumented-but-
+# real XSRF/XSRD subrecords -- confirmed 100%-consistent across a real
+# 4468-ref WastelandNV persistent-cell census (every "*Imposter*"-model
+# ref has one, zero without; the only other refs that carry it are the
+# same conceptual class of distant Strip-skyline dressing under a
+# different naming scheme). See ReferencePlacement::
+# has_distant_skyline_marker's own doc comment (native/src/esm/esm_types.h)
+# for the full census.
+#
+# Verifies: EsmReader actually surfaces has_distant_skyline_marker on a
+# real REFR carrying XSRF/XSRD and NOT on an ordinary one, and that
+# GamebryoMeshResolver.populate_mesh_children()'s is_distant_tile param
+# actually writes a begin-only (no far bound) visibility range.
+
+const DATA_DIR := "../fresh_nv_copy/Data/"
 
 var failures := 0
 
@@ -22,37 +31,37 @@ func check(cond: bool, msg: String) -> void:
 		failures += 1
 
 func _ready() -> void:
-	print("=== path classification (real BSA path shapes, confirmed via issue #56 investigation) ===")
-	var terrain_only_paths := [
-		"Landscape\\LOD\\TheStripWorldNew\\TheStripWorldNew.Level4.X0.Y0.nif",
-		"Landscape\\LOD\\WastelandNVMini\\WastelandNVMini.Level16.X0.Y-16.nif",
-		"landscape\\lod\\freesidenorthworld\\freesidenorthworld.level32.x-1.y1.nif",
-	]
-	for p in terrain_only_paths:
-		check(GamebryoMeshResolver.is_terrain_only_lod_tile_path(p), "%s classified as terrain-only (skip)" % p)
-		check(not GamebryoMeshResolver.is_distant_object_lod_tile_path(p), "%s NOT classified as a distant object tile" % p)
+	var esm := EsmReader.new()
+	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
 
-	var distant_object_paths := [
-		"Landscape\\LOD\\TheStripWorldNew\\Blocks\\TheStripWorldNew.Level4.X0.Y0.nif",
-		"landscape\\lod\\freesideworld\\blocks\\freesideworld.level4.x-2.y-4.nif",
-	]
-	for p in distant_object_paths:
-		check(GamebryoMeshResolver.is_distant_object_lod_tile_path(p), "%s classified as a distant object tile (near-fade)" % p)
-		check(not GamebryoMeshResolver.is_terrain_only_lod_tile_path(p), "%s NOT classified as terrain-only" % p)
+	print("=== real ESM data: an Imposter-model REFR carries has_distant_skyline_marker, an ordinary wall REFR doesn't ===")
+	var wrld: Dictionary = esm.find_worldspace_by_editor_id("WastelandNV")
+	check(not wrld.is_empty(), "found WastelandNV")
+	var wrld_id := int(wrld["form_id"])
 
-	# Confirmed-safe exclusions (per issue #56 investigation): an ordinary
-	# object, and the Strip's "always visible" glow card -- neither lives
-	# under landscape\lod\, so neither should ever be touched by this
-	# near-fade mechanism.
-	var excluded_paths := [
-		"Architecture\\Barracks\\Barracks01.nif",
-		"Architecture\\Strip\\Imposter\\FXGlowSimpleFillHalf01Imposter.nif",
-	]
-	for p in excluded_paths:
-		check(not GamebryoMeshResolver.is_terrain_only_lod_tile_path(p), "%s NOT classified as terrain-only" % p)
-		check(not GamebryoMeshResolver.is_distant_object_lod_tile_path(p), "%s NOT classified as a distant object tile" % p)
+	var imposter_placement: Dictionary = {}
+	var refs: Array = esm.get_persistent_refs_for_worldspace(wrld_id)
+	for r in refs:
+		if String(r.get("editor_id", "")) == "McCarranWallLongImposter":
+			imposter_placement = r
+			break
+	check(not imposter_placement.is_empty(), "found a real McCarranWallLongImposter persistent placement")
+	if not imposter_placement.is_empty():
+		check(bool(imposter_placement.get("has_distant_skyline_marker", false)), "McCarranWallLongImposter has has_distant_skyline_marker == true")
+		check(not bool(imposter_placement.get("visible_when_distant", false)), "McCarranWallLongImposter is NOT VWD-flagged (confirms it has no fade mechanism of its own via the usual per-object pairing)")
 
-	print("=== populate_mesh_children() applies a begin-only near-fade range to a distant tile's MeshInstance3D children ===")
+	var ordinary_placement: Dictionary = {}
+	var cell: Dictionary = esm.find_exterior_cell(wrld_id, -5, 16)
+	var cell_refs: Array = esm.get_cell_references(int(cell["form_id"]))
+	for r in cell_refs:
+		if String(r.get("editor_id", "")) == "NVMcCarranWall02":
+			ordinary_placement = r
+			break
+	check(not ordinary_placement.is_empty(), "found a real NVMcCarranWall02 placement (the ordinary, non-imposter wall)")
+	if not ordinary_placement.is_empty():
+		check(not bool(ordinary_placement.get("has_distant_skyline_marker", false)), "NVMcCarranWall02 does NOT have has_distant_skyline_marker (it's an ordinary VWD-paired wall, not a skyline stand-in)")
+
+	print("=== populate_mesh_children() applies a begin-only near-fade range when is_distant_tile is true ===")
 	var resolver := GamebryoMeshResolver.new()
 	resolver.set_distant_lod_range(300.0, 20.0)
 	var parent := Node3D.new()
@@ -62,7 +71,7 @@ func _ready() -> void:
 		"shape_entries": [],
 		"lod_mesh_entries": [],
 	}
-	resolver.populate_mesh_children(parent, null, "Landscape\\LOD\\TheStripWorldNew\\Blocks\\TheStripWorldNew.Level4.X0.Y0.nif", geometry)
+	resolver.populate_mesh_children(parent, null, "", geometry, true)
 	var mi: MeshInstance3D = null
 	for c in parent.get_children():
 		if c is MeshInstance3D:
@@ -71,8 +80,27 @@ func _ready() -> void:
 	if mi != null:
 		check(mi.visibility_range_begin == 300.0, "distant tile visibility_range_begin == near cutoff (got %s)" % mi.visibility_range_begin)
 		check(mi.visibility_range_begin_margin == 20.0, "distant tile visibility_range_begin_margin == near margin (got %s)" % mi.visibility_range_begin_margin)
-		check(mi.visibility_range_end == 0.0, "distant tile visibility_range_end == 0.0 (unbounded -- stays visible at any distance, like the skyline it is)" % [])
+		check(mi.visibility_range_end == 0.0, "distant tile visibility_range_end == 0.0 (unbounded -- stays visible at any distance, like the skyline it is)")
 	parent.queue_free()
+
+	print("=== is_distant_tile == false (the default) leaves visibility_range untouched ===")
+	var parent2 := Node3D.new()
+	add_child(parent2)
+	var geometry2 := {
+		"mesh_entries": [{ "mesh": BoxMesh.new(), "transform": Transform3D.IDENTITY, "submesh_index": 0, "is_unlit": false }],
+		"shape_entries": [],
+		"lod_mesh_entries": [],
+	}
+	resolver.populate_mesh_children(parent2, null, "", geometry2)
+	var mi2: MeshInstance3D = null
+	for c in parent2.get_children():
+		if c is MeshInstance3D:
+			mi2 = c
+	check(mi2 != null, "populate_mesh_children() built a MeshInstance3D for the ordinary case")
+	if mi2 != null:
+		check(mi2.visibility_range_begin == 0.0, "ordinary MeshInstance3D has NO visibility range set (got begin=%s)" % mi2.visibility_range_begin)
+		check(mi2.visibility_range_end == 0.0, "ordinary MeshInstance3D has NO visibility range set (got end=%s)" % mi2.visibility_range_end)
+	parent2.queue_free()
 
 	print("=======================")
 	if failures == 0:

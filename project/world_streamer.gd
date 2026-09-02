@@ -177,8 +177,8 @@ func _ready() -> void:
 	# GodotBryoSettings (issue #56) is the single source of truth -- threaded
 	# into both the Node-based path (resolver, here) and the RID-based path
 	# (batch, in _stream_tile()/_stream_persistent_root() below).
-	resolver.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
-	resolver.set_distant_lod_range(GodotBryoSettings.get_distant_lod_near_cutoff_raw(), GodotBryoSettings.get_distant_lod_near_margin_raw()) # issue #56
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m) # issue #56
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
 
@@ -533,7 +533,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# final reveal (confirmed cheap, diagnostic_batch_build_ms) stays bundled.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
+	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -596,24 +596,15 @@ func _stream_persistent_root() -> void:
 
 	var refs: Array = esm.get_persistent_refs_for_worldspace(_active_wrld_form_id)
 
-	# Issue #56: Bethesda's baked distant/world-object LOD tiles
-	# (meshes\landscape\lod\<world>\...) are placed as ordinary persistent
-	# STAT refs. The terrain-only tiles (any tier) are fully redundant now
-	# that terrain renders via the Terrain3D clipmap -- drop them before
-	# they ever reach the resolver/BSA-load step. See
-	# GamebryoMeshResolver.is_terrain_only_lod_tile_path()'s own doc
-	# comment for the confirmed-exhaustive reasoning.
-	var filtered_refs: Array = []
-	for ref in refs:
-		if GamebryoMeshResolver.is_terrain_only_lod_tile_path(String(ref.get("model", ""))):
-			continue
-		filtered_refs.append(ref)
-	refs = filtered_refs
-
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw()) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
-	batch.set_distant_lod_range(GodotBryoSettings.get_distant_lod_near_cutoff_raw(), GodotBryoSettings.get_distant_lod_near_margin_raw()) # issue #56 -- only PersistentRoot's batch actually contains distant/skyline LOD tiles
+	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
+	# Issue #56: defense-in-depth for a distant/skyline-marker placement that
+	# somehow reaches _construct_direct() directly -- in practice
+	# construct_from_resolved() routes every such placement to the Node-based
+	# path instead (see that function's own doc comment), so this batch never
+	# actually receives one at runtime.
+	batch.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
 
 	_in_flight_count += 1
 	var results = await _resolve_refs_threaded(refs, my_generation)

@@ -268,33 +268,6 @@ func lod_companion_path(model_path: String) -> String:
 	_lod_path_cache[model_path] = result
 	return result
 
-## Issue #56: Bethesda's baked "distant object LOD" tile system
-## (meshes\landscape\lod\<world>\...) is a THIRD, separate LOD mechanism
-## from both the per-object _lod.nif convention (lod_companion_path()
-## above) and this project's own Terrain3D clipmap. Confirmed via direct
-## BSA inspection: the plain <world>.level{4,8,16,32}.x#.y#.nif tiles (no
-## "blocks" folder) are terrain-only -- fully redundant now that terrain
-## renders via the clipmap, confirmed to carry zero object content across
-## all 24 worldspaces in the archive (555 "blocks" files checked, every
-## one level4). Only <world>\blocks\<world>.level4.x#.y#.nif tiles carry
-## real geometry -- the Strip wall / McCarran skyline etc, confirmed via a
-## shared "Buildings" texture atlas name, and confirmed to exist ONLY at
-## level4 (never level8/16/32) across the same exhaustive check.
-static func is_landscape_lod_tile_path(model_path: String) -> bool:
-	var lower := model_path.to_lower()
-	return lower.contains("landscape\\lod\\") and lower.contains(".level") and lower.ends_with(".nif")
-
-## True for the terrain-only tiles (any tier) -- safe to skip loading
-## entirely; see is_landscape_lod_tile_path()'s doc comment.
-static func is_terrain_only_lod_tile_path(model_path: String) -> bool:
-	return is_landscape_lod_tile_path(model_path) and not model_path.to_lower().contains("\\blocks\\")
-
-## True for the coarse building/skyline stand-ins that should stay loaded
-## but get a near-fade cutoff (set_distant_lod_range()) instead of the
-## usual LOD0/LOD1 crossover -- see is_landscape_lod_tile_path()'s doc
-## comment.
-static func is_distant_object_lod_tile_path(model_path: String) -> bool:
-	return is_landscape_lod_tile_path(model_path) and model_path.to_lower().contains("\\blocks\\")
 
 ## Black-background decal fix (see memory: black-background-decal-findings):
 ## a DXT1 (BC1) texture's 1-bit punch-through alpha survives CPU decode but
@@ -599,16 +572,18 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 ## which one actually renders. The overwhelming common case (no LOD tier)
 ## is completely unaffected: no visibility range touched at all, same as
 ## before this step.
-func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> void:
+## `is_distant_tile` (issue #56): true for a placement whose REFR carries
+## the XSRF/XSRD "distant skyline stand-in" marker (see
+## ReferencePlacement::has_distant_skyline_marker's own doc comment,
+## native/src/esm/esm_types.h) -- the caller reads that flag off the
+## placement dict (`placement.get("has_distant_skyline_marker", false)`)
+## since this function only ever sees a bare model_path, not the full
+## placement. Gets a begin-only near-fade cutoff instead of the ordinary
+## LOD0/LOD1 crossover.
+func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}, is_distant_tile: bool = false) -> void:
 	if geometry.is_empty():
 		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
 	var lod_entries: Array = geometry.get("lod_mesh_entries", [])
-	# Issue #56: persistent-cell distant/skyline LOD tiles get a near-fade
-	# cutoff instead of the ordinary LOD0/LOD1 crossover. These are always
-	# plain STAT placements resolved via DirectGeometryBatch at runtime, but
-	# this Node-based path can also see one (e.g. CellLoader's editor
-	# preview), so it's handled here too for consistency.
-	var is_distant_tile := is_distant_object_lod_tile_path(model_path)
 	for entry in geometry["mesh_entries"]:
 		var mi := MeshInstance3D.new()
 		# entry["submesh_index"], not a loop counter -- a skipped submesh
