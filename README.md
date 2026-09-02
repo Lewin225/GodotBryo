@@ -30,4 +30,4 @@ Why Godot? Lightweight, zero cost and easily modifiable though gdextension, sour
   * NIF Loading, Parsing into Godot Mesh format including bones, skins, weights and animations
   * Conversion factory for converting specific nif nodes into proper godot types
   * Two level LOD + Imposters + Unlimited distance clipmap terrain
-  * Handling of XREF lighting pointers
+  * Handling of XEMI lighting pointers
