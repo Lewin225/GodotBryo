@@ -2,14 +2,22 @@ extends Node3D
 
 # 2.12 step 7 -- the RID-based construct path: DirectGeometryBatch's second
 # MeshGroup tier for LOD meshes, with instance_geometry_set_visibility_range()
-# set on both tiers. This is the path most real VWD content actually takes
-# at runtime (structural-fallback placements route through
-# GamebryoObjectRegistry._construct_direct(), not the Node-based path -- see
-# that function's own doc comment). RenderingServer has no getter for an
-# instance's own visibility_range, so this test verifies through
-# DirectGeometryBatch's own instance-count bookkeeping (get_lod_instance_count())
-# rather than reading the range back directly. See
-# phases/2/12-distant-object-lod.md.
+# set on both tiers. RenderingServer has no getter for an instance's own
+# visibility_range, so the parts of this test that still go through the RID
+# path verify through DirectGeometryBatch's own instance-count bookkeeping
+# (get_lod_instance_count()) rather than reading the range back directly.
+#
+# Issue #56: VWD-flagged placements with a real lod_geometry companion are
+# NO LONGER routed through DirectGeometryBatch at all -- construct_from_
+# resolved() sends them to the Node-based path instead (see that function's
+# own doc comment for why: DirectGeometryBatch's per-tile MultiMesh batching
+# gives every placement of a shared mesh ONE shared visibility_range,
+# measured from the camera to the combined instance AABB's center, which
+# breaks near-fade for spread-out repeated meshes like the Strip perimeter
+# wall). DirectGeometryBatch's own LOD-tier machinery (tested directly
+# below via add_object()) is otherwise untouched -- this only changed which
+# placements construct_from_resolved() feeds into it.
+# See phases/2/12-distant-object-lod.md.
 
 const DATA_DIR := "../fresh_nv_copy/Data/"
 
@@ -66,16 +74,17 @@ func _ready() -> void:
 				"QuonsetHut01 resolves as structural fallback (kind=%s, type_tag=%s)" % [quonset_result.get("kind", ""), quonset_result.get("type_tag", "")])
 		check(not quonset_result.has("lod_geometry"), "QuonsetHut01's resolved result does NOT carry lod_geometry")
 
-	print("=== a VWD-only batch gets a real, non-zero LOD instance tier ===")
+	print("=== issue #56: a VWD-eligible placement is routed to a real Node even when a batch IS provided, and contributes NOTHING to that batch ===")
 	if not barracks_result.is_empty():
 		var batch := DirectGeometryBatch.new()
 		batch.init(self)
 		batch.set_lod_crossover(100.0, 5.0)
 		var node := registry.construct_from_resolved(barracks_result, batch)
-		check(node == null, "construct_from_resolved() with a real batch returns null for structural fallback (routed via RID, not a Node)")
+		check(node != null, "construct_from_resolved() with a real batch still returns a real Node for a VWD-eligible placement (issue #56 fix)")
+		if node != null:
+			node.free()
 		batch.build()
-		check(batch.get_lod_instance_count() > 0, "Barracks01-only batch has a non-zero LOD instance tier (got %d)" % batch.get_lod_instance_count())
-		check(batch.get_instance_count() > batch.get_lod_instance_count(), "the batch's full-detail tier is also present alongside the LOD tier (total=%d, lod=%d)" % [batch.get_instance_count(), batch.get_lod_instance_count()])
+		check(batch.get_instance_count() == 0, "the batch got NO instances at all from a VWD-eligible placement (got %d)" % batch.get_instance_count())
 		batch.free_all()
 
 	print("=== a non-VWD batch (same _lod.nif-companion-having model, but not VWD-flagged) gets NO LOD instance tier ===")
@@ -106,16 +115,19 @@ func _ready() -> void:
 				"get_batched_placement_count() (%d) matches full-detail mesh_entries.size() (%d), not full+lod (%d)" % [batch.get_batched_placement_count(), full_count, full_count + lod_count])
 		batch.free_all()
 
-	print("=== mixed batch: both VWD and non-VWD placements coexist correctly ===")
+	print("=== mixed call: a VWD-eligible placement (Node) and a non-VWD placement (batch) coexist correctly, each on its own path ===")
 	if not barracks_result.is_empty() and not quonset_result.is_empty():
 		var batch := DirectGeometryBatch.new()
 		batch.init(self)
 		batch.set_lod_crossover(100.0, 5.0)
-		registry.construct_from_resolved(barracks_result, batch)
+		var barracks_node := registry.construct_from_resolved(barracks_result, batch)
 		registry.construct_from_resolved(quonset_result, batch)
+		check(barracks_node != null, "Barracks01 still gets a real Node even alongside a batch-routed QuonsetHut01")
+		if barracks_node != null:
+			barracks_node.free()
 		batch.build()
-		check(batch.get_lod_instance_count() > 0, "a mixed batch still has a non-zero LOD tier (from Barracks01) (got %d)" % batch.get_lod_instance_count())
-		check(batch.get_instance_count() > batch.get_lod_instance_count(), "a mixed batch's full-detail tier includes both Barracks01's and QuonsetHut01's meshes")
+		check(batch.get_lod_instance_count() == 0, "the batch has NO LOD tier at all -- Barracks01 never reached it (got %d)" % batch.get_lod_instance_count())
+		check(batch.get_instance_count() > 0, "the batch still has QuonsetHut01's own full-detail instances (got %d)" % batch.get_instance_count())
 		batch.free_all()
 
 	print("=======================")
