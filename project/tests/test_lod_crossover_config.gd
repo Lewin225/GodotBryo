@@ -1,14 +1,15 @@
 extends Node3D
 
-# 2.12 step 8 -- the real, single-sourced configurable crossover distance/
-# margin, replacing the two matching placeholder constants steps 6/7
-# shipped with. Verifies: GamebryoMeshResolver.set_lod_crossover() actually
-# changes what _apply_lod_visibility_range() writes onto real
-# MeshInstance3D children (the only place a built value can be read back --
-# RenderingServer has no getter for an RID's own visibility_range, see
-# test_lod_direct_batch.gd's own note), and that WorldStreamer/CellLoader's
-# own @export values actually reach their `resolver` in _ready(). See
-# phases/2/12-distant-object-lod.md.
+# 2.12 step 8 / issue #56 -- the real, single-sourced configurable crossover
+# distance/margin, now centralized in the GodotBryoSettings autoload
+# instead of duplicated @export vars on WorldStreamer/CellLoader. Verifies:
+# GamebryoMeshResolver.set_lod_crossover() actually changes what
+# _apply_lod_visibility_range() writes onto real MeshInstance3D children
+# (the only place a built value can be read back -- RenderingServer has no
+# getter for an RID's own visibility_range, see test_lod_direct_batch.gd's
+# own note), and that WorldStreamer/CellLoader actually read
+# GodotBryoSettings and thread it into their own `resolver` in _ready().
+# See phases/2/12-distant-object-lod.md and issue #56.
 
 const DATA_DIR := "../fresh_nv_copy/Data/"
 
@@ -25,10 +26,10 @@ func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
 
-	print("=== GamebryoMeshResolver defaults to a real, non-zero crossover before set_lod_crossover() is ever called ===")
+	print("=== GamebryoMeshResolver defaults to 0.0 (visibly 'unset', not a duplicated tuning literal) before set_lod_crossover() is ever called ===")
 	var default_resolver := GamebryoMeshResolver.new()
-	check(default_resolver.lod_crossover_distance_m > 0.0, "default lod_crossover_distance_m is non-zero (got %s)" % default_resolver.lod_crossover_distance_m)
-	check(default_resolver.lod_crossover_margin_m > 0.0, "default lod_crossover_margin_m is non-zero (got %s)" % default_resolver.lod_crossover_margin_m)
+	check(default_resolver.lod_crossover_distance_m == 0.0, "default lod_crossover_distance_m is 0.0 (got %s)" % default_resolver.lod_crossover_distance_m)
+	check(default_resolver.lod_crossover_margin_m == 0.0, "default lod_crossover_margin_m is 0.0 (got %s)" % default_resolver.lod_crossover_margin_m)
 
 	print("=== set_lod_crossover() actually changes what gets written onto real MeshInstance3D children ===")
 	var resolver := GamebryoMeshResolver.new()
@@ -75,27 +76,31 @@ func _ready() -> void:
 			check(saw_lod, "Barracks01 had LOD children to check")
 			node.free()
 
-	print("=== WorldStreamer's own @export values reach its resolver in _ready() ===")
+	print("=== GodotBryoSettings (issue #56) reaches WorldStreamer's own resolver in _ready() ===")
+	var orig_distance := GodotBryoSettings.lod0_crossover_distance_m
+	var orig_margin := GodotBryoSettings.lod0_crossover_margin_m
+	GodotBryoSettings.lod0_crossover_distance_m = 77.0
+	GodotBryoSettings.lod0_crossover_margin_m = 2.5
 	var streamer := WorldStreamer.new()
-	streamer.lod_crossover_distance_m = 77.0
-	streamer.lod_crossover_margin_m = 2.5
 	add_child(streamer)
 	check(streamer.resolver != null, "WorldStreamer built its own resolver in _ready()")
 	if streamer.resolver != null:
-		check(streamer.resolver.lod_crossover_distance_m == 77.0, "WorldStreamer's own @export reached resolver.lod_crossover_distance_m (got %s)" % streamer.resolver.lod_crossover_distance_m)
-		check(streamer.resolver.lod_crossover_margin_m == 2.5, "WorldStreamer's own @export reached resolver.lod_crossover_margin_m (got %s)" % streamer.resolver.lod_crossover_margin_m)
+		check(streamer.resolver.lod_crossover_distance_m == 77.0, "GodotBryoSettings reached resolver.lod_crossover_distance_m (got %s)" % streamer.resolver.lod_crossover_distance_m)
+		check(streamer.resolver.lod_crossover_margin_m == 2.5, "GodotBryoSettings reached resolver.lod_crossover_margin_m (got %s)" % streamer.resolver.lod_crossover_margin_m)
 	streamer.queue_free()
 
-	print("=== CellLoader's own @export values reach its resolver in _ready() ===")
+	print("=== GodotBryoSettings (issue #56) reaches CellLoader's own resolver in _ready() ===")
+	GodotBryoSettings.lod0_crossover_distance_m = 33.0
+	GodotBryoSettings.lod0_crossover_margin_m = 1.5
 	var loader := CellLoader.new()
-	loader.lod_crossover_distance_m = 33.0
-	loader.lod_crossover_margin_m = 1.5
 	add_child(loader)
 	check(loader.resolver != null, "CellLoader built its own resolver in _ready()")
 	if loader.resolver != null:
-		check(loader.resolver.lod_crossover_distance_m == 33.0, "CellLoader's own @export reached resolver.lod_crossover_distance_m (got %s)" % loader.resolver.lod_crossover_distance_m)
-		check(loader.resolver.lod_crossover_margin_m == 1.5, "CellLoader's own @export reached resolver.lod_crossover_margin_m (got %s)" % loader.resolver.lod_crossover_margin_m)
+		check(loader.resolver.lod_crossover_distance_m == 33.0, "GodotBryoSettings reached resolver.lod_crossover_distance_m (got %s)" % loader.resolver.lod_crossover_distance_m)
+		check(loader.resolver.lod_crossover_margin_m == 1.5, "GodotBryoSettings reached resolver.lod_crossover_margin_m (got %s)" % loader.resolver.lod_crossover_margin_m)
 	loader.queue_free()
+	GodotBryoSettings.lod0_crossover_distance_m = orig_distance
+	GodotBryoSettings.lod0_crossover_margin_m = orig_margin
 
 	print("=======================")
 	if failures == 0:

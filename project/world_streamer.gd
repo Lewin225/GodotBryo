@@ -107,18 +107,6 @@ const CHECK_INTERVAL_SEC := 0.1
 ## reproducing a suspected freeze.
 @export var freeze_trace_enabled: bool = false
 
-## phases/2/12-distant-object-lod.md, step 8: the real, inspector-tunable
-## crossover distance/margin -- threaded into both the Node-based path
-## (resolver.set_lod_crossover(), step 6) and the RID-based path
-## (batch.set_lod_crossover(), step 7) in _ready()/_stream_tile()/
-## _stream_persistent_root() below, so there's exactly one place that
-## actually decides this value at runtime, not two matching constants in
-## two languages. Still a flat global placeholder, not the real
-## per-category/size-proportional system enginedocs/lod.md describes -- see
-## that task doc's own explicit scoping.
-@export var lod_crossover_distance_m: float = 100.0
-@export var lod_crossover_margin_m: float = 5.0
-
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
@@ -186,7 +174,11 @@ func _ready() -> void:
 		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 			push_error("WorldStreamer fallback could not open FalloutNV.esm")
 		resolver = GamebryoMeshResolver.new(data_dir)
-	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
+	# GodotBryoSettings (issue #56) is the single source of truth -- threaded
+	# into both the Node-based path (resolver, here) and the RID-based path
+	# (batch, in _stream_tile()/_stream_persistent_root() below).
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- the Node-based construct path's own crossover (CONT/ACTI/FURN/DOOR VWD placements still build real Nodes even at runtime, see _construct_visual())
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m) # issue #56
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_pool = GamebryoResolverPool.new(-1, data_dir) # sized from OS.get_processor_count() -- see that class's own doc comment
 
@@ -541,7 +533,7 @@ func _stream_tile(cell_form_id: int, coord: Vector2i, my_generation: int, full_d
 	# final reveal (confirmed cheap, diagnostic_batch_build_ms) stays bundled.
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the real, single-sourced exported value (was a duplicated GDScript/C++ constant pair in step 7)
+	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
 	batch.set_enabled(false)
 
 	var _rt0 := Time.get_ticks_usec() # TEMP DIAGNOSTIC
@@ -606,8 +598,13 @@ func _stream_persistent_root() -> void:
 
 	var batch := DirectGeometryBatch.new()
 	batch.init(self)
-	batch.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m) # phases/2/12-distant-object-lod.md, step 8 -- the real, single-sourced exported value (was a duplicated GDScript/C++ constant pair in step 7)
-	batch.set_enabled(false)
+	batch.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m) # phases/2/12-distant-object-lod.md, step 8 -- GodotBryoSettings (issue #56) is the single source of truth
+	# Issue #56: defense-in-depth for a distant/skyline-marker placement that
+	# somehow reaches _construct_direct() directly -- in practice
+	# construct_from_resolved() routes every such placement to the Node-based
+	# path instead (see that function's own doc comment), so this batch never
+	# actually receives one at runtime.
+	batch.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
 
 	_in_flight_count += 1
 	var results = await _resolve_refs_threaded(refs, my_generation)
