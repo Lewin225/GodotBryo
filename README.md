@@ -2,6 +2,8 @@ GodotByro is attempting to be a from scratch, drop in replacement for GameByro t
 
 Point it at a valid New Vegas ESM, and go for a walk
 
+Why Godot? Lightweight, zero cost and easily modifiable though gdextention, source available 
+
 Current Status
 * Gameplay
   * Open world terrain rendering using Terrain3D sourced from LAND records, including the 7+1 layer terrain blending from gamebyro
