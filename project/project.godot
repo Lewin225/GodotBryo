@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.7")
 [autoload]
 
 GameDataSettings="*res://game_data_settings.gd"
+GodotBryoSettings="*res://godot_bryo_settings.gd"
 
 [editor_plugins]
 
