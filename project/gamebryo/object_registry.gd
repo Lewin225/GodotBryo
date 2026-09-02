@@ -396,6 +396,27 @@ func construct_from_resolved(result: Dictionary, batch: DirectGeometryBatch = nu
 						if result.get("animated", false):
 							return _autoplay_special_idle(_construct_animated_visual(result))
 						return _construct_visual(GamebryoVisual, result)
+					# Issue #56: a VWD-flagged placement with a real lod_geometry
+					# companion is ALSO routed to the real-Node path, never
+					# DirectGeometryBatch -- DirectGeometryBatch groups every
+					# placement of a shared mesh across a whole tile into ONE
+					# MultiMesh RenderingServer instance with ONE shared
+					# visibility_range, and Godot measures that range's distance
+					# from the camera to the COMBINED instance AABB's center, not
+					# to each individual placement. For repeated/spread-out
+					# meshes (e.g. the Strip perimeter wall's segments) that made
+					# the LOD/near-fade crossover fail: standing right next to one
+					# segment doesn't put you near the combined AABB's center, so
+					# the low-detail companion never actually hid up close (the
+					# real bug behind issue #56 -- confirmed against real ESM
+					# data: the offending Strip wall / McCarran meshes are
+					# ordinary per-cell VWD STAT placements, not persistent-cell
+					# content). The Node-based path gives every placement its own
+					# MeshInstance3D with its own correctly-measured
+					# visibility_range, so this is a correctness fix, not a
+					# perf-neutral style choice.
+					if not result.get("lod_geometry", {}).is_empty():
+						return _construct_visual(GamebryoVisual, result)
 					if batch != null:
 						_construct_direct(result, batch)
 						return null
