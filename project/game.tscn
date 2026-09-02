@@ -779,6 +779,15 @@ fit_content = true
 scroll_active = false
 autowrap_mode = 0
 
+[node name="DistantLod" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1063840942]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Distant Fade: 300m"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
 [node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=636008105]
 layout_mode = 2
 
