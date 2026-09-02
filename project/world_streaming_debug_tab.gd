@@ -28,6 +28,18 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _objects_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/ObjectsPerFrameSpin"
 @onready var _freeze_trace_check: CheckBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/FreezeTraceCheck"
 
+## Issue #56 follow-up: live-tunable GodotBryoSettings LOD knobs, same
+## pattern as tiles_per_frame/objects_per_frame above -- applied to
+## newly-streamed/newly-built content going forward, NOT retroactively
+## re-applied to already-resident objects (visibility_range is set once
+## at construction, on a MeshInstance3D or via
+## instance_geometry_set_visibility_range() on a DirectGeometryBatch RID).
+@onready var _lod0_dist_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod0DistSpin"
+@onready var _lod0_margin_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod0MarginSpin"
+@onready var _lod1_max_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod1MaxSpin"
+@onready var _distant_cutoff_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/DistantCutoffSpin"
+@onready var _distant_margin_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/DistantMarginSpin"
+
 @onready var _tex_filter_edit: LineEdit = $"Margin/SubTabs/Ground Textures/VBox/TexFilterEdit"
 @onready var _texture_tree: Tree = $"Margin/SubTabs/Ground Textures/VBox/TextureTree"
 @onready var _texture_summary_label: RichTextLabel = $"Margin/SubTabs/Ground Textures/VBox/TexHeader/TexSummaryLabel"
@@ -45,6 +57,11 @@ func _ready() -> void:
 	_tiles_per_frame_spin.value_changed.connect(_on_tiles_per_frame_changed)
 	_objects_per_frame_spin.value_changed.connect(_on_objects_per_frame_changed)
 	_freeze_trace_check.toggled.connect(_on_freeze_trace_toggled)
+	_lod0_dist_spin.value_changed.connect(_on_lod0_dist_changed)
+	_lod0_margin_spin.value_changed.connect(_on_lod0_margin_changed)
+	_lod1_max_spin.value_changed.connect(_on_lod1_max_changed)
+	_distant_cutoff_spin.value_changed.connect(_on_distant_cutoff_changed)
+	_distant_margin_spin.value_changed.connect(_on_distant_margin_changed)
 	_tex_filter_edit.text_changed.connect(func(_t: String) -> void: _refresh_texture_list())
 	_refresh()
 
@@ -88,6 +105,36 @@ func _on_freeze_trace_toggled(enabled: bool) -> void:
 	if _suppress_spin_signals or _world_streamer == null:
 		return
 	_world_streamer.freeze_trace_enabled = enabled
+
+
+func _on_lod0_dist_changed(value: float) -> void:
+	if _suppress_spin_signals:
+		return
+	GodotBryoSettings.lod0_crossover_distance_m = value
+
+
+func _on_lod0_margin_changed(value: float) -> void:
+	if _suppress_spin_signals:
+		return
+	GodotBryoSettings.lod0_crossover_margin_m = value
+
+
+func _on_lod1_max_changed(value: float) -> void:
+	if _suppress_spin_signals:
+		return
+	GodotBryoSettings.lod1_max_range_m = value
+
+
+func _on_distant_cutoff_changed(value: float) -> void:
+	if _suppress_spin_signals:
+		return
+	GodotBryoSettings.distant_lod_near_cutoff_m = value
+
+
+func _on_distant_margin_changed(value: float) -> void:
+	if _suppress_spin_signals:
+		return
+	GodotBryoSettings.distant_lod_near_margin_m = value
 
 
 func _refresh() -> void:
@@ -144,6 +191,11 @@ func _refresh_tuning_spinboxes() -> void:
 	_tiles_per_frame_spin.value = _world_streamer.tiles_per_frame
 	_objects_per_frame_spin.value = _world_streamer.objects_per_frame
 	_freeze_trace_check.button_pressed = _world_streamer.freeze_trace_enabled
+	_lod0_dist_spin.value = GodotBryoSettings.lod0_crossover_distance_m
+	_lod0_margin_spin.value = GodotBryoSettings.lod0_crossover_margin_m
+	_lod1_max_spin.value = GodotBryoSettings.lod1_max_range_m
+	_distant_cutoff_spin.value = GodotBryoSettings.distant_lod_near_cutoff_m
+	_distant_margin_spin.value = GodotBryoSettings.distant_lod_near_margin_m
 	_suppress_spin_signals = false
 
 
