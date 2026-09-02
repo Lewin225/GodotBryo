@@ -495,6 +495,7 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		float scale = 1.0f;
 		bool has_data = false;
 		bool has_xtel = false;
+		bool has_distant_skyline_marker = false;
 		uint32_t dest_refr_form_id = 0;
 		float dest_position[3] = { 0.0f, 0.0f, 0.0f };
 		float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
@@ -503,6 +504,10 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 			if (s.type == "NAME" && s.size >= 4) {
 				util::ByteReader sr(s.data, s.size);
 				base_form_id = sr.read_u32();
+			} else if (s.type == "XSRF" || s.type == "XSRD") {
+				// See ReferencePlacement::has_distant_skyline_marker's own
+				// doc comment (esm_types.h) for what this marks and why.
+				has_distant_skyline_marker = true;
 			} else if (s.type == "XEMI" && s.size >= 4) {
 				util::ByteReader sr(s.data, s.size);
 				emittance_form_id = sr.read_u32();
@@ -547,6 +552,7 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 		pl.scale = scale;
 		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
 		pl.has_xtel = has_xtel;
+		pl.has_distant_skyline_marker = has_distant_skyline_marker;
 		pl.dest_refr_form_id = dest_refr_form_id;
 		std::memcpy(pl.dest_position, dest_position, sizeof(dest_position));
 		std::memcpy(pl.dest_rotation, dest_rotation, sizeof(dest_rotation));

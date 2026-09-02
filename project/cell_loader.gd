@@ -94,8 +94,8 @@ func _ready() -> void:
 	# GodotBryoSettings (issue #56) is the single source of truth -- this
 	# class's `resolver` is a genuinely separate GamebryoMeshResolver
 	# instance from WorldStreamer's, but both now read the same config.
-	resolver.set_lod_crossover(GodotBryoSettings.get_lod0_crossover_distance_raw(), GodotBryoSettings.get_lod0_crossover_margin_raw(), GodotBryoSettings.get_lod1_max_range_raw())
-	resolver.set_distant_lod_range(GodotBryoSettings.get_distant_lod_near_cutoff_raw(), GodotBryoSettings.get_distant_lod_near_margin_raw())
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m)
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
 	_builder.progress.connect(func(f): load_progress.emit(f))
