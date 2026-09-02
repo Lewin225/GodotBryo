@@ -19,6 +19,10 @@ config/features=PackedStringArray("4.7")
 GameDataSettings="*res://game_data_settings.gd"
 GodotBryoSettings="*res://godot_bryo_settings.gd"
 
+[display]
+
+window/subwindows/embed_subwindows=false
+
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/script_viewer/plugin.cfg")
