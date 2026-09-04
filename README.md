@@ -2,7 +2,7 @@
 
 *Targeting fallout new vegas (with fallout 3 and skyrim as future work)*
 
-Why Godot? Lightweight, zero cost and easily modifiable though gdextension, source available , multi platform
+Why Godot? Lightweight, existing renderer, zero cost and easily modifiable though gdextension, source available , multi platform
 
 
 **Current Status**
