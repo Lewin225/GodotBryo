@@ -1,8 +1,14 @@
 **GodotByro is attempting to be a from scratch, drop in replacement for GameByro** 
 
+<img width="1143" height="642" alt="37" src="https://github.com/user-attachments/assets/b391b141-29c5-47d6-92fe-d298d620408a" />
+
+
 *Targeting fallout new vegas (with fallout 3 and skyrim as future work)*
 
 Why Godot? Lightweight, existing renderer, zero cost and easily modifiable though gdextension, source available , multi platform
+
+
+<img width="1141" height="636" alt="56" src="https://github.com/user-attachments/assets/0e071226-0fae-4177-9dc6-979726d76cc6" />
 
 
 **Current Status**
@@ -21,7 +27,7 @@ Why Godot? Lightweight, existing renderer, zero cost and easily modifiable thoug
   * ACTI - Scripts attached fire correctly through the script engine, but api is very basic as is
   * MISC, WEAP, ALCH - Moveable Jolt physics objects. Can be picked up into a placeholder inventory
 
-
+<img width="1143" height="643" alt="54" src="https://github.com/user-attachments/assets/37bc0e0c-f5d5-4c56-870e-20bcefe2a0ab" />
 
 * Internal
   * ESM Parsing, Form Data resolution into resources
