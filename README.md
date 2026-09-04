@@ -1,6 +1,6 @@
 **GodotByro is attempting to be a from scratch, drop in replacement for GameByro** 
 
-<img width="1143" height="642" alt="37" src="https://github.com/user-attachments/assets/b391b141-29c5-47d6-92fe-d298d620408a" />
+[57.webm](https://github.com/user-attachments/assets/acd63b62-cdd3-4947-a576-eafb900f62df)
 
 
 *Targeting fallout new vegas (with fallout 3 and skyrim as future work)*
