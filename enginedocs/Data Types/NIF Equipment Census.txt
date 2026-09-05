@@ -1,0 +1,71 @@
+NIF Equipment Census — official armor model findings
+
+SCOPE
+The census covers FalloutNV.esm plus CaravanPack, ClassicPack, DeadMoney,
+GunRunnersArsenal, HonestHearts, LonesomeRoad, MercenaryPack, OldWorldBlues,
+and TribalPack. It reads record metadata from all ten masters and resolves model
+paths through all official BSAs. Generated CSV reports are in
+enginedocs/equipment_census/.
+
+MODEL COLLECTION ORDER
+For ARMO and ARMA, the authored collection order is:
+
+1. MODL — male biped model data
+2. MOD2 — male world model data
+3. MOD3 — female biped model data
+4. MOD4 — female world model data
+
+This ordering is confirmed by the record definitions and the all-master census.
+The shipped ARMA population contains MODL=159, MOD2=2, MOD3=114, MOD4=0.
+ARMO contains MODL=478, MOD2=430, MOD3=308, MOD4=126. Missing gender or world
+variants are real absent fields and must not be filled by guessing another path.
+
+SKIN TARGETS
+946 unique equipment NIF paths were found and all resolved through the official
+BSAs. 758 contain skin data and 188 do not. A skin target is joined to its NIF
+submesh by the authored target/submesh name. Each target retains its own bone
+name list; no global numeric bone index is assumed.
+
+BODY-PART DISMEMBERMENT IDS
+Equipment meshes use BSDismemberSkinInstance partitions. The loader reports the
+partition IDs per skin target. The complete observed equipment set is:
+0, 1, 2, 3, 4, 5, 7, 10, 13, 101, 103, 105, 107, 110, 201, 203, 205, 207,
+210, 1000, 3000, 5000, 7000, 10000, 65533, 65535.
+
+The last two values are not assigned a semantic name. They are preserved as raw
+IDs. The partition namespace must remain separate from the ESM BMDT slot-mask
+namespace until a complete mapping is directly established.
+
+NUDE-BODY BASELINE
+The census found 11 unique nude-body NIF paths from all official RACE body-part
+collections. The known humanoid baseline includes upper-body, left-hand, and
+right-hand skin targets plus separate body/limb/neck/head gore-cap partitions.
+Representative human upperbody partitions are:
+
+- Arms:0 — 0, 3000, 5000, 7000, 10000
+- Arms:1 — 5, 7, 3000, 3, 10000, 10, 5000, 7000
+- bodycaps — 207, 210, 203, 205
+- limbcaps — 105, 103, 107, 110
+- meatneck01 — 201
+- meathead01 — 101
+
+SLOT MASKS AND OVERLAP
+BMDT's first uint32 is the ESM biped-slot mask. Confirmed values include head,
+hair, upper body, left/right hand, weapon, Pip-Boy, backpack, necklace,
+headband, hat, glasses, nose ring, earrings, mask, choker, mouth object, and
+three body add-on slots. BMDT masks and NIF partition IDs are not numerically
+identical: for example, an upper-body mask is bit 0x00000004 while the authored
+upper-body NIF commonly contains partition IDs 0, 3, 5, 3000, 5000, 7000, and
+10000.
+
+Therefore the safe compositor rule is not “hide partition ID equal to slot bit.”
+It must select the gender-specific ARMO/ARMA models, retain their authored skin
+and partition metadata, and apply a separately verified body-occupancy mapping
+to hide or retain nude-body submeshes. Overlapping slot masks are evidence of
+occupancy conflicts, but the exact precedence rule is not established by static
+records alone and remains a runtime behavior test.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/ARMO.html
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/ARMA.html
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/Subrecords/BMDT.html

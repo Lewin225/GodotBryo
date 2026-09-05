@@ -122,6 +122,43 @@ struct ReferencePlacement {
 	uint32_t dest_refr_form_id = 0;
 	float dest_position[3] = { 0.0f, 0.0f, 0.0f };
 	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
+
+	// NPC_-only: RNAM (race FormID) and ACBS flags bit 0 (female) -- only
+	// populated by EsmFile::get_cell_actors() when base_type == "NPC_"
+	// (issue #52 chunk 5, see the "ESM humanoid assembly structure" finding
+	// from chunk 2); 0/false otherwise. CREA also has a subrecord literally
+	// tagged RNAM, but it means something unrelated there (impact data
+	// set) -- deliberately not reused for CREA to avoid misreading it.
+	uint32_t race_form_id = 0;
+	bool is_female = false;
+
+	// WHAT THIS IS: REFR.XSRF and REFR.XSRD are both undocumented even in
+	// the community's own xEdit/fopdoc reference (confirmed:
+	// FalloutNV/Records/REFR.md lists both with unknown name/type/purpose).
+	// We do NOT know their real meaning or byte-level layout. This field is
+	// only true when the subrecord tag "XSRF" or "XSRD" is present on the
+	// REFR at all -- nothing about their payload bytes is read or decoded
+	// anywhere in this codebase. Deliberately named after that raw,
+	// confirmed fact (presence of these tags), not after an interpretation
+	// of it -- see issue #58 for why that distinction matters here.
+	//
+	// WHAT WE INFER FROM IT (issue #56, empirical correlation only, not a
+	// documented spec): presence is a 100%-consistent marker for a class of
+	// placement Bethesda used for distant Strip/McCarran skyline dressing --
+	// confirmed against a real 4468-ref WastelandNV persistent-cell census,
+	// every single "*Imposter*"-named model (215/215) carries XSRF and/or
+	// XSRD, zero without it, and the only OTHER refs that carry it are the
+	// exact same conceptual category under a different naming scheme
+	// (distant-view glow/light-pollution dressing: UltraLuxDome_GlowsWL*,
+	// Lucky38Lights*, NVStripLightPollution*, NV_TheTops-Hotel_NeonWL*,
+	// GomorrahLights*, ...). These are placed at essentially the SAME
+	// coordinates as their real, separately-placed high-detail counterparts,
+	// are never VWD-flagged, and have no fade mechanism of their own via
+	// the ordinary per-object _lod.nif/VWD pairing -- this is what stayed
+	// visible up close no matter how the ordinary LOD0/LOD1 crossover was
+	// tuned. The actual near-fade distance applied stays
+	// GodotBryoSettings-configured, not decoded from XSRF/XSRD's own bytes.
+	bool has_xsrf_or_xsrd = false;
 };
 
 // phases/2/07-runtime-cell-loader.md: an exterior CELL's own XCLC grid
@@ -508,6 +545,20 @@ struct WeatherData {
 	uint8_t cloud_speed_upper = 0;
 	uint8_t classification = 0; // 0=None 1=Precipitous 2=Snow
 	uint8_t flags = 0;          // DATA[11]
+};
+
+// Issue #52 chunk 5: a RACE record's per-gender body part MODLs, resolved
+// by EsmFile::get_race_body_parts() -- see that function's own doc comment
+// for the real, confirmed marker-delimited layout this parses (NAM0/NAM1
+// open a Head/Body block, MNAM/FNAM switch gender within whichever block is
+// currently open). One entry per real INDX+MODL pair found; INDX values
+// with no MODL (e.g. Ears, which only ever carries an ICON in real data) or
+// a non-.nif MODL (e.g. the ".egt" texture-only entry at the end of the
+// body block) are skipped -- only real mesh parts are kept.
+struct RaceBodyPart {
+	uint32_t index = 0; // the RACE record's own INDX value (0=UpperBody, 1=LeftHand, 2=RightHand for the body block)
+	std::string model_path;
+	std::string icon_path;
 };
 
 } // namespace esm

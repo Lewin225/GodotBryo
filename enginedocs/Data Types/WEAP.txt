@@ -1,0 +1,71 @@
+WEAP — Weapon record
+
+AUTHORED ROLE
+WEAP is an inventory/equipment item with its own weapon data and model
+collections. It is separate from ARMO/ARMA, but can also use biped model-list
+data for held/equipped visual geometry.
+
+EQUIPMENT CENSUS
+FalloutNV.esm contains 261 WEAP records and 161 unique MODL paths. 21 WEAP
+records contain BIPL references. WEAP DATA is 15 bytes in the shipped records:
+Value:int32 at offset 0, Health:int32 at offset 4, Weight:float32 at offset 8,
+Base Damage:uint16 at offset 12, and Clip Size:uint8 at offset 14.
+
+`DNAM` is 136/164/172/180/196/200/204 bytes in the base records. Its first
+uint32 is the confirmed Animation Type; the complete base census contains all
+values 0 through 13. The typed resource preserves the entire raw DNAM while
+exposing this first field as `animation_type` and mapping it to an animation
+family for later selection.
+
+The typed action selectors use the confirmed DNAM offsets: Flags 1 at 12,
+Grip Animation at 13, Ammo Use at 14, Reload Animation at 15, Attack Animation
+at 41, and Flags 2 at 56. Grip values 230–234 select HandGrip1–5. Reload
+values select ReloadA–S and ReloadW–Z (the authored table skips T–V). Attack
+values select AttackLeft/Right, Attack3–9, AttackLoop/Spin, PlaceMine, or
+AttackThrow variants.
+
+RESOURCE MODEL
+WEAP is represented as a typed WeaponRecord Resource and is referenced by the
+same inventory/equipment composition layer as ArmorRecord. `BIPL` resolves to
+the authored biped/equipped model collection and is preferred for actor visual
+attachment; `MODL` remains the fallback model path for records without a BIPL
+collection. `WNAM` is the first-person base model FormID (a STAT record), and
+`WNM1` through `WNM7` are its weapon-mod variants. The current typed resource
+exposes WNAM as `first_person_form_id`; the variant FormIDs remain in the raw
+subrecords until first-person weapon-model selection is implemented.
+
+ANIMATION ASSET LOCATION
+Weapon animation clips are present in both authored views. Third-person
+humanoid clips are primarily under `meshes\\characters\\_male\\` (with the
+shared human animation set used by the actor skeleton); first-person clips are
+under `meshes\\characters\\_1stperson\\`. The first-person set contains the
+same weapon-family prefixes plus first-person-specific grip, attack, reload,
+equip, and holster clips. `_male` also contains a small number of specially
+named first-person cinematic clips, so view selection must use the directory
+and runtime view context, not a filename substring alone.
+
+The WEAP `DNAM.Animation Type` chooses the weapon family; it does not identify
+one particular NIF animation file. `WNAM` identifies the first-person model
+record, while `MODL`/`BIPL` provide the third-person equipment model path or
+collection. First-person and third-person animation libraries are therefore
+separate runtime layers sharing the weapon category, not one clip library
+applied to both views.
+
+The current base archive contains 976 third-person KF files whose names belong
+to a verified weapon-family prefix; the actor loads these alongside the 121
+locomotion files. This is intentionally a direct inspection library for now,
+not the final conflict-aware animation runtime.
+
+THIRD-PERSON MODEL FINDING
+The base FalloutNV.esm contains 261 WEAP records; 21 contain BIPL. The visual
+compositor therefore must not treat every WEAP.MODL as the complete equipped
+actor model. BIPL entries may resolve to ARMA resources with skin-backed hand
+or weapon geometry and must bind their authored skin targets to the actor's
+shared Skeleton3D. A plain weapon NIF without skin data follows the authored
+`Weapon` skeleton node, with a compatibility fallback for skeleton variants
+without that node, preserving the NIF-authored local transform. Ambiguous or
+unsupported models are diagnosed rather than silently placed as static world
+geometry.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/WEAP.html

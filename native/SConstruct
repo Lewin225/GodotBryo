@@ -13,6 +13,7 @@ sources += Glob("src/common/*.cpp")
 sources += Glob("src/bsa/*.cpp")
 sources += Glob("src/esm/*.cpp")
 sources += Glob("src/nif/*.cpp")
+sources += Glob("src/tri/*.cpp")
 sources += Glob("src/dds/*.cpp")
 sources += Glob("src/gamebryo/*.cpp")
 

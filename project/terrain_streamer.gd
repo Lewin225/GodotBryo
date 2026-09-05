@@ -86,7 +86,7 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 func _ready() -> void:
 	if _configured:
 		return
-	var data_dir := GameDataSettings.get_data_dir()
+	var data_dir: String = GameDataSettings.get_data_dir()
 	var fallback_esm := EsmReader.new()
 	if not fallback_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("TerrainStreamer fallback could not open FalloutNV.esm")
@@ -469,7 +469,9 @@ func _check_streaming() -> void:
 			var coord: Vector2i = center + Vector2i(dx, dy)
 			_desired_cells[coord] = true
 	if center_changed:
+		#var _t_grass := ProfileScope.begin()
 		_update_grass_coverage()
+		#ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():
@@ -559,7 +561,7 @@ func _finish_catalogue(payload: Dictionary) -> void:
 	for i in range(ids.size()):
 		_logical_slots[int(ids[i])] = i + 1
 	grass.discover_catalogue(ids)
-	var init_error: Error = terrain.data.initialize_fixed_region_domain(_catalogue.get("region_domain", []))
+	var init_error := terrain.data.initialize_fixed_region_domain(_catalogue.get("region_domain", []))
 	if init_error != OK:
 		push_error("TerrainStreamer fixed-domain initialization failed: %s" % init_error)
 		return
@@ -695,7 +697,7 @@ func _publish_worker_region(payload: Dictionary, location: Vector2i) -> bool:
 		state_changed.emit()
 		return true
 	var publish_started_us := Time.get_ticks_usec()
-	var publish_error: Error = terrain.data.publish_region_maps(location, payload.get("maps", []))
+	var publish_error := terrain.data.publish_region_maps(location, payload.get("maps", []))
 	diagnostic_publication_ms.append(float(Time.get_ticks_usec() - publish_started_us) / 1000.0)
 	if publish_error != OK:
 		push_error("TerrainStreamer publish %s failed: %s" % [location, publish_error])

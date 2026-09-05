@@ -265,6 +265,34 @@ struct AnimationTrack {
 	std::vector<FloatKey> scale_keys;         // relative multiplier, no unit conversion (same convention as REFR XSCL/SCOL part scale — see units.h)
 };
 
+// One float-valued ControllerLink preserved alongside transform tracks. The
+// link metadata is required because facial KF files may target a named
+// property/controller rather than a Skeleton3D bone. The key values are
+// authored float values; callers decide whether the target is a blend shape,
+// material property, or another runtime value after inspecting the real link.
+struct FloatAnimationTrack {
+	std::string target_node_name;
+	std::string property_type;
+	std::string controller_type;
+	std::vector<FloatKey> keys;
+};
+
+struct BoolKey {
+	float time = 0.0f;
+	bool value = false;
+};
+
+struct DirectAnimationController {
+	std::string target_node_name;
+	int32_t target_node_index = -1;
+	std::string controller_type;
+	std::string interpolator_type;
+	float start_time = 0.0f;
+	float stop_time = 0.0f;
+	std::vector<AnimationTrack> transform_tracks;
+	std::vector<BoolKey> visibility_keys;
+};
+
 // Mirrors niftools' CycleType enum. Real doors/cabinets use kClamp (play
 // once, hold the end pose) — confirmed via the same census, not assumed.
 enum class SequenceCycleType {
@@ -280,10 +308,15 @@ enum class SequenceCycleType {
 // shaft's "Forward" sequence alone has 20+ tracked nodes), not just one.
 struct AnimationSequence {
 	std::string name;
+	// NiControllerSequence.accumRootName. This is authored runtime metadata,
+	// not a decoder instruction: the actor animation system decides whether
+	// to accumulate or reset this node's translation.
+	std::string accum_root_name;
 	SequenceCycleType cycle_type = SequenceCycleType::kClamp;
 	float start_time = 0.0f;
 	float stop_time = 0.0f;
 	std::vector<AnimationTrack> tracks;
+	std::vector<FloatAnimationTrack> float_tracks;
 };
 
 // General (not animation-specific) preservation of the NIF's own node
@@ -484,6 +517,11 @@ struct Mesh {
 	// object pose) and NiBSplineCompTransformInterpolator (confirmed zero
 	// occurrences in real FNV content, not assumed absent).
 	std::vector<AnimationSequence> animation_sequences;
+
+	// Controllers attached directly to NiAVObjects rather than owned by a
+	// NiControllerManager/Sequence. Weapon NIFs use this form for local
+	// components such as clips, slides, hammers, and shell nodes.
+	std::vector<DirectAnimationController> direct_animation_controllers;
 
 	// General node-graph preservation for Dynamic objects — see SceneNode's
 	// own doc comment. Empty is a valid, common state (most Static content

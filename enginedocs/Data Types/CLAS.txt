@@ -1,0 +1,8 @@
+CLAS — Class record
+
+ROLE
+CLAS is an independent actor-class record. NPC_ CNAM references its FormID.
+
+RUNTIME MODEL
+CLAS becomes a typed ClassRecord resource referenced by NpcRecord.actor_class.
+Class data is actor state/configuration, not a node inheritance branch.

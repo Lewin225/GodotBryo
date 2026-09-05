@@ -1,0 +1,22 @@
+RACE — Race record
+
+ROLE
+RACE supplies the race-level appearance collections used by NPC_ records. Its
+body and head-part collections are gender-specific and use real indexed entries.
+
+RESOLVED DATA
+- Male and female body-part descriptors.
+- Male and female head-part descriptors.
+- Each descriptor preserves its RACE index, model path, and icon/texture path.
+- Icon-only entries, such as ears in the verified human data, are preserved without
+  fabricating a model path.
+
+RUNTIME MODEL
+RACE becomes a RaceRecord resource. NpcRecord.race points to that typed resource;
+the NPC node selects the collection matching the NPC's gender.
+
+RACE does not make GamebryoActor inherit from ContainerNode. It is appearance data,
+not a runtime node superclass.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/Fallout3/Records/RACE.html

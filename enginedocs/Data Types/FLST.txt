@@ -1,0 +1,25 @@
+FLST — Form List record
+
+AUTHORED ROLE
+FLST is an ordered list of FormID references. For equipment, ARMO.BIPL points
+to an FLST whose LNAM entries identify the ARMA records that make up the armor's
+biped model list.
+
+EQUIPMENT CENSUS
+All 115 ARMO.BIPL references found in the base FalloutNV.esm resolve to FLST
+records. Expanding them yields 247 LNAM entries: 243 ARMA entries, one ARMO
+entry, and three unresolved references when the base ESM is considered alone.
+The unresolved entries must retain their original FormIDs and be diagnosed by
+load order rather than silently discarded.
+
+Across all ten official masters, 142 ARMO.BIPL references resolve to FLST and
+expand to 301 LNAM entries. 300 entries resolve to ARMA and one remains
+unresolved in the combined official-master set.
+
+RESOURCE MODEL
+FLST should become a typed BipedModelListResource when consumed by ARMO, while
+remaining a general FormListResource for other systems. The equipment-specific
+consumer should resolve entries by FormID and verify the target record type.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/ARMO.html

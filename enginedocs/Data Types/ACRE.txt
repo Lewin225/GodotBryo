@@ -1,0 +1,10 @@
+ACRE — Creature reference
+
+ROLE
+ACRE is the placed creature reference for a CREA base record. It is the creature
+parallel to ACHR and must not be assumed to use the humanoid NPC_ RACE head/body
+assembly.
+
+RUNTIME MODEL
+ACRE resolves to a CreatureActor built from its referenced creature data and placed
+reference state. Creature appearance remains separate work from NPC FaceGen.
