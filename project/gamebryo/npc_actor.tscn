@@ -1,0 +1,130 @@
+[gd_scene format=3 uid="uid://u8y1jbcex0yg"]
+
+[ext_resource type="Script" uid="uid://bbc21avhav0hi" path="res://gamebryo/npc_actor.gd" id="1"]
+[ext_resource type="Script" uid="uid://bvend3dvp1bof" path="res://gamebryo/inventory_component.gd" id="15_iwfsu"]
+[ext_resource type="Script" uid="uid://bvbi5hvneosu0" path="res://gamebryo/actor_animation_component.gd" id="18_ycb7m"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_5pvkm"]
+animation = &"weapon_reload"
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_el4o5"]
+filter_enabled = true
+filters = ["Skeleton3D:Bip01 L Clavicle", "Skeleton3D:Bip01 L Finger1", "Skeleton3D:Bip01 L Finger11", "Skeleton3D:Bip01 L Finger12", "Skeleton3D:Bip01 L Finger2", "Skeleton3D:Bip01 L Finger21", "Skeleton3D:Bip01 L Finger22", "Skeleton3D:Bip01 L Finger3", "Skeleton3D:Bip01 L Finger31", "Skeleton3D:Bip01 L Finger32", "Skeleton3D:Bip01 L Finger4", "Skeleton3D:Bip01 L Finger41", "Skeleton3D:Bip01 L Finger42", "Skeleton3D:Bip01 L ForeTwist", "Skeleton3D:Bip01 L Forearm", "Skeleton3D:Bip01 L Hand", "Skeleton3D:Bip01 L Thumb1", "Skeleton3D:Bip01 L Thumb11", "Skeleton3D:Bip01 L Thumb12", "Skeleton3D:Bip01 L UpperArm", "Skeleton3D:Bip01 LPauldron", "Skeleton3D:Bip01 LUpArmTwistBone", "Skeleton3D:Bip01 Neck", "Skeleton3D:Bip01 R Clavicle", "Skeleton3D:Bip01 R Finger1", "Skeleton3D:Bip01 R Finger11", "Skeleton3D:Bip01 R Finger12", "Skeleton3D:Bip01 R Finger2", "Skeleton3D:Bip01 R Finger21", "Skeleton3D:Bip01 R Finger22", "Skeleton3D:Bip01 R Finger3", "Skeleton3D:Bip01 R Finger31", "Skeleton3D:Bip01 R Finger32", "Skeleton3D:Bip01 R Finger4", "Skeleton3D:Bip01 R Finger41", "Skeleton3D:Bip01 R Finger42", "Skeleton3D:Bip01 R ForeTwist", "Skeleton3D:Bip01 R Forearm", "Skeleton3D:Bip01 R Hand", "Skeleton3D:Bip01 R Thumb1", "Skeleton3D:Bip01 R Thumb11", "Skeleton3D:Bip01 R Thumb12", "Skeleton3D:Bip01 R UpperArm", "Skeleton3D:Bip01 RPauldron", "Skeleton3D:Bip01 RUpArmTwistBone", "Skeleton3D:Bip01 Spine", "Skeleton3D:Bip01 Spine1", "Skeleton3D:Bip01 Spine2", "Skeleton3D:Weapon"]
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_ps0t2"]
+filter_enabled = true
+filters = ["Skeleton3D:Bip01 L Calf", "Skeleton3D:Bip01 L Foot", "Skeleton3D:Bip01 L Thigh", "Skeleton3D:Bip01 L Toe0", "Skeleton3D:Bip01 Pelvis", "Skeleton3D:Bip01 R Calf", "Skeleton3D:Bip01 R Foot", "Skeleton3D:Bip01 R Thigh", "Skeleton3D:Bip01 R Toe0"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_qpm88"]
+animation = &"locomotion_walk_forward"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_kbjpk"]
+animation = &"locomotion_walk_backward"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_5rcvm"]
+animation = &"locomotion_walk_left"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_s0ciq"]
+animation = &"locomotion_walk_right"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_sflvf"]
+animation = &"locomotion_idle"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="AnimationNodeBlendSpace2D_brd68"]
+blend_point_0/node = SubResource("AnimationNodeAnimation_qpm88")
+blend_point_0/pos = Vector2(0, 1)
+blend_point_0/name = &"locomotion_walk_forward"
+blend_point_1/node = SubResource("AnimationNodeAnimation_kbjpk")
+blend_point_1/pos = Vector2(0, -1)
+blend_point_1/name = &"locomotion_walk_backward"
+blend_point_2/node = SubResource("AnimationNodeAnimation_5rcvm")
+blend_point_2/pos = Vector2(-1, 0)
+blend_point_2/name = &"locomotion_walk_left"
+blend_point_3/node = SubResource("AnimationNodeAnimation_s0ciq")
+blend_point_3/pos = Vector2(1, 0)
+blend_point_3/name = &"locomotion_walk_right"
+blend_point_4/node = SubResource("AnimationNodeAnimation_sflvf")
+blend_point_4/pos = Vector2(0, 0)
+blend_point_4/name = &"locomotion_idle"
+
+[sub_resource type="AnimationNodeOneShot" id="AnimationNodeOneShot_depis"]
+filter_enabled = true
+filters = ["Skeleton3D:Bip01 Head", "Skeleton3D:Bip01 L Clavicle", "Skeleton3D:Bip01 L Finger1", "Skeleton3D:Bip01 L Finger11", "Skeleton3D:Bip01 L Finger12", "Skeleton3D:Bip01 L Finger2", "Skeleton3D:Bip01 L Finger21", "Skeleton3D:Bip01 L Finger22", "Skeleton3D:Bip01 L Finger3", "Skeleton3D:Bip01 L Finger31", "Skeleton3D:Bip01 L Finger32", "Skeleton3D:Bip01 L Finger4", "Skeleton3D:Bip01 L Finger41", "Skeleton3D:Bip01 L Finger42", "Skeleton3D:Bip01 L ForeTwist", "Skeleton3D:Bip01 L Forearm", "Skeleton3D:Bip01 L Hand", "Skeleton3D:Bip01 L Thumb1", "Skeleton3D:Bip01 L Thumb11", "Skeleton3D:Bip01 L Thumb12", "Skeleton3D:Bip01 L UpperArm", "Skeleton3D:Bip01 LPauldron", "Skeleton3D:Bip01 LUpArmTwistBone", "Skeleton3D:Bip01 Neck", "Skeleton3D:Bip01 Neck1", "Skeleton3D:Bip01 R Clavicle", "Skeleton3D:Bip01 R Finger1", "Skeleton3D:Bip01 R Finger11", "Skeleton3D:Bip01 R Finger12", "Skeleton3D:Bip01 R Finger2", "Skeleton3D:Bip01 R Finger21", "Skeleton3D:Bip01 R Finger22", "Skeleton3D:Bip01 R Finger3", "Skeleton3D:Bip01 R Finger31", "Skeleton3D:Bip01 R Finger32", "Skeleton3D:Bip01 R Finger4", "Skeleton3D:Bip01 R Finger41", "Skeleton3D:Bip01 R Finger42", "Skeleton3D:Bip01 R ForeTwist", "Skeleton3D:Bip01 R Forearm", "Skeleton3D:Bip01 R Hand", "Skeleton3D:Bip01 R Thumb1", "Skeleton3D:Bip01 R Thumb11", "Skeleton3D:Bip01 R Thumb12", "Skeleton3D:Bip01 R UpperArm", "Skeleton3D:Bip01 RPauldron", "Skeleton3D:Bip01 RUpArmTwistBone", "Skeleton3D:Bip01 Spine2", "Skeleton3D:Weapon"]
+fadein_time = 0.5
+fadeout_time = 0.5
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_3fqrr"]
+animation = &"weapon_forward"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_j17ci"]
+animation = &"weapon_backward"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_0stx0"]
+animation = &"weapon_left"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_k8moq"]
+animation = &"weapon_right"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_rbyni"]
+animation = &"locomotion_idle"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="AnimationNodeBlendSpace2D_4tmmo"]
+blend_point_0/node = SubResource("AnimationNodeAnimation_3fqrr")
+blend_point_0/pos = Vector2(0, 1)
+blend_point_0/name = &"weapon_forward"
+blend_point_1/node = SubResource("AnimationNodeAnimation_j17ci")
+blend_point_1/pos = Vector2(0, -1)
+blend_point_1/name = &"weapon_backward"
+blend_point_2/node = SubResource("AnimationNodeAnimation_0stx0")
+blend_point_2/pos = Vector2(-1, 0)
+blend_point_2/name = &"weapon_left"
+blend_point_3/node = SubResource("AnimationNodeAnimation_k8moq")
+blend_point_3/pos = Vector2(1, 0)
+blend_point_3/name = &"weapon_right"
+blend_point_4/node = SubResource("AnimationNodeAnimation_rbyni")
+blend_point_4/pos = Vector2(0, 0)
+blend_point_4/name = &"locomotion_idle"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_jquul"]
+animation = &"animation_noop"
+
+[sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_ggi80"]
+graph_offset = Vector2(-634.37195, -169.37189)
+nodes/output/position = Vector2(1340, -140)
+nodes/LowerLegLocomotionSpace/node = SubResource("AnimationNodeBlendSpace2D_brd68")
+nodes/LowerLegLocomotionSpace/position = Vector2(-300, 0)
+nodes/LegFilter/node = SubResource("AnimationNodeBlend2_ps0t2")
+nodes/LegFilter/position = Vector2(20, -120)
+nodes/noop/node = SubResource("AnimationNodeAnimation_jquul")
+nodes/noop/position = Vector2(-300, -180)
+nodes/OneShot/node = SubResource("AnimationNodeOneShot_depis")
+nodes/OneShot/position = Vector2(1040, -160)
+nodes/Animation/node = SubResource("AnimationNodeAnimation_5pvkm")
+nodes/Animation/position = Vector2(800, 60)
+nodes/Blend2/node = SubResource("AnimationNodeBlend2_el4o5")
+nodes/Blend2/position = Vector2(440, -80)
+nodes/UpperLocomotionSpace/node = SubResource("AnimationNodeBlendSpace2D_4tmmo")
+nodes/UpperLocomotionSpace/position = Vector2(-300, 220)
+node_connections = [&"output", 0, &"OneShot", &"LegFilter", 0, &"noop", &"LegFilter", 1, &"LowerLegLocomotionSpace", &"OneShot", 0, &"Blend2", &"OneShot", 1, &"Animation", &"Blend2", 0, &"LegFilter", &"Blend2", 1, &"UpperLocomotionSpace"]
+
+[node name="NPCActor" type="Node3D" unique_id=654429205]
+script = ExtResource("1")
+preset = "Custom"
+custom_base_form_id = "00104E84"
+
+[node name="InventoryComponent" type="Node" parent="." unique_id=921720935]
+script = ExtResource("15_iwfsu")
+
+[node name="ActorAnimationComponent" type="Node" parent="." unique_id=544222202]
+script = ExtResource("18_ycb7m")
+
+[node name="AnimationTree" type="AnimationTree" parent="." unique_id=727612342]
+active = false
+tree_root = SubResource("AnimationNodeBlendTree_ggi80")
+parameters/LowerLegLocomotionSpace/blend_position = Vector2(0, 0)
+parameters/LegFilter/blend_amount = 1.0
+parameters/OneShot/active = false
+parameters/OneShot/internal_active = false
+parameters/OneShot/request = 0
+parameters/Blend2/blend_amount = 1.0
+parameters/UpperLocomotionSpace/blend_position = Vector2(0, 0)

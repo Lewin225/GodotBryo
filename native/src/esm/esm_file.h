@@ -121,6 +121,29 @@ public:
 	// own FormID (parts have no FormID of their own) for traceability.
 	std::vector<ReferencePlacement> get_scol_parts(const RecordInfo &scol) const;
 
+	// Issue #52 chunk 5: a RACE record's body-part MODLs for one gender
+	// (`female`), e.g. UpperBody/LeftHand/RightHand for a human race --
+	// see the "ESM humanoid assembly structure" finding from chunk 2 and
+	// RaceBodyPart's own doc comment for the real, confirmed layout this
+	// parses. Head parts (Head/Ears/Mouth/Teeth/Tongue/Eyes) are
+	// deliberately NOT returned -- FaceGen is out of scope for this issue
+	// (see the issue #52 artifact's own note). Empty if race_form_id isn't
+	// a RACE record or carries no real body mesh parts.
+	std::vector<RaceBodyPart> get_race_body_parts(uint32_t race_form_id, bool female) const;
+	std::vector<RaceBodyPart> get_race_head_parts(uint32_t race_form_id, bool female) const;
+	std::vector<RaceBodyPart> get_race_parts(uint32_t race_form_id, bool female, bool head) const;
+
+	// issue #52 chunk 1: resolves every ACHR (placed NPC_) and ACRE (placed
+	// CREA) directly under `cell` to a ReferencePlacement, the same way
+	// get_cell_references() resolves REFR. ACHR/ACRE share REFR's NAME/DATA/
+	// XSCL placement-subrecord layout (confirmed against real FalloutNV.esm
+	// data — see native/tools/esm_actor_survey.cpp); XEMI/XTEL are REFR-only
+	// and not read here. base_type will be "NPC_" or "CREA"; base_editor_id/
+	// model_path come from the same base-record EDID/MODL/SCRI resolution
+	// get_cell_references() uses (MODL is commonly absent on NPC_/CREA —
+	// body assembly is a later chunk's concern, not this one's).
+	std::vector<ReferencePlacement> get_cell_actors(const RecordInfo &cell) const;
+
 	// Reads a LIGH record's own DATA subrecord (phases/1/03-light-sources.md).
 	// std::nullopt if the FormID doesn't resolve to a LIGH record or has no
 	// DATA subrecord.
@@ -242,7 +265,24 @@ public:
 	// found").
 	std::optional<DoorData> get_door_data(uint32_t door_form_id) const;
 
+	// Actor template scene work: resolves a bare NPC_/CREA base record
+	// directly by FormID -- the same fields get_cell_actors() reads off a
+	// placed ACHR/ACRE's base record (EDID/MODL/SCRI, plus RNAM/ACBS for
+	// NPC_), but with no REFR/ACHR/ACRE placement context at all
+	// (refr_form_id=0, position/rotation zero, scale=1). For previewing/
+	// configuring a specific actor directly (e.g. an editor tool script),
+	// not for anything actually placed in the world. std::nullopt if
+	// base_form_id doesn't resolve, or resolves to something other than
+	// NPC_/CREA.
+	std::optional<ReferencePlacement> get_actor_by_form_id(uint32_t base_form_id) const;
+
 private:
+	// Shared by get_cell_actors() and get_actor_by_form_id() -- reads
+	// EDID/MODL/SCRI (every base record) plus RNAM/ACBS (NPC_ only) off
+	// `base` into `pl`. See ReferencePlacement's own doc comment for why
+	// RNAM isn't read for CREA (means something unrelated there).
+	void fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const;
+
 	std::FILE *file_ = nullptr;
 	long file_size_ = 0;
 	FileHeader header_;

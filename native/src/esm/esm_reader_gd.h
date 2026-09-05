@@ -7,7 +7,9 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_int64_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -71,6 +73,11 @@ public:
 	// reuses this unfiltered).
 	Array get_cell_references(int64_t cell_form_id) const;
 
+	// issue #52 chunk 1: same Dictionary shape as get_cell_references(), but
+	// resolves ACHR/ACRE (placed NPC_/CREA) instead of REFR — see
+	// EsmFile::get_cell_actors(). "base_type" will be "NPC_" or "CREA".
+	Array get_cell_actors(int64_t cell_form_id) const;
+
 	// Same Dictionary shape as get_cell_references(), but the given cell's
 	// owning worldspace's own "persistent" cell instead — the refs a caller
 	// loading cell_form_id also needs to place alongside its own
@@ -95,6 +102,35 @@ public:
 	// bool, "off_by_default": bool }, or an empty Dictionary if the FormID
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
+
+	// Issue #52 chunk 5: a RACE record's real body-part model paths for one
+	// gender (UpperBody/LeftHand/RightHand for a human race) -- see
+	// EsmFile::get_race_body_parts(). Array of Dictionary: { "index": int,
+	// "model": String }. Deliberately body parts only -- FaceGen head parts
+	// are out of scope for this issue.
+	Array get_race_body_parts(int64_t race_form_id, bool female) const;
+	Array get_race_head_parts(int64_t race_form_id, bool female) const;
+
+	// Actor template scene work: resolves a bare NPC_/CREA directly by
+	// FormID (no placement/cell context) -- see EsmFile::get_actor_by_form_id().
+	// Same Dictionary shape as get_cell_actors()'s entries, refr_form_id=0.
+	// {} if base_form_id isn't a real NPC_/CREA.
+	Dictionary get_actor_by_form_id(int64_t base_form_id) const;
+
+	// General typed-resource source access: returns the record identity and
+	// each raw subrecord without interpreting fields that are still being
+	// verified. { "form_id": int, "record_type": String, "subrecords":
+	// Array[{ "type": String, "data": PackedByteArray }] }.
+	Dictionary get_record_data(int64_t form_id) const;
+	// Editor-facing record index: one lightweight entry per record, with no
+	// raw payload. Intended for the ESM browser/resource provider.
+	Array get_record_index() const;
+
+	// NPC_ FaceGen fields preserved byte-for-byte and, when structurally
+	// valid, exposed as little-endian float arrays. The array names describe
+	// the confirmed ESM field tags only; their semantic entries remain opaque
+	// until independently verified. The result also includes `diagnostics`.
+	Dictionary get_facegen_data(int64_t npc_form_id) const;
 
 	// Resolves REFR.XEMI's authored colour source. XEMI may point to LIGH
 	// (its DATA colour) or REGN (its RCLR colour); returns { "color": Color }

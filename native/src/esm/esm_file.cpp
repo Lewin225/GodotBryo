@@ -3,6 +3,7 @@
 #include "../common/byte_reader.h"
 #include "../common/units.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -578,6 +579,97 @@ std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &c
 	return out;
 }
 
+std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell) const {
+	std::vector<ReferencePlacement> out;
+	for (const RecordInfo &child : get_child_records(cell)) {
+		if (child.type != "ACHR" && child.type != "ACRE") {
+			continue;
+		}
+
+		std::vector<uint8_t> data = read_record_data(child);
+		std::vector<Subrecord> subs = parse_subrecords(data);
+
+		uint32_t base_form_id = 0;
+		float position[3] = { 0.0f, 0.0f, 0.0f };
+		float rotation[3] = { 0.0f, 0.0f, 0.0f };
+		float scale = 1.0f;
+		bool has_data = false;
+
+		for (const auto &s : subs) {
+			if (s.type == "NAME" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				base_form_id = sr.read_u32();
+			} else if (s.type == "DATA" && s.size >= 24) {
+				util::ByteReader sr(s.data, s.size);
+				// Position, not rotation/scale: Gamebryo units -> meters (units.h).
+				position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+				rotation[0] = read_f32(sr);
+				rotation[1] = read_f32(sr);
+				rotation[2] = read_f32(sr);
+				has_data = true;
+			} else if (s.type == "XSCL" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				scale = read_f32(sr);
+			}
+		}
+
+		if (base_form_id == 0 || !has_data) {
+			continue; // malformed — skip
+		}
+
+		ReferencePlacement pl;
+		pl.refr_form_id = child.form_id;
+		pl.base_form_id = base_form_id;
+		std::memcpy(pl.position, position, sizeof(position));
+		std::memcpy(pl.rotation, rotation, sizeof(rotation));
+		pl.scale = scale;
+		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+
+		if (auto base = find_record_by_form_id(base_form_id)) {
+			fill_actor_base_fields(*base, pl);
+		}
+
+		out.push_back(std::move(pl));
+	}
+	return out;
+}
+
+void EsmFile::fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const {
+	pl.base_type = base.type;
+	std::vector<uint8_t> base_data = read_record_data(base);
+	std::vector<Subrecord> base_subs = parse_subrecords(base_data);
+	for (const auto &s : base_subs) {
+		if (s.type == "EDID") {
+			pl.base_editor_id = s.as_string();
+		} else if (s.type == "MODL") {
+			pl.model_path = s.as_string();
+		} else if (s.type == "SCRI" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.script_form_id = sr.read_u32();
+		} else if (base.type == "NPC_" && s.type == "RNAM" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.race_form_id = sr.read_u32();
+		} else if (base.type == "NPC_" && s.type == "ACBS" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pl.is_female = (sr.read_u32() & 1u) != 0;
+		}
+	}
+}
+
+std::optional<ReferencePlacement> EsmFile::get_actor_by_form_id(uint32_t base_form_id) const {
+	auto base = find_record_by_form_id(base_form_id);
+	if (!base || (base->type != "NPC_" && base->type != "CREA")) {
+		return std::nullopt;
+	}
+	ReferencePlacement pl;
+	pl.base_form_id = base_form_id;
+	pl.scale = 1.0f;
+	fill_actor_base_fields(*base, pl);
+	return pl;
+}
+
 std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) const {
 	std::vector<ReferencePlacement> out;
 	std::vector<uint8_t> data = read_record_data(scol);
@@ -620,6 +712,105 @@ std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) 
 
 			out.push_back(std::move(pl));
 			have_pending = false;
+		}
+	}
+	return out;
+}
+
+// Issue #52 chunk 5: real, confirmed RACE subrecord layout (dumped raw via
+// native/tools/actor_assembly_survey.cpp against CaucasianOld, findings
+// posted on issue #52's chunk 2 comment) — a sequence of 0-byte marker
+// subrecords delimits four blocks, in this exact order: NAM0 opens the Head
+// Data block, MNAM within it means "male head parts follow", FNAM within it
+// means "female head parts follow"; NAM1 then opens the Body Data block,
+// where MNAM/FNAM mean the same thing for body parts. Each part is a real
+// INDX (the part's own index) immediately followed by whichever of
+// MODL/ICON/MODT/MODD that part actually carries (a part can have MODL
+// absent — e.g. Ears only ever carries ICON in real data). Only entries
+// with both a real INDX and a real ".nif" MODL are kept (a non-.nif MODL,
+// e.g. the body block's own ".egt" texture-only fourth entry, is not a mesh
+// and is skipped) — this deliberately stops parsing new part data once
+// subrecords stop being INDX/MODL pairs (HNAM/ENAM/FGGS/... at the end of
+// the record are real, but never carry an INDX, so they're naturally never
+// captured as a part).
+std::vector<RaceBodyPart> EsmFile::get_race_body_parts(uint32_t race_form_id, bool female) const {
+	return get_race_parts(race_form_id, female, false);
+}
+
+std::vector<RaceBodyPart> EsmFile::get_race_head_parts(uint32_t race_form_id, bool female) const {
+	return get_race_parts(race_form_id, female, true);
+}
+
+std::vector<RaceBodyPart> EsmFile::get_race_parts(uint32_t race_form_id, bool female, bool head) const {
+	std::vector<RaceBodyPart> out;
+	auto race = find_record_by_form_id(race_form_id);
+	if (!race || race->type != "RACE") {
+		return out;
+	}
+
+	enum class Block { kNone, kHead, kBody };
+	Block block = Block::kNone;
+	bool want_female = false; // which gender's parts to collect, once inside a block
+	bool collecting = false; // true once MNAM/FNAM has told us which gender the following INDX/MODL pairs belong to
+	bool have_pending_index = false;
+	uint32_t pending_index = 0;
+
+	std::vector<uint8_t> data = read_record_data(*race);
+	for (const auto &s : parse_subrecords(data)) {
+		if (s.type == "NAM0") {
+			block = Block::kHead;
+			collecting = false;
+		} else if (s.type == "NAM1") {
+			block = Block::kBody;
+			collecting = false;
+		} else if (s.type == "MNAM" && block != Block::kNone) {
+			want_female = false;
+			collecting = true;
+		} else if (s.type == "FNAM" && block != Block::kNone) {
+			want_female = true;
+			collecting = true;
+		} else if (s.type == "INDX" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			pending_index = sr.read_u32();
+			have_pending_index = true;
+		} else if (s.type == "MODL" && collecting && want_female == female && have_pending_index && ((block == Block::kHead) == head)) {
+			std::string path = s.as_string();
+			if (block == Block::kHead || block == Block::kBody) {
+				std::string ext = path.size() >= 4 ? path.substr(path.size() - 4) : "";
+				for (auto &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+				if (ext == ".nif") {
+					bool found = false;
+					for (auto &part : out) {
+						if (part.index == pending_index && part.model_path.empty()) {
+							part.model_path = path;
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						RaceBodyPart part;
+						part.index = pending_index;
+						part.model_path = path;
+						out.push_back(std::move(part));
+					}
+				}
+			}
+		} else if (s.type == "ICON" && collecting && want_female == female && have_pending_index && ((block == Block::kHead) == head)) {
+			std::string icon = s.as_string();
+			bool found = false;
+			for (auto &part : out) {
+				if (part.index == pending_index) {
+					part.icon_path = icon;
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				RaceBodyPart part;
+				part.index = pending_index;
+				part.icon_path = icon;
+				out.push_back(std::move(part));
+			}
 		}
 	}
 	return out;

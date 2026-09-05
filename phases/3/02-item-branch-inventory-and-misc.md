@@ -6,6 +6,10 @@ Item branch · Builds on [enginedocs/nv_class_hierarchy.md](../../enginedocs/nv_
 
 ## Scope
 
+Inventory composition is now established as a generic component contract:
+`InventoryComponent` is a child Node usable by NPCs and CONT objects, while
+equipment remains a separate consumer of inventory-owned entries.
+
 Two things, in this order, because the second can't be tested without the first:
 
 1. **A real inventory system** — the player can hold items. Doesn't exist at all yet
@@ -35,7 +39,7 @@ Two things, in this order, because the second can't be tested without the first:
 - Equipping, hotkeys, weight-limit enforcement, any inventory UI beyond wiring the
   already-existing empty Debug Tools "Inventory" tab if convenient.
 - Tuned, Havok-accurate mass/friction/restitution (real `bhkRigidBody` values from the
-  NIF) — that's `ROADMAP.md` Phase 4's own explicit scope ("Dynamic/loose physics
+  NIF) — that's `ROADMAP.md` Phase 14's own explicit scope ("Dynamic/loose physics
   objects (bottles, debris) driven by `bhkRigidBody` mass/friction/restitution
   values"). This task needs a real, shovable/draggable `RigidBody3D`, not perfectly
   tuned physics — a reasonable placeholder mass (e.g. derived loosely from the real
@@ -196,7 +200,7 @@ defaults):
   versa) would be a real, noticeable gap.
 - **Where the `Inventory` class lives** (see above) — no existing precedent to match.
 - **Placeholder mass value** — pick something reasonable and say so in a comment;
-  don't spend time on real Havok mass extraction, that's Phase 4.
+  don't spend time on real Havok mass extraction, that's Phase 14.
 
 ## Acceptance criteria
 

@@ -86,7 +86,7 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 func _ready() -> void:
 	if _configured:
 		return
-	var data_dir := GameDataSettings.get_data_dir()
+	var data_dir: String = GameDataSettings.get_data_dir()
 	var fallback_esm := EsmReader.new()
 	if not fallback_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("TerrainStreamer fallback could not open FalloutNV.esm")
@@ -469,9 +469,9 @@ func _check_streaming() -> void:
 			var coord: Vector2i = center + Vector2i(dx, dy)
 			_desired_cells[coord] = true
 	if center_changed:
-		var _t_grass := ProfileScope.begin()
+		#var _t_grass := ProfileScope.begin()
 		_update_grass_coverage()
-		ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
+		#ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():
