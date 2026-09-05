@@ -90,7 +90,8 @@ public:
 	// nif_types.h's own AnimationSequence/AnimationTrack doc comments for
 	// the real-data census that scoped this. Every Array of Dictionary,
 	// mirroring the source struct fields directly:
-	//   sequence: { "name": String, "cycle_type": int (0=loop/1=reverse/
+	//   sequence: { "name": String, "accum_root_name": String,
+	//     "cycle_type": int (0=loop/1=reverse/
 	//     2=clamp), "start_time": float, "stop_time": float,
 	//     "tracks": Array of track }
 	//   track: { "target_node_name": String, "has_quaternion_keys": bool,
@@ -107,7 +108,12 @@ public:
 	//   vec3_key: same shape as float_key but "value"/"forward"/"backward"
 	//     are Vector3.
 	//   quat_key: { "time": float, "value": Quaternion, "interp": int }
+	//   "float_tracks": Array of { "target_node_name": String,
+	//     "property_type": String, "controller_type": String,
+	//     "keys": Array of float_key } — non-transform ControllerLinks,
+	//     preserved so facial/morph animation can be resolved from real data.
 	Array get_animation_sequences() const;
+	Array get_direct_animation_controllers() const;
 
 	// phases/3/00-door-completion.md follow-up: general node-graph
 	// preservation (nif_types.h's SceneNode doc comment) — every non-root

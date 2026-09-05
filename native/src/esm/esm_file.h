@@ -130,6 +130,8 @@ public:
 	// (see the issue #52 artifact's own note). Empty if race_form_id isn't
 	// a RACE record or carries no real body mesh parts.
 	std::vector<RaceBodyPart> get_race_body_parts(uint32_t race_form_id, bool female) const;
+	std::vector<RaceBodyPart> get_race_head_parts(uint32_t race_form_id, bool female) const;
+	std::vector<RaceBodyPart> get_race_parts(uint32_t race_form_id, bool female, bool head) const;
 
 	// issue #52 chunk 1: resolves every ACHR (placed NPC_) and ACRE (placed
 	// CREA) directly under `cell` to a ReferencePlacement, the same way

@@ -1,6 +1,35 @@
 class_name GamebryoActor
 extends GamebryoObject
 
+const ActorAnimationComponentScript := preload("res://gamebryo/actor_animation_component.gd")
+
+const POSSESSED_SHADOW_SETTING_META := "gamebryo_possessed_original_cast_shadow"
+
+## When true, this actor remains present for lighting/shadows but is omitted
+## from ordinary camera rendering. The setting is shared by NPCActor and
+## CreatureActor; first-person weapon rendering is a separate future layer.
+@export var possessed_first_person: bool = false:
+	set(value):
+		possessed_first_person = value
+		_apply_possessed_first_person_render_mode()
+
+func _enter_tree() -> void:
+	if get_node_or_null(^"ActorAnimationComponent") == null:
+		var component := ActorAnimationComponentScript.new()
+		component.name = "ActorAnimationComponent"
+		add_child(component)
+
+func _apply_possessed_first_person_render_mode() -> void:
+	for child in find_children("*", "MeshInstance3D", true, false):
+		var mesh := child as MeshInstance3D
+		if not mesh.has_meta(POSSESSED_SHADOW_SETTING_META):
+			mesh.set_meta(POSSESSED_SHADOW_SETTING_META, mesh.cast_shadow)
+		if possessed_first_person:
+			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		else:
+			mesh.cast_shadow = int(mesh.get_meta(POSSESSED_SHADOW_SETTING_META))
+			mesh.remove_meta(POSSESSED_SHADOW_SETTING_META)
+
 ## Issue #52 chunk 3: base class for the Actor branch (NPC_/CREA), sibling
 ## of GamebryoVisual under GamebryoObject rather than underneath it — see
 ## enginedocs/nv_class_hierarchy.md's "Actors" section. Actors don't have
@@ -26,7 +55,7 @@ extends GamebryoObject
 ## inherited from GamebryoReference/GamebryoObject).
 ##
 ## Real construction now lives in a hand-authored template scene per leaf
-## (npc_node.tscn/creature_node.tscn) plus this populate() method, NOT
+## (npc_actor.tscn/creature_actor.tscn) plus this populate() method, NOT
 ## purely on-the-fly code the way every other GamebryoObject branch is
 ## built — a deliberate exception, since actors are meaningfully more
 ## complex (skeleton/animation/armor/items) than anything else placed in
@@ -38,7 +67,7 @@ extends GamebryoObject
 ## the same "same code path in-editor and at runtime" discipline
 ## nif_viewer.gd already follows for NIFs.
 ##
-## Base no-op: CreatureNode doesn't override this yet (issue #52's own
-## documented gap — see creature_node.gd). NPCNode does.
+## Base no-op: CreatureActor doesn't override this yet (issue #52's own
+## documented gap — see creature_actor.gd). NPCActor does.
 func populate(_placement: Dictionary, _esm: EsmReader, _mesh_resolver: GamebryoMeshResolver) -> void:
 	pass

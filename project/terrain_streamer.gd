@@ -86,7 +86,7 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 func _ready() -> void:
 	if _configured:
 		return
-	var data_dir := GameDataSettings.get_data_dir()
+	var data_dir: String = GameDataSettings.get_data_dir()
 	var fallback_esm := EsmReader.new()
 	if not fallback_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("TerrainStreamer fallback could not open FalloutNV.esm")

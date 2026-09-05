@@ -1,0 +1,41 @@
+INVENTORY — authored contents and runtime composition
+
+STATUS
+The inventory census covers all ten official masters: FalloutNV.esm and the
+nine official DLC/pack masters. Generated exhaustive rows are in
+enginedocs/inventory_census/inventory_entries.csv and leveled_entries.csv.
+
+CENSUS RESULTS
+- 27,576 authored CNTO entries were found across NPC_ and CONT records.
+- 16,959 LVLO entries were found in LVLI records.
+- All CNTO FormIDs resolved against the combined official-master record set.
+- CNTO references include direct items and LVLI records; CNTO is not an
+  equipped-state marker and must not be rendered as equipment automatically.
+- LVLO references are retained as authored references until leveled-list
+  selection rules are implemented. This census does not expand them.
+
+The observed CNTO target types include ARMO, WEAP, ALCH, AMMO, MISC, KEYM,
+BOOK, CCRD, CMNY, and LVLI, plus a small number of other records. Unexpected
+types are deliberately retained rather than discarded.
+ALCH now resolves to a typed AlchemyRecord, and LVLI resolves to a typed
+LeveledItemRecord whose LVLO references remain unexpanded.
+
+RUNTIME CONTRACT
+Inventory is a composition component, not an NPC base class. NPCs and CONT
+objects may both own an InventoryComponent child. The component stores
+InventoryEntryResource entries containing FormID, quantity, authored source
+position, optional runtime instance_id, and persisted is_equipped state. It has no knowledge of
+equipment slots, actor behavior, rendering, or item pickup rules.
+
+Authored entries retain order and duplicates. Authored entries always start
+unequipped because CNTO contains no equipped-state field. Runtime equipment
+logic may set is_equipped and later associate the entry with a slot. Runtime stack additions may
+merge only when no instance_id is supplied; unique runtime entries receive a
+stable-in-session instance_id. Save serialization stores scalar identity and
+mutable state, while ESM resources are re-resolved from FormID during load.
+
+IMPLEMENTATION LIMITS
+The first component implementation does not infer initial equipment, expand
+LVLI records, enforce weight limits, or write Bethesda .fos files. Those are
+separate layers. The native save architecture permits a project-owned,
+versioned sparse state format keyed by FormID and runtime instance identity.

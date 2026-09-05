@@ -99,6 +99,14 @@ combat, no dialogue yet).
   mid-swing reactivation debounce.
 - Equipment/armor mesh swapping on the skeleton (the "nif per body part + biped slot"
   model FNV uses).
+- NPC appearance foundation: typed `NPC_`/`RACE`/`HAIR`/`EYES` resources, real race-selected
+  head/body assembly, per-NPC EGM/`FGGS` static geometry, and real `.tri` facial morph targets
+  converted to Godot `ArrayMesh` blend shapes. Facial animation drivers and EGT/`FGTS` texture
+  synthesis remain follow-up work. A dedicated NPC facial controller now exposes the authored
+  TRI phoneme/expression names and bounded runtime morph animation; the real humanoid head-KF
+  census found bone-only tracks and no morph-weight tracks, while neither shipped human nor ghoul
+  TRI contains an eyelid/blink target. Authored facial clip mapping and blink source remain open
+  data-verification work.
 - Basic third-person player controller: movement, jump, camera collision — using
   Jolt-backed `CharacterBody3D`.
 - Spawn NPC actors from `NPC_`/`ACHR` records at their placed positions, idle-animated,
@@ -106,7 +114,34 @@ combat, no dialogue yet).
 - **Exit criterion:** player character walks/runs/jumps with correct animation, and a
   handful of NPCs stand in Goodsprings correctly skinned and animated.
 
-## Phase 4 — Physics & Havok-Equivalent Behavior
+## Phase 4 — Actor Runtime & Gameplay Composition
+
+Goal: turn the Phase 3 visual actor foundation into a composable runtime actor model.
+
+- Shared actor data/resources for identity, actor values, factions, effects, and templates.
+- Shared inventory composition for actors and `CONT` containers, including item ownership and
+  equipment state.
+- Equipment/body-part swapping against the real biped slots and actor animation state.
+- AI package data loading and a first package-scheduling interface; full navigation and behavior
+  execution remains Phase 6.
+- Runtime actor state and interfaces for dialogue, scripting, and persistence without coupling
+  those systems into the scene inheritance tree.
+- Global quest/session state separate from actor ownership; actors carry only transient quest
+  participation context, preserving a shared authoritative state model for co-op.
+- Player control, camera, first-person presentation, and gameplay actions as a detachable
+  possession layer over any actor, preserving an eventual co-op path.
+- Treat the current `Character` in `game.tscn` as the movement/control feel harness, not as the
+  permanent player-character class.
+- Basic actor movement integration where required by the runtime model; inert visual actors remain
+  a valid milestone while movement is being built.
+- **Exit criterion:** an NPC has real composed inventory/stats/animation state, can select a real
+  package through the actor runtime interface, and remains ready for Phase 5 scripting and Phase 6
+  AI execution.
+
+Phase 4 implementation begins after the remaining Phase 3 world/actor foundation work is complete;
+its ownership boundaries are documented now to guide that work safely.
+
+## Phase 14 — Physics & Havok-Equivalent Behavior
 
 Goal: dynamic physics objects behave like they do in the original.
 
@@ -146,7 +181,7 @@ Goal: NPCs behave, fight, and path correctly.
   packages tied to NPC schedules.
 - Faction and reputation-driven aggression/disposition checks.
 - Hitscan and ballistic combat, damage resolution, death behavior (hooking into
-  Phase 4 ragdolls).
+  Phase 14 ragdolls).
 - **Exit criterion:** an NPC follows its default schedule, notices and engages a
   hostile target using faction rules, and dies correctly.
 

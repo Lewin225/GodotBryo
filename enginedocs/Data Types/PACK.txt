@@ -1,0 +1,10 @@
+PACK — AI package record
+
+ROLE
+PACK records describe authored AI package data referenced by NPC_ PKID entries.
+An NPC may reference multiple packages.
+
+RUNTIME MODEL
+PACK becomes a typed PackageRecord resource preserved on NpcRecord. Scheduling
+and execution are future actor-runtime/AI work; parsing the reference does not mean
+that AI behavior is currently implemented.

@@ -4,6 +4,8 @@ extends RefCounted
 const NO_LIGHTING_FALLOFF_SHADER := preload("res://gamebryo/no_lighting_falloff.gdshader")
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
+const KF_ANIMATION_CACHE_VERSION := "kf-animation-v4"
+const KF_ANIMATION_CACHE_DIR := "user://nv_kf_animation_cache"
 
 ## BSA-priority search + NIF/DDS resolution, shared by every object factory.
 ## Previously duplicated per-script across test_integration.gd, test_dds.gd,
@@ -74,6 +76,7 @@ var _nif_cache := {} # model_path -> NifReader or null (null cached too, so a
 		# missing/unparseable NIF isn't re-attempted on every repeat placement)
 var _image_cache := {} # tex_path -> Image or null (decoded pixels only, no RID)
 var _lod_path_cache := {} # model_path -> lod companion path (String) or "" if none -- see lod_companion_path()
+var _tri_cache := {} # TRI path -> parsed TriReader or null
 
 # --- Final-build state (main-thread-only; lives solely on
 # GamebryoObjectRegistry's own single, non-pooled `resolver` instance) ---
@@ -82,6 +85,8 @@ var _texture_cache := {} # tex_path -> ImageTexture or null
 var _material_cache := {} # material key -> StandardMaterial3D
 var _collision_cache := {} # model_path -> Array of { "shape": Shape3D, "transform": Transform3D, "name": String }
 var _skin_mesh_cache := {} # "model_path#submesh_index#skin" -> ArrayMesh (see populate_skeleton()) -- kept separate from _mesh_cache since these surfaces carry ARRAY_BONES/ARRAY_WEIGHTS a non-skinned build of the same submesh must never pick up
+var _facegen_geometry_cache := {} # EGM path -> FaceGenGeometryAsset or null
+var _animation_cache := {} # cache key -> converted Animation resource
 
 ## Cache hit/miss counters — phases/2/00-resource-caching-instancing.md asks
 ## for a measured before/after, not just an assumed improvement.
@@ -133,6 +138,7 @@ func merge_from(other: GamebryoMeshResolver) -> void:
 	_merge_dict(_nif_cache, other._nif_cache)
 	_merge_dict(_image_cache, other._image_cache)
 	_merge_dict(_lod_path_cache, other._lod_path_cache)
+	_merge_dict(_tri_cache, other._tri_cache)
 
 static func _merge_dict(target: Dictionary, source: Dictionary) -> void:
 	for key in source:
@@ -235,6 +241,72 @@ func resolve_bytes(rel_path: String) -> Dictionary:
 		if data.size() > 0:
 			return { "bsa": bsa_name, "data": data }
 	return {}
+
+func load_facegen_geometry(model_path: String, variant: String = "") -> FaceGenGeometryAsset:
+	var egm_path := model_path.to_lower().trim_suffix(".nif")
+	if not variant.is_empty() and not egm_path.ends_with(variant):
+		egm_path += variant
+	egm_path += ".egm"
+	if _facegen_geometry_cache.has(egm_path):
+		return _facegen_geometry_cache[egm_path]
+	var found := resolve_bytes("meshes\\" + egm_path)
+	var asset: FaceGenGeometryAsset = null
+	if not found.is_empty():
+		asset = _parse_facegen_egm(found["data"], egm_path)
+		if asset == null:
+			push_warning("GamebryoMeshResolver: failed to parse FaceGen EGM '%s'" % egm_path)
+	_facegen_geometry_cache[egm_path] = asset
+	return asset
+
+## FaceGen animation asset paired with a head NIF. Parsed TRI resources are
+## shared across NPCs; the final ArrayMesh is always NPC-specific.
+func load_tri(model_path: String) -> TriReader:
+	var tri_path := model_path.to_lower().trim_suffix(".nif") + ".tri"
+	if _tri_cache.has(tri_path):
+		return _tri_cache[tri_path]
+	var found := resolve_bytes("meshes\\" + tri_path)
+	var asset: TriReader = null
+	if not found.is_empty():
+		var candidate := TriReader.new()
+		if candidate.load(found["data"], tri_path):
+			asset = candidate
+		else:
+			push_warning("GamebryoMeshResolver: failed to parse TRI '%s': %s" % [tri_path, candidate.get_last_error()])
+	else:
+		push_warning("GamebryoMeshResolver: TRI '%s' not found in any BSA" % tri_path)
+	_tri_cache[tri_path] = asset
+	return asset
+
+func _parse_facegen_egm(data: PackedByteArray, source_path: String) -> FaceGenGeometryAsset:
+	if data.size() < 64 or data.slice(0, 8).get_string_from_ascii() != "FREGM002":
+		return null
+	var vertex_count := int(data.decode_u32(8))
+	var symmetric_count := int(data.decode_u32(12))
+	var asymmetric_count := int(data.decode_u32(16))
+	var mode_bytes := 4 + vertex_count * 3 * 2
+	if vertex_count <= 0 or 64 + (symmetric_count + asymmetric_count) * mode_bytes != data.size():
+		return null
+	var asset := FaceGenGeometryAsset.new()
+	asset.source_path = source_path
+	asset.vertex_count = vertex_count
+	asset.symmetric_mode_count = symmetric_count
+	asset.asymmetric_mode_count = asymmetric_count
+	var offset := 64
+	for mode_index in symmetric_count + asymmetric_count:
+		var scale := data.decode_float(offset)
+		offset += 4
+		var deltas := PackedFloat32Array()
+		deltas.resize(vertex_count * 3)
+		for i in vertex_count * 3:
+			# EGM stores vertex deltas in raw Gamebryo units. NIF positions
+			# have already been converted to meters by the native reader.
+			deltas[i] = float(data.decode_s16(offset)) * scale / 70.0
+			offset += 2
+		if mode_index < symmetric_count:
+			asset.symmetric_basis.append(deltas)
+		else:
+			asset.asymmetric_basis.append(deltas)
+	return asset
 
 ## Loads a NIF from its Data/Meshes/-relative path (as stored in a MODL
 ## subrecord — the "meshes\" prefix is added here, see
@@ -441,6 +513,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 				or bool(alpha_info.get("test_enabled", false))
 		mesh_entries.append({
 			"cache_key": "%s#%d" % [model_path, i],
+			"submesh_name": nif.get_submesh_name(i),
 			# phases/3/00-door-completion.md follow-up: the TRUE native
 			# NifReader submesh index, threaded through explicitly rather
 			# than re-derived from a loop counter downstream -- a real,
@@ -474,6 +547,7 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 			"normal_image": _load_image(normal_path),
 			"glow_image": _load_image(glow_path),
 			"morph": morph_by_name.get(nif.get_submesh_name(i), {}),
+			"tri": load_tri(model_path) if _is_facial_morph_model(model_path) else null,
 		})
 	return {
 		"model_path": model_path,
@@ -485,6 +559,29 @@ func resolve_raw_geometry(nif: NifReader, model_path: String) -> Dictionary:
 ## NifSkope/3ds Max-style ":<index>" suffix for repeated node names).
 static func _is_editor_marker_submesh(submesh_name: String) -> bool:
 	return submesh_name.to_lower().begins_with("editormarker")
+
+static func _is_head_nif(model_path: String) -> bool:
+	var p := model_path.to_lower().replace("/", "\\")
+	return p.ends_with("characters\\head\\headhuman.nif") or p.ends_with("characters\\head\\headghoul.nif")
+
+static func _is_head_part_model(model_path: String) -> bool:
+	var p := model_path.to_lower().replace("/", "\\")
+	return p.contains("characters\\head\\") or p.contains("characters\\hair\\")
+
+static func _is_facial_morph_model(model_path: String) -> bool:
+	var p := model_path.to_lower().replace("/", "\\")
+	if not p.contains("characters\\head\\"):
+		return false
+	var file_name := p.get_file().get_basename()
+	return file_name.begins_with("head") or file_name.begins_with("mouth") or file_name.begins_with("teeth") or file_name.begins_with("tongue")
+
+static func _hair_variant_for_submesh(submesh_name: String) -> String:
+	var n := submesh_name.to_lower().replace("_", "")
+	if n.contains("nohat"):
+		return "nohat"
+	if n.ends_with("hat") or n.contains(":hat"):
+		return "hat"
+	return ""
 
 ## phases/2/10-threaded-streaming-workers.md: the main-thread-only "commit"
 ## half of resolve_raw_geometry() -- builds the actual ArrayMesh/
@@ -565,6 +662,7 @@ func _build_mesh_entries(mesh_entries_raw: Array) -> Array:
 			"mesh": mesh,
 			"transform": e["transform"],
 			"submesh_index": e["submesh_index"],
+			"texture_path": String(e.get("texture_path", "")),
 			# Keep the source shader classification alongside the final mesh.
 			# REFR.XEMI is a visual-effect tint, and must not recolour the
 			# ordinary lit construction around an unlit pane/effect shape.
@@ -621,6 +719,8 @@ func populate_mesh_children(parent: Node3D, nif: NifReader, model_path: String, 
 		mi.mesh = entry["mesh"]
 		mi.transform = entry["transform"]
 		mi.set_meta("gamebryo_is_unlit", bool(entry.get("is_unlit", false)))
+		mi.set_meta("gamebryo_model_path", model_path)
+		mi.set_meta("gamebryo_texture_path", String(entry.get("texture_path", "")))
 		if is_distant_tile:
 			_apply_distant_lod_visibility_range(mi)
 		elif not lod_entries.is_empty():
@@ -876,7 +976,7 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 ## #46).
 ##
 ## Returns null if skeleton_model_path fails to load.
-func populate_humanoid_skeleton(parent: Node3D, skeleton_model_path: String, body_part_model_paths: Array) -> Skeleton3D:
+func populate_humanoid_skeleton(parent: Node3D, skeleton_model_path: String, body_part_model_paths: Array, head_part_specs: Array = [], face_gen: FaceGenData = null) -> Skeleton3D:
 	var skeleton_nif := load_nif(skeleton_model_path)
 	if skeleton_nif == null:
 		return null
@@ -886,19 +986,106 @@ func populate_humanoid_skeleton(parent: Node3D, skeleton_model_path: String, bod
 	# _build_skeleton_from_scene_nodes()'s own doc comment).
 	var skeleton := _build_skeleton_from_scene_nodes(skeleton_nif, skeleton_model_path, [])
 	parent.add_child(skeleton)
+	var facial_attachment := BoneAttachment3D.new()
+	facial_attachment.name = "FacialHeadAssembly"
+	var facial_bone := "HeadAnims" if skeleton.find_bone("HeadAnims") != -1 else "Bip01 Head"
+	if skeleton.find_bone(facial_bone) == -1:
+		push_error("populate_humanoid_skeleton: skeleton has no usable facial head bone")
+		facial_attachment.queue_free()
+		facial_attachment = null
+	else:
+		# Standalone Fallout head parts are authored in facial head space and
+		# intentionally carry no skin weights. This attachment supplies only
+		# the inherited head transform; TRI/EGM supplies deformation below.
+		facial_attachment.bone_name = facial_bone
+		skeleton.add_child(facial_attachment)
 
+	var nude_body := Node3D.new()
+	nude_body.name = "NudeBody"
+	parent.add_child(nude_body)
 	var morphed_mesh_instances: Array = []
-	for part_path in body_part_model_paths:
-		var part_nif := load_nif(String(part_path))
+	for part_spec in body_part_model_paths:
+		var part_path := String(part_spec if part_spec is String else part_spec.get("model_path", ""))
+		var part_nif := load_nif(part_path)
 		if part_nif == null:
 			push_error("populate_humanoid_skeleton: failed to load body part '%s'" % part_path)
 			continue
-		_populate_skinned_mesh_instances(parent, skeleton, part_nif, String(part_path), morphed_mesh_instances)
+		var metadata := {"gamebryo_nude_body": true, "gamebryo_nude_body_original_visible": true, "gamebryo_race_body_part_index": int(part_spec.get("race_part_index", -1))} if part_spec is Dictionary else {"gamebryo_nude_body": true, "gamebryo_nude_body_original_visible": true}
+		_populate_skinned_mesh_instances(nude_body, skeleton, part_nif, part_path, morphed_mesh_instances, null, metadata)
+	for part_spec in head_part_specs:
+		var part_path := String(part_spec if part_spec is String else part_spec.get("model_path", ""))
+		var part_type := String("" if part_spec is String else part_spec.get("part_type", ""))
+		if part_path.is_empty():
+			continue
+		var part_nif := load_nif(String(part_path))
+		if part_nif == null:
+			push_error("populate_humanoid_skeleton: failed to load head part '%s'" % part_path)
+			continue
+		var part_model_path := String(part_path)
+		if part_nif.get_skin_data().is_empty():
+			if facial_attachment != null:
+				_populate_head_part_meshes(facial_attachment, part_nif, part_model_path, part_type, face_gen)
+		else:
+			_populate_skinned_mesh_instances(parent, skeleton, part_nif, part_model_path, morphed_mesh_instances, face_gen)
 
 	if not morphed_mesh_instances.is_empty():
 		_populate_morph_animation_player(parent, morphed_mesh_instances)
 
 	return skeleton
+
+## Soft-load construction primitives. These deliberately expose the same
+## operations used by populate_humanoid_skeleton(), but let an actor commit
+## one authored NIF at a time and yield between commits on the main thread.
+## They must still only be called on the main thread because they create
+## Skeleton3D/Mesh/Material resources and scene nodes.
+func begin_humanoid_skeleton(parent: Node3D, skeleton_model_path: String) -> Dictionary:
+	var skeleton_nif := load_nif(skeleton_model_path)
+	if skeleton_nif == null:
+		return {}
+	var skeleton := _build_skeleton_from_scene_nodes(skeleton_nif, skeleton_model_path, [])
+	parent.add_child(skeleton)
+	var facial_attachment := BoneAttachment3D.new()
+	facial_attachment.name = "FacialHeadAssembly"
+	var facial_bone := "HeadAnims" if skeleton.find_bone("HeadAnims") != -1 else "Bip01 Head"
+	if skeleton.find_bone(facial_bone) == -1:
+		push_error("begin_humanoid_skeleton: skeleton has no usable facial head bone")
+		facial_attachment.free()
+		facial_attachment = null
+	else:
+		facial_attachment.bone_name = facial_bone
+		skeleton.add_child(facial_attachment)
+	var nude_body := Node3D.new()
+	nude_body.name = "NudeBody"
+	parent.add_child(nude_body)
+	return {"skeleton": skeleton, "facial_attachment": facial_attachment, "nude_body": nude_body}
+
+func populate_humanoid_body_part(nude_body: Node3D, skeleton: Skeleton3D, part_spec: Variant, morphed_mesh_instances: Array) -> void:
+	var part_path := String(part_spec if part_spec is String else part_spec.get("model_path", ""))
+	var part_nif := load_nif(part_path)
+	if part_nif == null:
+		push_error("populate_humanoid_body_part: failed to load '%s'" % part_path)
+		return
+	var metadata := {"gamebryo_nude_body": true, "gamebryo_nude_body_original_visible": true, "gamebryo_race_body_part_index": int(part_spec.get("race_part_index", -1))} if part_spec is Dictionary else {"gamebryo_nude_body": true, "gamebryo_nude_body_original_visible": true}
+	_populate_skinned_mesh_instances(nude_body, skeleton, part_nif, part_path, morphed_mesh_instances, null, metadata)
+
+func populate_humanoid_head_part(parent: Node3D, skeleton: Skeleton3D, facial_attachment: Node3D, part_spec: Variant, morphed_mesh_instances: Array, face_gen: FaceGenData = null) -> void:
+	var part_path := String(part_spec if part_spec is String else part_spec.get("model_path", ""))
+	var part_type := String("" if part_spec is String else part_spec.get("part_type", ""))
+	if part_path.is_empty():
+		return
+	var part_nif := load_nif(part_path)
+	if part_nif == null:
+		push_error("populate_humanoid_head_part: failed to load '%s'" % part_path)
+		return
+	if part_nif.get_skin_data().is_empty():
+		if facial_attachment != null:
+			_populate_head_part_meshes(facial_attachment, part_nif, part_path, part_type, face_gen)
+	else:
+		_populate_skinned_mesh_instances(parent, skeleton, part_nif, part_path, morphed_mesh_instances, face_gen)
+
+func finish_humanoid_morphs(parent: Node3D, morphed_mesh_instances: Array) -> void:
+	if not morphed_mesh_instances.is_empty():
+		_populate_morph_animation_player(parent, morphed_mesh_instances)
 
 ## Shared bone-building pass for populate_skeleton() (a single self-contained
 ## skinned NIF) and populate_humanoid_skeleton() (issue #52 chunk 4: a
@@ -1000,6 +1187,52 @@ func _build_skeleton_from_scene_nodes(nif: NifReader, model_path: String, skin_e
 
 	return skeleton
 
+## Builds a standalone Fallout head-part NIF in the facial head assembly.
+## Mouth, teeth, tongue, eyes, and most hair meshes have no skin blocks: the
+## authored relationship to the actor is the shared HeadAnims head-space
+## transform, while facial movement comes from each part's own TRI file.
+func _populate_head_part_meshes(parent: Node3D, nif: NifReader, model_path: String, part_type: String, face_gen: FaceGenData = null) -> void:
+	var raw := resolve_raw_geometry(nif, model_path)
+	for raw_entry in raw["mesh_entries"]:
+		var hair_variant := _hair_variant_for_submesh(String(raw_entry.get("submesh_name", ""))) if part_type == "hair" else ""
+		var mesh := _build_mesh_from_raw(raw_entry)
+		var nif_morph: Dictionary = raw_entry.get("morph", {})
+		if not nif_morph.is_empty():
+			mesh = _apply_morph_targets(mesh, nif_morph)
+		var mat := _build_material_from_raw(raw_entry)
+		if mat != null:
+			mesh.surface_set_material(0, mat)
+
+		if face_gen != null:
+			var basis := load_facegen_geometry(model_path, hair_variant)
+			var face_mesh := _apply_facegen_geometry(mesh, basis, face_gen)
+			if face_mesh != null:
+				mesh = face_mesh
+			else:
+				face_gen.diagnostics.append("No compatible EGM basis for %s" % model_path)
+
+		var tri_asset: TriReader = raw_entry.get("tri")
+		if tri_asset != null:
+			mesh = _apply_tri_morph_targets(mesh, tri_asset)
+
+		var submesh_index := int(raw_entry["submesh_index"])
+		var mi := MeshInstance3D.new()
+		mi.name = ("sub%d_%s" % [submesh_index, nif.get_submesh_name(submesh_index)]).validate_node_name()
+		mi.mesh = mesh
+		# Exhaustive HAIR/Head census: most standalone hair NIFs carry the same
+		# outer coordinate-system marker (-90 X, +/-180 Y). Hair is already
+		# attached below the actor's HeadAnims bone, so applying that marker here
+		# rotates it a second time. Other head parts retain their authored mesh
+		# transform; this exception is specific to unskinned HAIR head-space.
+		mi.transform = Transform3D.IDENTITY if part_type == "hair" else raw_entry["transform"]
+		mi.set_meta("gamebryo_is_unlit", bool(raw_entry.get("is_unlit", false)))
+		mi.set_meta("gamebryo_model_path", model_path)
+		mi.set_meta("gamebryo_texture_path", String(raw_entry.get("texture_path", "")))
+		mi.set_meta("gamebryo_head_part_type", part_type)
+		if part_type == "hair":
+			mi.set_meta("gamebryo_hair_variant", "no_hat" if hair_variant == "nohat" else hair_variant)
+		parent.add_child(mi)
+
 ## Shared per-skin submesh loop for populate_skeleton() and
 ## populate_humanoid_skeleton(): builds one Skin + MeshInstance3D per skin
 ## entry `nif` carries, bound against the ALREADY-BUILT `skeleton` by bone
@@ -1012,7 +1245,7 @@ func _build_skeleton_from_scene_nodes(nif: NifReader, model_path: String, skin_e
 ## once after every body part, populate_skeleton() once after its own single
 ## file) rather than building it here, since a caller processing several
 ## files needs one shared player, not one per file.
-func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, morphed_mesh_instances: Array) -> void:
+func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, morphed_mesh_instances: Array, face_gen: FaceGenData = null, extra_metadata: Dictionary = {}) -> void:
 	var skin_entries: Array = nif.get_skin_data()
 	if skin_entries.is_empty():
 		return
@@ -1049,11 +1282,35 @@ func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif:
 			if mat != null:
 				mesh.surface_set_material(0, mat)
 			_skin_mesh_cache[mesh_key] = mesh
+		if face_gen != null and _is_head_part_model(model_path):
+			var basis := load_facegen_geometry(model_path)
+			var face_mesh := _apply_facegen_geometry(mesh, basis, face_gen)
+			if face_mesh != null:
+				mesh = face_mesh
+				face_gen.geometry_asset_path = basis.source_path
+				face_gen.geometry_applied = true
+				face_gen.geometry_applied_vertex_count = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()
+				face_gen.geometry_applied_mode_count = basis.symmetric_mode_count + basis.asymmetric_mode_count
+			elif basis == null:
+				face_gen.diagnostics.append("No validated EGM basis for %s" % model_path)
+
+		# TRI animation deltas are applied after the NPC-specific EGM shape.
+		# Never put this result in _skin_mesh_cache: the same head asset is
+		# reused by NPCs with different static FaceGen geometry.
+		var tri_asset: TriReader = raw_entry.get("tri")
+		if tri_asset != null and _is_head_part_model(model_path):
+			var with_tri := _apply_tri_morph_targets(mesh, tri_asset)
+			if with_tri != null:
+				mesh = with_tri
 
 		var mi := MeshInstance3D.new()
 		mi.name = ("sub%d_%s" % [submesh_index, target_name]).validate_node_name()
 		mi.mesh = mesh
 		mi.set_meta("gamebryo_is_unlit", bool(raw_entry.get("is_unlit", false)))
+		mi.set_meta("gamebryo_model_path", model_path)
+		mi.set_meta("gamebryo_texture_path", String(raw_entry.get("texture_path", "")))
+		for metadata_key in extra_metadata:
+			mi.set_meta(String(metadata_key), extra_metadata[metadata_key])
 		parent.add_child(mi)
 		mi.skeleton = mi.get_path_to(skeleton) # MeshInstance3D.skeleton is relative to the MeshInstance3D itself, not `parent`
 
@@ -1069,6 +1326,231 @@ func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif:
 		var morph_for_anim: Dictionary = raw_entry.get("morph", {})
 		if not morph_for_anim.get("weight_tracks", []).is_empty():
 			morphed_mesh_instances.append({ "mesh_instance": mi, "morph": morph_for_anim })
+
+## Adds the gender-selected, skin-backed equipment models to the actor's
+## existing skeleton. Armor records are deliberately supplied by the caller;
+## this method never interprets NPC_.CNTO as worn equipment.
+func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state: EquipmentState, female: bool) -> Array[String]:
+	var diagnostics: Array[String] = []
+	if state == null:
+		return diagnostics
+	var accepted: Array[ArmorRecord] = []
+	var occupied := 0
+	# The exported list is low -> high priority, so resolve conflicts from the
+	# high end and render accepted records in authored order.
+	for i in range(state.armor_records.size() - 1, -1, -1):
+		var armor := state.armor_records[i]
+		if armor == null:
+			continue
+		if armor.biped_flags != 0 and (armor.biped_flags & occupied) != 0:
+			diagnostics.append("Skipped overlapping armor %s (%08X)" % [armor.editor_id, armor.biped_flags])
+			continue
+		accepted.push_front(armor)
+		occupied |= armor.biped_flags
+	var morphed: Array = []
+	for armor in accepted:
+		var paths: Array[Dictionary] = []
+		var direct := armor.female_biped_model if female else armor.male_biped_model
+		if not direct.is_empty():
+			paths.append({"path": direct, "source": armor, "field": "MOD3" if female else "MODL"})
+		if armor.biped_model_list != null:
+			for addon in armor.biped_model_list.entries:
+				if addon == null:
+					continue
+				var addon_path := addon.female_biped_model if female else addon.male_biped_model
+				if not addon_path.is_empty():
+					paths.append({"path": addon_path, "source": addon, "field": "MOD3" if female else "MODL"})
+		for model in paths:
+			var equipment_nif := load_nif(String(model.path))
+			if equipment_nif == null:
+				diagnostics.append("Equipment NIF not found: %s" % model.path)
+				continue
+			if equipment_nif.get_skin_data().is_empty():
+				if not _populate_unskinned_equipment(parent, skeleton, equipment_nif, String(model.path), model.source, model.field):
+					diagnostics.append("Skipped unskinned armor model with no supported attachment bone: %s" % model.path)
+				continue
+			_populate_skinned_mesh_instances(parent, skeleton, equipment_nif, String(model.path), morphed, null, {
+				"gamebryo_equipment": true,
+				"gamebryo_equipment_form_id": model.source.form_id,
+				"gamebryo_equipment_biped_flags": model.source.biped_flags,
+				"gamebryo_equipment_model_field": model.field
+			})
+	if state.weapon != null:
+		var weapon_models: Array[Dictionary] = []
+		# WEAP.BIPL is the authored biped/equipped model collection. MODL is
+		# retained as the fallback used by ordinary weapons without BIPL.
+		if state.weapon.biped_model_list != null:
+			for addon in state.weapon.biped_model_list.entries:
+				if addon == null:
+					continue
+				var addon_path := addon.female_biped_model if female else addon.male_biped_model
+				if not addon_path.is_empty():
+					weapon_models.append({"path": addon_path, "source": addon, "field": "BIPL"})
+		if weapon_models.is_empty() and not state.weapon.model_path.is_empty():
+			weapon_models.append({"path": state.weapon.model_path, "source": state.weapon, "field": "MODL"})
+		for model in weapon_models:
+			var weapon_nif := load_nif(String(model.path))
+			if weapon_nif == null:
+				diagnostics.append("Weapon NIF not found: %s" % model.path)
+				continue
+			if not _populate_weapon_model(parent, skeleton, weapon_nif, String(model.path), model.source, String(model.field), state.weapon):
+				diagnostics.append("Skipped weapon model with no supported attachment: %s" % model.path)
+	return diagnostics
+
+## Adds one authored equipped weapon model to the actor's shared skeleton.
+## Skin-backed BIPL models retain their own bone names and bind poses; plain
+## MODL/BIPL models follow the authored Weapon bone (with a compatibility
+## fallback for skeleton variants without that node) while retaining every
+## transform authored in the NIF.
+func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmRecordResource, model_field: String, weapon: WeaponRecord = null) -> bool:
+	var metadata := {
+		"gamebryo_equipment": true,
+		"gamebryo_equipment_form_id": source.form_id,
+		"gamebryo_equipment_model_field": model_field,
+		"gamebryo_weapon": true,
+		"gamebryo_weapon_model_path": model_path,
+	}
+	if not nif.get_skin_data().is_empty():
+		_populate_skinned_mesh_instances(parent, skeleton, nif, model_path, [], null, metadata)
+		return true
+	var hand := BoneAttachment3D.new()
+	hand.name = ("WeaponAttachment_" + model_path.get_file().get_basename()).validate_node_name()
+	for candidate in ["Weapon", "Bip01 R Hand", "Bip01 R Forearm", "Bip01 Spine"]:
+		if skeleton.find_bone(candidate) != -1:
+			hand.bone_name = candidate
+			break
+	if hand.bone_name.is_empty():
+		return false
+	parent.add_child(hand)
+	_bind_external_equipment_attachment(hand, skeleton)
+	var built := populate_dynamic_children(hand, nif, model_path)
+	# Weapon NIF Havok collision is authored for the inventory/world item, not
+	# for an equipped visual attached to an actor. Remove it after the generic
+	# NIF construction has handed the completed hierarchy over; this keeps the
+	# generic resolver's collision behavior intact for every other object type.
+	for collision_body in hand.find_children("*", "GamebryoCollisionBody", true, false):
+		collision_body.free()
+	var local_player := populate_direct_controller_player(hand, nif, built)
+	if local_player != null and local_player.has_animation("embedded"):
+		local_player.play("embedded")
+	var local_clips := {}
+	var available_local_files := {}
+	for entry in list_files_with_prefix("meshes/characters/_male/"):
+		available_local_files[String(entry).to_lower()] = true
+	for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
+		var clip := weapon.action_clip_name(action) if weapon != null else ""
+		var archive_path := "meshes/characters/_male/" + clip.to_lower()
+		if not clip.is_empty() and available_local_files.has(archive_path):
+			local_clips[clip] = "characters\\_male\\" + clip
+	populate_external_node_animations(hand, built, local_clips)
+	for child in hand.find_children("*", "MeshInstance3D", true, false):
+		for metadata_key in metadata:
+			child.set_meta(String(metadata_key), metadata[metadata_key])
+	return true
+
+## Wearable accessories such as Characters\\Hair\\Shades.NIF are authored in
+## head space and intentionally have no skin blocks. Keep them in Equipment,
+## but bind their attachment to the actor's existing head bone rather than
+## treating them as a static world mesh.
+func _populate_unskinned_equipment(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmRecordResource, model_field: String) -> bool:
+	var normalized := model_path.to_lower().replace("/", "\\")
+	var head_accessory := normalized.contains("\\hair\\") or normalized.contains("\\head\\") or normalized.contains("shades") or normalized.contains("glasses") or normalized.contains("hat")
+	if not head_accessory:
+		return false
+	var attachment := BoneAttachment3D.new()
+	attachment.name = ("Accessory_" + model_path.get_file().get_basename()).validate_node_name()
+	for candidate in ["HeadAnims", "Bip01 Head"]:
+		if skeleton.find_bone(candidate) != -1:
+			attachment.bone_name = candidate
+			break
+	if attachment.bone_name.is_empty():
+		return false
+	parent.add_child(attachment)
+	_bind_external_equipment_attachment(attachment, skeleton)
+	populate_mesh_children(attachment, nif, model_path)
+	for child in attachment.find_children("*", "MeshInstance3D", true, false):
+		child.set_meta("gamebryo_equipment", true)
+		child.set_meta("gamebryo_equipment_form_id", source.form_id)
+		child.set_meta("gamebryo_equipment_biped_flags", source.biped_flags)
+		child.set_meta("gamebryo_equipment_model_field", model_field)
+	return true
+
+func _bind_external_equipment_attachment(attachment: BoneAttachment3D, skeleton: Skeleton3D) -> void:
+	# Adding a child to an in-tree Equipment node immediately enters it into
+	# the scene tree. Configure the external skeleton first, then explicitly
+	# resolve the bone index; otherwise BoneAttachment3D briefly sees
+	# Equipment (not Skeleton3D) as its parent and remains unbound.
+	attachment.use_external_skeleton = true
+	attachment.external_skeleton = attachment.get_path_to(skeleton)
+	attachment.bone_idx = skeleton.find_bone(attachment.bone_name)
+	attachment.on_skeleton_update()
+
+func _apply_facegen_geometry(base_mesh: ArrayMesh, basis: FaceGenGeometryAsset, face_gen: FaceGenData) -> ArrayMesh:
+	if basis == null or face_gen == null or basis.vertex_count <= 0:
+		return null
+	var arrays := base_mesh.surface_get_arrays(0)
+	var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	if positions.is_empty() or positions.size() > basis.vertex_count:
+		return null
+	var result_positions := positions.duplicate()
+	var apply_modes := func(modes: Array, coefficients: PackedFloat32Array) -> void:
+		var count: int = mini(modes.size(), coefficients.size())
+		for mode_index in count:
+			var deltas: PackedFloat32Array = modes[mode_index]
+			if deltas.size() < positions.size() * 3 or not is_finite(coefficients[mode_index]):
+				continue
+			var coefficient := coefficients[mode_index]
+			for vertex_index in positions.size():
+				result_positions[vertex_index] += Vector3(deltas[vertex_index * 3], deltas[vertex_index * 3 + 1], deltas[vertex_index * 3 + 2]) * coefficient
+	apply_modes.call(basis.symmetric_basis, face_gen.fggs_values)
+	apply_modes.call(basis.asymmetric_basis, face_gen.fgga_values)
+	arrays[Mesh.ARRAY_VERTEX] = result_positions
+	var result := ArrayMesh.new()
+	result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	result.surface_set_material(0, base_mesh.surface_get_material(0))
+	return result
+
+## Adds the validated labelled TRI delta morphs to a head surface. TRI's
+## statistical morphs remain available through TriReader but are intentionally
+## not converted to blend shapes until their EGM relationship is verified.
+func _apply_tri_morph_targets(base_mesh: ArrayMesh, tri: TriReader) -> ArrayMesh:
+	var arrays := base_mesh.surface_get_arrays(0)
+	var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	if positions.size() != tri.get_vertex_count():
+		push_warning("_apply_tri_morph_targets: TRI/head vertex mismatch (%d vs %d)" % [tri.get_vertex_count(), positions.size()])
+		return base_mesh
+	var valid: Array = []
+	var seen_names := {}
+	for i in tri.get_delta_morph_count():
+		var deltas := tri.get_delta_morph_deltas(i)
+		var morph_name := tri.get_delta_morph_name(i)
+		if morph_name.is_empty() or seen_names.has(morph_name) or deltas.size() != positions.size() * 3:
+			push_warning("_apply_tri_morph_targets: skipping malformed morph '%s'" % tri.get_delta_morph_name(i))
+			continue
+		seen_names[morph_name] = true
+		valid.append({"name": morph_name, "deltas": deltas})
+	if valid.is_empty():
+		return base_mesh
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	var mesh := ArrayMesh.new()
+	mesh.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
+	var blend_arrays: Array = []
+	for item in valid:
+		var name := String(item["name"])
+		mesh.add_blend_shape(name)
+		var deltas: PackedFloat32Array = item["deltas"]
+		var target := PackedVector3Array()
+		target.resize(positions.size())
+		for v in positions.size():
+			target[v] = positions[v] + Vector3(deltas[v * 3], deltas[v * 3 + 1], deltas[v * 3 + 2])
+		var blend := []; blend.resize(Mesh.ARRAY_MAX)
+		blend[Mesh.ARRAY_VERTEX] = target
+		if not normals.is_empty():
+			blend[Mesh.ARRAY_NORMAL] = normals
+		blend_arrays.append(blend)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, blend_arrays)
+	mesh.surface_set_material(0, base_mesh.surface_get_material(0))
+	return mesh
 
 ## Same base-array construction as _build_mesh_from_raw(), plus
 ## Mesh.ARRAY_BONES/ARRAY_WEIGHTS from the matching SkinData dict (see
@@ -1197,9 +1679,9 @@ func _populate_morph_animation_player(parent: Node3D, entries: Array) -> Animati
 			if not blend_shape_index_by_name.has(target_name):
 				continue # e.g. the always-zero "Base" weight track -- index 0 was never built as a real blend shape, see _apply_morph_targets()'s own doc comment
 			var idx := anim.add_track(Animation.TYPE_BLEND_SHAPE)
-			# TYPE_BLEND_SHAPE's own path convention: "<path-to-MeshInstance3D>:<blend_shape_name>" --
+			# TYPE_BLEND_SHAPE uses MeshInstance3D's `blend_shapes/<name>` property path --
 			# same parent-relative NodePath convention populate_animation_player() uses.
-			anim.track_set_path(idx, NodePath(str(parent.get_path_to(mi)) + ":" + target_name))
+			anim.track_set_path(idx, NodePath(str(parent.get_path_to(mi)) + ":blend_shapes/" + target_name))
 			var keys: Array = track["keys"]
 			# Deliberately always LINEAR here, NOT _godot_interp()'s own
 			# quadratic/tbc->CUBIC mapping (populate_animation_player() uses
@@ -1313,6 +1795,93 @@ func populate_animation_player(parent: Node3D, nif: NifReader, built: Array) -> 
 	player.add_animation_library("", library)
 	return player
 
+## Builds the local animation layer for controllers attached directly to NIF
+## nodes (rather than to a NiControllerManager sequence). This is used by
+## weapon NIFs whose clips, slides, hammers, and shell nodes have their own
+## NiTransformController/NiVisController chains.
+func populate_direct_controller_player(parent: Node3D, nif: NifReader, built: Array) -> AnimationPlayer:
+	var controllers: Array = nif.get_direct_animation_controllers()
+	if controllers.is_empty() or built.is_empty():
+		return null
+	var player := AnimationPlayer.new()
+	player.name = "DirectControllerAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..")
+	var animation := Animation.new()
+	var length := 0.01
+	for controller in controllers:
+		length = maxf(length, float(controller.get("stop_time", 0.0)))
+		var target_index := int(controller.get("target_node_index", -1))
+		if target_index < 0 or target_index >= built.size():
+			continue
+		var target: Node3D = built[target_index]
+		var target_path := parent.get_path_to(target)
+		for track_data in controller.get("transform_tracks", []):
+			var track_anim := _build_sequence_animation({
+				"cycle_type": 0,
+				"start_time": controller.get("start_time", 0.0),
+				"stop_time": controller.get("stop_time", 0.0),
+				"tracks": [track_data]
+			}, func(_name: String): return target_path)
+			for i in track_anim.get_track_count():
+				var source_type := track_anim.track_get_type(i)
+				var destination := animation.add_track(source_type)
+				animation.track_set_path(destination, track_anim.track_get_path(i))
+				animation.track_set_interpolation_type(destination, track_anim.track_get_interpolation_type(i))
+				for key in track_anim.track_get_key_count(i):
+					animation.track_insert_key(destination, track_anim.track_get_key_time(i, key), track_anim.track_get_key_value(i, key))
+		for visibility in controller.get("visibility_keys", []):
+			var visibility_track := animation.add_track(Animation.TYPE_VALUE)
+			animation.track_set_path(visibility_track, NodePath(str(target_path) + ":visible"))
+			animation.track_set_interpolation_type(visibility_track, Animation.INTERPOLATION_NEAREST)
+			animation.track_insert_key(visibility_track, float(visibility["time"]), bool(visibility["value"]))
+	if animation.get_track_count() == 0:
+		player.queue_free()
+		return null
+	animation.length = length
+	var library := AnimationLibrary.new()
+	library.add_animation("embedded", animation)
+	player.add_animation_library("", library)
+	return player
+
+## Loads standalone KF clips against an arbitrary NIF node hierarchy. This
+## targets named local nodes instead of Skeleton3D bones, allowing a KF to
+## animate weapon mechanisms when the authored clip names those nodes.
+func populate_external_node_animations(parent: Node3D, built: Array, clips: Dictionary, existing_player: AnimationPlayer = null) -> AnimationPlayer:
+	if built.is_empty() or clips.is_empty():
+		return existing_player
+	var name_to_node: Dictionary = {}
+	for node in built:
+		if node != null and not name_to_node.has(String(node.name)):
+			name_to_node[String(node.name)] = node
+	var library := existing_player.get_animation_library("") if existing_player != null else AnimationLibrary.new()
+	var resolve_target := func(target_name: String):
+		if not name_to_node.has(target_name):
+			return null
+		return parent.get_path_to(name_to_node[target_name])
+	for clip_name in clips:
+		if library.has_animation(String(clip_name)):
+			continue
+		var kf_nif := load_nif(String(clips[clip_name]))
+		if kf_nif == null:
+			continue
+		var sequences: Array = kf_nif.get_animation_sequences()
+		if sequences.is_empty():
+			continue
+		var anim := _build_sequence_animation(sequences[0], resolve_target)
+		if anim.get_track_count() > 0:
+			library.add_animation(String(clip_name), anim)
+	if library.get_animation_list().is_empty():
+		return existing_player
+	if existing_player != null:
+		return existing_player
+	var player := AnimationPlayer.new()
+	player.name = "WeaponAnimationPlayer"
+	parent.add_child(player)
+	player.root_node = NodePath("..")
+	player.add_animation_library("", library)
+	return player
+
 ## Issue #46 follow-up, surfaced by real play on the Nevada flag (#47's own
 ## test asset): a skinned NIF's bones can ALSO carry ordinary keyframed
 ## rotation/translation/scale animation via the SAME NiControllerSequence
@@ -1345,7 +1914,7 @@ func _populate_skeleton_animation_player(parent: Node3D, nif: NifReader, skeleto
 
 	var library := AnimationLibrary.new()
 	for seq in sequences:
-		var anim := _build_sequence_animation(seq, resolve_bone)
+		var anim := _build_sequence_animation(seq, resolve_bone, skeleton)
 		if anim.get_track_count() > 0:
 			library.add_animation(String(seq["name"]), anim)
 	if library.get_animation_list().is_empty():
@@ -1378,7 +1947,7 @@ func _populate_skeleton_animation_player(parent: Node3D, nif: NifReader, skeleto
 ## error, since that's a real possible case for e.g. a malformed/DLC-only
 ## path that doesn't resolve on this install). Returns null if no clip
 ## resolved to a real animation.
-func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips: Dictionary) -> AnimationPlayer:
+func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips: Dictionary, existing_player: AnimationPlayer = null) -> AnimationPlayer:
 	var skeleton_path: NodePath = parent.get_path_to(skeleton)
 	var resolve_bone := func(target_name: String):
 		if skeleton.find_bone(target_name) == -1:
@@ -1386,18 +1955,19 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 		return NodePath(str(skeleton_path) + ":" + target_name)
 
 	var library := AnimationLibrary.new()
+	if existing_player != null:
+		library = existing_player.get_animation_library("")
 	for clip_name in clips:
+		if library.has_animation(String(clip_name)):
+			continue
 		var kf_path: String = clips[clip_name]
-		var kf_nif := load_nif(kf_path)
-		if kf_nif == null:
+		var anim := _load_or_build_kf_animation(kf_path, skeleton, resolve_bone, skeleton_path)
+		if anim == null:
 			continue
-		var sequences: Array = kf_nif.get_animation_sequences()
-		if sequences.is_empty():
-			continue
-		var anim := _build_sequence_animation(sequences[0], resolve_bone)
-		_strip_root_bone_translation(anim, skeleton, skeleton_path)
 		if anim.get_track_count() > 0:
 			library.add_animation(String(clip_name), anim)
+	if existing_player != null:
+		return existing_player
 
 	if library.get_animation_list().is_empty():
 		return null
@@ -1408,6 +1978,37 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 	player.root_node = NodePath("..")
 	player.add_animation_library("", library)
 	return player
+
+func _load_or_build_kf_animation(kf_path: String, skeleton: Skeleton3D, resolve_bone: Callable, skeleton_path: NodePath) -> Animation:
+	var cache_key := KF_ANIMATION_CACHE_VERSION + "|" + kf_path.to_lower()
+	if _animation_cache.has(cache_key):
+		return _animation_cache[cache_key]
+	var disk_path := _kf_animation_cache_path(cache_key)
+	if FileAccess.file_exists(disk_path):
+		var cached := ResourceLoader.load(disk_path, "Animation", ResourceLoader.CACHE_MODE_REUSE)
+		if cached is Animation:
+			_animation_cache[cache_key] = cached
+			return cached
+	var kf_nif := load_nif(kf_path)
+	if kf_nif == null:
+		_animation_cache[cache_key] = null
+		return null
+	var sequences: Array = kf_nif.get_animation_sequences()
+	if sequences.is_empty():
+		_animation_cache[cache_key] = null
+		return null
+	var anim := _build_sequence_animation(sequences[0], resolve_bone, skeleton)
+	_animation_cache[cache_key] = anim
+	_save_kf_animation_cache(anim, disk_path)
+	return anim
+
+func _kf_animation_cache_path(cache_key: String) -> String:
+	return KF_ANIMATION_CACHE_DIR + "/" + str(abs(cache_key.hash())) + ".tres"
+
+func _save_kf_animation_cache(anim: Animation, disk_path: String) -> void:
+	var absolute_dir := ProjectSettings.globalize_path(KF_ANIMATION_CACHE_DIR)
+	DirAccess.make_dir_recursive_absolute(absolute_dir)
+	ResourceSaver.save(anim, disk_path, ResourceSaver.FLAG_COMPRESS)
 
 ## Real Bethesda convention, confirmed against actual movement .kf data and
 ## direct in-editor review (e.g. characters\_male\locomotion\male\
@@ -1443,18 +2044,13 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 ## legitimately needs its translation played back — this is specific to a
 ## skeleton's own root-motion-carrying bones, not a blanket rule for every
 ## animated root node in this codebase.
-func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleton_path: NodePath) -> void:
-	var prefix := str(skeleton_path) + ":"
-	var i := anim.get_track_count() - 1
-	while i >= 0:
-		if anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
-			var bone_name := str(anim.track_get_path(i)).trim_prefix(prefix)
-			var bone_idx := skeleton.find_bone(bone_name)
-			var is_root := bone_idx != -1 and skeleton.get_bone_parent(bone_idx) == -1
-			if is_root or bone_name.ends_with("NonAccum"):
-				anim.remove_track(i)
-		i -= 1
-
+## DEPRECATED: the generated-tree path below is retained only as a historical
+## reference and must not be used. The actor runtime uses the hand-authored
+## npc_actor.tscn tree and ActorAnimationComponent's
+## LowerLegLocomotionSpace/UpperLocomotionSpace contract. Keeping a second
+## builder with a different parameter schema would make a future caller fail
+## silently, so this entry point now fails explicitly.
+##
 ## Real Bethesda locomotion convention (per the user's own review of actual
 ## gameplay): the legs and upper body are separate layers, not one clip
 ## driving the whole skeleton -- legs come from the cardinal-direction
@@ -1470,7 +2066,7 @@ func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleto
 ##     own `parameters/Locomotion/blend_position`.
 ##   - AnimationNodeAnimation "UpperBodyPose": upper_body_clip (real generic
 ##     standing pose -- no weapon-equip system yet to pick a per-weapon
-##     pose, see NPCNode's own doc comment).
+##     pose, see NPCActor's own doc comment).
 ##   - AnimationNodeBlend2 "UpperBodyLayer": Locomotion as the base ("in"),
 ##     UpperBodyPose as the filtered overlay ("blend", amount fixed at
 ##     1.0) -- filter_enabled with every bone at/under
@@ -1482,6 +2078,9 @@ func _strip_root_bone_translation(anim: Animation, skeleton: Skeleton3D, skeleto
 ## `player`'s library (a real possible gap -- see
 ## populate_locomotion_animations()'s own doc comment).
 func populate_locomotion_tree(parent: Node3D, skeleton: Skeleton3D, player: AnimationPlayer, cardinal_clips: Dictionary, idle_clip: String, upper_body_clip: String, upper_body_root_bone: String) -> AnimationTree:
+	push_error("GamebryoMeshResolver: populate_locomotion_tree() is deprecated; use the hand-authored actor AnimationTree")
+	return null
+	# Historical implementation retained below for source archaeology only.
 	for required in [cardinal_clips.get("forward", ""), cardinal_clips.get("backward", ""), cardinal_clips.get("left", ""), cardinal_clips.get("right", ""), idle_clip, upper_body_clip]:
 		if not player.has_animation(String(required)):
 			return null
@@ -1586,17 +2185,30 @@ func _bone_and_descendants(skeleton: Skeleton3D, root_bone_name: String) -> Arra
 ## if the track's target isn't one this caller can resolve — skipped, not
 ## an error, since a real sequence commonly targets a mix of nodes/bones
 ## only some of which exist in a given construction path).
-func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable) -> Animation:
+func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable, skeleton: Skeleton3D = null) -> Animation:
 	var anim := Animation.new()
 	anim.length = maxf(float(seq["stop_time"]) - float(seq["start_time"]), 0.01)
 	match int(seq["cycle_type"]): # nif::SequenceCycleType: 0=loop, 1=reverse, 2=clamp
 		0: anim.loop_mode = Animation.LOOP_LINEAR
 		_: anim.loop_mode = Animation.LOOP_NONE # reverse/clamp both play once and hold -- Godot has no native ping-pong-once mode; reverse is a real gap, not silently faked
 
+	var non_accum_bone_name := _find_non_accum_bone(skeleton, String(seq.get("accum_root_name", "")))
+	var non_accum_path: NodePath = resolve_target_path.call(non_accum_bone_name) if not non_accum_bone_name.is_empty() else NodePath()
 	for track in seq["tracks"]:
 		var target_name: String = track["target_node_name"]
 		var resolved = resolve_target_path.call(target_name)
 		if resolved == null:
+			continue
+		# NonAccum is the authored sibling of the accumulation root. Its
+		# translation is retained as source data, but its authored rotation is
+		# not a per-clip facing direction: the real runtime resets this node to
+		# the skeleton reference transform while Bip01 carries locomotion
+		# displacement. Drop only this node's rotation tracks here; a uniform
+		# bind-pose track is inserted below, including for clips that authored no
+		# rotation at all. This prevents AnimationTree blends from falling back
+		# to the bone rest/default differently depending on track presence.
+		var is_non_accum := not non_accum_bone_name.is_empty() and target_name == non_accum_bone_name
+		if is_non_accum and (bool(track["has_quaternion_keys"]) or bool(track["has_axis_keys"])):
 			continue
 		var node_path: NodePath = resolved
 
@@ -1636,17 +2248,47 @@ func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable) -
 			anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
 			for k in scale_keys:
 				anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
+	if skeleton != null and not non_accum_path.is_empty():
+		var bone_index := skeleton.find_bone(non_accum_bone_name)
+		if bone_index != -1:
+			var rotation_track := anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(rotation_track, non_accum_path)
+			anim.track_set_interpolation_type(rotation_track, Animation.INTERPOLATION_LINEAR)
+			var bind_rotation := skeleton.get_bone_rest(bone_index).basis.get_rotation_quaternion().normalized()
+			anim.track_insert_key(rotation_track, float(seq.get("start_time", 0.0)), bind_rotation)
 
 	return anim
 
+## Resolve the Bethesda accumulation-root sibling from the live skeleton.
+## `accum_root_name` identifies Bip01 itself; the ` NonAccum` suffix is a
+## separate, confirmed engine convention and must remain an explicit name
+## check. Requiring it to be a direct child prevents an unrelated accessory
+## node with a similar suffix from being modified.
+func _find_non_accum_bone(skeleton: Skeleton3D, accum_root_name: String) -> String:
+	if skeleton == null or accum_root_name.is_empty():
+		return ""
+	var root_index := skeleton.find_bone(accum_root_name)
+	if root_index == -1:
+		return ""
+	var expected_suffix := accum_root_name + " NonAccum"
+	for i in skeleton.get_bone_count():
+		if skeleton.get_bone_parent(i) != root_index:
+			continue
+		if skeleton.get_bone_name(i).to_lower() == expected_suffix.to_lower():
+			return skeleton.get_bone_name(i)
+	return ""
+
 ## nif::KeyInterpolation (0=none/1=linear/2=quadratic/3=tbc/4=constant) ->
-## Godot's own Animation.InterpolationType. See populate_animation_player()'s
-## own doc comment for why quadratic/tbc both collapse to CUBIC.
+## Godot's own Animation.InterpolationType. Runtime actor playback deliberately
+## uses LINEAR for the NIF none/constant fallback too: NEAREST is faithful to
+## the old low-rate interpretation but produces visible stepping at modern
+## playback rates. See populate_animation_player()'s own doc comment for why
+## quadratic/tbc both collapse to CUBIC.
 func _godot_interp(nif_interp: int) -> int:
 	match nif_interp:
 		1: return Animation.INTERPOLATION_LINEAR
 		2, 3: return Animation.INTERPOLATION_CUBIC
-		_: return Animation.INTERPOLATION_NEAREST # 0=none, 4=constant
+		_: return Animation.INTERPOLATION_LINEAR # 0=none, 4=constant
 
 ## See populate_animation_player()'s own doc comment for the real
 ## misaligned-key-time problem this resamples around, and the unverified

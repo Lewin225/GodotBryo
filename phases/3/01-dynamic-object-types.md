@@ -14,7 +14,7 @@ prose in this table, so it doesn't go stale the way the old inline status text d
 Remaining work, tracked live:
 [#9 Item branch: ARMO/WEAP/CCRD/AMMO](https://github.com/Lewin225/GodotBryo/issues/9) ·
 [#10 Item branch follow-up: KEYM use, ALCH consumption](https://github.com/Lewin225/GodotBryo/issues/10) ·
-[#11 Actor branch: GamebryoActor, NPCNode/CreatureNode, ACHR/ACRE](https://github.com/Lewin225/GodotBryo/issues/11).
+[#11 Actor branch: GamebryoActor, NPCActor/CreatureActor, ACHR/ACRE](https://github.com/Lewin225/GodotBryo/issues/11).
 
 ## What "Dynamic" means here (from nv_class_hierarchy.md, restated precisely)
 
@@ -100,7 +100,7 @@ enough real instances that leaving them unregistered is a genuine, measurable ga
 Per nv_class_hierarchy.md's own sketch: `GamebryoActor` as a sibling of
 `GamebryoVisual` (same `GamebryoObject` root), composing an internal `CharacterBody3D`
 child the same way `GamebryoVisual` composes `StaticBody3D`, with thin
-`NPCNode`/`CreatureNode` leaves (most of the interesting shared data — Traits, Stats,
+`NPCActor`/`CreatureActor` leaves (most of the interesting shared data — Traits, Stats,
 Factions, AI Data/Packages, Inventory, Animation, Sounds, Scripts — lives on the base,
 not the leaves, per GECK's own "a lot of the data for the two types is identical").
 Placement itself (via `ACHR`/`ACRE` REFR-equivalents) is also explicitly out of scope
@@ -109,8 +109,8 @@ item in this whole doc, both in scope and in real record count.
 
 | Type | Name | Real SCRI usage | Node type | Status |
 |---|---|---|---|---|
-| `NPC_` | Non-player character | 1046/3816 | `NPCNode` (extends `GamebryoActor`) | Not started — no placement, no base class, no node — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
-| `CREA` | Creature | 260/1578 | `CreatureNode` (extends `GamebryoActor`) | Not started — same — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
+| `NPC_` | Non-player character | 1046/3816 | `NPCActor` (extends `GamebryoActor`) | Not started — no placement, no base class, no node — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
+| `CREA` | Creature | 260/1578 | `CreatureActor` (extends `GamebryoActor`) | Not started — same — [issue #11](https://github.com/Lewin225/GodotBryo/issues/11) |
 
 ## Confirmed NOT Dynamic (real data, closes several "needs research" flags from phases/1/object-types.md)
 
