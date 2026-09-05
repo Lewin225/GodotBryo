@@ -17,6 +17,16 @@ static float f32(const uint8_t *p) {
 	return value;
 }
 
+static uint16_t u16(const uint8_t *p) {
+	uint16_t value;
+	std::memcpy(&value, p, sizeof(value));
+	return value;
+}
+
+static unsigned u8(const uint8_t *p) {
+	return *p;
+}
+
 int main(int argc, char **argv) {
 	if (argc != 2) return 2;
 	esm::EsmFile esm;
@@ -31,9 +41,21 @@ int main(int argc, char **argv) {
 			<< std::dec << ' ' << edid << ':';
 		for (const auto &sub : subs) {
 			std::cout << ' ' << sub.type << '=' << sub.size;
-			if (sub.type == "DATA" && sub.size >= 12) {
+			if (sub.type == "DATA" && sub.size >= 15) {
 				std::cout << " [value@0=" << static_cast<int32_t>(u32(sub.data))
-					<< ",weight@8=" << f32(sub.data + 8) << ']';
+					<< ",health@4=" << static_cast<int32_t>(u32(sub.data + 4))
+					<< ",weight@8=" << f32(sub.data + 8)
+					<< ",damage@12=" << u16(sub.data + 12)
+					<< ",clip@14=" << static_cast<unsigned>(sub.data[14]) << ']';
+			}
+			if (sub.type == "DNAM" && sub.size >= 57) {
+				std::cout << " [animation_type@0=" << u32(sub.data)
+					<< ",flags1@12=" << u8(sub.data + 12)
+					<< ",grip@13=" << u8(sub.data + 13)
+					<< ",ammo_use@14=" << u8(sub.data + 14)
+					<< ",reload@15=" << u8(sub.data + 15)
+					<< ",attack@41=" << u8(sub.data + 41)
+					<< ",flags2@56=" << u32(sub.data + 56) << ']';
 			}
 		}
 		std::cout << '\n';

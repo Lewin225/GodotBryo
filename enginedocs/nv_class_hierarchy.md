@@ -162,14 +162,24 @@ separates "raw data" from "constructed Node" for a different reason in this code
 on that Dictionary shape, not baked into a Node subclass that will spend half its life not existing
 as a Node at all.
 
-### Actors — a sibling of `GamebryoVisual`, same root, same composition trick
+### Actors — a sibling of `GamebryoVisual`, same root
+
+> **Amendment (issue #52, post-chunk-5):** the internal `CharacterBody3D` composition this section
+> originally proposed was implemented in chunk 3 and then deliberately removed. Physical movement
+> for actors is real future work, not a solved problem yet — and the actual plan is for one of
+> these actor nodes to eventually live *inside* the player's own existing controller (which already
+> owns a `CharacterBody3D`), not just for third-person model/shadows but because that's also where
+> character stats/SPECIAL/inventory belong. A standalone composed body on `GamebryoActor` would just
+> be something to reconcile with (or discard from) that design once it's real. `GamebryoActor`
+> currently carries identity fields only (see `project/gamebryo/gamebryo_actor.gd`'s own doc
+> comment) — treat the "+ internal CharacterBody3D child" notes below as the ORIGINAL plan, not
+> current reality.
 
 With `GamebryoReference` moved to `Node3D` (above), the reason Actors needed a *parallel* root goes
 away: `Node3D` carries no physics-body assumption for anything to fight. `GamebryoActor` can extend
 `GamebryoObject` directly — same identity fields (`form_id`, `base_form_id`, `editor_id`,
-`record_type`), same transform, one true base for everything placed in the world — and add its own
-internal `CharacterBody3D` child for movement, the same composition pattern `GamebryoVisual` uses
-for `StaticBody3D`. `GamebryoActor` sits as a **sibling** of `GamebryoVisual`, not underneath it:
+`record_type`), same transform, one true base for everything placed in the world. `GamebryoActor`
+sits as a **sibling** of `GamebryoVisual`, not underneath it:
 actors don't have the "MeshInstance3D children built straight from NIF submeshes" shape `GamebryoVisual`
 represents — they need a skeleton/animation controller instead, which is a different enough
 rendering story to earn its own branch rather than inherit one built for static geometry.
@@ -179,18 +189,29 @@ GamebryoObject
   ├─ MarkerNode
   ├─ GamebryoVisual        (+ internal StaticBody3D child when it needs collision)
   │    ├─ DoorNode, ContainerNode, ActivatorNode, FurnitureNode, LightNode, ...
-  └─ GamebryoActor          (+ internal CharacterBody3D child — same composition trick)
-       ├─ NPCNode           (armor slots, dialogue, pickpocket-able)
-       └─ CreatureNode      (own skeleton/animation system, no armor)
+       └─ GamebryoActor          (visual/runtime embodiment; no thinking)
+            ├─ NPCActor          (NPC_ record source)
+            └─ CreatureActor     (CREA record source)
+
+NPCController / PlayerController
+  └─ GamebryoActor               (the possessed actor is the controller's child)
+       ├─ ActorData / Inventory / Equipment
+       ├─ ActorAnimationComponent
+       └─ HumanoidAssembly or CreatureAssembly
 ```
 
 The GECK Wiki's own `Category:Actors` page states plainly that "a lot of the data for the two types
 is identical" — Traits, Stats, Factions, AI Data, AI Packages, Inventory, Actor Effect List,
 Animation, Blood, Sounds, Destruction, and Scripts tabs are shared structure between `NPC_` and
-`CREA`. That argues for a rich shared `GamebryoActor` base (most of the interesting data lives
-there) with genuinely thin `NPCNode`/`CreatureNode` leaves — the opposite shape from the WorldObject
-branch, where the leaves (`DoorNode` etc.) are where the interesting data lives and the base
-(`GamebryoVisual`) stays thin.
+`CREA`. That argues for a rich shared `GamebryoActor` base with thin `NPCActor`/`CreatureActor`
+record-source leaves. The visual contract is a separate composition decision: a `CREA` Super
+Mutant may use `HumanoidAssembly`, while a `CREA` deathclaw may use `CreatureAssembly`.
+
+`GamebryoActor` is the actor's embodiment, not its decision-maker. `NPCController` owns an actor
+instance and handles packages, pathfinding, perception, interaction, dialogue, and other thinking
+concerns. `PlayerController` can own or possess the same actor interface for input and camera
+control. Controller ownership is deliberately outside the actor inheritance tree so companions,
+questgivers, and talking Super Mutants are not forced into a different visual class.
 
 `TalkingActivator` (see above) and `Template Data` (an actor can source whole tabs from another
 actor's `ActorBase`, including a `LeveledCharacter`/`LeveledCreature`) both point at composition
@@ -299,18 +320,32 @@ classDiagram
         +to_inventory_entry() Dictionary
     }
     class GamebryoActor {
-        <<proposed; + internal CharacterBody3D child>>
+        <<shared actor embodiment>>
         +factions
         +ai_packages
         +inventory
     }
-    class NPCNode {
+    class NPCActor {
         <<proposed>>
-        +armor_slots
+        +npc_record
     }
-    class CreatureNode {
+    class CreatureActor {
         <<proposed>>
-        +skeleton_type
+        +creature_record
+    }
+    class NPCController {
+        <<controller; parent>>
+        +possessed_actor
+    }
+    class PlayerController {
+        <<controller; parent>>
+        +possessed_actor
+    }
+    class HumanoidAssembly {
+        <<component>>
+    }
+    class CreatureAssembly {
+        <<component>>
     }
 
     GamebryoReference <|-- GamebryoObject
@@ -326,8 +361,12 @@ classDiagram
     GamebryoVisual <|-- TalkingActivatorNode
     GamebryoVisual <|-- StaticNode
     GamebryoVisual <|-- ItemNode
-    GamebryoActor <|-- NPCNode
-    GamebryoActor <|-- CreatureNode
+    GamebryoActor <|-- NPCActor
+    GamebryoActor <|-- CreatureActor
+    NPCController *-- GamebryoActor : owns/possesses
+    PlayerController *-- GamebryoActor : owns/possesses
+    GamebryoActor ..> HumanoidAssembly : composes when supported
+    GamebryoActor ..> CreatureAssembly : composes when supported
 
     class LeveledList {
         <<Resource, not a Node>>

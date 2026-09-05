@@ -1,0 +1,155 @@
+FALLOUT: NEW VEGAS LOCOMOTION ANIMATION CENSUS
+===============================================
+
+Status
+------
+
+This is an evidence report for the actor locomotion blocker. It is based on
+the legally-owned fresh_nv_copy/Data archives and the standalone diagnostic
+native/tools/locomotion_bone_census.cpp. It does not infer a body partition
+from a filename.
+
+The census currently finds:
+
+- 121 resolved .kf files under meshes\\characters\\_male\\locomotion.
+- 129 top-level NiControllerSequence records across those files.
+- 67 named nodes in the shared male/female skeleton NIF population.
+- 64 unique transform target names in the locomotion sequences.
+- 58 of the 67 skeleton nodes are transform targets in each of the ordinary
+  male mtforward, mtleft, and mtright sequences.
+
+Important result: the apparent missing lower-body animation had two separate
+causes and must not be collapsed into one theory.
+
+1. Some files are genuinely partial in the shipped data.
+
+The raw target populations include:
+
+- male\\mtforward.kf: 58 transform targets, including both thighs, calves,
+  feet, pelvis, spine, arms, hands, head, Bip01, and Bip01 NonAccum.
+- male\\mtleft.kf: 58 transform targets with the same broad full-body
+  population.
+- male\\mtright.kf: 58 transform targets with the same broad full-body
+  population.
+- male\\mtbackward.kf: 59 transform targets after compressed-track
+  evaluation, including both thighs, calves, feet, pelvis, spine, arms,
+  hands, head, and the compressed finger/thumb population.
+- 2hhleft.kf: 23 transform targets after compressed-track evaluation,
+  including both thighs, calves, feet, pelvis, spine, arms, hands, and head.
+- 2hhright.kf: 23 transform targets after compressed-track evaluation with
+  the same broad body population.
+- mtidle.kf: four transform targets: Bip01 Spine, Bip01 L ForeTwist,
+  Bip01 LPauldron, and Bip01 RPauldron.
+- pamtidle.kf: 34 transform targets, principally finger/thumb/pauldron
+  nodes plus Bip01 Spine; it is not a full-body locomotion clip.
+
+Therefore 2hhleft/right and mtbackward cannot be repaired by changing only
+Godot's AnimationTree. Their source sequences do not contain the full lower
+body transform population. The runtime needs a fallback/composition policy
+for sparse groups, or the corresponding base movement/idle layer must supply
+the missing bones.
+
+2. The native importer previously dropped compressed transform tracks.
+
+The ordinary full-body mtforward/mtleft/mtright files use mostly
+NiTransformInterpolator records and currently survive extraction. The sparse
+mtbackward and 2hh files contain many NiBSplineCompTransformInterpolator
+records:
+
+- male\\mtbackward.kf: 51 NiBSplineCompTransformInterpolator links and 10
+  NiTransformInterpolator links; all valid transform links are now emitted.
+- 2hhleft.kf: 21 compressed links and 3 ordinary transform links; all valid
+  transform links are now emitted.
+- 2hhright.kf: 20 compressed links and 4 ordinary transform links; all valid
+  transform links are now emitted.
+
+This was a confirmed importer gap, not an absence of source data. The old
+extraction path dynamic_casted only to NiTransformInterpolator.
+NiBSplineCompTransformInterpolator is a distinct compressed transform type,
+although nifly parses its block, offsets, and bias/multiplier fields. The
+compressed control points are present in NiBSplineData. The native loader now
+decodes them with the confirmed bias/multiplier formula, evaluates the
+standard clamped cubic B-spline, and adaptively bakes linear Godot keys. It
+adds samples only where curve-to-chord error exceeds the position, rotation,
+or scale tolerance rather than baking at a fixed frame rate.
+
+The census was rerun after implementing B-spline evaluation. The formerly
+sparse-looking files now show broad authored body coverage; remaining
+differences between clips are real sequence content, not the former importer
+loss.
+
+Animation group and layering evidence
+--------------------------------------
+
+The sequence name is the animation group contract. The shipped groups use
+names such as Idle, Forward, Backward, Left, Right, FastForward, FastLeft,
+TurnLeft, and weapon/action groups; there are not literal generic upper.kf
+and lower.kf files in this locomotion population.
+
+GECK's Fallout 3/New Vegas animation documentation states that animations
+belong to AnimGroups, that only one animation in a group is active at a time,
+and that animations in separate groups may run simultaneously. Its Idle
+Animation documentation further describes Whole Body, Upper Body, Weapon,
+Left Arm, and Left Hand as group sections with different conflict scopes.
+This supports a group-priority/filtered-layer runtime model, not a single
+four-point directional blendspace with an invented fixed upper-body pose.
+
+The kNVSE source provides an implementation-level confirmation for New Vegas:
+movement is treated as a sequence type, idle and movement sequences are kept
+in separate runtime slots, and the engine applies group conflict/priority
+fixes before starting a new group. It also contains fixes for missing movement
+animations and missing mtidle interpolators, which is evidence that sparse
+vanilla sequences are expected and that fallback behavior is part of the
+original runtime problem space.
+
+Implications for the Godot design
+---------------------------------
+
+1. Do not restore the old generated AnimationTree yet. The current result is
+   intentionally direct AnimationPlayer playback so every authored clip can
+   be inspected in full.
+2. Native B-spline transform extraction now preserves the compressed track
+   identity while evaluating it to adaptive linear Godot key samples.
+3. The census now counts compressed transform links and confirms the emitted
+   target populations for every locomotion file.
+4. Add sequence metadata for the authored group name, path family, duration,
+   and target coverage. Do not derive upper/lower ownership from filename
+   prefixes alone.
+5. Build the eventual runtime as several conflict-aware animation layers or
+   filtered AnimationTree branches: movement, idle/whole-body, upper-body,
+   weapon, left-hand, and facial/head animation. A sparse sequence should
+   affect only its authored targets while a lower-priority/base sequence
+   supplies untouched bones.
+6. Root-motion tracks on Bip01 and Bip01 NonAccum remain a separate concern:
+   they must be classified and extracted according to their authored role,
+   not discarded as evidence that the rest of the clip is upper-body-only.
+
+Online references
+-----------------
+
+- GECK Animation Tab:
+  https://geckwiki.com/index.php?title=Animation_Tab
+- GECK Idle Animations:
+  https://geckwiki.com/index.php?title=Idle_Animations
+- GECK AnimGroups:
+  https://geckwiki.com/index.php?title=AnimGroups
+- NIFTools object documentation, NiBSplineTransformInterpolator:
+  https://www.niftools.org/nifxml/niobject_list.html
+- OpenMW NIF controller implementation reference:
+  https://github.com/OpenMW/openmw/blob/master/components/nif/controller.cpp
+- kNVSE New Vegas animation hooks and sequence handling:
+  https://github.com/korri123/kNVSE/blob/master/nvse_plugin_example/hooks.cpp
+
+Confidence and remaining uncertainty
+-------------------------------------
+
+High confidence: the counts above are from the shipped archive population;
+the census and runtime now include NiBSplineCompTransformInterpolator;
+sequence names are the authored group names; and the previously missing
+lower-body tracks are present in the decoded clips.
+
+Not yet settled: bit-for-bit equivalence with the original runtime's internal
+sample schedule, and the precise per-group priority/filter masks used by the
+original actor runtime. Those remain deferred to the later layered-runtime
+work; direct AnimationPlayer playback is now suitable for inspecting the
+decoded authored motion.

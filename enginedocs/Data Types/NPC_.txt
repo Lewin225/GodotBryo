@@ -1,0 +1,57 @@
+NPC_ — Non-Player Character base record
+
+AUTHORED ROLE
+NPC_ is the authored base data for a non-player character. It is not the physical
+actor instance placed in a cell; ACHR supplies that placement and points to this
+record's FormID.
+
+IMPORTANT REFERENCES
+- RNAM -> RACE: race and gender-specific body/head-part collections.
+- HNAM -> HAIR: the referenced hair record, including its own FormID and model.
+- ENAM -> EYES: the referenced eyes record, including its own FormID and model.
+- CNAM -> CLAS: actor class record.
+- PKID -> PACK: one or more AI package records.
+- MODL: the shared humanoid skeleton model in the verified NPC records.
+- CNTO: authored inventory entries; these are ownership/content records, not an
+  equipped-state marker.
+
+APPEARANCE
+The visible body and head meshes are selected from RACE collections and related
+head-part records. NPC_.MODL is not treated as a self-contained visible body mesh.
+
+EQUIPMENT CENSUS
+The base FalloutNV.esm contains 3,816 NPC_ records and 16,166 CNTO inventory
+entries. Across all ten official masters, the exhaustive census contains 27,576
+NPC_/CONT CNTO entries and 16,959 LVLO entries. All CNTO FormIDs resolve against
+the combined official-master record set. The complete rows and type histogram
+are in enginedocs/inventory_census/.
+
+The CNTO references include direct ARMO, WEAP, ALCH, AMMO, MISC, KEYM, BOOK,
+CCRD, CMNY records and LVLI records, with a small number of other authored
+targets. The target type is preserved rather than assumed from the owner.
+
+No DOFT or OTFT records were found in the base ESM census. Therefore the initial
+equipped visual set must not be inferred by equipping every CNTO entry. The
+runtime equipment-selection rule, including any leveled-list expansion or actor
+initialization behavior, remains a separate verification task.
+
+FACEGEN SUBRECORDS
+- FGGS: FaceGen geometry-symmetric payload; verified as 200 bytes / 50 floats.
+- FGGA: FaceGen geometry-asymmetric payload; verified as 120 bytes / 30 floats.
+- FGTS: FaceGen texture-symmetric payload; verified as 200 bytes / 50 floats.
+
+Raw FaceGen bytes remain authoritative. The float views are named only by their
+source tags; individual entry semantics are not inferred from values.
+
+The matching head EGM basis applies FGGS/FGGA to NPC-specific static geometry.
+The matching head TRI supplies 38 named facial delta morphs as Godot ArrayMesh
+blend shapes. TRI statistical morphs and FGTS/EGT texture synthesis remain future
+work pending verification.
+
+RUNTIME MODEL
+NPC_ data becomes an NpcRecord resource. References resolve to typed RaceRecord,
+HairRecord, EyesRecord, ClassRecord, PackageRecord, and FaceGenData resources rather
+than duplicated ad-hoc node fields.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/Fallout3/Records/NPC_.html

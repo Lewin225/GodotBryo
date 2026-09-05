@@ -1,5 +1,9 @@
 # AGENTS.md
 
+**Never use a git worktree (or any worktree-isolation workflow) in this
+repo without the user's explicit, per-instance permission.** Not a style
+preference — ask first, every time, no exceptions for "it seemed safer."
+
 Guide for coding agents (and humans) working in this repository. See also
 `ROADMAP.md` (phased plan + current status) and `phases/*/README.md` (per-phase
 task docs with real acceptance criteria) for deeper history — this file is the
@@ -38,6 +42,65 @@ That framing undersells (and mis-scopes) the actual project. Concretely:
   of Phase 3 are about correctly rendering and streaming the actual game
   world and placed objects — actors exist and animate but are currently
   inert. See `ROADMAP.md` for the full phase breakdown and current status.
+
+## Investigation discipline
+
+Real, costly failure modes from an actual bug investigation (issue #56 —
+persistent-cell "near fade"), not abstract advice. Worth reading before
+you build a fix on top of any theory about undocumented Bethesda data or
+behavior.
+
+- **A spot-check is not verification — an exhaustive census is.** One
+  theory during #56 (that certain persistent-cell objects were placed via
+  a specific baked-tile naming convention) got built into a whole feature,
+  merged, and shipped, all off 2-3 sample files that looked consistent.
+  It was wrong — a full, exhaustive check (every REFR across a real
+  4468-ref worldspace census) later found zero matches for that theory
+  anywhere. The fix that actually held up came from that same kind of
+  exhaustive check: not "a few examples support this," but "100% of a
+  full real-data population confirms this, zero exceptions." When a
+  theory about real ESM/NIF data is about to drive a nontrivial
+  implementation, check the *whole* relevant population before writing
+  code, not a sample that happened to look convincing.
+
+- **A subagent's hedged finding is not settled fact — don't launder the
+  hedge out of it.** The wrong theory above traced back to an earlier
+  subagent report that had explicitly flagged its own uncertainty ("I was
+  not able to conclusively parse the REFR→CELL parent for this specific
+  STAT"). That hedge quietly disappeared by the time the finding got
+  synthesized into an implementation plan. If a report — yours or a
+  subagent's — contains a caveat about incomplete verification, either
+  re-verify the specific claim directly before building on it, or carry
+  the hedge forward explicitly instead of upgrading it to confidence.
+
+- **Before declaring a units/coordinate-space bug, trace the value's full
+  lifecycle, not just the layer you're looking at.** Also from #56: a real
+  bug got "fixed" by adding a unit conversion at the GDScript layer where
+  none appeared to exist — except the conversion had already happened
+  further upstream, in the native ESM parser, before the value ever
+  reached that GDScript code. The fix doubled the conversion and shipped
+  a genuinely wrong crossover distance (70x too large) before being
+  caught and reverted. A missing conversion at the one point you happened
+  to check does not mean a conversion is missing overall — trace the
+  value from where it's first read out of raw data through every
+  transform to where it's actually used before concluding anything about
+  its units or scale.
+
+- **Name a reverse-engineered field after what's confirmed, not what's
+  inferred — this project's whole reason for existing is reverse-
+  engineering undocumented formats, so this isn't a style nitpick.** #56's
+  fix originally introduced a field named after an interpretation
+  (`has_distant_skyline_marker`) of two ESM subrecords (`XSRF`/`XSRD`)
+  whose actual byte-level meaning is undocumented even in the community's
+  own xEdit/fopdoc reference — only their *presence*, empirically
+  correlated against real data, was ever established. Renamed to
+  `has_xsrf_or_xsrd` (`native/src/esm/esm_types.h`) once that distinction
+  got flagged: the field name should describe the raw, confirmed
+  observation; the interpretation belongs in a comment, explicitly split
+  into "what this is" (the fact) and "what we infer from it" (the
+  correlation this project acts on) — so the confidence level stays
+  visible in the code itself, not just in whoever's memory of the
+  investigation.
 
 ## Tech stack
 

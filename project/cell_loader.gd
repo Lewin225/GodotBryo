@@ -65,15 +65,6 @@ signal load_completed(cell_form_id: int, success: bool)
 @export var cell_editor_id: String = ""
 @export_tool_button("Load Cell") var load_button: Callable = _editor_load_cell
 
-## phases/2/12-distant-object-lod.md, step 8: same inspector-tunable
-## crossover distance/margin WorldStreamer exposes, threaded into this
-## class's own `resolver` in _ready() -- keeps editor-preview LOD tuning
-## (this class's Node-based build() path) independently adjustable from
-## the runtime value, since it's a genuinely separate GamebryoMeshResolver
-## instance, not shared with WorldStreamer's.
-@export var lod_crossover_distance_m: float = 100.0
-@export var lod_crossover_margin_m: float = 5.0
-
 var esm: EsmReader
 var resolver: GamebryoMeshResolver
 var registry: GamebryoObjectRegistry
@@ -95,12 +86,16 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 
 func _ready() -> void:
 	if esm == null or resolver == null:
-		var data_dir := GameDataSettings.get_data_dir()
+		var data_dir: String = GameDataSettings.get_data_dir()
 		esm = EsmReader.new()
 		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 			push_error("CellLoader fallback could not open FalloutNV.esm")
 		resolver = GamebryoMeshResolver.new(data_dir)
-	resolver.set_lod_crossover(lod_crossover_distance_m, lod_crossover_margin_m)
+	# GodotBryoSettings (issue #56) is the single source of truth -- this
+	# class's `resolver` is a genuinely separate GamebryoMeshResolver
+	# instance from WorldStreamer's, but both now read the same config.
+	resolver.set_lod_crossover(GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, GodotBryoSettings.lod1_max_range_m)
+	resolver.set_distant_lod_range(GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m)
 	registry = GamebryoObjectRegistry.new(resolver, esm)
 	_builder = CellStreamBuilder.new(esm, resolver, registry, objects_per_frame)
 	_builder.progress.connect(func(f): load_progress.emit(f))

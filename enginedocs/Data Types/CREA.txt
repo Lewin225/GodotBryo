@@ -1,0 +1,11 @@
+CREA — Creature base record
+
+ROLE
+CREA is authored creature base data. ACRE supplies a placed creature instance.
+CREA is not treated as an NPC_ and does not automatically use the humanoid RACE
+head/body assembly.
+
+RUNTIME MODEL
+Creature data will use the same composition-oriented actor interfaces where they
+apply, while retaining a separate CreatureActor leaf and creature-specific mesh
+assembly path.

@@ -36,6 +36,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
 	ClassDB::bind_method(D_METHOD("has_collision_data"), &NifReader::has_collision_data);
 	ClassDB::bind_method(D_METHOD("get_animation_sequences"), &NifReader::get_animation_sequences);
+	ClassDB::bind_method(D_METHOD("get_direct_animation_controllers"), &NifReader::get_direct_animation_controllers);
 	ClassDB::bind_method(D_METHOD("get_scene_nodes"), &NifReader::get_scene_nodes);
 	ClassDB::bind_method(D_METHOD("get_skin_data"), &NifReader::get_skin_data);
 	ClassDB::bind_method(D_METHOD("get_morph_data"), &NifReader::get_morph_data);
@@ -284,6 +285,7 @@ Array NifReader::get_animation_sequences() const {
 	for (const nif::AnimationSequence &seq : mesh_.animation_sequences) {
 		Dictionary sd;
 		sd["name"] = String(seq.name.c_str());
+		sd["accum_root_name"] = String(seq.accum_root_name.c_str());
 		sd["cycle_type"] = static_cast<int>(seq.cycle_type);
 		sd["start_time"] = seq.start_time;
 		sd["stop_time"] = seq.stop_time;
@@ -307,7 +309,53 @@ Array NifReader::get_animation_sequences() const {
 			tracks.push_back(td);
 		}
 		sd["tracks"] = tracks;
+		Array float_tracks;
+		for (const nif::FloatAnimationTrack &track : seq.float_tracks) {
+			Dictionary td;
+			td["target_node_name"] = String(track.target_node_name.c_str());
+			td["property_type"] = String(track.property_type.c_str());
+			td["controller_type"] = String(track.controller_type.c_str());
+			td["keys"] = float_keys_to_array(track.keys);
+			float_tracks.push_back(td);
+		}
+		sd["float_tracks"] = float_tracks;
 		out.push_back(sd);
+	}
+	return out;
+}
+
+Array NifReader::get_direct_animation_controllers() const {
+	Array out;
+	if (!loaded_) return out;
+	for (const auto &direct : mesh_.direct_animation_controllers) {
+		Dictionary d;
+		d["target_node_name"] = String(direct.target_node_name.c_str());
+		d["target_node_index"] = direct.target_node_index;
+		d["controller_type"] = String(direct.controller_type.c_str());
+		d["interpolator_type"] = String(direct.interpolator_type.c_str());
+		d["start_time"] = direct.start_time;
+		d["stop_time"] = direct.stop_time;
+		Array transforms;
+		for (const auto &track : direct.transform_tracks) {
+			Dictionary t;
+			t["target_node_name"] = String(track.target_node_name.c_str());
+			t["has_quaternion_keys"] = track.has_quaternion_keys;
+			Array q; for (const auto &k : track.quaternion_keys) q.push_back(quat_key_to_dict(k));
+			t["quaternion_keys"] = q;
+			t["has_axis_keys"] = track.has_axis_keys;
+			t["x_rotation_keys"] = float_keys_to_array(track.x_rotation_keys);
+			t["y_rotation_keys"] = float_keys_to_array(track.y_rotation_keys);
+			t["z_rotation_keys"] = float_keys_to_array(track.z_rotation_keys);
+			Array tr; for (const auto &k : track.translation_keys) tr.push_back(vec3_key_to_dict(k));
+			t["translation_keys"] = tr;
+			t["scale_keys"] = float_keys_to_array(track.scale_keys);
+			transforms.push_back(t);
+		}
+		d["transform_tracks"] = transforms;
+		Array visibility;
+		for (const auto &k : direct.visibility_keys) { Dictionary v; v["time"] = k.time; v["value"] = k.value; visibility.push_back(v); }
+		d["visibility_keys"] = visibility;
+		out.push_back(d);
 	}
 	return out;
 }
@@ -323,7 +371,7 @@ Array NifReader::get_scene_nodes() const {
 		d["parent_index"] = node.parent_index;
 		const float *r = node.rotation;
 		float scale = node.scale;
-		Basis basis(
+	Basis basis(
 				r[0] * scale, r[1] * scale, r[2] * scale,
 				r[3] * scale, r[4] * scale, r[5] * scale,
 				r[6] * scale, r[7] * scale, r[8] * scale);
@@ -452,7 +500,7 @@ Array NifReader::get_collision_shapes() const {
 		d["owning_node_index"] = cs.owning_node_index;
 
 		const float *r = cs.rotation;
-		Basis basis(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
+	Basis basis(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
 		Vector3 origin(cs.translation[0], cs.translation[1], cs.translation[2]);
 		d["transform"] = Transform3D(basis, origin);
 
