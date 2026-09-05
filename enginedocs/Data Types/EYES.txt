@@ -1,0 +1,15 @@
+EYES — Eyes record
+
+ROLE
+EYES is an independent ESM record with its own FormID. NPC_ ENAM references the
+record and the runtime resolves that relationship as a typed resource.
+
+RESOLVED DATA
+- FormID and EditorID.
+- Display name where present.
+- Eye model path.
+- Icon path.
+
+RUNTIME MODEL
+EYES becomes an EyesRecord resource. NpcRecord.eyes points directly to that
+resource rather than duplicating an eyes FormID and model fields on NPCActor.

@@ -1,0 +1,48 @@
+ARMA — Armor Addon record
+
+AUTHORED ROLE
+ARMA is a visual armor addon selected through an armor's Biped Model List. It
+provides the gender-specific biped/world model data and the slot mask that tells
+the actor equipment compositor which body regions it occupies.
+
+CONFIRMED FIELDS
+- BMDT: 8-byte biped data; its first uint32 is the biped-slot flag mask.
+- MODL/MOD3: biped model collections for the genders as authored by the record
+  ordering; MOD2/MOD4 are optional additional world-model collections.
+- ETYP: equipment type.
+- DATA/DNAM: addon data; preserve unknown fields until their layout is verified.
+
+EXHAUSTIVE BASE-ESM CENSUS
+FalloutNV.esm contains 131 ARMA records. All 131 contain BMDT; 129 contain a
+MODL. There are 115 unique MODL paths. ARMA records are reached through the
+FLST records referenced by ARMO.BIPL; the 115 armor lists contain 243 ARMA
+entries resolving to 79 unique ARMA FormIDs.
+
+ALL-OFFICIAL-MASTER CENSUS
+Across the ten official masters there are 161 ARMA records. The observed model
+collection ordering is MODL (male biped), MOD2 (male world), MOD3 (female
+biped), MOD4 (female world), matching the documented collection ordering. The
+combined census found 159 MODL fields, 2 MOD2 fields, and 114 MOD3 fields; no
+MOD4 field was present on an ARMA record in this shipped dataset. All 946 unique
+equipment model paths, including direct ARMO paths and linked ARMA paths, were
+resolved successfully through the official BSAs.
+
+NIF SKINNING AND PARTITIONS
+The equipment NIFs use the same real BSDismemberSkinInstance path as the nude
+humanoid meshes. 758 unique equipment paths contain skin data; the remainder
+are unskinned model variants or props. Partition IDs are retained per skin
+target and are not renamed or equated to BMDT slot bits. The observed equipment
+population includes IDs 0, 1, 2, 3, 4, 5, 7, 10, 13, 101, 103, 105, 107, 110,
+201, 203, 205, 207, 210, 1000, 3000, 5000, 7000, 10000, 65533, and 65535;
+65533 and 65535 remain unknown/sentinel-like values and must be preserved.
+
+COMPOSITION ROLE
+An ArmorAddonRecord is not an inventory item by itself. EquipmentState selects
+ARMO items, expands their BipedModelList resources, chooses the actor's gender
+model collection, and composes the resulting ARMA meshes against the actor's
+shared Skeleton3D. BMDT overlap must drive body-part hiding/occupancy; mesh or
+node names are not authoritative.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/ARMA.html
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/Subrecords/BMDT.html

@@ -86,7 +86,7 @@ func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> vo
 
 func _ready() -> void:
 	if esm == null or resolver == null:
-		var data_dir := GameDataSettings.get_data_dir()
+		var data_dir: String = GameDataSettings.get_data_dir()
 		esm = EsmReader.new()
 		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 			push_error("CellLoader fallback could not open FalloutNV.esm")

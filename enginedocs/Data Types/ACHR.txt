@@ -1,0 +1,10 @@
+ACHR — Actor reference
+
+ROLE
+ACHR is the placed actor reference for an NPC_. It supplies the physical instance
+in a CELL and points to the NPC_ base FormID. ACHR is therefore reference/placement
+data, not the authored NPC identity or appearance definition.
+
+RUNTIME MODEL
+ACHR resolves to an NPCActor built from its referenced NpcRecord. The actor node
+receives placement transform and runtime state separately from the base resource.

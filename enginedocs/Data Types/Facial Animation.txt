@@ -1,0 +1,40 @@
+FACIAL ANIMATION — KF, HeadAnims, and TRI relationship
+
+VERIFIED RUNTIME SOURCE
+The real file
+characters\\_male\\idleanims\\testfacialanims.kf
+contains a NiControllerSequence named SpecialIdle_TestFacialAnims with
+NiFloatInterpolator tracks targeting HeadAnims:0 through a
+NiGeomMorpherController. Confirmed morph track IDs include:
+
+- BlinkLeft
+- BlinkRight
+- Aah
+- Anger
+- BigAah
+
+The real humanoid skeleton NIF contains the HeadAnims proxy and a
+NiGeomMorpherController. The corresponding head TRI files contain the named
+facial morph geometry. This establishes that KF facial tracks are not limited
+to bone movement.
+
+RUNTIME SPLIT
+- KF files provide authored facial actions, expressions, blinks, and head
+  gestures through controller tracks.
+- INFO/TRDT selects dialogue emotion and authored speaker/listener animations.
+- LIP files provide the dialogue speech-synchronization data that is expected
+  to drive phoneme morphs during voice playback.
+- TRI files provide the actual facial morph targets consumed by the rendered
+  head.
+
+IMPLEMENTATION STATUS
+Godot conversion should expose the TRI morphs as ArrayMesh blend shapes and
+keep facial animation as a separate layer from body animation. The existing
+facial controller can drive named morph weights, but normal idle blink
+scheduling, KF facial-track playback, and LIP phoneme decoding still require
+runtime validation.
+
+SOURCE
+https://geckwiki.com/index.php?title=TRI_Files
+https://www.gamesas.com/face-expression-t43085.html
+https://www.gamesas.com/conformulation-t20135.html

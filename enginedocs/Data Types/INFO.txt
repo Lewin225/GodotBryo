@@ -1,0 +1,43 @@
+INFO — Dialogue response record
+
+AUTHORED ROLE
+INFO records define dialogue responses. They belong to a DIAL topic and may
+reference a speaker, response text, voice data, emotion metadata, and authored
+speaker/listener animations.
+
+RELEVANT SUBRECORDS
+- ANAM: explicit speaker reference, normally NPC_ or CREA.
+- NAM1: response text.
+- TRDT: response metadata, including response number, emotion type/value, and
+  an optional sound FormID.
+- SNAM: speaker animation FormID, referencing an IDLE record.
+- LNAM: listener animation FormID, referencing an IDLE record.
+
+TRDT EMOTION DATA
+The documented emotion types are Neutral, Anger, Disgust, Fear, Sad, Happy,
+Surprise, and Pained. The Use Emotion Animation flag is distinct from the
+emotion value; it indicates that the corresponding authored emotion animation
+may be used.
+
+VOICE LINKING
+The shipped voice files are conventionally named from the quest EditorID,
+dialogue EditorID, INFO FormID, and response number, then stored below the
+plugin and voice-type directories. The matching .LIP file uses the same stem
+as the voice audio file. The TRDT sound FormID is therefore not the only voice
+linking mechanism and is absent from most surveyed FalloutNV INFO records.
+
+LOCAL CENSUS
+FalloutNV.esm contains 23,247 INFO records and 29,674 response-text/TRDT
+entries. The surveyed DLC masters also contain INFO/TRDT response data.
+Nonzero TRDT sound FormIDs were uncommon: 171 in FalloutNV.esm, 27 in
+DeadMoney.esm, 10 in OldWorldBlues.esm, and 20 in LonesomeRoad.esm; none were
+found in the surveyed Honest Hearts or Gun Runners' Arsenal records.
+
+RUNTIME IMPLICATION
+INFO is the dialogue-side source for selecting spoken audio, LIP timing,
+emotion, and authored gesture animations. It should be resolved into typed
+dialogue resources rather than copied into actor-specific variable names.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/INFO.html
+https://raw.githubusercontent.com/Sharlikran/xEdit/master/Edit%20Scripts/FNV%20-%20Export_dialogues.pas

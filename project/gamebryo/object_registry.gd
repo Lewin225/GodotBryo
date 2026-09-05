@@ -4,6 +4,12 @@ extends RefCounted
 const XEMI_NO_LIGHTING_SHADER := preload("res://gamebryo/xemi_no_lighting.gdshader")
 const XEMI_NO_LIGHTING_OPAQUE_SHADER := preload("res://gamebryo/xemi_no_lighting_opaque.gdshader")
 
+## Issue #52 (+ later): actors are instantiated from a hand-authored
+## template scene rather than built purely in code (`NPCActor.new()`) the
+## way every other type here is — see NPCActor's own doc comment for why.
+const NPC_TEMPLATE := preload("res://gamebryo/npc_actor.tscn")
+const CREATURE_TEMPLATE := preload("res://gamebryo/creature_actor.tscn")
+
 ## type_tag -> factory registry (phases/1/01-object-type-registry.md /
 ## phases/1/architecture.md's "Registry extensibility"). Runtime-populated,
 ## not a compiled switch — adding a type is one register() call, nothing
@@ -11,6 +17,7 @@ const XEMI_NO_LIGHTING_OPAQUE_SHADER := preload("res://gamebryo/xemi_no_lighting
 
 var resolver: GamebryoMeshResolver
 var esm: EsmReader
+var resource_factory: EsmResourceFactory
 var _factories := {} # String -> Callable(Dictionary, GamebryoMeshResolver) -> Node3D
 
 # Debug-tunable while validating how Gamebryo's packed LIGH RGB reaches
@@ -36,6 +43,7 @@ var script_engine: ScriptEngine = null
 func _init(mesh_resolver: GamebryoMeshResolver, esm_reader: EsmReader) -> void:
 	resolver = mesh_resolver
 	esm = esm_reader
+	resource_factory = EsmResourceFactory.new(esm)
 	_register_defaults()
 
 func register(type_tag: String, factory: Callable) -> void:
@@ -85,7 +93,7 @@ func build(placement: Dictionary) -> Node3D:
 		# builds -- that has no bone data at all.
 		if nif != null and not nif.get_skin_data().is_empty():
 			return _instantiate_skinned(GamebryoVisual, placement, resolver)
-		if nif != null and not nif.get_animation_sequences().is_empty():
+		if nif != null and (not nif.get_animation_sequences().is_empty() or not nif.get_direct_animation_controllers().is_empty()):
 			return _autoplay_special_idle(_instantiate_dynamic(GamebryoVisual, placement, resolver))
 		return _instantiate_visual(GamebryoVisual, placement, resolver)
 	return null
@@ -218,7 +226,7 @@ func _resolve_visual(placement: Dictionary, ctx: GamebryoResolveContext, type_ta
 	# AnimationPlayer, not just "a Node instead of a batch entry").
 	# Worker-safe: NifReader.get_animation_sequences() touches no
 	# RenderingServer/PhysicsServer3D API, same as this whole resolve step.
-	if not nif.get_animation_sequences().is_empty():
+	if not nif.get_animation_sequences().is_empty() or not nif.get_direct_animation_controllers().is_empty():
 		result["animated"] = true
 	# issues #46/#47: real skeletal skinning (BSDismemberSkinInstance/
 	# NiSkinInstance) -- takes priority over `animated` at the construct
@@ -504,6 +512,7 @@ func _construct_door(result: Dictionary) -> Node3D:
 	var geometry := resolver.build_geometry_entries(result.get("geometry", {}), result.get("lod_geometry", {}))
 	var built := resolver.populate_dynamic_children(node, nif, "", geometry)
 	resolver.populate_animation_player(node, nif, built)
+	resolver.populate_direct_controller_player(node, nif, built)
 	node = _finalize(node, result["placement"])
 	if node is DoorNode:
 		node.apply_destination(result.get("destination", {}))
@@ -524,6 +533,7 @@ func _construct_animated_visual(result: Dictionary) -> Node3D:
 	if result.has("emittance_color"):
 		_apply_emittance_tint(node, result["emittance_color"])
 	resolver.populate_animation_player(node, nif, built)
+	resolver.populate_direct_controller_player(node, nif, built)
 	return _finalize(node, result["placement"])
 
 ## Issues #46/#47: the same real Skeleton3D/Skin/blend-shape construction
@@ -711,6 +721,13 @@ func _register_defaults() -> void:
 	register("WEAP", func(p, r): return _build_item(p, r))
 	register("SCOL", func(p, r): return _build_scol(p, r))
 	register("LIGH", func(p, r): return _build_light(p, r))
+	# issue #52 chunk 5: ACHR/ACRE (EsmReader.get_cell_actors(), not
+	# get_cell_references() -- see that method's own doc comment) resolve to
+	# the same placement Dictionary shape as a REFR, so they dispatch
+	# through this exact same registry/build() call, keyed on base_type
+	# NPC_/CREA same as every other type here.
+	register("NPC_", func(p, r): return _build_npc(p, r))
+	register("CREA", func(p, r): return _build_creature(p, r))
 	# Every other Tier 1 type (ARMO/AMMO/BOOK/NOTE/TREE/CCRD/IMOD/CMNY) is
 	# deliberately NOT registered — they share
 	# the plain GamebryoVisual shape (confirmed identical EDID/OBND/MODL
@@ -811,6 +828,7 @@ func _instantiate_dynamic(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 	var geometry := mesh_resolver.build_geometry_entries(mesh_resolver.resolve_raw_geometry(nif, model))
 	var built := mesh_resolver.populate_dynamic_children(node, nif, model, geometry)
 	mesh_resolver.populate_animation_player(node, nif, built)
+	mesh_resolver.populate_direct_controller_player(node, nif, built)
 	return _finalize(node, placement)
 
 ## Issues #46/#47's synchronous-build() counterpart to _construct_skinned_
@@ -830,6 +848,42 @@ func _instantiate_skinned(cls, placement: Dictionary, mesh_resolver: GamebryoMes
 	var node = cls.new()
 	mesh_resolver.populate_skeleton(node, nif, model)
 	return _autoplay_ambient_animations(_finalize(node, placement))
+
+## Issue #52 chunk 5 (+ later): real NPC_ construction. Instantiates
+## npc_actor.tscn (the hand-authored actor template — see NPCActor's own doc
+## comment for why a real scene exists here instead of pure-code
+## construction) and calls its populate() with this placement, which
+## resolves the full humanoid assembly confirmed real in chunks 2/4
+## (skeleton from NPC_.MODL, gender-selected body parts from RACE's
+## ESM-declared INDX blocks via esm.get_race_body_parts()).
+## _autoplay_ambient_animations() is still called for consistency with
+## every other construction path here, but is a safe no-op — populate()
+## never builds a SkeletonAnimationPlayer (.kf playback is out of scope for
+## this issue) or a head/face mesh (FaceGen likewise out of scope). No
+## CharacterBody3D/collider either — see GamebryoActor's own doc comment
+## for why physical movement is deferred.
+func _build_npc(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var node: NPCActor = NPC_TEMPLATE.instantiate()
+	var record := resource_factory.load_npc(int(placement.get("base_form_id", 0)))
+	if record != null:
+		node.populate_from_record(record, mesh_resolver)
+	else:
+		node.populate(placement, esm, mesh_resolver)
+	return _autoplay_ambient_animations(_finalize(node, placement))
+
+## Issue #52 chunk 5: CREA construction -- deliberately thin, unlike
+## _build_npc() above. Instantiates creature_actor.tscn, but populate() is
+## CreatureActor's inherited no-op — see that class's own doc comment for
+## why: a creature's real body mesh (as opposed to its CREA.MODL, which
+## only ever points at a bone-only Skeleton.nif) is only discoverable by a
+## same-folder file-naming CONVENTION confirmed against a single real
+## sample (creatures\NVRaven), not anything RACE-style the ESM itself
+## states -- automatic skeleton/mesh wiring is a real, deliberate gap here,
+## not an oversight.
+func _build_creature(placement: Dictionary, mesh_resolver: GamebryoMeshResolver) -> Node3D:
+	var node: CreatureActor = CREATURE_TEMPLATE.instantiate()
+	node.populate(placement, esm, mesh_resolver)
+	return _finalize(node, placement)
 
 ## MARKER: identity + transform only, deliberately no mesh/collision (see
 ## MarkerNode's doc comment) — GamebryoReference is Node3D, so it has no

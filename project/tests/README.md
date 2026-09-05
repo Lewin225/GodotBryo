@@ -99,6 +99,7 @@ anything.
 | `test_nif` | `NifReader` — real NIF parsing, glTF export for visual cross-checking | headless |
 | `test_dds` | DDS/BC1/BC3 texture decoding + material application on a real textured mesh | headless |
 | `test_scene` | Native GDExtension sanity check (`NVPing`) — confirms the compiled `.so` actually loaded | headless |
+| `test_tri` | Real `headhuman.tri`/`headghoul.tri` topology, delta/statistical morph census, and vertex-array validation | headless |
 | `test_integration` | 0.5: end-to-end `EsmReader`/`BsaReader`/`NifReader`/DDS pipeline, cross-checked against `native/tools/dump_object` | headless |
 | `test_interior_cell` | 1.0: interior cell loader (STAT-only) | headless |
 | `test_collision` | 1.2: NIF `bhk*` collision extraction → `Shape3D` | headless (see caveat above) |
