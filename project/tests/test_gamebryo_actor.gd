@@ -1,5 +1,7 @@
 extends Node
 
+const ActorAnimationComponentScript := preload("res://gamebryo/actor_animation_component.gd")
+
 # Issue #52 chunk 3: scaffolding-only test for GamebryoActor. No real ESM/
 # NIF data yet (that's chunk 4) -- just proves GamebryoActor carries the
 # same identity fields as every other GamebryoObject, and deliberately has
@@ -30,7 +32,7 @@ func _ready() -> void:
 	check(actor.editor_id == "DocMitchell", "identity fields (editor_id) inherited from GamebryoObject")
 	check(actor.record_type == "NPC_", "identity fields (record_type) inherited from GamebryoObject")
 
-	check(actor.get_children().is_empty(), "no composed physics body -- GamebryoActor stays identity-only for now (movement deferred)")
+	check(actor.get_node_or_null(^"ActorAnimationComponent") != null and actor.get_node(^"ActorAnimationComponent").get_script() == ActorAnimationComponentScript, "GamebryoActor composes a shared ActorAnimationComponent")
 
 	print("=======================")
 	if failures == 0:

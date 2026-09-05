@@ -10,6 +10,9 @@
 #include <Skin.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <functional>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -396,6 +399,173 @@ AnimationTrack extract_track(const std::string &target_node_name, nifly::NiTrans
 	return track;
 }
 
+// NIF's compact spline streams are not keyframes.  They are cubic, clamped
+// uniform B-spline control points, with one shared time domain for every
+// channel.  Keep the evaluator here, next to the conversion into our stable
+// AnimationTrack representation, so callers never need to know about NIF's
+// storage layout.  Compact values use the format documented by PyFFI/NIFTools:
+// bias + short * multiplier / 32767.
+struct SplineValue {
+	float v[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	int dimensions = 0;
+};
+
+float spline_basis(int i, int degree, float u, int count) {
+	// Clamped uniform knot vector.  The useful parameter domain is [degree,
+	// count], which makes the first and last samples equal the end controls.
+	// Explicit clamped knot lookup avoids constructing a knot array for every
+	// sample. Knot j is repeated at both ends and uniform in the middle.
+	// The knot vector belongs to the original cubic spline and must remain
+	// unchanged while Cox-de Boor recurses through lower degrees.
+	constexpr int spline_degree = 3;
+	auto knot = [count](int j) -> float {
+		if (j <= spline_degree) return 0.0f;
+		if (j >= count) return static_cast<float>(count - spline_degree);
+		return static_cast<float>(j - spline_degree);
+	};
+	if (degree == 0) {
+		const float a = knot(i), b = knot(i + 1);
+		return (b > a && u >= a && u < b) || (i == count - 1 && u >= a && u <= b) ? 1.0f : 0.0f;
+	}
+	const float a = knot(i), b = knot(i + degree), c = knot(i + 1), d = knot(i + degree + 1);
+	float left = 0.0f, right = 0.0f;
+	if (b > a) left = (u - a) / (b - a) * spline_basis(i, degree - 1, u, count);
+	if (d > c) right = (d - u) / (d - c) * spline_basis(i + 1, degree - 1, u, count);
+	return left + right;
+}
+
+SplineValue evaluate_spline(const std::vector<SplineValue> &controls, float normalized_time) {
+	SplineValue out;
+	if (controls.empty()) return out;
+	if (controls.size() < 4) return controls[std::min<size_t>(controls.size() - 1,
+			static_cast<size_t>(normalized_time * controls.size()))];
+	const int count = static_cast<int>(controls.size());
+	const float u = std::clamp(normalized_time, 0.0f, 1.0f) * static_cast<float>(count - 3);
+	out.dimensions = controls.front().dimensions;
+	for (int i = 0; i < count; ++i) {
+		const float weight = spline_basis(i, 3, u, count);
+		for (int d = 0; d < out.dimensions; ++d) out.v[d] += controls[i].v[d] * weight;
+	}
+	return out;
+}
+
+float spline_error(const SplineValue &a, const SplineValue &b, bool rotation) {
+	if (rotation) {
+		float dot = 0.0f;
+		for (int i = 0; i < 4; ++i) dot += a.v[i] * b.v[i];
+		dot = std::clamp(std::fabs(dot), 0.0f, 1.0f);
+		return 2.0f * std::acos(dot);
+	}
+	float error = 0.0f;
+	for (int i = 0; i < a.dimensions; ++i) error = std::max(error, std::fabs(a.v[i] - b.v[i]));
+	return error;
+}
+
+std::vector<float> adaptive_spline_times(const std::vector<SplineValue> &controls,
+		float start, float stop, bool rotation, float tolerance) {
+	std::vector<float> times;
+	if (controls.empty() || stop <= start) return times;
+	auto value_at = [&](float t) { return evaluate_spline(controls, (t - start) / (stop - start)); };
+	std::function<void(float, float, const SplineValue &, const SplineValue &, int)> split;
+	split = [&](float a, float b, const SplineValue &va, const SplineValue &vb, int depth) {
+		const float m = (a + b) * 0.5f;
+		const float q1 = (a + m) * 0.5f;
+		const float q3 = (m + b) * 0.5f;
+		const SplineValue vm = value_at(m), vq1 = value_at(q1), vq3 = value_at(q3);
+		auto chord = [&](float t) {
+			SplineValue v; v.dimensions = va.dimensions;
+			const float f = (t - a) / (b - a);
+			for (int d = 0; d < v.dimensions; ++d) v.v[d] = va.v[d] + (vb.v[d] - va.v[d]) * f;
+			return v;
+		};
+		const SplineValue lq1 = chord(q1), lm = chord(m), lq3 = chord(q3);
+		// Compare the true curve against the chord at quarter points.  The
+		// midpoint is retained separately to catch symmetric curvature.
+		const float error = std::max({spline_error(vq1, lq1, rotation), spline_error(vq3, lq3, rotation),
+				spline_error(vm, lm, rotation)});
+		if (error > tolerance && depth < 12 && (b - a) > 1.0f / 240.0f) {
+			split(a, m, va, vm, depth + 1);
+			split(m, b, vm, vb, depth + 1);
+		} else {
+			if (times.empty()) times.push_back(a);
+			times.push_back(b);
+		}
+	};
+	split(start, stop, value_at(start), value_at(stop), 0);
+	std::sort(times.begin(), times.end());
+	times.erase(std::unique(times.begin(), times.end()), times.end());
+	return times;
+}
+
+std::vector<SplineValue> read_spline_controls(const nifly::NiBSplineData *data, uint32_t offset,
+		uint32_t count, int dimensions, bool compact, float bias, float multiplier) {
+	std::vector<SplineValue> out;
+	if (!data || offset == 65535 || count == 0) return out;
+	const size_t stride = static_cast<size_t>(dimensions);
+	if (compact) {
+		if (static_cast<size_t>(offset) + count * stride > data->shortControlPoints.size()) return out;
+	} else if (static_cast<size_t>(offset) + count * stride > data->floatControlPoints.size()) return out;
+	out.resize(count);
+	for (uint32_t i = 0; i < count; ++i) {
+		out[i].dimensions = dimensions;
+		for (int d = 0; d < dimensions; ++d) {
+			const size_t index = static_cast<size_t>(offset) + static_cast<size_t>(i) * stride + d;
+			out[i].v[d] = compact ? bias + static_cast<float>(data->shortControlPoints.data()[index]) * multiplier / 32767.0f
+					: data->floatControlPoints.data()[index];
+		}
+	}
+	return out;
+}
+
+AnimationTrack extract_bspline_track(const std::string &target_node_name,
+		nifly::NiBSplineTransformInterpolator *interp, nifly::NiBSplineData *data,
+		uint32_t count) {
+	AnimationTrack track;
+	track.target_node_name = target_node_name;
+	const bool compact = dynamic_cast<nifly::NiBSplineCompTransformInterpolator *>(interp) != nullptr;
+	float tb = 0.0f, tm = 1.0f, rb = 0.0f, rm = 1.0f, sb = 0.0f, sm = 1.0f;
+	if (auto *comp = dynamic_cast<nifly::NiBSplineCompTransformInterpolator *>(interp)) {
+		tb = comp->translationBias; tm = comp->translationMultiplier;
+		rb = comp->rotationBias; rm = comp->rotationMultiplier;
+		sb = comp->scaleBias; sm = comp->scaleMultiplier;
+	}
+	const float start = interp->startTime, stop = interp->stopTime;
+	auto translations = read_spline_controls(data, interp->translationOffset, count, 3, compact, tb, tm);
+	// These tolerances deliberately favor compact editor-visible clips while
+	// remaining below a perceptible deformation threshold at actor scale.
+	for (float t : adaptive_spline_times(translations, start, stop, false, 0.01f)) {
+		SplineValue v = evaluate_spline(translations, (t - start) / (stop - start));
+		Vector3Key key; key.time = t;
+		for (int d = 0; d < 3; ++d) key.value[d] = v.v[d] * units::kGamebryoUnitsToMeters;
+		key.interp = KeyInterpolation::kLinear; track.translation_keys.push_back(key);
+	}
+	auto rotations = read_spline_controls(data, interp->rotationOffset, count, 4, compact, rb, rm);
+	for (float t : adaptive_spline_times(rotations, start, stop, true, 0.00349066f)) {
+		SplineValue v = evaluate_spline(rotations, (t - start) / (stop - start));
+		float length = 0.0f; for (int d = 0; d < 4; ++d) length += v.v[d] * v.v[d];
+		if (length <= std::numeric_limits<float>::epsilon()) continue;
+		length = std::sqrt(length);
+		QuatKey key; key.time = t; key.interp = KeyInterpolation::kLinear;
+		// nifly's Quaternion and the serialized NIF quaternion are WXYZ;
+		// Godot's Quaternion constructor/storage is XYZW. The ordinary NIF
+		// key path performs this conversion through k.value.x/y/z/w; keep the
+		// compressed path identical.
+		key.value[0] = v.v[1] / length;
+		key.value[1] = v.v[2] / length;
+		key.value[2] = v.v[3] / length;
+		key.value[3] = v.v[0] / length;
+		track.quaternion_keys.push_back(key);
+	}
+	track.has_quaternion_keys = !track.quaternion_keys.empty();
+	auto scales = read_spline_controls(data, interp->scaleOffset, count, 1, compact, sb, sm);
+	for (float t : adaptive_spline_times(scales, start, stop, false, 0.002f)) {
+		SplineValue v = evaluate_spline(scales, (t - start) / (stop - start));
+		FloatKey key; key.time = t; key.value = v.v[0]; key.interp = KeyInterpolation::kLinear;
+		track.scale_keys.push_back(key);
+	}
+	return track;
+}
+
 // Extracts one CollisionShape from a resolved bhkShape, or leaves kind ==
 // kNone if it's a shape type not handled (bhkListShape/bhkConvexListShape
 // composites, phantoms, etc. — not needed for Phase 1's static-world case).
@@ -696,7 +866,8 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// same way collision extraction above walks for a collisionRef, rather
 	// than assuming exactly one — real NIFs weren't checked to guarantee
 	// only one, and this costs nothing extra to get right. Deliberately
-	// stops at NiTransformInterpolator/NiTransformData (see nif_types.h's
+	// handles ordinary NiTransformInterpolator/NiTransformData and the
+	// compressed NiBSplineTransformInterpolator path above (see nif_types.h's
 	// own doc comment for the real-data census that scoped this) — every
 	// other interpolator type a ControllerLink can reference
 	// (NiFloatInterpolator, NiBoolInterpolator, NiPoint3Interpolator, ...)
@@ -707,6 +878,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	auto extract_sequence = [&](nifly::NiControllerSequence *seq) -> AnimationSequence {
 		AnimationSequence sequence;
 		sequence.name = seq->name.get();
+		sequence.accum_root_name = seq->accumRootName.get();
 		sequence.start_time = seq->startTime;
 		sequence.stop_time = seq->stopTime;
 		switch (seq->cycleType) {
@@ -720,9 +892,34 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			if (!interp) {
 				continue;
 			}
+			// BSpline transform interpolators are not NiTransformInterpolator
+			// subclasses in nifly.  Handle them before the ordinary keyframe
+			// path; this is the source of the missing lower-body locomotion in
+			// compressed clips such as mtbackward and 2hhleft.
+			if (auto *spline_interp = dynamic_cast<nifly::NiBSplineTransformInterpolator *>(interp)) {
+				auto *spline_data = nif.GetHeader().GetBlock<nifly::NiBSplineData>(spline_interp->splineDataRef);
+				auto *basis_data = nif.GetHeader().GetBlock<nifly::NiBSplineBasisData>(spline_interp->basisDataRef);
+				if (spline_data && basis_data && basis_data->numControlPoints > 0) {
+					sequence.tracks.push_back(extract_bspline_track(link.nodeName.get(), spline_interp,
+							spline_data, basis_data->numControlPoints));
+				}
+				continue;
+			}
 			auto *xform_interp = dynamic_cast<nifly::NiTransformInterpolator *>(interp);
 			if (!xform_interp) {
-				continue; // a real, common case (particle/visibility/color track on the same sequence) -- not an error
+				auto *float_interp = dynamic_cast<nifly::NiFloatInterpolator *>(interp);
+				if (float_interp) {
+					auto *fd = nif.GetHeader().GetBlock<nifly::NiFloatData>(float_interp->dataRef);
+					if (fd) {
+						FloatAnimationTrack track;
+						track.target_node_name = link.nodeName.get();
+						track.property_type = link.propType.get();
+						track.controller_type = link.ctrlType.get();
+						track.keys = extract_float_keys(fd->data);
+						sequence.float_tracks.push_back(std::move(track));
+					}
+				}
+				continue; // real particle/visibility/color or facial float track
 			}
 			auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
 			if (!td) {
@@ -768,6 +965,43 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 			continue;
 		}
 		mesh.animation_sequences.push_back(extract_sequence(seq));
+	}
+
+	// Direct controllers are attached to the target NiAVObject itself. This
+	// is distinct from manager-owned sequences: weapon NIFs commonly contain
+	// these controllers on nodes such as ##nmClip and ##nmHammer, with the
+	// runtime selecting them through the weapon's action system.
+	for (uint32_t i = 0; i < num_blocks; ++i) {
+		auto *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
+		if (!av || av->controllerRef.IsEmpty()) continue;
+		for (auto *controller = nif.GetHeader().GetBlock<nifly::NiTimeController>(av->controllerRef); controller;
+				controller = nif.GetHeader().GetBlock<nifly::NiTimeController>(controller->nextControllerRef)) {
+			auto *single = dynamic_cast<nifly::NiSingleInterpController *>(controller);
+			if (!single || single->interpolatorRef.IsEmpty()) continue;
+			auto *interp = nif.GetHeader().GetBlock<nifly::NiInterpolator>(single->interpolatorRef.index);
+			if (!interp) continue;
+		DirectAnimationController direct;
+			direct.target_node_name = av->name.get();
+			direct.target_node_index = scene_node_index.count(av) ? scene_node_index.at(av) : -1;
+			direct.controller_type = controller->GetBlockName();
+			direct.interpolator_type = interp->GetBlockName();
+			direct.start_time = controller->startTime;
+			direct.stop_time = controller->stopTime;
+			if (auto *transform = dynamic_cast<nifly::NiTransformInterpolator *>(interp)) {
+				auto *data = nif.GetHeader().GetBlock<nifly::NiTransformData>(transform->dataRef);
+				if (data) direct.transform_tracks.push_back(extract_track(direct.target_node_name, data));
+			} else if (auto *visibility = dynamic_cast<nifly::NiBoolInterpolator *>(interp)) {
+				auto *data = nif.GetHeader().GetBlock<nifly::NiBoolData>(visibility->dataRef);
+				if (data) {
+					for (uint32_t k = 0; k < data->data.GetNumKeys(); ++k) {
+						auto key = data->data.GetKey(static_cast<int>(k));
+						direct.visibility_keys.push_back({key.time, key.value != 0});
+					}
+				}
+			}
+			if (!direct.transform_tracks.empty() || !direct.visibility_keys.empty())
+				mesh.direct_animation_controllers.push_back(std::move(direct));
+		}
 	}
 
 	// Issue #47: vertex morph targets. A NiGeomMorpherController is attached

@@ -168,7 +168,7 @@ var _check_timer := 0.0
 var _current_cell_form_id_cache := 0 # updated only by _check_streaming()'s own throttled cycle -- see get_current_cell_form_id()'s doc comment for why this exists
 
 func _ready() -> void:
-	var data_dir := GameDataSettings.get_data_dir()
+	var data_dir: String = GameDataSettings.get_data_dir()
 	if esm == null or resolver == null:
 		esm = EsmReader.new()
 		if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):

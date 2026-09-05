@@ -467,6 +467,7 @@ struct ScriptData {
 struct RaceBodyPart {
 	uint32_t index = 0; // the RACE record's own INDX value (0=UpperBody, 1=LeftHand, 2=RightHand for the body block)
 	std::string model_path;
+	std::string icon_path;
 };
 
 } // namespace esm

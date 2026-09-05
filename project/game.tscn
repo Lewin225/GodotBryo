@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://o1xfly76gv3"]
 
 [ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
-[ext_resource type="PackedScene" uid="uid://c6j2kx3d8yq1m" path="res://player/player.tscn" id="2_player"]
+[ext_resource type="PackedScene" uid="uid://c6j2kx3d8yq1m" path="res://player/player.tscn" id="2_e8heu"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
 [ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_terrainstreamer"]
@@ -50,6 +50,8 @@ TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 [node name="Game" type="Node3D" unique_id=215906396]
 script = ExtResource("1")
 
+[node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
+
 [node name="CellLoader" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellloader")
 cell_editor_id = "GSDocMitchellHouse"
@@ -76,10 +78,6 @@ shadow_enabled = true
 environment = ExtResource("4_7jktm")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
 
-[node name="Character" parent="." unique_id=1664366571 instance=ExtResource("2_player")]
-standing_height = 1.65
-debug_click_shake = true
-
 [node name="Debug Tools" type="Window" parent="." unique_id=65829105]
 scaling_3d_scale = 0.3161
 oversampling_override = 1.0
@@ -102,10 +100,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 0
+current_tab = 1
 drag_to_rearrange_enabled = true
 
 [node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
+visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -206,7 +205,6 @@ fit_content = true
 scroll_active = false
 
 [node name="Player" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
-visible = false
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -824,9 +822,9 @@ layout_mode = 2
 tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
 text = "freeze trace"
 
-[node name="LodTuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1472278247]
+[node name="LodTuneRow" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=641165714]
 layout_mode = 2
-theme_override_constants/separation = 16
+columns = 2
 
 [node name="Lod0DistLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833266]
 layout_mode = 2
@@ -1276,11 +1274,11 @@ layout_mode = 2
 [node name="ShowLights" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1559202721]
 layout_mode = 2
 button_pressed = true
-text = "Show placed LIGH"
+text = "Dynamic"
 
 [node name="SoloLight" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=914596712]
 layout_mode = 2
-text = "Solo selected"
+text = "Solo"
 
 [node name="AutoExposure" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=770766768]
 layout_mode = 2
@@ -1332,7 +1330,7 @@ text = "LIGH bytes are linear (colour-space trial)"
 
 [node name="XemiEmissionLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls" unique_id=177457674]
 layout_mode = 2
-text = "XEMI HDR"
+text = "XEMI HDR Multi"
 
 [node name="XemiEmission" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls" unique_id=243893798]
 custom_minimum_size = Vector2(72, 0)
@@ -1384,5 +1382,3 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
-
-[editable path="Character"]

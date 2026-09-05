@@ -1,0 +1,38 @@
+HAIR — Hair record
+
+ROLE
+HAIR is an independent ESM record with its own FormID. NPC_ HNAM references the
+record; it is not merely a copied model-path string on the NPC node.
+
+RESOLVED DATA
+- FormID and EditorID.
+- Display name where present.
+- Hair model path.
+- Icon path.
+- Record flags.
+
+RUNTIME MODEL
+HAIR becomes a HairRecord resource. NpcRecord.hair points directly to that
+resource, preserving the hair record's identity and authoritative fields.
+
+HEAD-SPACE IMPORT FINDING
+An exhaustive census of 134 shipped Characters\\Hair and Characters\\Head NIFs
+found 40 hair NIFs with the same authored visible-node orientation marker,
+approximately -90 degrees X and +/-180 degrees Y. HairFemaleB.NIF is one of
+these common cases; it is not a Veronica-specific offset. The standalone hair
+mesh is attached beneath the actor's HeadAnims BoneAttachment3D, which already
+provides the actor head-space transform. Applying the hair NIF's outer
+orientation again produces the observed rotated hair. Head, mouth, eye, and
+teeth parts retain their authored mesh transforms; this exception is specific
+to unskinned HAIR head-space assembly.
+Direct inspection of HairFemaleB.NIF confirmed two NoHat/Hat meshes and zero
+skin entries, so it has no vertex weights or bone bindings of its own.
+
+IMPLEMENTATION CONTRACT
+When a HairRecord model is assembled under FacialHeadAssembly, preserve its
+submesh geometry, materials, morph targets, and Hat/NoHat mesh variants, but
+use identity for the standalone hair mesh node transform. The actor's
+HeadAnims attachment is the authoritative placement frame.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/HAIR.html

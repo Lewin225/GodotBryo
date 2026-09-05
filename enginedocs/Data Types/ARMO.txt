@@ -1,0 +1,48 @@
+ARMO — Armor record
+
+AUTHORED ROLE
+ARMO is the item-level armor record. It owns the armor's value, weight, armor
+ratings, equipment type, effects/scripts, sounds, and the biped model list used
+to assemble its visual armor addons.
+
+CONFIRMED FIELDS
+- BMDT: 8-byte biped data; its first uint32 is the biped-slot flag mask and the
+  remaining bytes are general/unused data whose complete meaning is not assumed.
+- MODL/MOD2/MOD3/MOD4: gender/world model-data collections as present; exact
+  collection details must remain tied to their authored subrecord ordering.
+- BIPL: FormID of an FLST containing ARMA addon references, not a direct ARMA link.
+- ETYP: equipment type.
+- DATA/DNAM: armor data structures; preserve fields until each byte layout is
+  independently verified.
+- EITM: optional object effect reference.
+- REPL: repair-list reference.
+- YNAM/ZNAM: pickup/drop sound references.
+
+EXHAUSTIVE BASE-ESM CENSUS
+FalloutNV.esm contains 389 ARMO records. All 389 contain BMDT. 115 contain BIPL;
+all 115 BIPL references resolve to FLST records. Expanding those lists produces
+247 LNAM entries: 243 resolve to ARMA, one resolves to ARMO, and three remain
+unresolved when only the base ESM is loaded. The 389 records expose 259 unique
+MODL paths.
+
+ALL-OFFICIAL-MASTER CENSUS
+Across FalloutNV.esm and the nine official DLC/pack masters there are 489 ARMO,
+161 ARMA, and 506 WEAP records. ARMO exposes 478 MODL, 430 MOD2, 308 MOD3, and
+126 MOD4 fields. The collection ordering is the documented male biped, male
+world, female biped, female world sequence: MODL, MOD2, MOD3, MOD4. 142 ARMO
+BIPL lists expand to 301 LNAM entries; 300 resolve to ARMA and one reference is
+unresolved in the combined master set.
+
+The complete NIF census found 946 unique equipment model paths and resolved all
+946 through the official BSAs. 758 paths contain skin data and 188 are unskinned.
+The generated machine-readable report is under enginedocs/equipment_census/.
+
+RESOURCE MODEL
+ARMO should become an ArmorRecord Resource. Its BIPL should resolve to a typed
+BipedModelListResource/FLST Resource, whose entries resolve to ArmorAddonRecord
+resources. Inventory ownership and currently equipped state belong to separate
+runtime components.
+
+SOURCE
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/ARMO.html
+https://tes5edit.github.io/fopdoc/FalloutNV/Records/Subrecords/BMDT.html

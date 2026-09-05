@@ -1,0 +1,37 @@
+LIP — Dialogue lip-sync data
+
+AUTHORED ROLE
+.LIP files are voice-response companions containing the timing data used for
+dialogue lip synchronization. They are stored beside the matching voice audio
+under the plugin and voice-type directory hierarchy.
+
+VERIFIED DATASET FACTS
+The local Fallout: New Vegas voice archives contain 60,702 .LIP files across
+Fallout - Voices1.bsa and the four story-DLC main archives. Every surveyed .LIP
+has a matching audio file with the same stem. Example:
+
+sound\\voice\\falloutnv.esm\\maleuniquemrnewvegas\\radionewvegas_rnvnewsstory_0014e7cd_1.lip
+
+The corresponding audio file uses the same generated stem. The stem encodes
+the dialogue/quest prefix, INFO FormID, and response number according to the
+documented xEdit dialogue-export convention.
+
+WHAT IS CONFIRMED
+LIP is the strongest identified source for spoken phoneme timing. The matching
+TRI head morphs provide the destination facial shapes, while the dialogue INFO
+record supplies the response and voice context.
+
+NOT YET VERIFIED
+The exact Fallout: New Vegas LIP binary header, curve/channel numbering,
+sampling/timing representation, and mapping from LIP channels to named TRI
+morphs have not been decoded. Do not implement a decoder by treating the
+payload as a different game's LIP format or by assuming channel names.
+
+RUNTIME IMPLICATION
+Dialogue playback should eventually resolve INFO -> voice audio + LIP, decode
+the LIP curves, and drive the NPC head's Godot blend shapes. This is separate
+from authored KF gesture/emotion playback.
+
+SOURCE
+https://geckwiki.com/index.php/Facial_Animation
+https://github.com/Nukem9/FaceFXWrapper

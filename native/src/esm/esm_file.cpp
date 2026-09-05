@@ -734,6 +734,14 @@ std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) 
 // the record are real, but never carry an INDX, so they're naturally never
 // captured as a part).
 std::vector<RaceBodyPart> EsmFile::get_race_body_parts(uint32_t race_form_id, bool female) const {
+	return get_race_parts(race_form_id, female, false);
+}
+
+std::vector<RaceBodyPart> EsmFile::get_race_head_parts(uint32_t race_form_id, bool female) const {
+	return get_race_parts(race_form_id, female, true);
+}
+
+std::vector<RaceBodyPart> EsmFile::get_race_parts(uint32_t race_form_id, bool female, bool head) const {
 	std::vector<RaceBodyPart> out;
 	auto race = find_record_by_form_id(race_form_id);
 	if (!race || race->type != "RACE") {
@@ -765,17 +773,43 @@ std::vector<RaceBodyPart> EsmFile::get_race_body_parts(uint32_t race_form_id, bo
 			util::ByteReader sr(s.data, s.size);
 			pending_index = sr.read_u32();
 			have_pending_index = true;
-		} else if (s.type == "MODL" && collecting && block == Block::kBody && want_female == female && have_pending_index) {
+		} else if (s.type == "MODL" && collecting && want_female == female && have_pending_index && ((block == Block::kHead) == head)) {
 			std::string path = s.as_string();
-			if (path.size() >= 4) {
-				std::string ext = path.substr(path.size() - 4);
+			if (block == Block::kHead || block == Block::kBody) {
+				std::string ext = path.size() >= 4 ? path.substr(path.size() - 4) : "";
 				for (auto &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 				if (ext == ".nif") {
-					RaceBodyPart part;
-					part.index = pending_index;
-					part.model_path = path;
-					out.push_back(std::move(part));
+					bool found = false;
+					for (auto &part : out) {
+						if (part.index == pending_index && part.model_path.empty()) {
+							part.model_path = path;
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						RaceBodyPart part;
+						part.index = pending_index;
+						part.model_path = path;
+						out.push_back(std::move(part));
+					}
 				}
+			}
+		} else if (s.type == "ICON" && collecting && want_female == female && have_pending_index && ((block == Block::kHead) == head)) {
+			std::string icon = s.as_string();
+			bool found = false;
+			for (auto &part : out) {
+				if (part.index == pending_index) {
+					part.icon_path = icon;
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				RaceBodyPart part;
+				part.index = pending_index;
+				part.icon_path = icon;
+				out.push_back(std::move(part));
 			}
 		}
 	}

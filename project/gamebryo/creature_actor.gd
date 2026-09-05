@@ -1,15 +1,15 @@
 @tool
-class_name CreatureNode
+class_name CreatureActor
 extends GamebryoActor
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
 ## Issue #52 chunk 5 (+ later): thin leaf for a placed CREA. No fields of
-## its own yet (same "genuinely thin leaf" shape as NPCNode).
+## its own yet (same "genuinely thin leaf" shape as NPCActor).
 ##
-## `creature_node.tscn` (this script's own scene) is the hand-authored
+## `creature_actor.tscn` (this script's own scene) is the hand-authored
 ## template GamebryoObjectRegistry._build_creature() instantiates — see
-## NPCNode's own doc comment for why a real scene exists here at all
+## NPCActor's own doc comment for why a real scene exists here at all
 ## instead of pure-code construction.
 ##
 ## populate() is inherited as a no-op from GamebryoActor and deliberately
@@ -25,7 +25,7 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 ## structure; left as a follow-up once that convention (or a better one) is
 ## confirmed across more than one real creature.
 ##
-## Still a standalone @tool preview like NPCNode, though there's nothing to
+## Still a standalone @tool preview like NPCActor, though there's nothing to
 ## build yet -- "Load Actor" resolves and prints the real CREA identity so
 ## this is ready to extend once creature body-mesh resolution is solved.
 
@@ -48,23 +48,23 @@ func _editor_load() -> void:
 	var esm := EsmReader.new()
 	var data_dir := String(GameDataConfigScript.resolve().get("data_dir", ""))
 	if not esm.open(data_dir + GameDataConfigScript.ESM_FILE):
-		push_error("CreatureNode: could not open FalloutNV.esm")
+		push_error("CreatureActor: could not open FalloutNV.esm")
 		return
 
 	var form_id: int = PRESET_FORM_IDS.get(preset, 0)
 	if preset == "Custom":
 		form_id = custom_base_form_id.hex_to_int()
 	if form_id == 0:
-		push_error("CreatureNode: no base_form_id -- set custom_base_form_id (preset is Custom)")
+		push_error("CreatureActor: no base_form_id -- set custom_base_form_id (preset is Custom)")
 		return
 
 	var placement: Dictionary = esm.get_actor_by_form_id(form_id)
 	if placement.is_empty():
-		push_error("CreatureNode: base_form_id 0x%X not found (or not a CREA)" % form_id)
+		push_error("CreatureActor: base_form_id 0x%X not found (or not a CREA)" % form_id)
 		return
 
 	var resolver := GamebryoMeshResolver.new(data_dir)
 	populate(placement, esm, resolver) # inherited no-op -- see this file's own doc comment
 
-	print("CreatureNode: loaded %s (0x%X) -- model=%s (no auto mesh wiring yet, see this file's own doc comment)" %
+	print("CreatureActor: loaded %s (0x%X) -- model=%s (no auto mesh wiring yet, see this file's own doc comment)" %
 			[placement.get("editor_id", "?"), form_id, placement.get("model", "")])

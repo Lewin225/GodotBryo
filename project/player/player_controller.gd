@@ -1,6 +1,8 @@
 class_name PlayerController
 extends CharacterBody3D
 
+const MotionDataScript := preload("res://gamebryo/motion_data.gd")
+
 # --- Input Action Mappings ---
 @export_group("Input Actions")
 ## Dictionary mapping control actions to InputMap action StringNames.
@@ -110,6 +112,13 @@ extends CharacterBody3D
 @export var camera: Camera3D
 @export var interact_ray: InteractRay
 
+@export_group("Actor")
+## Visual actor owned by this controller. The controller supplies movement
+## state; the actor remains responsible for rendering and animation playback.
+@export var actor: NPCActor
+@export var drive_actor_animation: bool = true
+@export var motion_data: MotionData = MotionData.new()
+
 ## Compatibility alias for code expecting CAMERA in uppercase
 var CAMERA: Camera3D:
 	get:
@@ -131,6 +140,7 @@ var is_sprinting: bool = false
 var is_teleporting: bool = false
 var _jump_cooldown_timer: float = 0.0
 var _coyote_timer: float = 0.0
+var _actor_animation: ActorAnimationComponent = null
 
 var knocked_timer_ms: int = 0
 var aim_smooth: Vector3 = Vector3.ZERO
@@ -170,6 +180,12 @@ func _ready() -> void:
 		collision_shape = get_node_or_null("CollisionShape3D")
 	if not camera:
 		camera = get_node_or_null("Camera3D")
+	if actor == null:
+		actor = get_node_or_null("NPCActor") as NPCActor
+	if actor != null:
+		_actor_animation = actor.get_node_or_null("ActorAnimationComponent") as ActorAnimationComponent
+		actor.apply_runtime_actor_data()
+	_publish_actor_motion()
 
 	if collision_shape and collision_shape.shape is CapsuleShape3D:
 		var cap := collision_shape.shape as CapsuleShape3D
@@ -231,10 +247,12 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if is_teleporting:
 		is_teleporting = false
+		_publish_actor_motion()
 		return
 
 	if noclip:
 		_handle_noclip_movement(delta)
+		_publish_actor_motion()
 		return
 
 	if _jump_cooldown_timer > 0.0:
@@ -253,6 +271,25 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_apply_push_forces(delta)
+	_publish_actor_motion()
+
+
+func _publish_actor_motion() -> void:
+	if not drive_actor_animation or actor == null:
+		return
+	if motion_data == null:
+		motion_data = MotionDataScript.new()
+	# MotionData is consumed in actor-local space so forward/strafe clips stay
+	# correct while the controller turns. Keep the controller's world velocity
+	# available separately if a future consumer needs it.
+	var actor_local_velocity := global_transform.basis.inverse() * velocity
+	motion_data.update_from_velocity(actor_local_velocity, is_grounded)
+	motion_data.crouched = is_crouching
+	motion_data.sprinting = is_sprinting
+	if _actor_animation == null and is_instance_valid(actor):
+		_actor_animation = actor.get_node_or_null("ActorAnimationComponent") as ActorAnimationComponent
+	if _actor_animation != null:
+		_actor_animation.set_motion(motion_data)
 
 
 func _handle_noclip_movement(delta: float) -> void:

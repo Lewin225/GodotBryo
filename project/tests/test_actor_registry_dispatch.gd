@@ -2,11 +2,11 @@ extends Node
 
 # Issue #52 chunk 5: real-data verification that GamebryoObjectRegistry
 # dispatches ACHR/ACRE placements (EsmReader.get_cell_actors(), NOT
-# get_cell_references() -- confirmed separate in chunk 1) to NPCNode/
-# CreatureNode. NPCNode gets the real full humanoid assembly (chunks 2/4's
+# get_cell_references() -- confirmed separate in chunk 1) to NPCActor/
+# CreatureActor. NPCActor gets the real full humanoid assembly (chunks 2/4's
 # own confirmed ESM structure: skeleton from NPC_.MODL, gender-selected
 # body parts from RACE's real INDX blocks via esm.get_race_body_parts());
-# CreatureNode stays deliberately thin (see creature_node.gd's own doc
+# CreatureActor stays deliberately thin (see creature_actor.gd's own doc
 # comment for why -- no ESM-declared body-mesh path for creatures, unlike
 # RACE for NPC_).
 
@@ -45,19 +45,21 @@ func _ready() -> void:
 			check(int(doc_placement["race_form_id"]) != 0, "placement carries a real race_form_id")
 			var node := registry.build(doc_placement)
 			check(node != null, "registry.build() on an NPC_ placement returns a node")
-			check(node is NPCNode, "built node is an NPCNode")
+			check(node is NPCActor, "built node is an NPCActor")
 			if node != null:
 				check(node.editor_id == "DocMitchell", "identity carried through _finalize()")
 
 				var body: Node = node.get_node_or_null(^"Body")
-				check(body != null, "generated content lives under a dedicated Body container (see npc_node.gd's own doc comment)")
+				check(body != null, "generated content lives under a dedicated Body container (see npc_actor.gd's own doc comment)")
+				check(body != null and body.get_node_or_null(^"NudeBody") != null, "nude body meshes have a dedicated Body/NudeBody container")
+				check(body != null and body.get_node_or_null(^"Equipment") != null, "equipment has a dedicated Body/Equipment container")
 				var skeleton: Skeleton3D = null
 				var mesh_instances := 0
 				if body != null:
-					for child in body.get_children():
-						if child is Skeleton3D:
-							skeleton = child
-						elif child is MeshInstance3D:
+					for child in body.find_children("*", "Skeleton3D", true, false):
+						skeleton = child
+					for child in body.find_children("*", "MeshInstance3D", true, false):
+						if bool(child.get_meta("gamebryo_nude_body", false)):
 							mesh_instances += 1
 				check(skeleton != null, "real Skeleton3D built from NPC_.MODL")
 				if skeleton != null:
@@ -65,8 +67,19 @@ func _ready() -> void:
 				check(mesh_instances == 8, "8 real MeshInstance3D from RACE's male body parts (upper body + 2 hands, got %d)" % mesh_instances)
 				add_child(node)
 
+				# Equipment refresh is intentionally narrower than populate(): it
+				# replaces only Body/Equipment and keeps the actor's live rig.
+				var body_before_refresh := body
+				var skeleton_before_refresh := skeleton
+				var equipment_before_refresh := body.get_node_or_null(^"Equipment")
+				node.equipment_state = EquipmentState.new()
+				check(node.get_node_or_null(^"Body") == body_before_refresh, "equipment refresh preserves the Body container")
+				check(node.get_node_or_null(^"Body/Skeleton3D") == skeleton_before_refresh, "equipment refresh preserves the Skeleton3D")
+				check(not is_instance_valid(equipment_before_refresh), "equipment refresh removes only the previous Equipment subtree")
+				check(node.get_node_or_null(^"Body/Equipment") != null, "equipment refresh recreates the dedicated Equipment subtree")
+
 				# Real regression guard for the actual reason Body exists as
-				# its own container (see npc_node.gd's own top doc comment):
+				# its own container (see npc_actor.gd's own top doc comment):
 				# a hand-authored SIBLING of Body (e.g. a future
 				# AnimationTree) must survive populate() being called again
 				# on an already-built node, not get wiped by an
@@ -98,13 +111,13 @@ func _ready() -> void:
 			if not crow_placement.is_empty():
 				var node := registry.build(crow_placement)
 				check(node != null, "registry.build() on a CREA placement returns a node")
-				check(node is CreatureNode, "built node is a CreatureNode")
+				check(node is CreatureActor, "built node is a CreatureActor")
 				if node != null:
 					var has_skeleton := false
 					for child in node.get_children():
 						if child is Skeleton3D:
 							has_skeleton = true
-					check(not has_skeleton, "CreatureNode stays a deliberately thin leaf -- no auto skeleton wiring yet (see creature_node.gd)")
+					check(not has_skeleton, "CreatureActor stays a deliberately thin leaf -- no auto skeleton wiring yet (see creature_actor.gd)")
 					add_child(node)
 
 	print("=======================")

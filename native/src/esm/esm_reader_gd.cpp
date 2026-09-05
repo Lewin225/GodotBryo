@@ -5,11 +5,56 @@
 #include <godot_cpp/variant/packed_string_array.hpp>
 
 #include <cctype>
+#include <cmath>
+#include <cstring>
 #include <stdexcept>
 
 using namespace godot;
 
 namespace {
+struct FaceGenFieldSpec {
+	const char *tag;
+	const char *raw_key;
+	const char *values_key;
+	const char *decoded_key;
+	int expected_bytes;
+};
+
+void add_facegen_field(Dictionary &out, PackedStringArray &diagnostics,
+		const esm::Subrecord *sub, const FaceGenFieldSpec &spec) {
+	PackedByteArray raw;
+	if (sub != nullptr) {
+		raw.resize(static_cast<int>(sub->size));
+		for (size_t i = 0; i < sub->size; ++i) raw[static_cast<int>(i)] = sub->data[i];
+	}
+	out[spec.raw_key] = raw;
+	out[String(spec.tag) + "_present"] = sub != nullptr;
+	out[spec.values_key] = PackedFloat32Array();
+	out[spec.decoded_key] = false;
+	if (sub == nullptr) return;
+	if (sub->size != static_cast<size_t>(spec.expected_bytes)) {
+		diagnostics.push_back(String(spec.tag) + " has unexpected byte size " + String::num_int64(static_cast<int64_t>(sub->size)));
+		return;
+	}
+	PackedFloat32Array values;
+	values.resize(static_cast<int>(sub->size / 4));
+	for (size_t i = 0; i < sub->size / 4; ++i) {
+		uint32_t bits = static_cast<uint32_t>(sub->data[i * 4]) |
+			(static_cast<uint32_t>(sub->data[i * 4 + 1]) << 8) |
+			(static_cast<uint32_t>(sub->data[i * 4 + 2]) << 16) |
+			(static_cast<uint32_t>(sub->data[i * 4 + 3]) << 24);
+		float value = 0.0f;
+		std::memcpy(&value, &bits, sizeof(value));
+		if (!std::isfinite(value)) {
+			diagnostics.push_back(String(spec.tag) + " contains a non-finite float at index " + String::num_int64(static_cast<int64_t>(i)));
+			return;
+		}
+		values[static_cast<int>(i)] = value;
+	}
+	out[spec.values_key] = values;
+	out[spec.decoded_key] = true;
+}
+
 Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	Dictionary d;
 	d["refr_form_id"] = static_cast<int64_t>(pl.refr_form_id);
@@ -59,7 +104,11 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
 	ClassDB::bind_method(D_METHOD("get_race_body_parts", "race_form_id", "female"), &EsmReader::get_race_body_parts);
+	ClassDB::bind_method(D_METHOD("get_race_head_parts", "race_form_id", "female"), &EsmReader::get_race_head_parts);
 	ClassDB::bind_method(D_METHOD("get_actor_by_form_id", "base_form_id"), &EsmReader::get_actor_by_form_id);
+	ClassDB::bind_method(D_METHOD("get_record_data", "form_id"), &EsmReader::get_record_data);
+	ClassDB::bind_method(D_METHOD("get_record_index"), &EsmReader::get_record_index);
+	ClassDB::bind_method(D_METHOD("get_facegen_data", "npc_form_id"), &EsmReader::get_facegen_data);
 	ClassDB::bind_method(D_METHOD("get_emittance_data", "emittance_form_id"), &EsmReader::get_emittance_data);
 	ClassDB::bind_method(D_METHOD("get_item_data", "item_form_id"), &EsmReader::get_item_data);
 	ClassDB::bind_method(D_METHOD("get_terminal_data", "terminal_form_id"), &EsmReader::get_terminal_data);
@@ -471,11 +520,27 @@ Array EsmReader::get_race_body_parts(int64_t race_form_id, bool female) const {
 			Dictionary d;
 			d["index"] = static_cast<int64_t>(part.index);
 			d["model"] = String(part.model_path.c_str());
+			d["icon"] = String(part.icon_path.c_str());
 			out.push_back(d);
 		}
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
+	return out;
+}
+
+Array EsmReader::get_race_head_parts(int64_t race_form_id, bool female) const {
+	Array out;
+	if (!opened_) return out;
+	try {
+		for (const auto &part : file_.get_race_head_parts(static_cast<uint32_t>(race_form_id), female)) {
+			Dictionary d;
+			d["index"] = static_cast<int64_t>(part.index);
+			d["model"] = String(part.model_path.c_str());
+			d["icon"] = String(part.icon_path.c_str());
+			out.push_back(d);
+		}
+	} catch (const std::exception &e) { last_error_ = String(e.what()); }
 	return out;
 }
 
@@ -490,6 +555,86 @@ Dictionary EsmReader::get_actor_by_form_id(int64_t base_form_id) const {
 			return out;
 		}
 		out = placement_to_dict(*pl);
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_record_data(int64_t form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto record = file_.find_record_by_form_id(static_cast<uint32_t>(form_id));
+		if (!record) return out;
+		out["form_id"] = static_cast<int64_t>(record->form_id);
+		out["record_type"] = String(record->type.c_str());
+		Array subrecords;
+		const auto data = file_.read_record_data(*record);
+		for (const auto &sub : esm::EsmFile::parse_subrecords(data)) {
+			Dictionary item;
+			item["type"] = String(sub.type.c_str());
+			PackedByteArray bytes;
+			bytes.resize(static_cast<int>(sub.size));
+			for (size_t i = 0; i < sub.size; ++i) bytes[static_cast<int>(i)] = sub.data[i];
+			item["data"] = bytes;
+			subrecords.push_back(item);
+		}
+		out["subrecords"] = subrecords;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Array EsmReader::get_record_index() const {
+	Array out;
+	if (!opened_) return out;
+	try {
+		file_.for_each_record([&](const esm::RecordInfo &r) {
+			Dictionary entry;
+			entry["form_id"] = static_cast<int64_t>(r.form_id);
+			entry["record_type"] = String(r.type.c_str());
+			std::string editor_id;
+			std::string full_name;
+			for (const auto &sub : esm::EsmFile::parse_subrecords(file_.read_record_data(r))) {
+				if (sub.type == "EDID") editor_id = sub.as_string();
+				else if (sub.type == "FULL") full_name = sub.as_string();
+			}
+			entry["editor_id"] = String(editor_id.c_str());
+			entry["full_name"] = String(full_name.c_str());
+			out.push_back(entry);
+		});
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_facegen_data(int64_t npc_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto record = file_.find_record_by_form_id(static_cast<uint32_t>(npc_form_id));
+		if (!record || record->type != "NPC_") return out;
+		out["form_id"] = static_cast<int64_t>(record->form_id);
+		out["record_type"] = String(record->type.c_str());
+		const auto data = file_.read_record_data(*record);
+		const auto subrecords = esm::EsmFile::parse_subrecords(data);
+		PackedStringArray diagnostics;
+		const FaceGenFieldSpec specs[] = {
+			{"FGGS", "fggs", "fggs_values", "fggs_decoded", 200},
+			{"FGGA", "fgga", "fgga_values", "fgga_decoded", 120},
+			{"FGTS", "fgts", "fgts_values", "fgts_decoded", 200},
+		};
+		for (const auto &spec : specs) {
+			const esm::Subrecord *found = nullptr;
+			for (const auto &sub : subrecords) {
+				if (sub.type == spec.tag) { found = &sub; break; }
+			}
+			add_facegen_field(out, diagnostics, found, spec);
+		}
+		out["diagnostics"] = diagnostics;
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
