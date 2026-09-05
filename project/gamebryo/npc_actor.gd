@@ -511,6 +511,12 @@ func _apply_equipment_body_coverage(body: Node) -> void:
 		return
 	var occupied := 0
 	for child in body.find_children("*", "MeshInstance3D", true, false):
+		# Gore-cap submeshes can carry the same nude-body metadata as their
+		# source body NIF. They are a separate damage visual, however, and
+		# must remain controlled only by show_gore rather than being restored
+		# by the ordinary equipment-coverage pass.
+		if gore_meshes.has(child):
+			continue
 		if bool(child.get_meta("gamebryo_nude_body", false)):
 			child.visible = bool(child.get_meta("gamebryo_nude_body_original_visible", true))
 	for child in body.find_children("*", "MeshInstance3D", true, false):
