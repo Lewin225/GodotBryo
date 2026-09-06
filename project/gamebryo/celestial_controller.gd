@@ -33,6 +33,9 @@ const GROUND_TWILIGHT_ELEVATION := 0.15
 ## Keep a small authored ground contribution for moon/starlight at night, but
 ## prevent the sky ground hemisphere from lighting distant terrain as daylight.
 const NIGHT_GROUND_LIGHT := 0.04
+## Preserve a small amount of distant atmospheric color at night without
+## allowing a daylight-tuned depth-fog tint to glow across the landscape.
+const NIGHT_FOG_LIGHT := 0.08
 
 var peak_sun_energy: float = 3.0
 var peak_moon_energy: float = 0.5
@@ -43,6 +46,7 @@ var _world_environment: WorldEnvironment = null
 var _exterior_env: Environment = null   # mutable duplicate of EXTERIOR_ENVIRONMENT
 var _weather: WeatherManager = null
 var _is_exterior: bool = false
+var _base_fog_light_color := Color.WHITE
 
 func configure(
 		sun: DirectionalLight3D,
@@ -53,6 +57,7 @@ func configure(
 	_world_environment = world_env
 	_exterior_env = base_exterior_env.duplicate() as Environment
 	_weather = weather
+	_base_fog_light_color = _exterior_env.fog_light_color
 
 ## Called by game.gd each frame (exterior only).
 func update(game_hour: float, climate: Dictionary) -> void:
@@ -261,5 +266,7 @@ func _apply_fog(hour: float, rb: float, re: float, sb: float, se: float) -> void
 	var fog_far_m: float = float(fog.get("far", 250000.0)) * GU_TO_M
 	_exterior_env.fog_depth_begin = fog_near_m
 	_exterior_env.fog_depth_end = maxf(fog_far_m, fog_near_m + 1.0)
+	var fog_strength := lerpf(NIGHT_FOG_LIGHT, 1.0, day_frac)
+	_exterior_env.fog_light_color = _base_fog_light_color * fog_strength
 	_exterior_env.volumetric_fog_enabled = true
 	_exterior_env.volumetric_fog_density = lerpf(0.0005, 0.0002, day_frac)
