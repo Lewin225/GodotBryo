@@ -500,8 +500,8 @@ struct ClimateData {
 // NAM0 colour table layout (240 bytes = 10 colour types × 6 time-of-day slots
 // × 4 bytes RGBA). The six slots are Sunrise, Day, Sunset, Night, plus two
 // transition slots (indices 4 and 5). Index mapping from Creation Kit docs:
-//   0 SkyUpper  1 Fog  2 CloudsLower  3 CloudsUpper  4 SkyLower  5 Horizon
-//   6 Sun       7 SunLight  8 Stars/Ambient  9 SkyStatics
+//   0 SkyUpper  1 Fog  2 Unused  3 Ambient  4 Sunlight  5 Sun
+//   6 Stars    7 SkyLower  8 Horizon  9 Unused
 //
 // Each colour is stored RGBA (one byte per channel, A always 0 in real data).
 constexpr int kWthrColorTypes = 10;

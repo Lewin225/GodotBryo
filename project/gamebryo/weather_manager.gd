@@ -14,20 +14,20 @@ extends Node
 ##   4 = EarlySunrise (transition)   5 = LateSunset (transition)
 ##
 ## Color-type indices within each slot (matches real NAM0 layout):
-##   0 SkyUpper  1 Fog  2 CloudsLower  3 CloudsUpper  4 SkyLower  5 Horizon
-##   6 Sun       7 SunLight  8 Stars/Ambient  9 SkyStatics
+##   0 SkyUpper  1 Fog  2 Unused  3 Ambient  4 Sunlight  5 Sun
+##   6 Stars    7 SkyLower  8 Horizon  9 Unused
 
 # Indices into the 10-type NAM0 color array
 const COL_SKY_UPPER  := 0
 const COL_FOG        := 1
-const COL_CLOUD_LO   := 2
-const COL_CLOUD_HI   := 3
-const COL_SKY_LOWER  := 4
-const COL_HORIZON    := 5
-const COL_SUN        := 6
-const COL_SUN_LIGHT  := 7
-const COL_AMBIENT    := 8
-const COL_SKY_STATIC := 9
+const COL_UNUSED_2   := 2
+const COL_AMBIENT   := 3
+const COL_SUN_LIGHT := 4
+const COL_SUN       := 5
+const COL_STARS     := 6
+const COL_SKY_LOWER := 7
+const COL_HORIZON   := 8
+const COL_UNUSED_9  := 9
 
 # Time-of-day slot indices
 const SLOT_SUNRISE := 0
