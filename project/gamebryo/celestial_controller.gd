@@ -141,8 +141,8 @@ func _apply_celestial_light(
 		).normalized()
 
 		# Light color from NAM0[SunLight]
-		light_col = _weather.get_interpolated_color(
-			WeatherManager.COL_SUN_LIGHT, slot_a, slot_b, phase_t)
+		light_col = _godot_color(_weather.get_interpolated_color(
+			WeatherManager.COL_SUN_LIGHT, slot_a, slot_b, phase_t))
 
 		# Gamebryo parity: brightness dynamically scales with sin(theta)
 		light_energy = lerpf(min_sun_energy, peak_sun_energy, sin_elevation)
@@ -162,8 +162,8 @@ func _apply_celestial_light(
 		).normalized()
 
 		# Moon light color from NAM0[SunLight] Night slot
-		light_col = _weather.get_interpolated_color(
-			WeatherManager.COL_SUN_LIGHT, WeatherManager.SLOT_NIGHT, WeatherManager.SLOT_NIGHT, 0.0)
+		light_col = _godot_color(_weather.get_interpolated_color(
+			WeatherManager.COL_SUN_LIGHT, WeatherManager.SLOT_NIGHT, WeatherManager.SLOT_NIGHT, 0.0))
 
 		# Moonlight brightness scales with moon elevation
 		light_energy = peak_moon_energy * sin_elevation
@@ -180,14 +180,20 @@ func _apply_colors(slot_a: int, slot_b: int, phase_t: float) -> void:
 	if _weather == null or _exterior_env == null:
 		return
 
-	var ambient_col: Color = _weather.get_interpolated_color(
-		WeatherManager.COL_AMBIENT, slot_a, slot_b, phase_t)
-	var sky_upper: Color = _weather.get_interpolated_color(
-		WeatherManager.COL_SKY_UPPER, slot_a, slot_b, phase_t)
-	var horizon_col: Color = _weather.get_interpolated_color(
-		WeatherManager.COL_HORIZON, slot_a, slot_b, phase_t)
-	var fog_col: Color = _weather.get_interpolated_color(
-		WeatherManager.COL_FOG, slot_a, slot_b, phase_t)
+	# WTHR.NAM0 stores the authored Gamebryo colour values in linear-light
+	# space. WeatherManager deliberately interpolates those values in that
+	# space. Godot's colour properties are sRGB-facing (the same boundary used
+	# by the XEMI/XREF tint path), so encode only when handing them to the
+	# renderer. Converting the raw samples before interpolation would make the
+	# time-of-day blend itself gamma-biased.
+	var ambient_col: Color = _godot_color(_weather.get_interpolated_color(
+		WeatherManager.COL_AMBIENT, slot_a, slot_b, phase_t))
+	var sky_upper: Color = _godot_color(_weather.get_interpolated_color(
+		WeatherManager.COL_SKY_UPPER, slot_a, slot_b, phase_t))
+	var horizon_col: Color = _godot_color(_weather.get_interpolated_color(
+		WeatherManager.COL_HORIZON, slot_a, slot_b, phase_t))
+	var fog_col: Color = _godot_color(_weather.get_interpolated_color(
+		WeatherManager.COL_FOG, slot_a, slot_b, phase_t))
 
 	_exterior_env.ambient_light_color = ambient_col
 	_exterior_env.ambient_light_energy = 1.0
@@ -201,6 +207,11 @@ func _apply_colors(slot_a: int, slot_b: int, phase_t: float) -> void:
 			mat.ground_bottom_color = ambient_col.darkened(0.5)
 			mat.ground_horizon_color = fog_col
 			mat.sun_angle_max = 30.0
+
+## Convert an authored Gamebryo-linear colour to the sRGB-facing Godot
+## property/uniform representation. Alpha is not colour-managed by Godot.
+static func _godot_color(authored_linear: Color) -> Color:
+	return authored_linear.linear_to_srgb()
 
 ## Apply fog distance from WeatherManager based on time of day.
 func _apply_fog(hour: float, rb: float, re: float, sb: float, se: float) -> void:
