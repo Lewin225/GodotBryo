@@ -26,6 +26,13 @@ extends Node
 
 # Latitude inclination of celestial arc (degrees south tilt in northern hemisphere).
 const LATITUDE_TILT_DEG := 30.0
+## Sun elevation at which the ground hemisphere reaches full daylight strength.
+## This is deliberately an elevation threshold rather than an arbitrary clock
+## time so it follows the same celestial curve as the directional light.
+const GROUND_TWILIGHT_ELEVATION := 0.15
+## Keep a small authored ground contribution for moon/starlight at night, but
+## prevent the sky ground hemisphere from lighting distant terrain as daylight.
+const NIGHT_GROUND_LIGHT := 0.04
 
 var peak_sun_energy: float = 3.0
 var peak_moon_energy: float = 0.5
@@ -96,8 +103,9 @@ func update(game_hour: float, climate: Dictionary) -> void:
 		slot_b = WeatherManager.SLOT_NIGHT
 		phase_t = 0.0
 
+	var sun_elevation := _sun_elevation(game_hour, rb, se)
 	_apply_celestial_light(game_hour, rb, se, slot_a, slot_b, phase_t)
-	_apply_colors(slot_a, slot_b, phase_t)
+	_apply_colors(slot_a, slot_b, phase_t, _ground_light_strength(sun_elevation))
 	_apply_fog(game_hour, rb, re, sb, se)
 
 ## Set whether the exterior renderer should be active.
@@ -128,7 +136,7 @@ func _apply_celestial_light(
 		var day_span := maxf(sunset_end - sunrise_begin, 0.001)
 		var day_u := (hour - sunrise_begin) / day_span  # [0, 1] from sunrise to sunset
 		var phi := day_u * PI  # 0 at sunrise (East), PI/2 at noon, PI at sunset (West)
-		sin_elevation = maxf(0.0, sin(phi))
+		sin_elevation = _sun_elevation(hour, sunrise_begin, sunset_end)
 
 		# 3D Celestial position vector:
 		# X: -cos(phi) -> East (-1) to West (+1)
@@ -176,7 +184,7 @@ func _apply_celestial_light(
 	_sun.visible = (light_energy > 0.005)
 
 ## Apply ambient and sky colors from the WeatherManager's NAM0 table.
-func _apply_colors(slot_a: int, slot_b: int, phase_t: float) -> void:
+func _apply_colors(slot_a: int, slot_b: int, phase_t: float, ground_strength: float) -> void:
 	if _weather == null or _exterior_env == null:
 		return
 
@@ -190,10 +198,14 @@ func _apply_colors(slot_a: int, slot_b: int, phase_t: float) -> void:
 		WeatherManager.COL_AMBIENT, slot_a, slot_b, phase_t))
 	var sky_upper: Color = _godot_color(_weather.get_interpolated_color(
 		WeatherManager.COL_SKY_UPPER, slot_a, slot_b, phase_t))
+	var sky_lower: Color = _weather.get_interpolated_color(
+		WeatherManager.COL_SKY_LOWER, slot_a, slot_b, phase_t)
 	var horizon_col: Color = _godot_color(_weather.get_interpolated_color(
 		WeatherManager.COL_HORIZON, slot_a, slot_b, phase_t))
-	var fog_col: Color = _godot_color(_weather.get_interpolated_color(
-		WeatherManager.COL_FOG, slot_a, slot_b, phase_t))
+	var fog_linear: Color = _weather.get_interpolated_color(
+		WeatherManager.COL_FOG, slot_a, slot_b, phase_t)
+	var ground_bottom_col: Color = _godot_color(sky_lower * ground_strength)
+	var ground_horizon_col: Color = _godot_color(fog_linear * ground_strength)
 
 	_exterior_env.ambient_light_color = ambient_col
 	_exterior_env.ambient_light_energy = 1.0
@@ -204,9 +216,23 @@ func _apply_colors(slot_a: int, slot_b: int, phase_t: float) -> void:
 		if mat is ProceduralSkyMaterial:
 			mat.sky_top_color = sky_upper
 			mat.sky_horizon_color = horizon_col
-			mat.ground_bottom_color = ambient_col.darkened(0.5)
-			mat.ground_horizon_color = fog_col
+			mat.ground_bottom_color = ground_bottom_col
+			mat.ground_horizon_color = ground_horizon_col
 			mat.sun_angle_max = 30.0
+
+## The same normalized solar elevation used by the directional-light path.
+## Returning zero outside the daylight arc keeps the ground contribution
+## independent of the upper sky's authored night colors.
+static func _sun_elevation(hour: float, sunrise_begin: float, sunset_end: float) -> float:
+	if hour < sunrise_begin or hour > sunset_end:
+		return 0.0
+	var day_span := maxf(sunset_end - sunrise_begin, 0.001)
+	var day_u := (hour - sunrise_begin) / day_span
+	return maxf(0.0, sin(day_u * PI))
+
+static func _ground_light_strength(sun_elevation: float) -> float:
+	var daylight := smoothstep(0.0, GROUND_TWILIGHT_ELEVATION, sun_elevation)
+	return lerpf(NIGHT_GROUND_LIGHT, 1.0, daylight)
 
 ## Convert an authored Gamebryo-linear colour to the sRGB-facing Godot
 ## property/uniform representation. Alpha is not colour-managed by Godot.
