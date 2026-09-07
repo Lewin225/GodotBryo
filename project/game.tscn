@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://c6j2kx3d8yq1m" path="res://player/player.tscn" id="2_e8heu"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
-[ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="4_7jktm"]
 [ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_terrainstreamer"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
 [ext_resource type="Script" uid="uid://cio1g7pp5m0b1" path="res://terrain_streaming_debug_tab.gd" id="5_terrainstreamingdebug"]
@@ -16,6 +15,7 @@
 [ext_resource type="Script" uid="uid://covubnj8iytnr" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="11_messagebox"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
+[ext_resource type="Environment" uid="uid://wj0h7rqlbjcp" path="res://exterior_environment.tres" id="12_hb5m1"]
 [ext_resource type="Script" uid="uid://cjcg4wkk27esg" path="res://player_debug_tab.gd" id="12_playerdebug"]
 [ext_resource type="Script" uid="uid://d04cps1ytnu3t" path="res://gamebryo/game_time_manager.gd" id="13_gametimemanager"]
 [ext_resource type="Script" uid="uid://cvpr8mlgqt8kh" path="res://gamebryo/weather_manager.gd" id="14_weathermanager"]
@@ -23,14 +23,12 @@
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
-exposure_multiplier = 3.334
 auto_exposure_enabled = true
-auto_exposure_scale = 0.07
+auto_exposure_scale = 0.2
 auto_exposure_speed = 2.0
 dof_blur_far_distance = 271.22
 dof_blur_far_transition = 2830.17
-auto_exposure_min_sensitivity = 56.88
-auto_exposure_max_sensitivity = 81.0
+auto_exposure_min_sensitivity = 250.0
 
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Window
@@ -88,7 +86,7 @@ transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.707
 shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
-environment = ExtResource("4_7jktm")
+environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
 
 [node name="Debug Tools" type="Window" parent="." unique_id=65829105]
