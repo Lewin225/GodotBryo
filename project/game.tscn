@@ -17,6 +17,10 @@
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="11_messagebox"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
 [ext_resource type="Script" uid="uid://cjcg4wkk27esg" path="res://player_debug_tab.gd" id="12_playerdebug"]
+[ext_resource type="Script" uid="uid://d04cps1ytnu3t" path="res://gamebryo/game_time_manager.gd" id="13_gametimemanager"]
+[ext_resource type="Script" uid="uid://cvpr8mlgqt8kh" path="res://gamebryo/weather_manager.gd" id="14_weathermanager"]
+[ext_resource type="Script" uid="uid://cpmim1j54oxtd" path="res://gamebryo/celestial_controller.gd" id="15_celestialcontroller"]
+[ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 exposure_multiplier = 3.334
@@ -65,6 +69,15 @@ terrain3d_debug_dump_grid = Vector2i(-18, 0)
 
 [node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
 script = ExtResource("7_scriptengine")
+
+[node name="GameTimeManager" type="Node" parent="." unique_id=391827164]
+script = ExtResource("13_gametimemanager")
+
+[node name="WeatherManager" type="Node" parent="." unique_id=482937165]
+script = ExtResource("14_weathermanager")
+
+[node name="CelestialController" type="Node" parent="." unique_id=573048276]
+script = ExtResource("15_celestialcontroller")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
 
@@ -1353,6 +1366,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 editable = false
 wrap_mode = 1
+
+[node name="TimeWeather" type="Control" parent="Debug Tools/TabContainer" unique_id=664159387]
+visible = false
+layout_mode = 2
+script = ExtResource("16_timeweatherdebug")
+metadata/_tab_index = 8
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

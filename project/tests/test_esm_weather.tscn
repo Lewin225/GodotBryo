@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://test_esm_weather001"]
+
+[ext_resource type="Script" path="res://tests/test_esm_weather.gd" id="1"]
+
+[node name="TestEsmWeather" type="Node"]
+script = ExtResource("1")

@@ -135,6 +135,12 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_first_compressed_record"), &EsmReader::find_first_compressed_record);
 	ClassDB::bind_method(D_METHOD("get_all_item_candidates"), &EsmReader::get_all_item_candidates);
 	ClassDB::bind_method(D_METHOD("get_all_cell_candidates"), &EsmReader::get_all_cell_candidates);
+	// day-night / weather (feature/day-night-cycle)
+	ClassDB::bind_method(D_METHOD("get_climate_data", "form_id"), &EsmReader::get_climate_data);
+	ClassDB::bind_method(D_METHOD("get_weather_data", "form_id"), &EsmReader::get_weather_data);
+	ClassDB::bind_method(D_METHOD("get_worldspace_climate", "wrld_form_id"), &EsmReader::get_worldspace_climate);
+	ClassDB::bind_method(D_METHOD("get_global_variable", "form_id"), &EsmReader::get_global_variable);
+	ClassDB::bind_method(D_METHOD("find_global_by_editor_id", "editor_id"), &EsmReader::find_global_by_editor_id);
 }
 
 bool EsmReader::open(const String &path) {
@@ -1181,3 +1187,126 @@ PackedStringArray EsmReader::get_all_cell_candidates() const {
 	}
 	return arr;
 }
+
+// ---------------------------------------------------------------------------
+// day-night / weather (feature/day-night-cycle)
+// ---------------------------------------------------------------------------
+
+Dictionary EsmReader::get_climate_data(int64_t form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto opt = file_.get_climate_data(static_cast<uint32_t>(form_id));
+		if (!opt) return out;
+		const auto &c = *opt;
+		out["form_id"]           = static_cast<int64_t>(c.form_id);
+		out["editor_id"]         = String(c.editor_id.c_str());
+		out["sun_texture"]       = String(c.sun_texture_path.c_str());
+		out["sun_glare_texture"] = String(c.sun_glare_texture_path.c_str());
+		out["night_sky_model"]   = String(c.night_sky_model_path.c_str());
+		out["sunrise_begin"]     = c.sunrise_begin;
+		out["sunrise_end"]       = c.sunrise_end;
+		out["sunset_begin"]      = c.sunset_begin;
+		out["sunset_end"]        = c.sunset_end;
+		out["volatility"]        = static_cast<int64_t>(c.volatility);
+		out["moon_phase_length"] = static_cast<int64_t>(c.moon_phase_length);
+		Array chances;
+		for (const auto &wc : c.weather_chances) {
+			Dictionary d;
+			d["weather_form_id"] = static_cast<int64_t>(wc.weather_form_id);
+			d["chance"]          = static_cast<int64_t>(wc.chance);
+			d["global_form_id"]  = static_cast<int64_t>(wc.global_form_id);
+			chances.push_back(d);
+		}
+		out["weather_chances"] = chances;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::get_weather_data(int64_t form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto opt = file_.get_weather_data(static_cast<uint32_t>(form_id));
+		if (!opt) return out;
+		const auto &w = *opt;
+		out["form_id"]               = static_cast<int64_t>(w.form_id);
+		out["editor_id"]             = String(w.editor_id.c_str());
+		out["cloud_texture_upper"]   = String(w.cloud_texture_upper.c_str());
+		out["cloud_texture_horizon"] = String(w.cloud_texture_horizon.c_str());
+		out["cloud_texture_lower1"]  = String(w.cloud_texture_lower1.c_str());
+		out["cloud_texture_lower2"]  = String(w.cloud_texture_lower2.c_str());
+		// Flatten color table to PackedByteArray: 10 types × 6 times × 4 RGBA bytes.
+		PackedByteArray colors;
+		colors.resize(esm::kWthrColorTypes * esm::kWthrColorTimes * 4);
+		int idx = 0;
+		for (int t = 0; t < esm::kWthrColorTypes; ++t) {
+			for (int i = 0; i < esm::kWthrColorTimes; ++i) {
+				colors[idx++] = w.colors[t][i].r;
+				colors[idx++] = w.colors[t][i].g;
+				colors[idx++] = w.colors[t][i].b;
+				colors[idx++] = w.colors[t][i].a;
+			}
+		}
+		out["colors"]            = colors;
+		out["fog_day_near"]      = w.fog.day_near;
+		out["fog_day_far"]       = w.fog.day_far;
+		out["fog_night_near"]    = w.fog.night_near;
+		out["fog_night_far"]     = w.fog.night_far;
+		out["fog_day_power"]     = w.fog.day_power;
+		out["fog_night_power"]   = w.fog.night_power;
+		out["wind_speed"]        = static_cast<int64_t>(w.wind_speed);
+		out["cloud_speed_lower"] = static_cast<int64_t>(w.cloud_speed_lower);
+		out["cloud_speed_upper"] = static_cast<int64_t>(w.cloud_speed_upper);
+		out["classification"]    = static_cast<int64_t>(w.classification);
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+int64_t EsmReader::get_worldspace_climate(int64_t wrld_form_id) const {
+	if (!opened_) return 0;
+	try {
+		return static_cast<int64_t>(
+			file_.get_worldspace_climate(static_cast<uint32_t>(wrld_form_id)));
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+		return 0;
+	}
+}
+
+Dictionary EsmReader::get_global_variable(int64_t form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto opt = file_.get_global_variable(static_cast<uint32_t>(form_id));
+		if (!opt) return out;
+		out["form_id"]   = static_cast<int64_t>(opt->form_id);
+		out["editor_id"] = String(opt->editor_id.c_str());
+		out["type"]      = String(std::string(1, opt->type).c_str());
+		out["value"]     = opt->value;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::find_global_by_editor_id(const String &editor_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto opt = file_.find_global_by_editor_id(editor_id.utf8().get_data());
+		if (!opt) return out;
+		out["form_id"]   = static_cast<int64_t>(opt->form_id);
+		out["editor_id"] = String(opt->editor_id.c_str());
+		out["type"]      = String(std::string(1, opt->type).c_str());
+		out["value"]     = opt->value;
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+

@@ -456,6 +456,97 @@ struct ScriptData {
 	std::vector<uint32_t> referenced_form_ids; // SCRO, in file order
 };
 
+// day-night / weather types ---------------------------------------------------
+// Verified against real FalloutNV.esm via tools/time_weather_survey.cpp and
+// tools/wthr_detail_dump.cpp / tools/nam0_dump.cpp.
+
+// GLOB record: global variable (e.g. GameHour, GameDay, TimeScale).
+struct GlobalVariableData {
+	uint32_t form_id = 0;
+	std::string editor_id;
+	char type = 'f'; // 's' (short), 'f' (float), 'l' (long)
+	float value = 0.0f;
+};
+
+// One entry in a CLMT's WLST (weighted weather list).
+// 12 bytes per entry: uint32 weather_form_id, uint32 chance, uint32 global_form_id.
+struct WeatherChance {
+	uint32_t weather_form_id = 0;
+	uint32_t chance = 0; // 0‒100
+	uint32_t global_form_id = 0;
+};
+
+// Parsed CLMT (Climate) record.
+// TNAM encodes sunrise/sunset boundaries as 10-minute units (value×10 = minutes
+// from midnight), confirmed against real NVDefaultClimate TNAM bytes: 0x24=36
+// → 36×10 = 360 min = 6 h (sunrise begin), 0x30=48 → 480 = 8 h (sunrise end),
+// 0x6c=108 → 1080 = 18 h (sunset begin), 0x78=120 → 1200 = 20 h (sunset end).
+struct ClimateData {
+	uint32_t form_id = 0;
+	std::string editor_id;
+	std::string sun_texture_path;       // FNAM — e.g. "Sky\Sun.dds"
+	std::string sun_glare_texture_path; // GNAM — e.g. "sky\NV_sunglare.dds"
+	std::string night_sky_model_path;   // MODL — e.g. "Sky\Stars.nif"
+	// Sunrise/sunset hours decoded from TNAM bytes×10÷60:
+	float sunrise_begin = 6.0f;  // hours [0, 24)
+	float sunrise_end   = 8.0f;
+	float sunset_begin  = 18.0f;
+	float sunset_end    = 20.0f;
+	uint8_t volatility = 0;        // TNAM byte 4 — weather-change frequency
+	uint8_t moon_phase_length = 0; // TNAM byte 5
+	std::vector<WeatherChance> weather_chances; // WLST
+};
+
+// NAM0 colour table layout (240 bytes = 10 colour types × 6 time-of-day slots
+// × 4 bytes RGBA). The six slots are Sunrise, Day, Sunset, Night, plus two
+// transition slots (indices 4 and 5). Index mapping from Creation Kit docs:
+//   0 SkyUpper  1 Fog  2 Unused  3 Ambient  4 Sunlight  5 Sun
+//   6 Stars    7 SkyLower  8 Horizon  9 Unused
+//
+// Each colour is stored RGBA (one byte per channel, A always 0 in real data).
+constexpr int kWthrColorTypes = 10;
+constexpr int kWthrColorTimes = 6;  // Sunrise=0 Day=1 Sunset=2 Night=3 +2
+
+struct WeatherColor {
+	uint8_t r = 0, g = 0, b = 0, a = 0;
+};
+
+// Fog parameters from FNAM (6 floats, 24 bytes):
+// DayNear, DayFar, NightNear, NightFar, DayPower, NightPower.
+struct WeatherFogParams {
+	float day_near   = 1000.0f;
+	float day_far    = 250000.0f;
+	float night_near = 1000.0f;
+	float night_far  = 200000.0f;
+	float day_power  = 0.4f;
+	float night_power = 0.4f;
+};
+
+// Parsed WTHR (Weather) record.
+// DATA (15 bytes): wind_speed, cloud_speed_lower, cloud_speed_upper,
+//   trans_delta (transition speed), sun_glare, sun_damage,
+//   precipitation_begin, precipitation_end, thunder_lightning_begin,
+//   thunder_lightning_end, thunder_lightning_freq, classification,
+//   red_lightning_pct, small_precipitation_pct, unknown.
+struct WeatherData {
+	uint32_t form_id = 0;
+	std::string editor_id;
+	// Cloud/sky texture paths (DNAM=upper, CNAM=horizon, ANAM=lower1, BNAM=lower2)
+	std::string cloud_texture_upper;   // DNAM
+	std::string cloud_texture_horizon; // CNAM
+	std::string cloud_texture_lower1;  // ANAM
+	std::string cloud_texture_lower2;  // BNAM
+	// Color table: [type][time]
+	WeatherColor colors[kWthrColorTypes][kWthrColorTimes] = {};
+	WeatherFogParams fog;
+	// DATA fields
+	uint8_t wind_speed = 0;
+	uint8_t cloud_speed_lower = 0;
+	uint8_t cloud_speed_upper = 0;
+	uint8_t classification = 0; // 0=None 1=Precipitous 2=Snow
+	uint8_t flags = 0;          // DATA[11]
+};
+
 // Issue #52 chunk 5: a RACE record's per-gender body part MODLs, resolved
 // by EsmFile::get_race_body_parts() -- see that function's own doc comment
 // for the real, confirmed marker-delimited layout this parses (NAM0/NAM1

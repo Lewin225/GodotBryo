@@ -1569,4 +1569,191 @@ std::vector<std::string> EsmFile::get_all_cell_candidates() const {
 	return cell_candidates_cache_;
 }
 
+// ---------------------------------------------------------------------------
+// day-night / weather (feature/day-night-cycle)
+// ---------------------------------------------------------------------------
+
+std::optional<ClimateData> EsmFile::get_climate_data(uint32_t form_id) const {
+	auto info = find_record_by_form_id(form_id);
+	if (!info || info->type != "CLMT") return std::nullopt;
+	auto data = read_record_data(*info);
+	auto subs = parse_subrecords(data);
+
+	ClimateData c;
+	c.form_id = form_id;
+	for (const auto &s : subs) {
+		if (s.type == "EDID") {
+			c.editor_id = s.as_string();
+		} else if (s.type == "FNAM" && s.size > 0) {
+			c.sun_texture_path = s.as_string();
+		} else if (s.type == "GNAM" && s.size > 0) {
+			c.sun_glare_texture_path = s.as_string();
+		} else if (s.type == "MODL" && s.size > 0) {
+			c.night_sky_model_path = s.as_string();
+		} else if (s.type == "WLST") {
+			// Each entry in WLST is 12 bytes:
+			//   uint32 weather_form_id (4 bytes)
+			//   uint32 chance (4 bytes)
+			//   uint32 global_form_id (4 bytes, optional condition)
+			size_t count = s.size / 12;
+			c.weather_chances.reserve(count);
+			for (size_t i = 0; i < count; ++i) {
+				WeatherChance wc;
+				std::memcpy(&wc.weather_form_id, s.data + i * 12,     4);
+				std::memcpy(&wc.chance,          s.data + i * 12 + 4, 4);
+				std::memcpy(&wc.global_form_id,  s.data + i * 12 + 8, 4);
+				// Entries with form_id 0 are padding/spacers — skip them.
+				if (wc.weather_form_id != 0) {
+					c.weather_chances.push_back(wc);
+				}
+			}
+		} else if (s.type == "TNAM" && s.size >= 6) {
+			// 6 bytes: sunrise_begin, sunrise_end, sunset_begin, sunset_end,
+			// volatility, moon_phase_length — each in 10-minute units.
+			// Verified: NVDefaultClimate TNAM = 24 30 6c 78 00 83
+			//   0x24=36 → 36×10=360min=6.0h   sunrise_begin
+			//   0x30=48 → 48×10=480min=8.0h   sunrise_end
+			//   0x6c=108 → 108×10=1080min=18h sunset_begin
+			//   0x78=120 → 120×10=1200min=20h sunset_end
+			c.sunrise_begin     = (s.data[0] * 10) / 60.0f;
+			c.sunrise_end       = (s.data[1] * 10) / 60.0f;
+			c.sunset_begin      = (s.data[2] * 10) / 60.0f;
+			c.sunset_end        = (s.data[3] * 10) / 60.0f;
+			c.volatility        =  s.data[4];
+			c.moon_phase_length =  s.data[5];
+		}
+	}
+	return c;
+}
+
+std::optional<WeatherData> EsmFile::get_weather_data(uint32_t form_id) const {
+	auto info = find_record_by_form_id(form_id);
+	if (!info || info->type != "WTHR") return std::nullopt;
+	auto data = read_record_data(*info);
+	auto subs = parse_subrecords(data);
+
+	WeatherData w;
+	w.form_id = form_id;
+	for (const auto &s : subs) {
+		if (s.type == "EDID") {
+			w.editor_id = s.as_string();
+		} else if (s.type == "DNAM" && s.size > 0) {
+			w.cloud_texture_upper = s.as_string();
+		} else if (s.type == "CNAM" && s.size > 0) {
+			w.cloud_texture_horizon = s.as_string();
+		} else if (s.type == "ANAM" && s.size > 0) {
+			w.cloud_texture_lower1 = s.as_string();
+		} else if (s.type == "BNAM" && s.size > 0) {
+			w.cloud_texture_lower2 = s.as_string();
+		} else if (s.type == "NAM0") {
+			// Color table: kWthrColorTypes × kWthrColorTimes × 4 bytes RGBA.
+			// Real size = 10 × 6 × 4 = 240 bytes, confirmed via nam0_dump.
+			// Layout: [type0_time0][type0_time1]...[type0_time5]
+			//         [type1_time0]...[type9_time5]
+			size_t expected = kWthrColorTypes * kWthrColorTimes * 4;
+			if (s.size >= expected) {
+				const uint8_t *p = s.data;
+				for (int t = 0; t < kWthrColorTypes; ++t) {
+					for (int i = 0; i < kWthrColorTimes; ++i) {
+						w.colors[t][i].r = *p++;
+						w.colors[t][i].g = *p++;
+						w.colors[t][i].b = *p++;
+						w.colors[t][i].a = *p++;
+					}
+				}
+			}
+		} else if (s.type == "FNAM" && s.size == 24) {
+			// 6 floats: DayNear, DayFar, NightNear, NightFar, DayPower, NightPower.
+			// Verified via wthr_detail_dump: WastelandClear FNAM reads
+			//   DayNear=1000 DayFar=250000 NightNear=1000 NightFar=200000
+			//   DayPower=0.4 NightPower=0.4
+			util::ByteReader r(s.data, s.size);
+			w.fog.day_near    = read_f32(r);
+			w.fog.day_far     = read_f32(r);
+			w.fog.night_near  = read_f32(r);
+			w.fog.night_far   = read_f32(r);
+			w.fog.day_power   = read_f32(r);
+			w.fog.night_power = read_f32(r);
+		} else if (s.type == "DATA" && s.size >= 15) {
+			// DATA layout (15 bytes): wind_speed[0], cloud_speed_lower[1],
+			// cloud_speed_upper[2], trans_delta[3], sun_glare[4], sun_damage[5],
+			// precip_begin[6], precip_end[7], thunder_begin[8], thunder_end[9],
+			// thunder_freq[10], classification[11], red_lightning_pct[12],
+			// small_precip_pct[13], unknown[14].
+			w.wind_speed       = s.data[0];
+			w.cloud_speed_lower = s.data[1];
+			w.cloud_speed_upper = s.data[2];
+			w.classification   = s.data[11];
+			w.flags            = s.data[14];
+		}
+	}
+	return w;
+}
+
+uint32_t EsmFile::get_worldspace_climate(uint32_t wrld_form_id) const {
+	auto info = find_record_by_form_id(wrld_form_id);
+	if (!info || info->type != "WRLD") return 0;
+	auto data = read_record_data(*info);
+	auto subs = parse_subrecords(data);
+	for (const auto &s : subs) {
+		if (s.type == "CNAM" && s.size >= 4) {
+			uint32_t form_id = 0;
+			std::memcpy(&form_id, s.data, 4);
+			return form_id;
+		}
+	}
+	return 0;
+}
+
+std::optional<GlobalVariableData> EsmFile::get_global_variable(uint32_t form_id) const {
+	auto info = find_record_by_form_id(form_id);
+	if (!info || info->type != "GLOB") return std::nullopt;
+	auto data = read_record_data(*info);
+	auto subs = parse_subrecords(data);
+
+	GlobalVariableData glob;
+	glob.form_id = form_id;
+	for (const auto &s : subs) {
+		if (s.type == "EDID") {
+			glob.editor_id = s.as_string();
+		} else if (s.type == "FNAM" && s.size >= 1) {
+			glob.type = static_cast<char>(s.data[0]);
+		} else if (s.type == "FLTV" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			glob.value = read_f32(sr);
+		}
+	}
+	return glob;
+}
+
+std::optional<GlobalVariableData> EsmFile::find_global_by_editor_id(const std::string &editor_id) const {
+	std::optional<GlobalVariableData> found;
+	for_each_record([&](const RecordInfo &r) {
+		if (found || r.type != "GLOB") return;
+		auto data = read_record_data(r);
+		auto subs = parse_subrecords(data);
+		for (const auto &s : subs) {
+			if (s.type == "EDID") {
+				if (s.as_string() == editor_id) {
+					GlobalVariableData glob;
+					glob.form_id = r.form_id;
+					glob.editor_id = s.as_string();
+					for (const auto &s2 : subs) {
+						if (s2.type == "FNAM" && s2.size >= 1) {
+							glob.type = static_cast<char>(s2.data[0]);
+						} else if (s2.type == "FLTV" && s2.size >= 4) {
+							util::ByteReader sr(s2.data, s2.size);
+							glob.value = read_f32(sr);
+						}
+					}
+					found = glob;
+				}
+				break;
+			}
+		}
+	});
+	return found;
+}
+
 } // namespace esm
+
