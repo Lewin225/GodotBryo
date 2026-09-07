@@ -26,6 +26,10 @@ extends Node
 
 # Latitude inclination of celestial arc (degrees south tilt in northern hemisphere).
 const LATITUDE_TILT_DEG := 30.0
+## Fixed roll around the light's local forward axis. This changes the
+## directional shadow-map texel alignment without changing the sun's actual
+## casting direction, avoiding the worst-case grid-aligned aliasing pattern.
+const SHADOW_MAP_ROLL_DEG := 22.5
 ## Sun elevation at which the ground hemisphere reaches full daylight strength.
 ## This is deliberately an elevation threshold rather than an arbitrary clock
 ## time so it follows the same celestial curve as the directional light.
@@ -184,6 +188,7 @@ func _apply_celestial_light(
 	# Orient DirectionalLight3D so rays shine from celestial position toward scene
 	var ray_dir := -celestial_dir
 	_sun.global_transform = Transform3D().looking_at(ray_dir, Vector3.UP)
+	_sun.rotate_object_local(Vector3.FORWARD, deg_to_rad(SHADOW_MAP_ROLL_DEG))
 	_sun.light_color = light_col
 	_sun.light_energy = light_energy
 	_sun.visible = (light_energy > 0.005)
