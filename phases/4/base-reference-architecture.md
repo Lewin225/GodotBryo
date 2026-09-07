@@ -116,9 +116,23 @@ Currently:
 
 - `base_form_id: int` — which `EsmBase` this is an instance of. The one thing
   every Reference has by definition.
+- `base: EsmBase` — the *resolved* form of `base_form_id`, not a second piece
+  of data needing its own justification: every `Reference` points at exactly
+  one `Base`, no exceptions, which is the same "true for 100% of subtypes" bar
+  `base_form_id` itself already cleared. Resolved eagerly at construction (via
+  `EsmServer.get_base()`, safe even on a `WorkerThreadPool` task since that
+  call is required to be internally thread-safe regardless — see "Thread-safety"
+  below), not lazily on first access. NOT `@export`ed / not persisted, same as
+  everything in this document already established — only `base_form_id` is
+  the actual save data; `base` is always cheaply re-derivable from it through
+  the cache. A subclass narrows the type at the call site with a plain cast
+  (`(reference.base as WeaponBase).damage`) rather than redeclaring the field
+  with a narrower type.
 - `instance_id` — this project's own synthetic identity (see below), not the raw
   Bethesda `RefNum`.
 - Transform data: `position`, `rotation`, `scale`.
+- `current_cell_form_id: int` — see "Save/load" below; sentinel `0` means
+  "still wherever it was originally placed."
 
 Transform needs its own justification, because it directly contradicts
 `GamebryoReference`'s own doc comment (`gamebryo_reference.gd:4-7`), which argues
@@ -389,17 +403,17 @@ split in practice:
 class_name WeaponReference
 extends EsmReference
 
-var base_form_id: int = 0        # persisted — the actual save data
-var _base: WeaponBase            # NOT persisted — rebuilt by resolving base_form_id
-                                  # through the existing esm_resource_factory.gd
-                                  # cache (esm_resource_factory.gd:12, :74-80) on load
+# base_form_id / base are inherited from EsmReference, not redeclared here —
+# every Reference already has them; WeaponReference only adds what's actually
+# weapon-specific.
 var condition: float = -1.0      # persisted, mutable — the actual point of this class
 ```
 
-`_base` is a runtime convenience only, never serialized — on load it's
-re-resolved from `base_form_id` through the same cache that already guarantees
-every `WeaponReference` pointing at the same `base_form_id` shares the *same*
-`WeaponBase` object, never a duplicate. Not a new mechanism: this is the existing
+`base` (inherited, `EsmBase`-typed) is a runtime convenience only, never
+serialized — resolved from `base_form_id` through the same cache that already
+guarantees every `WeaponReference` pointing at the same `base_form_id` shares
+the *same* `WeaponBase` object, never a duplicate: `(reference.base as
+WeaponBase).damage`. Not a new mechanism: this is the existing
 `esm_resource_factory.gd` cache and the existing `InventoryEntryResource.item_form_id`
 / `.item_record` split, formalized under the new naming and extended with the one
 thing `InventoryEntryResource` was missing — `condition`.
@@ -417,7 +431,53 @@ just holding the new typed References instead of `InventoryEntryResource`.
 the equipment-slots discussion — a list of which of its own `contents` entries
 are currently worn/wielded, not a flag living on the entries themselves.
 
-## `EsmServer`: one global singleton, three entry points
+## Which types need `Base` only vs. `Base` + `Reference`
+
+Every currently-supported record type needs a `Base` — unconditional, already
+established: `get_base()` must always return a properly typed resource for
+whatever it resolves, since `Base` is just "what's actually in the file."
+`Reference` is narrower, and the test for it is a durable, format-level fact,
+not a snapshot of what this project happens to parse today: **does the format
+permit this type to ever be a targeting-field target — a `REFR`'s `NAME`, or
+the `ACHR`/`ACRE` sibling family actors use** — not "has this project actually
+built support for placing one yet." A type earns `Reference` support the
+moment support for placing it is ever added, whether or not that's happened
+yet; re-deriving the test per type as new ones get built would be wasted work
+when the format itself already answers it exhaustively, once.
+
+Checked directly against [fopdoc's `REFR.md`](https://github.com/TES5Edit/fopdoc/blob/master/FalloutNV/Records/REFR.md)
+`NAME` field, not assembled from memory of what this project currently
+touches — its own list is exhaustive:
+
+**Could be targeted — needs `Reference` (dedicated subclass or bare
+`EsmReference`, per the promotion-rule survey) whenever placement support
+exists, even if unbuilt today:**
+`TREE`, `SOUN`, `ACTI`, `DOOR`, `STAT`, `FURN`, `CONT`, `ARMO`, `AMMO`,
+`LVLN`, `LVLC`, `MISC`, `WEAP`, `BOOK`, `KEYM`, `ALCH`, `LIGH`, `GRAS`,
+`ASPC`, `IDLM`, `ARMA`, `MSTT`, `NOTE`, `PWAT`, `SCOL`, `TACT`, `TERM`,
+`TXST`, `CCRD`, `IMOD`, `CMNY` — plus `NPC_`/`CREA` via the `ACHR`/`ACRE`
+sibling family (actors aren't placed via literal `REFR`, confirmed by native
+code already having a separate `get_cell_actors()` distinct from
+`get_cell_references()`, but `phases/1/architecture.md` already treats them as
+one architectural family: *"REFR + whatever base record its NAME points
+to"*).
+
+Note `ARMA` belongs here, corrected from an earlier pass in this same
+discussion that placed it in the "referenced-only" list below — every case
+*this project* has built so far reaches an `ArmorAddonRecord` indirectly
+(`ARMO.BIPL → FLST → ARMA`), never as a direct placement, but the format
+itself explicitly permits `ARMA` as a standalone `REFR` target regardless of
+current usage. The "could be" test is exactly what catches this kind of
+scope-creep-by-assumption before it hides in the doc as a wrong assumption.
+
+**Never in that list — `Base` only, never `Reference`, by format definition:**
+`RACE`, `HAIR`, `EYES`, `CLAS`, `PACK`, `FLST`. These are reached exclusively
+as fields on other `Base`s (`NpcBase.race → RaceBase`,
+`WeaponBase.biped_model_list → BipedModelListBase`) — a `Base`-to-`Base`
+pointer relationship, never a placement, so `Reference` isn't just unbuilt for
+these, it's structurally inapplicable.
+
+## `EsmServer`: one global singleton, five entry points
 
 Named for what each unambiguously returns, not for a mechanism — a `"load_"`/
 `"resolve_"` verb would wrongly commit to "always does real work" or leave it
@@ -450,8 +510,28 @@ cover both could only ever declare a useless common return type:
   always `Reference`-shaped (a cell is a list of placed instances, never a
   list of `Base`s), so this is what most world-streaming code actually
   calls. The typed replacement for today's `EsmReader.get_cell_references()`.
+- **`get_base_type(base_form_id: int) -> Script`** — a cheap type check
+  without paying for full resolution: skips subrecord parsing/`Resource`
+  construction entirely, backed by an index-only `{type_tag: Script}` lookup
+  (the *same* internal dispatch table `get_base()` already needs for
+  construction, just projected to return the class instead of calling the
+  builder). Returns the actual class (`WeaponBase`, `ArmorBase`, ...), not a
+  raw `"WEAP"` string — a caller compares `result == WeaponBase` rather than
+  string-matching, avoiding the exact duck-typed dispatch pattern
+  (`object_registry.gd`'s `result["emittance_color"]`-style checks) this
+  whole `Base`/`Reference` split exists to move away from. Record *type*
+  never changes due to player action, so this is as pure and cacheable as
+  `get_base()` itself — no session dependency.
+- **`get_reference_type(refr_form_id: int) -> Script`** — same idea, one
+  real subtlety: a `REFR`'s own `record_type` is always literally `"REFR"`,
+  so a naive type lookup on the `REFR`'s own `form_id` would trivially
+  return the same useless answer for everything. This has to dereference the
+  `REFR`'s `NAME` subrecord to its `base_form_id` first, *then* look up
+  *that* target's type — two hops, not one. Still cheap (only needs the
+  target's type, not its full data), but a genuinely different mechanism
+  than `get_base_type()`, not just the same lookup on a different id.
 
-**All three live on one singleton, `EsmServer`, in the same vein as Godot's own
+**All five live on one singleton, `EsmServer`, in the same vein as Godot's own
 `RenderingServer`/`PhysicsServer3D`** — a global service any code can call
 without threading a reference through constructors, may or may not use
 background threads internally, not something a caller needs to know. This
@@ -484,8 +564,10 @@ current state says, every time, which is correct, not stale — the save data
 This does mean `EsmServer` needs to know which save is currently active for
 those two calls to be correct — the one piece of real session-lifecycle
 complexity worth designing for deliberately rather than glossing over. Concretely:
-`EsmServer` holds one internal, nullable reference to the active session's
-save-state, set on load and cleared on return-to-menu. `get_base()` never
+`EsmServer` holds one internal, nullable reference to the current
+`GameSession` (see "Save/load" below for what that actually is — the live,
+in-memory session object, not the `SaveGame` it serializes to), set on load
+and cleared on return-to-menu. `get_base()` never
 touches it — a `Base` record is correct with or without an active session,
 which is exactly what lets a standalone tool with no save loaded at all (a NIF
 viewer, an editor diagnostic — several of the 15+ `EsmReader.new()` sites
@@ -512,9 +594,11 @@ singleton.
 The object factory (`object_registry.gd`'s `_construct_*()`/`_resolve_*()`
 functions) takes **only** `EsmReference` (or a subclass) as input — never a bare
 `EsmBase` directly, even for kinds like `StaticReference` that carry no override
-data most of the time. One uniform call signature for every placement kind; the
-factory always resolves `base_form_id` → the shared `Base` internally via the
-existing cache when it needs `model_path`/damage/whatever, and never branches on
+data most of the time. One uniform call signature for every placement kind, and
+since `base: EsmBase` is already resolved and sitting on every `Reference` by
+the time it reaches the factory (see "What `EsmReference` holds" above), the
+factory doesn't even need to call `EsmServer.get_base()` itself — it just reads
+`reference.base.model_path`/damage/whatever directly, and never branches on
 "was I handed a Base or a Reference this time." Handing the factory a
 `StaticReference` whose `emittance_form_id` happens to be unset is simply a
 no-op for that one field — cheap, and it keeps every entry point identical
@@ -590,7 +674,12 @@ subclasses are the natural persisted-data unit: `EsmBase` never needs saving
 
 Building on Phase 4's own already-sketched `GameSession`/`SaveState` skeleton
 (`README.md`'s "Quest-state decision") rather than inventing parallel
-terminology:
+terminology. Naming the two halves explicitly, since this document uses both
+and the relationship matters: **`GameSession` is the live, in-memory, currently-
+active object** — the thing `EsmServer` holds its nullable reference to (see
+"`EsmServer`" above). **`SaveGame` is the on-disk shape a `GameSession` reads
+from and writes to** on load/save — not a separate runtime concept, just its
+serialized form:
 
 ```
 SaveGame
@@ -704,15 +793,15 @@ profiling actually shows the reflective pass is too slow**, not as a default.
 
 ### Serialization mechanics
 
-`WeaponReference._base` was deliberately made a plain, non-`@export`ed `var`
-(see the `WeaponReference` example above) specifically because it isn't meant
+`EsmReference.base` was deliberately made a plain, non-`@export`ed `var`
+(see "What `EsmReference` holds" above) specifically because it isn't meant
 to be persisted — and Godot's `ResourceSaver`/`ResourceLoader` only serialize
 `@export`ed properties by default, so a straight `ResourceSaver.save()` on the
 whole nested tree already produces the right save shape for free, no
 hand-written `serialize_state()`/`restore_state()` walker needed per class the
-way `InventoryComponent` currently hand-rolls it. On load, `_base` is simply
-re-resolved from `base_form_id` through the factory cache the first time
-something reads it.
+way `InventoryComponent` currently hand-rolls it. On load, `base` is simply
+re-resolved from `base_form_id` through `EsmServer.get_base()` at construction,
+same as any other `Reference`.
 
 Two things worth flagging rather than assuming away:
 
