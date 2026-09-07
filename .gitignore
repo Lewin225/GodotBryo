@@ -52,6 +52,12 @@ dump_object_output/
 # OS/editor cruft
 .DS_Store
 *.swp
+.directory
+
+# Local reference/tool installations — not project source
+enginedocs/OpenMW*/
+enginedocs/NifDocs/
+tools/*
 
 # Claude Code harness temp files
 .claude/*.tmp.*
