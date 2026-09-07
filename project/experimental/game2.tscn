@@ -1,0 +1,1381 @@
+[gd_scene format=3 uid="uid://timgec5axkkn"]
+
+[ext_resource type="Script" uid="uid://c2ault4wapmae" path="res://game.gd" id="1_v0n6i"]
+[ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="2_xspbh"]
+[ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="3_cps6k"]
+[ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_8tca4"]
+[ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="5_boqrt"]
+[ext_resource type="PackedScene" path="res://terminal_session.tscn" id="6_vfwdf"]
+[ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="7_5gpan"]
+[ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="8_nuj7l"]
+[ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_7drl1"]
+[ext_resource type="Script" uid="uid://cjcg4wkk27esg" path="res://player_debug_tab.gd" id="10_2wyxb"]
+[ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="11_ugvmw"]
+[ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="12_52qbx"]
+[ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="13_kw6pd"]
+[ext_resource type="Script" uid="uid://cio1g7pp5m0b1" path="res://terrain_streaming_debug_tab.gd" id="14_jopgt"]
+[ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="15_601yx"]
+[ext_resource type="Script" uid="uid://covubnj8iytnr" path="res://lighting_debug_tab.gd" id="16_qwl4e"]
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
+exposure_multiplier = 3.334
+auto_exposure_enabled = true
+auto_exposure_scale = 0.07
+auto_exposure_speed = 2.0
+dof_blur_far_distance = 271.22
+dof_blur_far_transition = 2830.17
+auto_exposure_min_sensitivity = 56.88
+auto_exposure_max_sensitivity = 81.0
+
+[sub_resource type="GDScript" id="GDScript_yryqu"]
+script/source = "extends Window
+
+func _ready() -> void:
+	visible = false
+	close_requested.connect(func() -> void: visible = false)
+
+func _process(_delta: float) -> void:
+	if Input.is_action_just_pressed(\"ui_home\"):
+		visible = !visible
+		if visible:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+"
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
+
+[sub_resource type="Theme" id="Theme_ggi80"]
+TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
+
+[node name="Game" type="Node3D" unique_id=215906396]
+script = ExtResource("1_v0n6i")
+
+[node name="CellLoader" type="Node3D" parent="." unique_id=237117943]
+script = ExtResource("2_xspbh")
+cell_editor_id = "GSDocMitchellHouse"
+
+[node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
+script = ExtResource("3_cps6k")
+
+[node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
+script = ExtResource("4_8tca4")
+terrain3d_debug_dump_grid = Vector2i(-18, 0)
+
+[node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
+script = ExtResource("5_boqrt")
+
+[node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("6_vfwdf")]
+
+[node name="MessageBox" parent="." unique_id=782194631 instance=ExtResource("7_5gpan")]
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
+transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
+environment = ExtResource("8_nuj7l")
+camera_attributes = SubResource("CameraAttributesPractical_d75sj")
+
+[node name="Debug Tools" type="Window" parent="." unique_id=65829105]
+scaling_3d_scale = 0.3161
+oversampling_override = 1.0
+initial_position = 5
+size = Vector2i(784, 466)
+script = SubResource("GDScript_yryqu")
+
+[node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TabContainer" type="TabContainer" parent="Debug Tools" unique_id=645294600]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_ggi80")
+current_tab = 1
+drag_to_rearrange_enabled = true
+
+[node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("9_7drl1")
+metadata/_tab_index = 0
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=411638944]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin" unique_id=847699033]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Usage" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=2090400204]
+layout_mode = 2
+bbcode_enabled = true
+text = "0 live contexts"
+fit_content = true
+scroll_active = false
+
+[node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=648164203]
+layout_mode = 2
+
+[node name="Line" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=744659824]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Run a script line, e.g. Player.Disable"
+
+[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=1878701052]
+layout_mode = 2
+text = "Run"
+
+[node name="Clear" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=2068415879]
+layout_mode = 2
+text = "Clear"
+
+[node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1893336224]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Output" type="TextEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1789706687]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1298307156]
+layout_mode = 2
+
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=668789071]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=1731338449]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1758729041]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=464048584]
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SuggestionsPanel" type="PanelContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=194857299]
+visible = false
+top_level = true
+z_index = 50
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel" unique_id=194857300]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="SuggestionsList" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel/Margin" unique_id=194857301]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Player" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("10_2wyxb")
+metadata/_tab_index = 1
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Player" unique_id=184729103]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Player/Margin" unique_id=194857291]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102938472]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]👤 Player & Controller Settings[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759302]
+layout_mode = 2
+bbcode_enabled = true
+text = "Pos: (0.0, 0.0, 0.0)   •   Speed: 0.0 m/s   •   State: —"
+fit_content = true
+scroll_active = false
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847582]
+layout_mode = 2
+
+[node name="NoclipTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948573]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]👻 Noclip & Flight (TCL)[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="NoclipRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759203]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NoclipCheck" type="CheckBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837401]
+layout_mode = 2
+tooltip_text = "Toggle noclip flight mode (disables physics collision & gravity)."
+text = "Noclip Mode (TCL)"
+
+[node name="NoclipSpeedLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=182736495]
+layout_mode = 2
+text = "fly speed (m/s):"
+
+[node name="NoclipSpeedSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837495]
+layout_mode = 2
+min_value = 1.0
+step = 0.5
+value = 12.0
+
+[node name="NoclipSprintLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=182736496]
+layout_mode = 2
+text = "sprint multi:"
+
+[node name="NoclipSprintSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/NoclipRow" unique_id=192837496]
+layout_mode = 2
+min_value = 1.0
+max_value = 10.0
+step = 0.1
+value = 2.5
+
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847583]
+layout_mode = 2
+
+[node name="MoveTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948574]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]🏃 Speed & Locomotion[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="MoveGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759204]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 4
+
+[node name="BaseSpeedLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736401]
+layout_mode = 2
+text = "walk speed (m/s):"
+
+[node name="BaseSpeedSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837402]
+layout_mode = 2
+min_value = 0.5
+max_value = 50.0
+step = 0.25
+value = 4.0
+
+[node name="SprintMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736403]
+layout_mode = 2
+text = "sprint multi:"
+
+[node name="SprintMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837404]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+step = 0.1
+value = 1.6
+
+[node name="CrouchMultiLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736405]
+layout_mode = 2
+text = "crouch multi:"
+
+[node name="CrouchMultiSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837406]
+layout_mode = 2
+min_value = 0.1
+max_value = 1.0
+step = 0.05
+value = 0.5
+
+[node name="JumpVelLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=182736411]
+layout_mode = 2
+text = "jump height (m/s):"
+
+[node name="JumpVelSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/MoveGrid" unique_id=192837412]
+layout_mode = 2
+max_value = 50.0
+step = 0.25
+value = 5.5
+
+[node name="Sep3" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847584]
+layout_mode = 2
+
+[node name="ViewTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=102948577]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]📏 Height & View Settings[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="ViewGrid" type="GridContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759207]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 4
+columns = 4
+
+[node name="StandHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736426]
+layout_mode = 2
+text = "standing height (m):"
+
+[node name="StandHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837427]
+layout_mode = 2
+min_value = 0.5
+max_value = 3.0
+step = 0.05
+value = 1.7
+
+[node name="CrouchHeightLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736432]
+layout_mode = 2
+text = "crouch height (m):"
+
+[node name="CrouchHeightSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837433]
+layout_mode = 2
+min_value = 0.3
+max_value = 2.0
+step = 0.05
+value = 1.2
+
+[node name="MouseSensLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736424]
+layout_mode = 2
+text = "mouse sens:"
+
+[node name="MouseSensSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837425]
+layout_mode = 2
+min_value = 0.0005
+max_value = 0.02
+step = 0.0005
+value = 0.003
+
+[node name="FovLabel" type="Label" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=182736428]
+layout_mode = 2
+text = "camera fov (°):"
+
+[node name="FovSpin" type="SpinBox" parent="Debug Tools/TabContainer/Player/Margin/VBox/ViewGrid" unique_id=192837429]
+layout_mode = 2
+min_value = 40.0
+max_value = 120.0
+value = 75.0
+
+[node name="Sep4" type="HSeparator" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=193847587]
+layout_mode = 2
+
+[node name="ActionsRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Player/Margin/VBox" unique_id=184759208]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ResetDefaultsBtn" type="Button" parent="Debug Tools/TabContainer/Player/Margin/VBox/ActionsRow" unique_id=192837430]
+layout_mode = 2
+text = "Reset Defaults"
+
+[node name="GroundSnapBtn" type="Button" parent="Debug Tools/TabContainer/Player/Margin/VBox/ActionsRow" unique_id=192837431]
+layout_mode = 2
+tooltip_text = "Raycast downwards and snap player position directly to ground."
+text = "Snap to Ground"
+
+[node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("11_ugvmw")
+metadata/_tab_index = 2
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory" unique_id=139347742]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin" unique_id=1680692534]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=832985244]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]🎒 Player Inventory[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=94027675]
+layout_mode = 2
+placeholder_text = "Filter items by name or FormID..."
+clear_button_enabled = true
+
+[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=2087114334]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 6
+column_titles_visible = true
+hide_root = true
+
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=525794185]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=532771478]
+layout_mode = 2
+tooltip_text = "Add one of the selected inventory item (debug only)."
+text = "Inc"
+
+[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=1913915189]
+layout_mode = 2
+tooltip_text = "Remove one selected item from inventory."
+text = "Delete"
+
+[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=76765613]
+layout_mode = 2
+tooltip_text = "Spawn one selected item in front of the camera."
+text = "Drop"
+
+[node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
+layout_mode = 2
+bbcode_enabled = true
+text = "0 distinct item type(s)"
+fit_content = true
+scroll_active = false
+
+[node name="Teleport" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("12_52qbx")
+metadata/_tab_index = 3
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Teleport" unique_id=982341201]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin" unique_id=143290123]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=190283471]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]⚡ Fast Travel & Cell Teleport (COC)[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="QuickRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=184920348]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CellInput" type="LineEdit" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=129384019]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Enter Cell EditorID (e.g. GSDocMitchellHouse, NovacGiftShop)..."
+clear_button_enabled = true
+
+[node name="TeleportBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=102938475]
+layout_mode = 2
+tooltip_text = "Execute CenterOnCell (COC) teleport to the specified Cell EditorID."
+text = "Teleport (COC)"
+
+[node name="CurrentBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/QuickRow" unique_id=192837465]
+layout_mode = 2
+tooltip_text = "Populate input with currently loaded Cell EditorID."
+text = "Current"
+
+[node name="StatusLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=139485720]
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=#7f848e]Select a preset destination below or enter an EditorID.[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=149582039]
+layout_mode = 2
+
+[node name="PresetsHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=120495839]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PresetsTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=194857203]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]📋 Preset Destinations[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="CategoryFilter" type="OptionButton" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=109283746]
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+
+[node name="SearchFilter" type="LineEdit" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/PresetsHeader" unique_id=192837492]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+placeholder_text = "Search presets..."
+clear_button_enabled = true
+
+[node name="PresetTree" type="Tree" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=184759201]
+custom_minimum_size = Vector2(0, 240)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 3
+column_titles_visible = true
+hide_root = true
+
+[node name="ButtonsRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin/VBox" unique_id=149583029]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TeleportSelectedBtn" type="Button" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/ButtonsRow" unique_id=120394857]
+layout_mode = 2
+text = "Teleport to Selected"
+
+[node name="HintLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Teleport/Margin/VBox/ButtonsRow" unique_id=139485721]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[color=#7f848e]💡 Tip: Double-click any destination row to teleport instantly.[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("13_kw6pd")
+metadata/_tab_index = 4
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming" unique_id=745694945]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="SubTabs" type="TabContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1564045092]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Streaming State" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1347269149]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+metadata/_tab_index = 0
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State" unique_id=2054561651]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StateTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1746925482]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]🌐 World Streaming State[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1869765600]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=378558192]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Status: Inactive"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="CellCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=460620432]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Cell: (none)"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="ResidentCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=2110724604]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Resident: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="FullDetailCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=879374361]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Full Detail: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="DistantCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=917911515]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Distant: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="InFlightCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=1981231591]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "In-Flight: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="QueueDepthCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=476789449]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Queue Depth: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="NoCellCacheCard" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/StateGrid" unique_id=748487168]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Empty Cache: 0"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="Sep1" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1331022457]
+layout_mode = 2
+
+[node name="RadiusTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1189047551]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]📏 Load Radius Configuration & Limits[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="RadiusGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=952126884]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="RadLoadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=838554842]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Load Full: 1.5"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="RadUnloadFull" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1921313058]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Unload Full: 2.25"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="RadLoadDistant" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=93453800]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Load Distant: 4.5"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="RadUnload" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=2024868804]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Unload: 5.5"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="CheckInterval" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=673022214]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Check: 0.25s"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="LodCrossover" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1063840941]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "LOD Crossover: 250m"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="DistantLod" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/RadiusGrid" unique_id=1063840942]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Distant Fade: 300m"
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="Sep2" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=636008105]
+layout_mode = 2
+
+[node name="TuneRow" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=1472278246]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=2078833265]
+layout_mode = 2
+text = "tiles/frame:"
+vertical_alignment = 1
+
+[node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1196531616]
+layout_mode = 2
+tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
+min_value = 1.0
+max_value = 64.0
+value = 1.0
+
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=2131326328]
+layout_mode = 2
+text = "objects/frame:"
+vertical_alignment = 1
+
+[node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1368787344]
+layout_mode = 2
+tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
+min_value = 1.0
+max_value = 2000.0
+value = 1.0
+
+[node name="FreezeTraceCheck" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=199155656]
+layout_mode = 2
+tooltip_text = "Issue #6 only: print concise per-tile stage markers around upgrade eviction, terrain, construct and batch-build work. Enable before reproducing a freeze; disabled by default to keep the console quiet."
+text = "freeze trace"
+
+[node name="LodTuneRow" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox" unique_id=641165714]
+layout_mode = 2
+columns = 2
+
+[node name="Lod0DistLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833266]
+layout_mode = 2
+text = "LOD0→1 (m):"
+vertical_alignment = 1
+
+[node name="Lod0DistSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531617]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_distance_m -- distance where LOD0 (full detail) hands off to LOD1. Applied to newly-streamed content going forward; does not retroactively update already-resident objects."
+max_value = 2000.0
+value = 100.0
+
+[node name="Lod0MarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326329]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="Lod0MarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787345]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod0_crossover_margin_m -- fade-band width around the LOD0/LOD1 handoff."
+max_value = 200.0
+value = 5.0
+
+[node name="Lod1MaxLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833267]
+layout_mode = 2
+text = "LOD1 max (m, 0=∞):"
+vertical_alignment = 1
+
+[node name="Lod1MaxSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531618]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.lod1_max_range_m -- distance where LOD1 itself disappears. 0 = infinite."
+max_value = 5000.0
+
+[node name="DistantCutoffLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2131326330]
+layout_mode = 2
+text = "Distant fade (m):"
+vertical_alignment = 1
+
+[node name="DistantCutoffSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1368787346]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_cutoff_m -- distance where persistent-cell distant/skyline stand-ins (issue #56) fade IN as the camera moves away."
+max_value = 5000.0
+value = 300.0
+
+[node name="DistantMarginLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=2078833268]
+layout_mode = 2
+text = "± (m):"
+vertical_alignment = 1
+
+[node name="DistantMarginSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/LodTuneRow" unique_id=1196531619]
+layout_mode = 2
+tooltip_text = "GodotBryoSettings.distant_lod_near_margin_m -- fade-band width for the distant-tile near cutoff."
+max_value = 500.0
+value = 20.0
+
+[node name="Ground Textures" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1706202073]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+metadata/_tab_index = 1
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures" unique_id=800481568]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=448109901]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TexTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=1030283830]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]🎨 World Ground Textures (Terrain3D Pool)[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="TexSummaryLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=2101835264]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1044071171]
+layout_mode = 2
+placeholder_text = "Filter ground textures by name or slot..."
+clear_button_enabled = true
+
+[node name="TextureTree" type="Tree" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1805287992]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 2
+column_titles_visible = true
+hide_root = true
+
+[node name="Terrain Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=417666227]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("14_jopgt")
+metadata/_tab_index = 5
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Terrain Streaming" unique_id=2044128035]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin" unique_id=1734639912]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2129774186]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]🏔 Terrain Streaming[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1177763728]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="StatusCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=788956301]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Status: Inactive"
+fit_content = true
+scroll_active = false
+
+[node name="WorldCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=436794935]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "World: (none)"
+fit_content = true
+scroll_active = false
+
+[node name="DomainCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=1767130708]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Domain: 0 / 0 committed regions"
+fit_content = true
+scroll_active = false
+
+[node name="QueueCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=569816811]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Queue: 0"
+fit_content = true
+scroll_active = false
+
+[node name="WorkerCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=1290049867]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Workers: 0"
+fit_content = true
+scroll_active = false
+
+[node name="ResourceCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/StateGrid" unique_id=576351328]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Resources: 0"
+fit_content = true
+scroll_active = false
+
+[node name="TimingCard" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=790829184]
+layout_mode = 2
+bbcode_enabled = true
+text = "CPU samples: waiting for terrain publication"
+fit_content = true
+scroll_active = false
+
+[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1833098275]
+layout_mode = 2
+
+[node name="TuningTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=1999586081]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]Scheduler tuning[/b] [color=#7f848e](applied live)[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="TuningRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=764416296]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RegionsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=431323336]
+layout_mode = 2
+text = "regions/frame:"
+vertical_alignment = 1
+
+[node name="RegionsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=1736814120]
+layout_mode = 2
+tooltip_text = "TerrainStreamer.regions_per_frame. Limits Terrain3D publication to this many prepared regions per frame."
+min_value = 1.0
+max_value = 8.0
+value = 1.0
+
+[node name="RadiusLabel" type="Label" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=2112160162]
+layout_mode = 2
+text = "near radius (cells):"
+vertical_alignment = 1
+
+[node name="RadiusSpin" type="SpinBox" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TuningRow" unique_id=1489235199]
+layout_mode = 2
+tooltip_text = "TerrainStreamer.load_radius. Reprioritizes near terrain work when the next streaming check runs."
+min_value = 1.0
+max_value = 40.0
+value = 20.0
+
+[node name="RetainedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=740612220]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]Retained cache-family worldspaces[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="RetainedWorldspaces" type="Tree" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=917016632]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 5
+column_titles_visible = true
+hide_root = true
+
+[node name="Envrioment" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=124391377]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+script = ExtResource("15_601yx")
+metadata/_tab_index = 6
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Envrioment" unique_id=524168662]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin" unique_id=915081589]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CellTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=607578486]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]📍 Current Cell[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="CellLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=1397622249]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="ColumnsContainer" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox" unique_id=521173631]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer" unique_id=2133578111]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="XcllTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=366228478]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]☀️ Authored CELL.XCLL Lighting[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="AmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=422956097]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow" unique_id=1818273909]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="AmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/AmbientRow" unique_id=986443432]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "ambient: —"
+fit_content = true
+scroll_active = false
+
+[node name="DirectionalRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=727936576]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DirectionalSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow" unique_id=1214956702]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="DirectionalLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel/DirectionalRow" unique_id=1835911970]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "directional: —"
+fit_content = true
+scroll_active = false
+
+[node name="FogLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=744471539]
+layout_mode = 2
+bbcode_enabled = true
+text = "fog: —"
+fit_content = true
+scroll_active = false
+
+[node name="FadeLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=1196153313]
+layout_mode = 2
+bbcode_enabled = true
+text = "directional fade: —"
+fit_content = true
+scroll_active = false
+
+[node name="XcllNoteLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/LeftPanel" unique_id=876955490]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="RightPanel" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer" unique_id=1304625542]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="AppliedTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1740068754]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]🌍 Applied WorldEnvironment[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="EnvAmbientRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=14157388]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnvAmbientSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow" unique_id=1096278479]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="EnvAmbientLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvAmbientRow" unique_id=464106494]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "ambient light: —"
+fit_content = true
+scroll_active = false
+
+[node name="EnvBgRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1018528632]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnvBgSwatch" type="ColorRect" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow" unique_id=1682065532]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+color = Color(0, 0, 0, 1)
+
+[node name="EnvBgLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel/EnvBgRow" unique_id=2117349399]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "background: —"
+fit_content = true
+scroll_active = false
+
+[node name="EnvEnergyLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=1534499185]
+layout_mode = 2
+bbcode_enabled = true
+text = "energy / source: —"
+fit_content = true
+scroll_active = false
+
+[node name="EnvSettingsLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/Envrioment/Margin/VBox/ColumnsContainer/RightPanel" unique_id=482713744]
+layout_mode = 2
+bbcode_enabled = true
+text = "sdfgi / tonemap: —"
+fit_content = true
+scroll_active = false
+
+[node name="Lighting" type="Control" parent="Debug Tools/TabContainer" unique_id=1279989459]
+visible = false
+layout_mode = 2
+script = ExtResource("16_qwl4e")
+metadata/_tab_index = 7
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Lighting" unique_id=2039350367]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin" unique_id=1329995649]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox" unique_id=231767627]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Placed LIGH sources"
+
+[node name="Summary" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox" unique_id=330269910]
+layout_mode = 2
+text = "(loading)"
+
+[node name="Controls" type="HBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox" unique_id=363476021]
+layout_mode = 2
+
+[node name="ShowLights" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1559202721]
+layout_mode = 2
+button_pressed = true
+text = "Dynamic"
+
+[node name="SoloLight" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=914596712]
+layout_mode = 2
+text = "Solo"
+
+[node name="AutoExposure" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=770766768]
+layout_mode = 2
+button_pressed = true
+text = "Auto exposure"
+
+[node name="AutoExposureScaleLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1447242905]
+layout_mode = 2
+text = "Scale"
+
+[node name="AutoExposureScale" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=961469423]
+custom_minimum_size = Vector2(74, 0)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 0.07
+
+[node name="MinSensitivityLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1638487890]
+layout_mode = 2
+text = "Min ISO"
+
+[node name="MinSensitivity" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1133945168]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 3200.0
+value = 57.0
+
+[node name="MaxSensitivityLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=1179369619]
+layout_mode = 2
+text = "Max ISO"
+
+[node name="MaxSensitivity" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/Controls" unique_id=751234191]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 3200.0
+step = 10.0
+value = 81.0
+
+[node name="ColorControls" type="HBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox" unique_id=7900522]
+layout_mode = 2
+
+[node name="LighLinearColor" type="CheckBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls" unique_id=328716176]
+layout_mode = 2
+tooltip_text = "On: preserve LIGH RGB bytes as linear light and encode for Godot. Off: treat bytes as direct sRGB."
+button_pressed = true
+text = "LIGH bytes are linear (colour-space trial)"
+
+[node name="XemiEmissionLabel" type="Label" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls" unique_id=177457674]
+layout_mode = 2
+text = "XEMI HDR Multi"
+
+[node name="XemiEmission" type="SpinBox" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/ColorControls" unique_id=243893798]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+tooltip_text = "HDR multiplier for XEMI-tinted ordinary NoLighting backing layers. Additive beam/ray shaders are unchanged."
+max_value = 1024.0
+step = 0.25
+value = 12.0
+
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Lighting/Margin/VBox" unique_id=1932511305]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="LightList" type="ItemList" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/HSplit" unique_id=1419895301]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+
+[node name="Details" type="TextEdit" parent="Debug Tools/TabContainer/Lighting/Margin/VBox/HSplit" unique_id=1869075775]
+layout_mode = 2
+size_flags_horizontal = 3
+editable = false
+wrap_mode = 1
+
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
+
+[node name="CellLabel" type="Label" parent="DebugHud" unique_id=1378421775]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 512.0
+offset_bottom = 40.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 16
+text = "cell: —"
+
+[node name="LookAtLabel" type="Label" parent="DebugHud" unique_id=1385502697]
+anchors_preset = -1
+anchor_top = 1.0
+anchor_right = 0.99700004
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = -216.0
+offset_right = 0.45593262
+offset_bottom = -21.0
+grow_vertical = 0
+size_flags_vertical = 8
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
