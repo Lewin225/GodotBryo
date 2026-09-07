@@ -204,22 +204,18 @@ func _apply_colors(slot_a: int, slot_b: int, phase_t: float, ground_strength: fl
 	# by the XEMI/XREF tint path), so encode only when handing them to the
 	# renderer. Converting the raw samples before interpolation would make the
 	# time-of-day blend itself gamma-biased.
-	var ambient_linear: Color = _weather.get_interpolated_color(
-		WeatherManager.COL_AMBIENT, slot_a, slot_b, phase_t)
-	var ambient_col: Color = _godot_color(ambient_linear)
+	var ambient_col: Color = _godot_color(_weather.get_interpolated_color(
+		WeatherManager.COL_AMBIENT, slot_a, slot_b, phase_t))
 	var sky_upper: Color = _godot_color(_weather.get_interpolated_color(
 		WeatherManager.COL_SKY_UPPER, slot_a, slot_b, phase_t))
+	var sky_lower: Color = _weather.get_interpolated_color(
+		WeatherManager.COL_SKY_LOWER, slot_a, slot_b, phase_t)
 	var horizon_col: Color = _godot_color(_weather.get_interpolated_color(
 		WeatherManager.COL_HORIZON, slot_a, slot_b, phase_t))
 	var fog_linear: Color = _weather.get_interpolated_color(
 		WeatherManager.COL_FOG, slot_a, slot_b, phase_t)
-	# Keep the authored fog color exclusively on the depth-fog path. Using it
-	# for the procedural sky's ground horizon makes the lower hemisphere read as
-	# a bright second sky and causes distant terrain to glow blue. The ambient
-	# weather color is a better dark ground proxy; the real fog still tints
-	# distant mountains through Environment.fog_light_color below.
-	var ground_bottom_col: Color = _godot_color(ambient_linear * ground_strength * 0.35)
-	var ground_horizon_col: Color = _godot_color(ambient_linear * ground_strength * 0.5)
+	var ground_bottom_col: Color = _godot_color(sky_lower * ground_strength)
+	var ground_horizon_col: Color = _godot_color(fog_linear * ground_strength)
 
 	_exterior_env.ambient_light_color = ambient_col
 	_exterior_env.ambient_light_energy = 1.0
