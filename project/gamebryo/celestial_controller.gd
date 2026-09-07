@@ -38,7 +38,7 @@ const NIGHT_GROUND_LIGHT := 0.04
 const NIGHT_FOG_LIGHT := 0.08
 
 var peak_sun_energy: float = 3.0
-var peak_moon_energy: float = 0.5
+var peak_moon_energy: float = 0.2
 var min_sun_energy: float = 0.05
 
 var _sun: DirectionalLight3D = null
