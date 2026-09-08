@@ -5,6 +5,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_set>
@@ -106,20 +107,13 @@ GrupGridCoord decode_grup_label(uint32_t label) {
 
 } // namespace
 
-EsmFile::~EsmFile() {
-	if (file_) {
-		std::fclose(file_);
-	}
-}
-
 std::vector<uint8_t> EsmFile::read_at(long offset, size_t size) const {
-	if (std::fseek(file_, offset, SEEK_SET) != 0) {
-		throw std::runtime_error("EsmFile: seek failed");
-	}
-	std::vector<uint8_t> buf(size);
-	if (size > 0 && std::fread(buf.data(), 1, size, file_) != size) {
+	if (offset < 0 || static_cast<unsigned long long>(offset) + size > static_cast<unsigned long long>(file_size_)) {
 		throw std::runtime_error("EsmFile: read past end of file at offset " + std::to_string(offset));
 	}
+	std::vector<uint8_t> buf(size);
+	if (size == 0) return buf;
+	std::memcpy(buf.data(), file_data_.data() + offset, size);
 	return buf;
 }
 
@@ -368,13 +362,22 @@ std::unordered_map<std::string, uint32_t> EsmFile::record_type_histogram() const
 }
 
 void EsmFile::open(const std::string &path) {
-	file_ = std::fopen(path.c_str(), "rb");
-	if (!file_) {
+	std::ifstream input(path, std::ios::binary | std::ios::ate);
+	if (!input) {
 		throw std::runtime_error("EsmFile: could not open file: " + path);
 	}
-	std::fseek(file_, 0, SEEK_END);
-	file_size_ = std::ftell(file_);
-	std::fseek(file_, 0, SEEK_SET);
+	const std::streampos end = input.tellg();
+	if (end < 0) throw std::runtime_error("EsmFile: could not determine file size: " + path);
+	path_ = path;
+	file_size_ = static_cast<long>(end);
+	input.seekg(0, std::ios::beg);
+	file_data_.resize(static_cast<size_t>(file_size_));
+	if (file_size_ > 0) {
+		input.read(reinterpret_cast<char *>(file_data_.data()), static_cast<std::streamsize>(file_size_));
+		if (input.gcount() != static_cast<std::streamsize>(file_size_)) {
+			throw std::runtime_error("EsmFile: could not read complete file: " + path);
+		}
+	}
 
 	// The very first record in any master/plugin file is TES4, uncompressed.
 	std::vector<uint8_t> hdr = read_at(0, kHeaderSize);
@@ -405,6 +408,12 @@ void EsmFile::open(const std::string &path) {
 			header_.masters.push_back(s.as_string());
 		}
 	}
+
+	// These structures are read concurrently after open(); build them before
+	// exposing the EsmFile to callers so const queries never mutate state.
+	ensure_form_id_index();
+	get_all_item_candidates();
+	get_all_cell_candidates();
 }
 
 void EsmFile::ensure_form_id_index() const {
@@ -1756,4 +1765,3 @@ std::optional<GlobalVariableData> EsmFile::find_global_by_editor_id(const std::s
 }
 
 } // namespace esm
-

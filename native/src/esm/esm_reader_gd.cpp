@@ -97,6 +97,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_message_by_form_id", "form_id"), &EsmReader::get_message_by_form_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_form_id", "form_id"), &EsmReader::find_cell_by_form_id);
+	ClassDB::bind_method(D_METHOD("find_cell_containing_ref", "refr_form_id"), &EsmReader::find_cell_containing_ref);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
 	ClassDB::bind_method(D_METHOD("get_cell_actors", "cell_form_id"), &EsmReader::get_cell_actors);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
@@ -383,6 +384,18 @@ Dictionary EsmReader::find_cell_by_form_id(int64_t form_id) const {
 		if (auto cell = file_.find_cell_by_form_id(static_cast<uint32_t>(form_id))) {
 			out["form_id"] = static_cast<int64_t>(cell->form_id);
 		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Dictionary EsmReader::find_cell_containing_ref(int64_t refr_form_id) const {
+	Dictionary out;
+	if (!opened_) return out;
+	try {
+		auto cell = file_.find_cell_containing_ref(static_cast<uint32_t>(refr_form_id));
+		if (cell) out["cell_form_id"] = static_cast<int64_t>(cell->form_id);
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
@@ -1309,4 +1322,3 @@ Dictionary EsmReader::find_global_by_editor_id(const String &editor_id) const {
 	}
 	return out;
 }
-
