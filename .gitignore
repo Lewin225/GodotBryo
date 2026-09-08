@@ -63,4 +63,3 @@ tools/*
 .claude/*.tmp.*
 dino_delux_test.scn
 project/esm_cache/
-project/esm_mount/

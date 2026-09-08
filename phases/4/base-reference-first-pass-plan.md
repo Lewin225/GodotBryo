@@ -46,15 +46,10 @@ code": `get_reference()` needs one small native binding exposing an
 already-fully-implemented C++ function — see Component 1 below — a
 correctness requirement, not scope creep.
 
-One relevant discovery from exploring before planning: `project/addons/esm_browser/`
-already exists and does almost exactly this for the *old* `EsmRecordResource`
-family — a dock (`esm_browser.gd`) plus a real custom `ResourceFormatLoader`
-(`esm_record_loader.gd`) that makes double-clicking a mounted `.nvrecord` file
-open a resolved `Resource` in the Inspector, via
-`EditorPlugin.add_control_to_dock()`/`ResourceLoader.add_resource_format_loader()`.
-This proves the mechanism works in this codebase already; the new browser
-reuses the same pattern rather than inventing one, just as a separate addon per
-the decision below.
+The repository previously contained an `esm_browser` addon and generated
+`project/esm_mount/` `.nvrecord` paths for the old `EsmRecordResource` family.
+That mount workflow has been removed from this branch; the new browser and
+`esm://` loader are the sole editor-facing ESM resource workflow.
 
 ## Decisions
 
@@ -259,10 +254,9 @@ the decision below.
 ### 3. `project/addons/godotbryo_browser/` — new editor addon
 
 - `plugin.cfg`, `plugin.gd` (`EditorPlugin`, registers the dock at
-  `DOCK_SLOT_BOTTOM`), `browser_dock.gd` (the UI, following `esm_browser.gd`'s
-  existing layout pattern), and a `ResourceFormatLoader` subclass for a
-  distinct extension (not `.nvrecord`, to avoid colliding with the existing
-  addon's mount) resolving through `EsmServer.get_base()`/`get_reference()`
+  `DOCK_SLOT_BOTTOM`), `browser_dock.gd`, and a `ResourceFormatLoader`
+  subclass for the virtual `esm://` scheme resolving through
+  `EsmServer.get_base()`/`get_reference()`
   rather than constructing its own factory/reader per instance.
 - "Find References" implemented as described above — `get_record_index()`
   filtered for `record_type in ["REFR", "ACHR", "ACRE"]`, each candidate's
@@ -272,8 +266,7 @@ the decision below.
 
 ## Acceptance criteria
 
-- [ ] The new bottom-mounted dock appears alongside (not
-  replacing) the existing left-docked `esm_browser`.
+- [ ] The new bottom-mounted dock is the sole ESM browser/editor integration.
 - [ ] The Base list populates and the type and text filters work.
 - [ ] FormID `0x000E3778` opens a `WeaponBase` in the Inspector with real
       model/damage data; repeated lookup returns the same Resource instance.
@@ -283,6 +276,7 @@ the decision below.
 - [ ] An authored result uses `authored:%08X` identity and resolves through
       `get_reference()` using one owning-cell lookup, not a full scan.
 - [ ] Made-up `runtime:...` IDs and malformed/not-found IDs return `null`.
-- [ ] The existing `esm_browser` addon remains unmodified and functional.
+- [ ] The legacy `esm_browser`, `.nvrecord` loader, and `project/esm_mount/`
+      workflow are absent.
 - [ ] Only the new native `find_cell_containing_ref` API is added; the legacy
       pipeline files remain unchanged.
