@@ -375,26 +375,117 @@ whole point of testing against the rule instead of intuiting it.
 
 Flat off `EsmReference`, no forced intermediate tiers:
 
+Fields verified against real data:
+
 ```
 EsmReference
   ├─ WeaponReference        (count, condition, loaded ammo type/count — XAMT/XAMC, weapon-only)
   ├─ ArmorReference         (count, condition)
   ├─ DoorReference          (lock data — XLOC; teleport destination — XTEL; is_open)
   ├─ ContainerReference     (lock data; contents: Array[EsmReference])
-  ├─ ActorReference         (health; contents: Array[EsmReference]; equipped-slot table; alive/dead)
+  ├─ ActorReference         (ACHR → NpcBase; see below for the full field list)
+  ├─ CreatureReference      (ACRE → CreatureBase; see below — near-identical to
+  │                          ActorReference but a genuinely distinct record type,
+  │                          not merged with it, per the "each Reference maps to
+  │                          one real ESM type" rule)
   ├─ StaticReference        (emittance_form_id)
   └─ MovableStaticReference (emittance_form_id)
 ```
 
-Not every kind needs a subclass. Anything with genuinely zero override fields —
-after being checked against the promotion rule, not assumed — stays a bare,
-directly-instantiable `EsmReference`. This is a real, deliberate difference from
-`GamebryoReference` on the Node side: nothing ever instantiates a bare
-`GamebryoReference` (confirmed, `object_registry.gd:160-187` — every placement
-routes to a concrete leaf Node), because a Node always needs *some* concrete
-rendering behavior to do anything at all. A bare `EsmReference` has no such
-requirement — it's pure data, and "no extra fields" is a valid terminal state for
-data in a way "no extra behavior" isn't for a Node.
+Blank stubs — real classes, exist and are used, just not yet verified against
+real `REFR`/`ACHR`/`ACRE`-family data (see the correction below for why `ACTI`/
+`TERM`/`SCOL` are in this list rather than a separate "confirmed empty" one):
+
+```
+EsmReference
+  ├─ ActivatorReference         (ACTI)
+  ├─ TerminalReference          (TERM)
+  ├─ StaticCollectionReference  (SCOL)
+  ├─ LightReference             (LIGH)
+  ├─ FurnitureReference         (FURN)
+  ├─ TalkingActivatorReference  (TACT)
+  ├─ ArmorAddonReference        (ARMA)
+  ├─ AlchemyReference           (ALCH)
+  ├─ LeveledItemReference       (LVLI)
+  ├─ AmmoReference              (AMMO)
+  ├─ BookReference               (BOOK)
+  ├─ CaravanCardReference       (CCRD)
+  ├─ CaravanMoneyReference      (CMNY)
+  ├─ KeyReference                (KEYM)
+  └─ MiscReference               (MISC)
+```
+
+`ActorReference` and `CreatureReference` are **not** one class covering both
+`NPC_` and `CREA` — checked directly against the real subrecord tables
+([`ACHR.md`](https://github.com/TES5Edit/fopdoc/blob/master/FalloutNV/Records/ACHR.md),
+[`ACRE.md`](https://github.com/TES5Edit/fopdoc/blob/master/FalloutNV/Records/ACRE.md)),
+they're genuinely different record types (`ACHR`'s `NAME` targets `NPC_`;
+`ACRE`'s targets `CREA`), and they diverge on real fields, not just by name:
+`ACRE` carries `XOWN`/`XRNK` (ownership — a `FACT`/`ACHR`/`CREA`/`NPC_` owner
+FormID + faction rank) that `ACHR`'s table doesn't have at all. Everything
+else lines up closely between the two — both are almost entirely `REFR`'s own
+shared core vocabulary, not something unique to actors:
+
+```
+ActorReference / CreatureReference (shared shape, backing NpcBase / CreatureBase respectively)
+  health              — XHLP
+  count               — XCNT
+  radius              — XRDS
+  ragdoll override    — XRGD / XRGB
+  merchant_container_form_id — XMRC, FormID of a REFR (which loot container this placement sells from)
+  idle_time           — XPRD  ┐
+  idle_form_id        — INAM  │ the "patrol data" group — a genuine per-placement
+  embedded_script     — n/a   │ behavior override, distinct from the character's
+  topic_form_id       — TNAM  ┘ full NPC_.PKID package list, which stays on the Base
+  contents: Array[EsmReference]
+  equipped_instance_ids (the equipped-slot table)
+  alive: bool
+
+CreatureReference adds:
+  owner_form_id       — XOWN
+  faction_rank         — XRNK
+```
+
+Worth being explicit about the patrol-data group specifically, since it's easy
+to conflate with the AI package system: `NPC_.PKID`/`CREA`'s equivalent (the
+actual behavior-tree/schedule the character normally runs) stays firmly on the
+`Base` — this is *not* that. What's on the placement is narrower: this one
+placement's own idle animation/timing, an embedded script, and a dialogue
+topic override — real per-instance data, just a different, smaller thing than
+"packages."
+
+**Correction: nothing ever ends up as a bare `EsmReference` instance.** An
+earlier pass of this document argued a kind with zero override fields could
+just stay bare `EsmReference` — wrong, and worth being precise about why.
+Every *supported* record type gets its own named subclass, even one that
+currently adds no fields beyond what it inherits, because the subclass itself
+is what's doing real work independent of field count: `is ActivatorReference`
+type-checks where `is EsmReference` never could distinguish an activator from
+a door; the Inspector shows "Activator Reference," not a generic, undifferentiated
+"Esm Reference," for every single placement in the game regardless of kind.
+This is the exact same reasoning that already justified per-kind subclasses
+over one wide type in the first place ("Why not one `Reference` type for
+everything," above) — it doesn't stop applying just because a given kind's
+field count happens to be zero *today*. The only alternative to "has its own
+subclass" is "unsupported, out of scope" (see "Which types need `Base` only
+vs. `Base` + `Reference`" below) — there's no third state where a supported
+kind quietly shares the generic base class.
+
+This also retracts a mistake in how three of these were verified. `ACTI`'s,
+`TERM`'s, and `SCOL`'s "no override fields" status was previously cited via
+comments on their *old* Node classes (`activator_node.gd`, `terminal_node.gd`)
+— but those comments answer old-architecture questions (does this Node need a
+different collision shape; where does a Node keep UI session state), not
+whether the `REFR`/`ACHR`/`ACRE` side carries real per-instance data, which is
+the only question that actually matters here. Citing an old system's design
+decision as if it settles a new-architecture question is exactly the kind of
+contamination to avoid. Corrected status: `ActivatorReference`, `TerminalReference`,
+and a `SCOL`-backing Reference class all exist, all currently blank, **not
+yet verified** against real `REFR`/`ACHR`/`ACRE`-family subrecord data the
+way `XEMI`/`ACHR`/`ACRE` actually were — same unverified-stub status as
+`LightReference`/`FurnitureReference`/`TalkingActivatorReference` and the
+whole item-adjacent group, not a separate "confirmed" tier resting on the
+wrong kind of evidence.
 
 `WeaponReference` as the fullest worked example, showing the Base/Reference
 split in practice:
@@ -449,9 +540,10 @@ Checked directly against [fopdoc's `REFR.md`](https://github.com/TES5Edit/fopdoc
 `NAME` field, not assembled from memory of what this project currently
 touches — its own list is exhaustive:
 
-**Could be targeted — needs `Reference` (dedicated subclass or bare
-`EsmReference`, per the promotion-rule survey) whenever placement support
-exists, even if unbuilt today:**
+**Could be targeted — needs its own dedicated `Reference` subclass (blank
+until surveyed, never the bare `EsmReference` base itself — see "Per-kind
+Reference subclasses" above) whenever placement support exists, even if
+unbuilt today:**
 `TREE`, `SOUN`, `ACTI`, `DOOR`, `STAT`, `FURN`, `CONT`, `ARMO`, `AMMO`,
 `LVLN`, `LVLC`, `MISC`, `WEAP`, `BOOK`, `KEYM`, `ALCH`, `LIGH`, `GRAS`,
 `ASPC`, `IDLM`, `ARMA`, `MSTT`, `NOTE`, `PWAT`, `SCOL`, `TACT`, `TERM`,
@@ -504,7 +596,8 @@ cover both could only ever declare a useless common return type:
   the ESM at all, only a synthetic `"runtime:..."` id, so an `int` FormID
   parameter could never address it. `instance_id` already covers both
   authored and runtime references uniformly, which is the whole reason it
-  exists.
+  exists. Full resolution algorithm, and the canonical `instance_id` format
+  for authored placements, below.
 - **`get_references_in_cell(cell_form_id: int) -> Array[EsmReference]`** —
   the highest-traffic entry point of the three: "what's in this cell" is
   always `Reference`-shaped (a cell is a list of placed instances, never a
@@ -576,18 +669,165 @@ found above are exactly this) keep working unmodified. `get_reference()`/
 baseline resolution when it's null, rather than needing a second service a
 caller has to choose between.
 
-**Thread-safety is `EsmServer`'s job, not the caller's, if it's ever called
-from `object_registry.gd`'s existing `WorkerThreadPool` tasks** (`resolve_placement()`/
-`resolve_tile()`, already documented as safe specifically because they touch
-no shared mutable state, `object_registry.gd:101-119`). A global singleton
-with one shared, mutable cache being called concurrently from multiple worker
-threads needs real internal synchronization (a `Mutex` around cache reads/
-writes) — GDScript `Dictionary` mutation isn't safe across threads without it.
-"The caller doesn't need to know if it uses reader threads internally" has to
-be earned by `EsmServer` doing that locking itself, the same way
-`RenderingServer` is safe to call from any thread because Godot's own engine
-code does that work — not something that comes for free from being a
-singleton.
+**Thread-safety is `EsmServer`'s job, not the caller's, whenever it's actually
+called from `object_registry.gd`'s existing `WorkerThreadPool` tasks**
+(`resolve_placement()`/`resolve_tile()`, already documented as safe
+specifically because they touch no shared mutable state,
+`object_registry.gd:101-119`) — but a `Mutex` around just the cache
+`Dictionary` doesn't earn that on its own, and saying so without checking was
+wrong. `EsmReader`'s own native layer states outright that it isn't
+thread-safe: *"Not thread-safe (single `FILE*` with seek+read)"*
+(`esm_file.h:18`), and carries several more mutable, unsynchronized caches of
+its own (`form_id_index_`, `item_candidates_cache_`, `cell_candidates_cache_`,
+`esm_file.h:313-320`). A cache-only `Mutex` protects `EsmServer`'s own
+`Dictionary` and nothing else — a cache miss still calls straight into that
+unsynchronized native reader, mutex or not. There's also a real recursion
+hazard a naive full-body lock would hit immediately: building an `NpcBase`
+needs to resolve `RaceBase`/`HairBase`/`EyesBase` internally (`NpcBase.race →
+RaceBase`, per "Which types need `Base` only" above), which means `get_base()`
+recursing into `get_base()` — a non-recursive `Mutex` held across that whole
+call would deadlock the first time nested `Base` resolution actually runs.
+
+Given this pass has no caller that runs off the main thread at all — nothing
+built here is wired to `WorkerThreadPool` yet — the honest choice for *this*
+pass is **main-thread-only, stated as a real constraint, not silently
+assumed away with a mutex that protects the wrong layer.** Real concurrency
+support is a decision for whenever an actual `WorkerThreadPool` caller exists
+to design against — deferred deliberately, not a known gap left unaddressed
+— but worth knowing the real options rather than defaulting to "wrap it in a
+mutex" when that time comes:
+
+- **Cheapest, most correct fit: fix `EsmFile` itself, not just `EsmServer`.**
+  `read_at()` (`esm_file.cpp:115-123`) does `fseek` then `fread` as two
+  separate calls sharing one implicit cursor on `file_` — that shared cursor
+  is the actual race, not something inherent to reading the file. POSIX
+  `pread(fd, buf, size, offset)` reads at a given offset in one call with no
+  shared position state to race on — concurrent threads can call it on the
+  same file descriptor with *zero* locking needed for the read itself
+  (Windows needs the `OVERLAPPED`-with-offset equivalent via `ReadFile`, a
+  separate code path). An even better fit for a read-only structural parser
+  like this one: memory-map the file (`mmap`) instead of `fseek`/`fread`
+  entirely — inherently thread-safe for concurrent reads (pointer arithmetic
+  into mapped memory, no syscall, no cursor), likely a real performance win
+  independent of threading too. Either fix also needs the *other*
+  unsynchronized state — `form_id_index_`/`item_candidates_cache_`/
+  `cell_candidates_cache_` (`esm_file.h:313-320`) — addressed, and cheaply:
+  build them *eagerly*, once, inside `open()`, before the file is ever
+  exposed to more than one thread, instead of lazily on first access.
+  Concurrent *reads* of an unchanging cache are already safe with no lock;
+  the hazard is specifically that they currently mutate under concurrent
+  access, not that the data itself needs guarding. Done this way, `EsmFile`
+  becomes genuinely thread-safe with **zero runtime locking overhead** —
+  materially better than any GDScript-side mutex, which only ever serializes
+  access rather than actually enabling concurrent reads.
+- Failing that (native work stays out of scope for longer than expected): a
+  mutex spanning every native call `EsmServer` makes, not just its own
+  cache — safe, but fully serializes native access, so no real concurrency
+  is gained even though multiple threads can call in without corrupting
+  data.
+- Or: a separate `EsmReader` per worker context, sidestepping shared native
+  state by not sharing it — at the cost of re-opening the file per worker
+  and needing the *other* caches (`form_id_index_` etc.) either duplicated
+  or centrally shared-and-locked separately, since per-worker instances only
+  solves the file-cursor race, not the caching mutable state.
+
+Whichever shape that takes, if a `Mutex` is involved at all it must never be
+held across the nested builder call itself, only around
+the cache's own short read-check/write-insert operations, specifically to
+avoid the recursion deadlock above.
+
+### Resolving `instance_id` for authored `REFR`/`ACHR`/`ACRE` placements
+
+**Canonical format: `"authored:%08X" % refr_form_id`** — the placement's own
+`form_id`, not its `base_form_id`, and no list-index. Deliberately different
+from `InventoryEntryResource`'s existing `"authored:%08X:%d"` scheme
+(`inventory_entry_resource.gd`): a `CNTO` entry needs an index because it has
+no independent `form_id` of its own, just a `base_form_id` and a position in
+a list. A `REFR`/`ACHR`/`ACRE` is a full, independent record with a genuinely
+unique `form_id` already — using it directly is both simpler and the only
+thing that makes single-reference lookup actually work without a scan.
+
+**`get_reference()`'s resolution needs one small, explicit native addition —
+not a full-cell census.** `EsmFile::find_cell_containing_ref(refr_form_id)`
+already exists, fully implemented (`esm_file.cpp:212-227`, plus a
+worldspace-aware overload at `:216`): it calls `find_record_by_form_id()` to
+locate the target record directly, then walks the `GRUP` structure to find
+its structural owner, returning the owning `CELL`'s own `RecordInfo`. It
+isn't `REFR`-specific — `find_record_by_form_id` works on any record type, so
+this already works uniformly for `ACHR`/`ACRE` too. It's already proven in
+production, not theoretical: `resolve_refr_xtel()` (`esm_file.cpp:229`
+onward, door-destination resolution) already uses the same "look up one
+target record directly by its own `form_id`" idea. The gap is that
+`find_cell_containing_ref` is implemented natively but was never bound to
+GDScript — no exposure anywhere in `esm_reader_gd.cpp`.
+
+**The binding's actual GDScript shape, checked against the exact convention
+this codebase already uses for the near-identical `find_cell_by_form_id`**
+(`esm_reader_gd.cpp:377-390` — unwraps its own `std::optional<RecordInfo>`
+into a plain `Dictionary`, `out["form_id"] = cell->form_id` on success, empty
+`{}` otherwise): `RecordInfo` is an internal C++ struct, never a `Variant`,
+so it can never cross the native/GDScript boundary directly, and nothing
+here should try to expose a raw file offset to GDScript either — there's no
+such binding and there shouldn't be one. `find_cell_containing_ref`'s new
+`EsmReader`-level wrapper follows the identical established shape:
+
+```
+EsmReader.find_cell_containing_ref(refr_form_id: int) -> Dictionary
+  { "cell_form_id": int }  # found
+  {}                        # not found / file not opened
+```
+
+That's the entire new binding's job: confirm existence and report which
+cell owns it — nothing else. The `cell_form_id` it returns exists to *scope*
+the next step, not to be discarded after an existence check (an earlier
+version of this section got that wrong: it called this binding, checked for
+emptiness, then never actually used the `cell_form_id` value at all).
+
+**Getting the placement's actual data reuses `get_cell_references()`/
+`get_cell_actors()`, scoped to the one matched cell — not `get_record_data()`
+plus hand-parsed bytes.** `get_record_data()` only returns *raw* subrecord
+bytes; decoding `DATA`'s position/rotation/scale floats out of that requires
+the same byte-level parsing `get_cell_references()`/`get_cell_actors()`
+already do internally in C++, which isn't exposed to GDScript as a reusable
+utility — hand-rolling that in GDScript would mean reimplementing logic that
+already exists natively, for no reason. `get_cell_references(cell_form_id)`/
+`get_cell_actors(cell_form_id)` already return fully-parsed placement data
+(position/rotation/scale/`base_form_id`, confirmed via the native
+`ReferencePlacement` struct earlier in this document) — scoped to the one
+cell `find_cell_containing_ref` just identified, not the whole game world.
+
+Full resolution algorithm for an `"authored:..."` id — **game state first,
+ESM only as fallback**, per the `EsmServer` section above (the whole reason
+`get_reference()` isn't cacheable):
+
+0. If `_game_session` is non-null: check `removed_instance_ids` for this id
+   → `null` if present. Check `changed_references` for this id → return that
+   `Reference` directly, no ESM resolution at all, if present. Otherwise
+   fall through.
+1. Parse the hex suffix to get `refr_form_id`.
+2. `EsmReader.find_cell_containing_ref(refr_form_id)` — one native call, the
+   `Dictionary` shape above. Empty → not found → `null`, stop here.
+3. `EsmReader.get_cell_references(cell_form_id)` and
+   `EsmReader.get_cell_actors(cell_form_id)` — both already bound, already
+   used elsewhere in this document, already return fully-parsed per-placement
+   data. Filter that one cell's small result for the entry whose own
+   `form_id` matches `refr_form_id`.
+4. The matched entry already has `base_form_id`, `position`, `rotation`,
+   `scale` — no further parsing needed. `EsmServer.get_base_type(base_form_id)`
+   (already established, no new binding) determines which concrete
+   `Reference` subclass to build.
+
+**Runtime ids** (`"runtime:..."`) are never resolvable from the ESM at all —
+they have no backing record by definition. `get_reference()` for one has
+nothing to resolve from except an active `GameSession`'s save-state; in this
+document's isolated first-pass scope (no `GameSession` ever active — see the
+first-pass plan), calling `get_reference()` with a `"runtime:..."` id has
+nothing to resolve from at all and must explicitly return `null` — documented
+expected behavior for that pass, not an undefined case to discover by
+accident later.
+
+**Missing/malformed ids**: `null`, matching `get_base()`'s existing
+not-found convention — no exceptions thrown.
 
 ## Factory contract: References only, never a bare `EsmBase`
 
@@ -685,7 +925,7 @@ serialized form:
 SaveGame
 ├── version: int
 ├── player: ActorReference          — full snapshot
-├── actors: Dictionary[instance_id, ActorReference]   — only actors ever diverged from spawn
+├── actors: Dictionary[instance_id, EsmReference]     — ActorReference or CreatureReference entries, only ones ever diverged from spawn
 ├── cells: Dictionary[cell_form_id, CellSaveState]
 ├── quest_state: QuestStateStore
 └── world_state: WorldState
@@ -845,10 +1085,15 @@ work — deliberately left for later.
 - Full rename/conversion list for every existing `EsmRecordResource` subclass.
 - Whether `object_registry.gd`'s Dictionary intermediate becomes a typed
   `EsmReference` outright, or gets ported incrementally.
-- Remaining REFR-capable kinds not yet surveyed against the promotion rule
-  (`LIGH` itself — a placed light may need its own on/off instance state,
-  distinct from the `XEMI` tint other kinds borrow from it; `ACTI`, `FURN`,
-  `TACT`, `TERM`, `SCOL`).
+- Field lists not yet verified against real `REFR`/`ACHR`/`ACRE`-family
+  subrecord data for any of: `ACTI`, `TERM`, `SCOL`, `LIGH`, `FURN`, `TACT`,
+  `ARMA`, `ALCH`, `LVLI`, `AMMO`, `BOOK`, `CCRD`, `CMNY`, `KEYM`, `MISC`. All
+  of these have real, named `Reference` classes per "Per-kind Reference
+  subclasses" above — the classes exist, they're just currently blank stubs,
+  same status across the whole list, none of them a settled "confirmed
+  empty" finding. The corresponding class names are
+  `StaticCollectionReference`, `CaravanCardReference`, and
+  `CaravanMoneyReference`.
 - `ItemNode.pickup()`'s current untyped `Dictionary` return
   (`item_node.gd:15-18`) becoming a real `EsmReference` handoff into
   `InventoryComponent`/`ActorReference.contents`.

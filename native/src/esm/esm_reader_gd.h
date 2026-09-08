@@ -62,6 +62,9 @@ public:
 	// phases/1/00-interior-cell-loader.md.
 	Dictionary find_cell_by_editor_id(const String &editor_id) const;
 	Dictionary find_cell_by_form_id(int64_t form_id) const;
+	// { "cell_form_id": int } if the placement is owned directly by a CELL,
+	// or {} when the FormID is not a cell-owned REFR/ACHR/ACRE.
+	Dictionary find_cell_containing_ref(int64_t refr_form_id) const;
 
 	// Resolves every REFR placed directly in the given cell (by FormID) to
 	// an Array of Dictionaries, each: { "refr_form_id": int, "base_form_id":

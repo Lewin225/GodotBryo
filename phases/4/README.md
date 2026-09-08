@@ -8,6 +8,10 @@ Design doc: [base-reference-architecture.md](base-reference-architecture.md) —
 Base/Reference split for ESM records (formalizes and supersedes this README's own
 "Typed ESM resource references" and "Equipment visual handoff" sections below).
 
+Plan: [base-reference-first-pass-plan.md](base-reference-first-pass-plan.md) —
+approved, not yet started: `EsmServer` + the new resource types + an in-editor
+browser, built standalone with zero wiring into the existing pipeline.
+
 This phase establishes shared actor state and component boundaries so inventory, equipment,
 stats, AI packages, dialogue, effects, scripting, and persistence can attach to actors without
 turning every concern into another inheritance branch.
