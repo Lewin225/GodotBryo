@@ -3,9 +3,8 @@
 class_name EsmContainerNode
 extends EsmNode
 
-const InventoryComponentScript := preload("res://gamebryo/inventory_component.gd")
 @export_tool_button("Activate") var activate_button: Callable = activate
-var inventory_component: InventoryComponent
+var inventory: Inventory
 
 func build_visual(resolver: GamebryoMeshResolver) -> void:
 	var container_ref := reference as ContainerReference
@@ -13,9 +12,9 @@ func build_visual(resolver: GamebryoMeshResolver) -> void:
 		return
 	var base := container_ref.base as ContainerBase
 	build_dynamic_visual(resolver, base.model_path)
-	_ensure_inventory_component()
-	var authored := container_ref.contents if not container_ref.contents.is_empty() else base.items
-	inventory_component.set_authored_entries(authored)
+	if container_ref.contents == null:
+		container_ref.contents = Inventory.new()
+	inventory = container_ref.contents
 	_add_sound("OpenSound", resolver, base.open_sound_path)
 	_add_sound("CloseSound", resolver, base.close_sound_path)
 	_add_sound("RandomSound", resolver, base.random_sound_path)
@@ -31,14 +30,6 @@ func activate(_actor: Node = null) -> Dictionary:
 	_play_sound("OpenSound" if opening else "CloseSound")
 	container_ref.is_open = opening
 	return {}
-
-func _ensure_inventory_component() -> void:
-	if inventory_component != null and is_instance_valid(inventory_component): return
-	inventory_component = get_node_or_null(^"InventoryComponent") as InventoryComponent
-	if inventory_component == null:
-		inventory_component = InventoryComponentScript.new()
-		inventory_component.name = "InventoryComponent"
-		add_child(inventory_component)
 
 func _add_sound(node_name: String, resolver: GamebryoMeshResolver, path: String) -> void:
 	if path.is_empty(): return

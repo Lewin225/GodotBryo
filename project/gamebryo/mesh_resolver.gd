@@ -1331,16 +1331,17 @@ func _populate_skinned_mesh_instances(parent: Node3D, skeleton: Skeleton3D, nif:
 ## Adds the gender-selected, skin-backed equipment models to the actor's
 ## existing skeleton. Armor records are deliberately supplied by the caller;
 ## this method never interprets NPC_.CNTO as worn equipment.
-func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state: EquipmentState, female: bool) -> Array[String]:
+func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state, female: bool) -> Array[String]:
 	var diagnostics: Array[String] = []
 	if state == null:
 		return diagnostics
-	var accepted: Array[ArmorRecord] = []
+	var armor_list: Array = state.get_armor_bases() if state is EsmActorEquipmentState else state.armor_records
+	var accepted: Array = []
 	var occupied := 0
 	# The exported list is low -> high priority, so resolve conflicts from the
 	# high end and render accepted records in authored order.
-	for i in range(state.armor_records.size() - 1, -1, -1):
-		var armor := state.armor_records[i]
+	for i in range(armor_list.size() - 1, -1, -1):
+		var armor = armor_list[i]
 		if armor == null:
 			continue
 		if armor.biped_flags != 0 and (armor.biped_flags & occupied) != 0:
@@ -1351,14 +1352,14 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state: EquipmentSt
 	var morphed: Array = []
 	for armor in accepted:
 		var paths: Array[Dictionary] = []
-		var direct := armor.female_biped_model if female else armor.male_biped_model
+		var direct: String = armor.female_biped_model if female else armor.male_biped_model
 		if not direct.is_empty():
 			paths.append({"path": direct, "source": armor, "field": "MOD3" if female else "MODL"})
 		if armor.biped_model_list != null:
 			for addon in armor.biped_model_list.entries:
 				if addon == null:
 					continue
-				var addon_path := addon.female_biped_model if female else addon.male_biped_model
+				var addon_path: String = addon.female_biped_model if female else addon.male_biped_model
 				if not addon_path.is_empty():
 					paths.append({"path": addon_path, "source": addon, "field": "MOD3" if female else "MODL"})
 		for model in paths:
@@ -1376,25 +1377,26 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state: EquipmentSt
 				"gamebryo_equipment_biped_flags": model.source.biped_flags,
 				"gamebryo_equipment_model_field": model.field
 			})
-	if state.weapon != null:
+	var equipped_weapon: WeaponBase = state.get_weapon_base() if state is EsmActorEquipmentState else state.weapon
+	if equipped_weapon != null:
 		var weapon_models: Array[Dictionary] = []
 		# WEAP.BIPL is the authored biped/equipped model collection. MODL is
 		# retained as the fallback used by ordinary weapons without BIPL.
-		if state.weapon.biped_model_list != null:
-			for addon in state.weapon.biped_model_list.entries:
+		if equipped_weapon.biped_model_list != null:
+			for addon in equipped_weapon.biped_model_list.entries:
 				if addon == null:
 					continue
-				var addon_path := addon.female_biped_model if female else addon.male_biped_model
+				var addon_path: String = addon.female_biped_model if female else addon.male_biped_model
 				if not addon_path.is_empty():
 					weapon_models.append({"path": addon_path, "source": addon, "field": "BIPL"})
-		if weapon_models.is_empty() and not state.weapon.model_path.is_empty():
-			weapon_models.append({"path": state.weapon.model_path, "source": state.weapon, "field": "MODL"})
+		if weapon_models.is_empty() and not equipped_weapon.model_path.is_empty():
+			weapon_models.append({"path": equipped_weapon.model_path, "source": equipped_weapon, "field": "MODL"})
 		for model in weapon_models:
 			var weapon_nif := load_nif(String(model.path))
 			if weapon_nif == null:
 				diagnostics.append("Weapon NIF not found: %s" % model.path)
 				continue
-			if not _populate_weapon_model(parent, skeleton, weapon_nif, String(model.path), model.source, String(model.field), state.weapon):
+			if not _populate_weapon_model(parent, skeleton, weapon_nif, String(model.path), model.source, String(model.field), equipped_weapon):
 				diagnostics.append("Skipped weapon model with no supported attachment: %s" % model.path)
 	return diagnostics
 
@@ -1403,7 +1405,7 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state: EquipmentSt
 ## MODL/BIPL models follow the authored Weapon bone (with a compatibility
 ## fallback for skeleton variants without that node) while retaining every
 ## transform authored in the NIF.
-func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmRecordResource, model_field: String, weapon: WeaponRecord = null) -> bool:
+func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmBase, model_field: String, weapon = null) -> bool:
 	var metadata := {
 		"gamebryo_equipment": true,
 		"gamebryo_equipment_form_id": source.form_id,
@@ -1439,8 +1441,8 @@ func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader
 	for entry in list_files_with_prefix("meshes/characters/_male/"):
 		available_local_files[String(entry).to_lower()] = true
 	for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
-		var clip := weapon.action_clip_name(action) if weapon != null else ""
-		var archive_path := "meshes/characters/_male/" + clip.to_lower()
+		var clip: String = weapon.action_clip_name(action) if weapon != null else ""
+		var archive_path: String = "meshes/characters/_male/" + clip.to_lower()
 		if not clip.is_empty() and available_local_files.has(archive_path):
 			local_clips[clip] = "characters\\_male\\" + clip
 	populate_external_node_animations(hand, built, local_clips)
@@ -1453,7 +1455,7 @@ func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader
 ## head space and intentionally have no skin blocks. Keep them in Equipment,
 ## but bind their attachment to the actor's existing head bone rather than
 ## treating them as a static world mesh.
-func _populate_unskinned_equipment(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmRecordResource, model_field: String) -> bool:
+func _populate_unskinned_equipment(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmBase, model_field: String) -> bool:
 	var normalized := model_path.to_lower().replace("/", "\\")
 	var head_accessory := normalized.contains("\\hair\\") or normalized.contains("\\head\\") or normalized.contains("shades") or normalized.contains("glasses") or normalized.contains("hat")
 	if not head_accessory:

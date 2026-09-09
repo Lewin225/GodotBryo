@@ -13,6 +13,7 @@ const StaticCollectionNodeScript := preload("res://GodotBryo/Types/Node/esm_stat
 const MovableStaticNodeScript := preload("res://GodotBryo/Types/Node/esm_movable_static_node.gd")
 const TalkingActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_talking_activator_node.gd")
 const TerminalNodeScript := preload("res://GodotBryo/Types/Node/esm_terminal_node.gd")
+const NpcActorScene := preload("res://gamebryo/esm_npc_actor.tscn")
 var _mesh_resolver: GamebryoMeshResolver
 
 ## Converts an authored EsmReference into its runtime/physical representation.
@@ -24,7 +25,11 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		return null
 	var root: EsmNode
 	var unsupported := false
-	if reference is DoorReference:
+	if reference is ActorReference and reference.base is NpcBase:
+		var actor_node: EsmNpcActor = NpcActorScene.instantiate()
+		actor_node.configure(reference)
+		root = actor_node
+	elif reference is DoorReference:
 		var door_node: EsmDoorNode = DoorNodeScript.new()
 		door_node.configure(reference as DoorReference)
 		root = door_node
@@ -90,6 +95,10 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		if world_space else GamebryoMeshResolver.refr_transform(reference.position, reference.rotation, reference.scale)
 	if _mesh_resolver == null:
 		_mesh_resolver = GamebryoMeshResolver.new()
+	var attached_before_build := false
+	if root is EsmNpcActor and parent != null:
+		parent.add_child(root)
+		attached_before_build = true
 	if root is EsmStaticCollectionNode:
 		(root as EsmStaticCollectionNode).build_collection(self)
 	else:
@@ -103,9 +112,18 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		label.outline_size = 8
 		label.modulate = Color(1.0, 0.75, 0.35, 1.0)
 		root.add_child(label)
-	if parent != null:
+	if parent != null and not attached_before_build:
 		parent.add_child(root)
-		_set_owner_recursive(root, parent)
+	if parent != null:
+		# NPC actors are attached before build so their deferred/async assembly
+		# has a valid scene tree. Keep the authored NPC scene instance intact:
+		# recursively assigning ownership here would flatten its authored
+		# InventoryComponent/AnimationTree children and make Godot load them
+		# twice when the temporary scene is reopened.
+		if root is EsmNpcActor:
+			root.owner = parent
+		else:
+			_set_owner_recursive(root, parent)
 		if root is EsmItemNode:
 			(root as EsmItemNode)._sync_physics_transform()
 	return root

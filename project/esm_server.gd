@@ -175,6 +175,19 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	result.position = Vector3.ZERO
 	result.rotation = Vector3.ZERO
 	result.scale = 1.0
+	_populate_reference_inventory(result)
+	return result
+
+## Creates a typed item reference for Inventory.restore_state(). Unlike a
+## world reference it has no placement; its mutable item state is restored by
+## Inventory from the save payload.
+func create_inventory_item_reference(base_form_id: int, instance_id: String = "") -> EsmReference:
+	var base := get_base(base_form_id)
+	if base == null:
+		return null
+	var result := _create_inventory_item_reference(base, base_form_id, 0)
+	if result != null and not instance_id.is_empty():
+		result.instance_id = instance_id
 	return result
 
 func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
@@ -203,6 +216,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.position = placement.get("position", Vector3.ZERO)
 	result.rotation = placement.get("rotation", Vector3.ZERO)
 	result.scale = float(placement.get("scale", 1.0))
+	_populate_reference_inventory(result)
 	if result is DoorReference:
 		var door_ref: DoorReference = result
 		door_ref.has_teleport_destination = bool(placement.get("has_xtel", false))
@@ -244,6 +258,50 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
 	return result
 
+## CNTO is the authored seed for an owner inventory. The live inventory is
+## kept on the owner reference as typed item references and is not rebuilt
+## from the base after the reference has been created.
+func _populate_reference_inventory(reference: EsmReference) -> void:
+	if not (reference is ActorReference or reference is CreatureReference or reference is ContainerReference):
+		return
+	var inventory := Inventory.new()
+	reference.set("contents", inventory)
+	var owner_base := reference.base
+	if owner_base == null:
+		return
+	var item_index := 0
+	for item_data in owner_base.all_subrecord_data("CNTO"):
+		if item_data.size() < 8:
+			continue
+		var item_form_id := _u32(item_data)
+		var count := _i32(item_data, 4)
+		var item_base := get_base(item_form_id)
+		var item_reference := _create_inventory_item_reference(item_base, item_form_id, item_index)
+		if item_reference == null or count <= 0:
+			item_index += 1
+			continue
+		var item := InventoryItem.new()
+		item.item_reference = item_reference
+		item.count = count
+		item.instance_id = "inventory:%08X:%d" % [item_form_id, item_index]
+		inventory.add_item(item)
+		item_index += 1
+	if reference is ActorReference:
+		inventory.equip_default_armor()
+
+func _create_inventory_item_reference(item_base: EsmBase, form_id: int, index: int) -> EsmReference:
+	if item_base == null:
+		return null
+	var script_name := String(TYPE_TO_REFERENCE.get(item_base.record_type, "EsmReference"))
+	var script := load(ResourceRoot + _snake_case(script_name) + ".gd")
+	if script == null:
+		return null
+	var result: EsmReference = script.new()
+	result.base_form_id = form_id
+	result.base = item_base
+	result.instance_id = "inventory-ref:%08X:%d" % [form_id, index]
+	return result
+
 func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result._rehydrating = true
 	result.form_id = int(raw.get("form_id", 0))
@@ -267,6 +325,13 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.base_damage = _u16(data, 12); weapon.clip_size = _u8(data, 14)
 		weapon.first_person_form_id = _u32(_subrecord(raw, "WNAM"))
 		weapon.equipment_type = _u32(_subrecord(raw, "ETYP")); weapon.animation_type = _u32(_subrecord(raw, "DNAM"))
+		weapon.animation_family = _weapon_animation_family(weapon.animation_type)
+		var weapon_dnam := _subrecord(raw, "DNAM")
+		weapon.grip_animation = _u8(weapon_dnam, 13)
+		weapon.reload_animation = _u8(weapon_dnam, 15)
+		weapon.attack_animation = _u8(weapon_dnam, 41)
+		weapon.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
+		weapon.biped_model_list = get_base(weapon.biped_model_list_form_id) as BipedModelListBase
 		var weapon_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
 		weapon.inventory_icon = String(weapon_item_data.get("inventory_icon", ""))
 		weapon.message_icon = String(weapon_item_data.get("message_icon", ""))
@@ -288,6 +353,24 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is NpcBase:
 		var npc: NpcBase = result
 		npc.model_path = _string(_subrecord(raw, "MODL"))
+		var acbs := _subrecord(raw, "ACBS")
+		npc.acbs_flags = _u32(acbs)
+		npc.is_female = (npc.acbs_flags & 1) != 0
+		npc.is_child = false
+		var face := FaceGenData.new()
+		face.fggs = _subrecord(raw, "FGGS")
+		face.fgga = _subrecord(raw, "FGGA")
+		face.fgts = _subrecord(raw, "FGTS")
+		if reader != null and reader.has_method("get_facegen_data"):
+			var decoded: Dictionary = reader.get_facegen_data(npc.form_id)
+			face.fggs_values = decoded.get("fggs_values", PackedFloat32Array())
+			face.fgga_values = decoded.get("fgga_values", PackedFloat32Array())
+			face.fgts_values = decoded.get("fgts_values", PackedFloat32Array())
+			face.fggs_decoded = bool(decoded.get("fggs_decoded", false))
+			face.fgga_decoded = bool(decoded.get("fgga_decoded", false))
+			face.fgts_decoded = bool(decoded.get("fgts_decoded", false))
+			face.diagnostics = decoded.get("diagnostics", PackedStringArray())
+		npc.face_gen = face
 		npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
 		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
 		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
@@ -303,7 +386,23 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.male_biped_model = _string(_subrecord(raw, "MODL")); armor.male_world_model = _string(_subrecord(raw, "MOD2"))
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
 		armor.model_path = armor.male_world_model
+		armor.biped_flags = _u32(_subrecord(raw, "BMDT"))
+		armor.equipment_type = _u32(_subrecord(raw, "ETYP"))
 		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
+		armor.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
+		armor.biped_model_list = get_base(armor.biped_model_list_form_id) as BipedModelListBase
+	elif result is ArmorAddonBase:
+		var addon: ArmorAddonBase = result
+		addon.model_path = _string(_subrecord(raw, "MODL"))
+		addon.male_biped_model = addon.model_path
+		addon.female_biped_model = _string(_subrecord(raw, "MOD3"))
+		addon.biped_flags = _u32(_subrecord(raw, "BMDT"))
+	elif result is BipedModelListBase:
+		var biped: BipedModelListBase = result
+		biped.entries.clear()
+		for addon_form_id_data in _all_subrecords(raw, "LNAM"):
+			var addon_base := get_base(_u32(addon_form_id_data)) as ArmorAddonBase
+			if addon_base != null: biped.entries.append(addon_base)
 	elif result is DoorBase:
 		var door: DoorBase = result
 		door.model_path = _string(_subrecord(raw, "MODL"))
@@ -372,19 +471,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		container.open_sound_path = _sound_path(container.open_sound_form_id)
 		container.close_sound_path = _sound_path(container.close_sound_form_id)
 		container.random_sound_path = _sound_path(container.random_sound_form_id)
-		container.items.clear()
-		var item_index := 0
-		for item_data in _all_subrecords(raw, "CNTO"):
-			if item_data.size() < 8: continue
-			var entry := InventoryEntryResource.new()
-			entry.item_form_id = _u32(item_data)
-			entry.count = _i32(item_data, 4)
-			entry.source_form_id = entry.item_form_id
-			entry.source_index = item_index
-			entry.instance_id = "authored:%08X:%d" % [entry.item_form_id, item_index]
-			entry.item_base = get_base(entry.item_form_id)
-			container.items.append(entry)
-			item_index += 1
 	elif result is FurnitureBase:
 		var furniture: FurnitureBase = result
 		furniture.model_path = _string(_subrecord(raw, "MODL"))
@@ -504,6 +590,13 @@ func _race_head_part_type(index: int) -> String:
 
 func _race_body_part_type(index: int) -> String:
 	return ["upper_body", "left_hand", "right_hand", "upper_body_texture"][index] if index >= 0 and index < 4 else "unknown_%d" % index
+
+func _weapon_animation_family(animation_type: int) -> String:
+	return {
+		0: "h2h", 1: "1hm", 2: "2hm", 3: "1hp", 4: "1hp", 5: "2hr",
+		6: "2ha", 7: "2hr", 8: "2hh", 9: "2hl", 10: "1gt",
+		11: "1lm", 12: "1md", 13: "1gt"
+	}.get(animation_type, "")
 
 func _subrecord(raw: Dictionary, tag: String) -> PackedByteArray:
 	for subrecord in raw.get("subrecords", []):

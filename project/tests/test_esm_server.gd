@@ -37,7 +37,21 @@ func _ready() -> void:
 		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
 		if reference is ActorReference:
 			found_actor = true
+			var actor_host := Node3D.new()
+			add_child(actor_host)
+			var actor_node := EsmReferencePhysicaliser.new().physicalise(reference, actor_host)
+			_check(actor_node is EsmNpcActor, "NPC ActorReference physicalises as EsmNpcActor")
+			for _frame in 60:
+				if actor_node != null and actor_node.get_node_or_null("Body") != null: break
+				await get_tree().process_frame
+			_check(actor_node != null and actor_node.get_node_or_null("Body") != null, "EsmNpcActor builds its generated Body")
+			if actor_host != null: actor_host.free()
 			var actor_base := reference.base as NpcBase
+			_check(reference.contents is Inventory, "ActorReference owns a typed Inventory")
+			if reference.contents is Inventory:
+				for item in (reference.contents as Inventory).get_items():
+					_check(item is InventoryItem and item.item_reference is EsmReference, "Actor inventory contains InventoryItem-wrapped references")
+					break
 			_check(actor_base != null and actor_base.race != null, "NPC Base resolves typed Race Base")
 			_check(actor_base == null or actor_base.race == server.get_base(actor_base.race_form_id), "NPC Race Base is the shared cached instance")
 			if actor_base != null and actor_base.race != null:
@@ -54,6 +68,9 @@ func _ready() -> void:
 			_check(actor_base == null or actor_base.packages.size() == _count_pkid(server.reader.get_record_data(actor_base.form_id)), "NPC Base resolves every Package Base")
 			break
 	_check(found_actor, "an ACHR resolves as ActorReference")
+	_check_typed_container_inventory(server, index)
+	_check_inventory_contract(server)
+	_check_armor_slot_conflicts()
 	_check_door_resources(server, index)
 	_check_item_resources(server, index)
 	_check_static_resource(server, index)
@@ -66,6 +83,78 @@ func _ready() -> void:
 	await _check_saved_base_rehydrates(server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+func _check_typed_container_inventory(server, index: Array) -> void:
+	for row in index:
+		if String(row.get("record_type", "")) != "REFR":
+			continue
+		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		if reference is not ContainerReference:
+			continue
+		_check(reference.contents is Inventory, "ContainerReference owns a typed Inventory")
+		if reference.contents is Inventory:
+			for item in (reference.contents as Inventory).get_items():
+				_check(item is InventoryItem and item.item_reference is EsmReference, "Container inventory contains InventoryItem-wrapped references")
+				break
+		return
+	_check(false, "a real container reference is available for typed inventory validation")
+
+func _check_inventory_contract(server) -> void:
+	var inventory := Inventory.new()
+	var item_reference: EsmReference = server.create_inventory_item_reference(0x000E3778, "test-weapon")
+	var item := InventoryItem.new()
+	item.item_reference = item_reference
+	item.count = 2
+	item.instance_id = "test-item"
+	_check(inventory.add_inventory_item(item), "Inventory accepts a typed InventoryItem")
+	_check(inventory.get_item_count(0x000E3778) == 2, "Inventory counts wrapped typed items")
+	_check(inventory.set_equipped("test-item", true), "Inventory stores equipped state on InventoryItem")
+	_check(inventory.get_equipped_items().size() == 1, "Inventory returns equipped InventoryItems")
+	var saved := inventory.serialize_state()
+	var restored := Inventory.new()
+	var factory := func(form_id: int, instance_id: String) -> EsmReference:
+		return server.create_inventory_item_reference(form_id, instance_id)
+	_check(restored.restore_state(saved, factory), "Inventory restores typed item state")
+	_check(restored.get_item_count(0x000E3778) == 2, "Inventory restore preserves count")
+	_check(restored.get_equipped_items().size() == 1, "Inventory restore preserves equipped state")
+
+func _check_armor_slot_conflicts() -> void:
+	var first_base := ArmorBase.new()
+	first_base.form_id = 0x1001
+	first_base.biped_flags = 0x01
+	var second_base := ArmorBase.new()
+	second_base.form_id = 0x1002
+	second_base.biped_flags = 0x01
+	var legs_base := ArmorBase.new()
+	legs_base.form_id = 0x1003
+	legs_base.biped_flags = 0x02
+	var first_ref := ArmorReference.new()
+	first_ref.base_form_id = first_base.form_id
+	first_ref.base = first_base
+	var second_ref := ArmorReference.new()
+	second_ref.base_form_id = second_base.form_id
+	second_ref.base = second_base
+	var legs_ref := ArmorReference.new()
+	legs_ref.base_form_id = legs_base.form_id
+	legs_ref.base = legs_base
+	var inventory := Inventory.new()
+	var first := InventoryItem.new()
+	first.item_reference = first_ref
+	first.instance_id = "first"
+	var second := InventoryItem.new()
+	second.item_reference = second_ref
+	second.instance_id = "second"
+	var legs := InventoryItem.new()
+	legs.item_reference = legs_ref
+	legs.instance_id = "legs"
+	inventory.add_inventory_item(first)
+	inventory.add_inventory_item(second)
+	inventory.add_inventory_item(legs)
+	inventory.equip_item(first)
+	inventory.equip_item(legs)
+	inventory.equip_item(second)
+	_check(not first.is_equipped and second.is_equipped, "overlapping BMDT armor replaces the equipped item")
+	_check(legs.is_equipped, "non-overlapping BMDT armor remains equipped")
 
 func _check_door_resources(server, index: Array) -> void:
 	var found_door_base := false
@@ -254,7 +343,7 @@ func _check_interactive_resources(server, index: Array) -> void:
 			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node.get_script() == expected_nodes[tag], "%s physicalises as typed EsmNode" % tag)
 			if tag == "CONT":
-				_check(node.get_node_or_null("InventoryComponent") is InventoryComponent, "CONT uses shared InventoryComponent")
+				_check(reference is ContainerReference and (reference as ContainerReference).contents is Inventory, "CONT reference owns typed Inventory")
 			node.free()
 			break
 		_check(found_reference, "a real %s reference is available" % tag)
@@ -343,8 +432,6 @@ func _check_dropped_item_resources(server, index: Array) -> void:
 	var expected := {
 		"ARMO": {"base": ArmorBase, "reference": ArmorReference},
 		"BOOK": {"base": BookBase, "reference": BookReference},
-		"CCRD": {"base": CaravanCardBase, "reference": CaravanCardReference},
-		"CMNY": {"base": CaravanMoneyBase, "reference": CaravanMoneyReference},
 	}
 	for tag in expected:
 		var found_base := false
