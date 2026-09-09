@@ -838,9 +838,9 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 			continue;
 		}
 		util::ByteReader sr(s.data, s.size);
-		sr.read_u32(); // Time — unused
-		uint32_t radius_raw = sr.read_u32();
 		LightData light;
+		light.time = static_cast<int32_t>(sr.read_u32());
+		uint32_t radius_raw = sr.read_u32();
 		light.radius = static_cast<float>(radius_raw) * units::kGamebryoUnitsToMeters;
 		light.color[0] = sr.read_u8();
 		light.color[1] = sr.read_u8();
@@ -849,7 +849,8 @@ std::optional<LightData> EsmFile::get_light_data(uint32_t light_form_id) const {
 		light.flags = sr.read_u32();
 		light.falloff = read_f32(sr);
 		light.fov_degrees = read_f32(sr);
-		// Value, Weight follow — unused, not read.
+		light.value = sr.read_u32();
+		light.weight = read_f32(sr);
 		return light;
 	}
 	return std::nullopt;

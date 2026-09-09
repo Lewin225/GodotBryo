@@ -141,7 +141,10 @@ func get_reference(instance_id: String) -> EsmReference:
 	if _game_session != null:
 		return _game_session.get_reference(instance_id)
 	if reader == null or not instance_id.begins_with("authored:"):
-		return null
+		if reader == null or not instance_id.begins_with("base:"):
+			return null
+		var base_form_id := _parse_prefixed_form_id(instance_id, "base:")
+		return create_reference_for_base(base_form_id)
 	var form_id := _parse_authored_id(instance_id)
 	if form_id == 0:
 		return null
@@ -153,6 +156,26 @@ func get_reference(instance_id: String) -> EsmReference:
 		if int(placement.get("refr_form_id", 0)) == form_id:
 			return _reference_from_placement(placement, instance_id, cell_id)
 	return null
+
+## Creates a zero-placement typed reference for inspecting a Base resource in
+## the same physicalizer chain used by authored REFRs. The synthetic identity
+## is persisted by EsmNode and can be rehydrated after a preview is packed.
+func create_reference_for_base(base_form_id: int) -> EsmReference:
+	var base := get_base(base_form_id)
+	if base == null:
+		return null
+	var script_name := String(TYPE_TO_REFERENCE.get(base.record_type, "EsmReference"))
+	var script := load(ResourceRoot + _snake_case(script_name) + ".gd")
+	if script == null:
+		return null
+	var result: EsmReference = script.new()
+	result.base_form_id = base.form_id
+	result.base = base
+	result.instance_id = "base:%08X" % base.form_id
+	result.position = Vector3.ZERO
+	result.rotation = Vector3.ZERO
+	result.scale = 1.0
+	return result
 
 func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 	var result: Array[EsmReference] = []
@@ -180,6 +203,43 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.position = placement.get("position", Vector3.ZERO)
 	result.rotation = placement.get("rotation", Vector3.ZERO)
 	result.scale = float(placement.get("scale", 1.0))
+	if result is DoorReference:
+		var door_ref: DoorReference = result
+		door_ref.has_teleport_destination = bool(placement.get("has_xtel", false))
+		door_ref.teleport_destination_refr_form_id = int(placement.get("dest_refr_form_id", 0))
+		door_ref.teleport_position = placement.get("dest_position", Vector3.ZERO)
+		door_ref.teleport_rotation = placement.get("dest_rotation", Vector3.ZERO)
+		if door_ref.teleport_destination_refr_form_id != 0 and reader != null:
+			var destination_owner: Dictionary = reader.find_cell_containing_ref(door_ref.teleport_destination_refr_form_id)
+			door_ref.teleport_destination_cell_form_id = int(destination_owner.get("cell_form_id", 0))
+		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
+		var lock_data := _subrecord(ref_raw, "XLOC")
+		if lock_data.size() >= 9:
+			door_ref.lock_level = _u8(lock_data)
+			door_ref.lock_key_form_id = _u32(lock_data, 4)
+			door_ref.lock_key = get_base(door_ref.lock_key_form_id) as KeyBase
+			door_ref.lock_flags = _u8(lock_data, 8)
+			door_ref.is_locked = door_ref.lock_level > 0 or door_ref.lock_key_form_id != 0
+			door_ref.is_leveled_lock = (door_ref.lock_flags & 0x04) != 0
+		var activation := _subrecord(ref_raw, "XACT")
+		if activation.size() >= 4:
+			door_ref.activation_flags = _u32(activation)
+		door_ref.is_open_by_default = _subrecord_present(ref_raw, "ONAM") or (door_ref.activation_flags & 0x08) != 0
+		door_ref.is_open = door_ref.is_open_by_default
+		var teleport := _subrecord(ref_raw, "XTEL")
+		if teleport.size() >= 32:
+			door_ref.teleport_no_alarm = (_u32(teleport, 28) & 0x01) != 0
+	if result is ActivatorReference or result is ContainerReference or result is FurnitureReference:
+		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
+		var activation := _subrecord(ref_raw, "XACT")
+		if result is ActivatorReference:
+			(result as ActivatorReference).activation_flags = _u32(activation)
+		elif result is ContainerReference:
+			(result as ContainerReference).activation_flags = _u32(activation)
+		else:
+			(result as FurnitureReference).activation_flags = _u32(activation)
+		if result is ContainerReference:
+			result.is_open = false
 	if result is StaticReference or result is MovableStaticReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
 	return result
@@ -207,6 +267,24 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.base_damage = _u16(data, 12); weapon.clip_size = _u8(data, 14)
 		weapon.first_person_form_id = _u32(_subrecord(raw, "WNAM"))
 		weapon.equipment_type = _u32(_subrecord(raw, "ETYP")); weapon.animation_type = _u32(_subrecord(raw, "DNAM"))
+		var weapon_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
+		weapon.inventory_icon = String(weapon_item_data.get("inventory_icon", ""))
+		weapon.message_icon = String(weapon_item_data.get("message_icon", ""))
+	elif result is MiscBase:
+		var misc: MiscBase = result
+		misc.model_path = _string(_subrecord(raw, "MODL"))
+		var item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
+		misc.value = int(item_data.get("value", 0))
+		misc.weight = float(item_data.get("weight", 0.0))
+		misc.inventory_icon = String(item_data.get("inventory_icon", ""))
+		misc.message_icon = String(item_data.get("message_icon", ""))
+	elif result is AlchemyBase or result is AmmoBase or result is KeyBase:
+		result.set("model_path", _string(_subrecord(raw, "MODL")))
+		var generic_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
+		result.set("value", int(generic_item_data.get("value", 0)))
+		result.set("weight", float(generic_item_data.get("weight", 0.0)))
+		result.set("inventory_icon", String(generic_item_data.get("inventory_icon", "")))
+		result.set("message_icon", String(generic_item_data.get("message_icon", "")))
 	elif result is NpcBase:
 		var npc: NpcBase = result
 		npc.model_path = _string(_subrecord(raw, "MODL"))
@@ -224,9 +302,132 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		var armor: ArmorBase = result
 		armor.male_biped_model = _string(_subrecord(raw, "MODL")); armor.male_world_model = _string(_subrecord(raw, "MOD2"))
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
+		armor.model_path = armor.male_world_model
 		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
 	elif result is DoorBase:
-		(result as DoorBase).model_path = _string(_subrecord(raw, "MODL"))
+		var door: DoorBase = result
+		door.model_path = _string(_subrecord(raw, "MODL"))
+		door.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		door.open_sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		door.close_sound_form_id = _u32(_subrecord(raw, "ANAM"))
+		door.loop_sound_form_id = _u32(_subrecord(raw, "BNAM"))
+		var door_data: Dictionary = reader.get_door_data(door.form_id) if reader != null else {}
+		door.open_sound_path = String(door_data.get("open_sound_path", ""))
+		door.close_sound_path = String(door_data.get("close_sound_path", ""))
+		door.loop_sound_path = String(door_data.get("loop_sound_path", ""))
+		door.flags = int(door_data.get("flags", _u8(_subrecord(raw, "FNAM"))))
+		door.is_automatic_door = bool(door_data.get("is_automatic_door", false))
+		door.is_hidden = bool(door_data.get("is_hidden", false))
+		door.is_minimal_use = bool(door_data.get("is_minimal_use", false))
+		door.is_sliding_door = bool(door_data.get("is_sliding_door", false))
+	elif result is LightBase:
+		var light: LightBase = result
+		light.model_path = _string(_subrecord(raw, "MODL"))
+		light.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		light.icon_path = _string(_subrecord(raw, "ICON"))
+		light.small_icon_path = _string(_subrecord(raw, "MICO"))
+		light.fade_value = _f32(_subrecord(raw, "FMAM"))
+		light.sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		var light_data: Dictionary = reader.get_light_data(light.form_id) if reader != null else {}
+		light.time = int(light_data.get("time", _i32(_subrecord(raw, "DATA"))))
+		light.radius = float(light_data.get("radius", 0.0))
+		light.color = light_data.get("color", Color.WHITE)
+		light.flags = int(light_data.get("flags", 0))
+		light.falloff_exponent = float(light_data.get("falloff", 1.0))
+		light.fov_degrees = float(light_data.get("fov_degrees", 90.0))
+		light.value = int(light_data.get("value", 0))
+		light.weight = float(light_data.get("weight", 0.0))
+		light.is_dynamic = (light.flags & 0x01) != 0
+		light.can_be_carried = (light.flags & 0x02) != 0
+		light.is_negative = (light.flags & 0x04) != 0
+		light.flickers = (light.flags & 0x08) != 0
+		light.is_off_by_default = (light.flags & 0x20) != 0
+		light.flickers_slowly = (light.flags & 0x40) != 0
+		light.pulses = (light.flags & 0x80) != 0
+		light.pulses_slowly = (light.flags & 0x100) != 0
+		light.is_spot_light = (light.flags & 0x200) != 0
+		light.casts_spot_shadows = (light.flags & 0x400) != 0
+	elif result is ActivatorBase:
+		var activator: ActivatorBase = result
+		activator.model_path = _string(_subrecord(raw, "MODL"))
+		activator.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		activator.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		activator.activation_sound_form_id = _u32(_subrecord(raw, "VNAM"))
+		activator.radio_template_form_id = _u32(_subrecord(raw, "INAM"))
+		activator.radio_station_form_id = _u32(_subrecord(raw, "RNAM"))
+		activator.water_type_form_id = _u32(_subrecord(raw, "WNAM"))
+		activator.activation_prompt = _string(_subrecord(raw, "XATO"))
+		activator.looping_sound_path = _sound_path(activator.looping_sound_form_id)
+		activator.activation_sound_path = _sound_path(activator.activation_sound_form_id)
+	elif result is ContainerBase:
+		var container: ContainerBase = result
+		container.model_path = _string(_subrecord(raw, "MODL"))
+		container.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		var container_data := _subrecord(raw, "DATA")
+		container.flags = _u8(container_data)
+		container.weight = _f32(container_data, 1)
+		container.open_sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		container.close_sound_form_id = _u32(_subrecord(raw, "QNAM"))
+		container.random_sound_form_id = _u32(_subrecord(raw, "RNAM"))
+		container.open_sound_path = _sound_path(container.open_sound_form_id)
+		container.close_sound_path = _sound_path(container.close_sound_form_id)
+		container.random_sound_path = _sound_path(container.random_sound_form_id)
+		container.items.clear()
+		var item_index := 0
+		for item_data in _all_subrecords(raw, "CNTO"):
+			if item_data.size() < 8: continue
+			var entry := InventoryEntryResource.new()
+			entry.item_form_id = _u32(item_data)
+			entry.count = _i32(item_data, 4)
+			entry.source_form_id = entry.item_form_id
+			entry.source_index = item_index
+			entry.instance_id = "authored:%08X:%d" % [entry.item_form_id, item_index]
+			entry.item_base = get_base(entry.item_form_id)
+			container.items.append(entry)
+			item_index += 1
+	elif result is FurnitureBase:
+		var furniture: FurnitureBase = result
+		furniture.model_path = _string(_subrecord(raw, "MODL"))
+		furniture.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		furniture.marker_flags = _subrecord(raw, "MNAM")
+	elif result is BookBase or result is CaravanCardBase or result is CaravanMoneyBase:
+		result.set("model_path", _string(_subrecord(raw, "MODL")))
+	elif result is TalkingActivatorBase:
+		var talking_activator: TalkingActivatorBase = result
+		talking_activator.model_path = _string(_subrecord(raw, "MODL"))
+		talking_activator.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		talking_activator.voice_type_form_id = _u32(_subrecord(raw, "VNAM"))
+		talking_activator.sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		talking_activator.sound_path = _sound_path(talking_activator.sound_form_id)
+	elif result is TerminalBase:
+		var terminal: TerminalBase = result
+		terminal.model_path = _string(_subrecord(raw, "MODL"))
+		terminal.script_form_id = _u32(_subrecord(raw, "SCRI"))
+		terminal.welcome_text = _string(_subrecord(raw, "DESC"))
+		terminal.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
+		terminal.looping_sound_path = _sound_path(terminal.looping_sound_form_id)
+		terminal.password_note_form_id = _u32(_subrecord(raw, "PNAM"))
+		var terminal_data := _subrecord(raw, "DNAM")
+		terminal.hacking_difficulty = _u8(terminal_data)
+		terminal.flags = _u8(terminal_data, 1)
+		terminal.server_type = _u8(terminal_data, 2)
+		terminal.is_leveled = (terminal.flags & 0x01) != 0
+		terminal.is_unlocked = (terminal.flags & 0x02) != 0
+		terminal.uses_alternate_colors = (terminal.flags & 0x04) != 0
+		terminal.hides_welcome_text = (terminal.flags & 0x08) != 0
+		terminal.menu_items.clear()
+		if reader != null:
+			var parsed_terminal: Dictionary = reader.get_terminal_data(terminal.form_id)
+			for item_data in parsed_terminal.get("items", []):
+				var item := TerminalMenuItem.new()
+				item.text = String(item_data.get("text", ""))
+				item.result_text = String(item_data.get("result_text", ""))
+				item.item_flags = int(item_data.get("flags", 0))
+				item.display_note_form_id = int(item_data.get("note_form_id", 0))
+				item.submenu_terminal_form_id = int(item_data.get("submenu_form_id", 0))
+				item.condition_count = int(item_data.get("condition_count", 0))
+				item.script_source = String(item_data.get("script_source", ""))
+				terminal.menu_items.append(item)
 	else:
 		if _has_property(result, "model_path"):
 			result.set("model_path", _string(_subrecord(raw, "MODL")))
@@ -310,6 +511,12 @@ func _subrecord(raw: Dictionary, tag: String) -> PackedByteArray:
 			return subrecord.get("data", PackedByteArray())
 	return PackedByteArray()
 
+func _subrecord_present(raw: Dictionary, tag: String) -> bool:
+	for subrecord in raw.get("subrecords", []):
+		if String(subrecord.get("type", "")) == tag:
+			return true
+	return false
+
 func _all_subrecords(raw: Dictionary, tag: String) -> Array[PackedByteArray]:
 	var result: Array[PackedByteArray] = []
 	for subrecord in raw.get("subrecords", []):
@@ -334,8 +541,17 @@ func _i32(data: PackedByteArray, offset := 0) -> int:
 func _f32(data: PackedByteArray, offset := 0) -> float:
 	return data.decode_float(offset) if data.size() >= offset + 4 else 0.0
 
+func _sound_path(form_id: int) -> String:
+	if form_id == 0 or reader == null or not reader.has_method("get_sound_path"):
+		return ""
+	return String(reader.get_sound_path(form_id))
+
 func _parse_authored_id(id: String) -> int:
 	var suffix := id.trim_prefix("authored:")
+	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
+
+func _parse_prefixed_form_id(id: String, prefix: String) -> int:
+	var suffix := id.trim_prefix(prefix)
 	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
 
 func _parse_source_uri(uri: String) -> Dictionary:

@@ -139,6 +139,27 @@ enum class CollisionShapeKind {
 	kConvexHull, // bhkConvexVerticesShape -> ConvexPolygonShape3D
 };
 
+// Authored Havok rigid-body properties from a bhkRigidBody/bhkRigidBodyT.
+// These are deliberately kept separate from ESM item data: an item's weight
+// is gameplay data, while this mass and the other values describe the NIF's
+// physical simulation setup.
+struct PhysicsBody {
+	std::string node_name;
+	int32_t owning_node_index = -1;
+	float mass = 1.0f;
+	float linear_damping = 0.1f;
+	float angular_damping = 0.05f;
+	float gravity_factor = 1.0f;
+	float friction = 0.5f;
+	float rolling_friction_mult = 1.0f;
+	float restitution = 0.4f;
+	uint8_t motion_system = 1;
+	uint8_t quality_type = 1;
+	uint32_t body_flags_int = 0;
+	uint16_t body_flags = 0;
+	std::vector<int32_t> collision_shape_indices;
+};
+
 struct CollisionShape {
 	CollisionShapeKind kind = CollisionShapeKind::kNone;
 	std::string node_name; // which NiAVObject this came from — for association/debugging
@@ -169,6 +190,10 @@ struct CollisionShape {
 	// on (`av` in the extraction loop), or -1 if it's the NIF's root —
 	// same convention as SubMesh::owning_node_index.
 	int32_t owning_node_index = -1;
+
+	// Index into Mesh::physics_bodies for the bhkRigidBody that owns this
+	// shape, or -1 when no rigid body association was extractable.
+	int32_t physics_body_index = -1;
 };
 
 // phases/3/00-door-completion.md, Part A: how one keyframe's value should
@@ -479,6 +504,7 @@ struct MorphData {
 struct Mesh {
 	std::vector<SubMesh> submeshes;
 	std::vector<CollisionShape> collision_shapes;
+	std::vector<PhysicsBody> physics_bodies;
 
 	// True the moment ANY NiAVObject in the NIF has a non-empty collisionRef
 	// — i.e. Havok collision was authored for this object at all — set

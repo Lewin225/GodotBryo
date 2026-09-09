@@ -15,8 +15,19 @@ func _ready() -> void:
 		_check((base as WeaponBase).base_damage > 0, "WeaponBase has damage")
 	_check(server.get_base(0x000E3778) == base, "Base cache returns same Resource")
 	_check(server.get_base_type(0x000E3778) == WeaponBase, "Base type lookup returns WeaponBase")
+	var base_reference: EsmReference = server.create_reference_for_base(0x000E3778)
+	_check(base_reference is WeaponReference, "Base resource creates a typed WeaponReference")
+	_check(base_reference != null and server.get_reference(base_reference.instance_id).base == base, "synthetic Base reference rehydrates through EsmServer")
+	await _check_packed_base_reference(server, base_reference)
 	var index: Array = server.get_record_index()
 	_check(not index.is_empty(), "EsmServer exposes record index")
+	var ccrd_count := 0
+	var cmny_count := 0
+	for row in index:
+		if String(row.get("record_type", "")) == "CCRD": ccrd_count += 1
+		if String(row.get("record_type", "")) == "CMNY": cmny_count += 1
+	_check(ccrd_count > 0, "record index exposes base-game CCRD records")
+	_check(cmny_count > 0, "record index exposes base-game CMNY records")
 	var found_actor := false
 	for row in index:
 		if String(row.get("record_type", "")) != "ACHR": continue
@@ -43,11 +54,327 @@ func _ready() -> void:
 			_check(actor_base == null or actor_base.packages.size() == _count_pkid(server.reader.get_record_data(actor_base.form_id)), "NPC Base resolves every Package Base")
 			break
 	_check(found_actor, "an ACHR resolves as ActorReference")
+	_check_door_resources(server, index)
+	_check_item_resources(server, index)
+	_check_static_resource(server, index)
+	_check_interactive_resources(server, index)
+	_check_collection_and_movable_resources(server, index)
+	_check_talking_activator_and_terminal_resources(server, index)
+	_check_dropped_item_resources(server, index)
 	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	await _check_saved_base_rehydrates(server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+func _check_door_resources(server, index: Array) -> void:
+	var found_door_base := false
+	for row in index:
+		if String(row.get("record_type", "")) != "DOOR": continue
+		var door: EsmBase = server.get_base(int(row.get("form_id", 0)))
+		if door is DoorBase:
+			found_door_base = true
+			_check(not door.editor_id.is_empty(), "DoorBase exposes EditorID")
+			_check(door.script_form_id >= 0, "DoorBase exposes script FormID")
+			_check(door.flags >= 0, "DoorBase exposes documented flags")
+			break
+	_check(found_door_base, "a real DOOR resolves as DoorBase")
+
+	var found_door_reference := false
+	for row in index:
+		var refr_type := String(row.get("record_type", ""))
+		if refr_type != "REFR" and refr_type != "ACHR": continue
+		var refr_raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+		var base_id := _u32(_subrecord(refr_raw, "NAME"))
+		var base_raw: Dictionary = server.reader.get_record_data(base_id)
+		if String(base_raw.get("record_type", "")) != "DOOR": continue
+		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		if reference is DoorReference:
+			found_door_reference = true
+			_check(reference.base is DoorBase, "DoorReference points to DoorBase")
+			_check(reference.lock_key_form_id == 0 or reference.lock_key != null, "DoorReference resolves its lock key Base")
+			_check(reference.teleport_destination_refr_form_id == 0 or reference.has_teleport_destination, "DoorReference XTEL state is consistent")
+			var physicaliser := EsmReferencePhysicaliser.new()
+			var node: EsmNode = physicaliser.physicalise(reference)
+			_check(node.get_child_count() > 0, "Door physicalizer builds visual children")
+			_check(node.get_node_or_null("AnimationPlayer") != null, "Door physicalizer builds AnimationPlayer")
+			break
+	_check(found_door_reference, "a real DOOR placement resolves as DoorReference")
+	_check_misc_physicaliser(server)
+
+func _check_misc_physicaliser(server) -> void:
+	var cell: Dictionary = server.reader.find_cell_by_editor_id("GSDocMitchellHouse")
+	var placement: Dictionary = {}
+	for candidate in server.reader.get_cell_references(int(cell.get("form_id", 0))):
+		if String(candidate.get("base_type", "")) == "MISC":
+			placement = candidate
+			break
+	_check(not placement.is_empty(), "a real MISC placement is available for physicalisation")
+	if placement.is_empty():
+		return
+	var reference: EsmReference = server.get_reference("authored:%08X" % int(placement.get("refr_form_id", 0)))
+	_check(reference is MiscReference, "MISC placement resolves as MiscReference")
+	if not reference is MiscReference:
+		return
+	_check(reference.base is MiscBase, "MiscReference points to MiscBase")
+	var node := EsmReferencePhysicaliser.new().physicalise(reference)
+	_check(node is EsmItemNode, "MISC physicalises as EsmItemNode")
+	var body := node.get_node_or_null("RigidBody3D")
+	_check(body is GamebryoRigidBody, "MISC uses authored rigid-body construction")
+	var has_collision := false
+	for child in body.get_children() if body is Node else []:
+		if child is CollisionShape3D:
+			has_collision = true
+			break
+	_check(has_collision, "MISC rigid body receives collision shapes")
+	_check(not node is ItemNode, "MISC resource path does not construct legacy ItemNode")
+	node.free()
+
+func _check_packed_base_reference(server, source_reference: EsmReference) -> void:
+	var scene_root := Node3D.new()
+	var item := EsmItemNode.new()
+	item.configure(source_reference)
+	scene_root.add_child(item)
+	item.owner = scene_root
+	var packed := PackedScene.new()
+	_check(packed.pack(scene_root) == OK, "synthetic Base reference packs into a scene")
+	var instance := packed.instantiate()
+	get_tree().root.add_child(instance)
+	await get_tree().process_frame
+	var loaded_item := instance.get_child(0) as EsmItemNode
+	_check(loaded_item != null and loaded_item.reference != null, "packed EsmItemNode restores its reference slot")
+	_check(loaded_item != null and loaded_item.reference.base == server.get_base(source_reference.base_form_id), "packed Base reference rehydrates its shared Base")
+	instance.queue_free()
+	scene_root.free()
+
+func _check_item_resources(server, index: Array) -> void:
+	var expected := {
+		"ALCH": AlchemyBase,
+		"AMMO": AmmoBase,
+		"KEYM": KeyBase,
+		"WEAP": WeaponBase,
+	}
+	for type_tag in expected:
+		var found_base := false
+		for row in index:
+			if String(row.get("record_type", "")) != type_tag:
+				continue
+			var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+			if base == null:
+				continue
+			found_base = true
+			_check(base.get_script() == expected[type_tag], "%s resolves as its typed Base" % type_tag)
+			_check(base.get("model_path") != null, "%s exposes model_path" % type_tag)
+			_check(base.get("value") != null and base.get("weight") != null, "%s exposes common item data" % type_tag)
+			break
+		_check(found_base, "a real %s Base is available" % type_tag)
+
+		var found_reference := false
+		for row in index:
+			var refr_type := String(row.get("record_type", ""))
+			if refr_type != "REFR" and refr_type != "ACHR":
+				continue
+			var refr_raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+			var base_id := _u32(_subrecord(refr_raw, "NAME"))
+			var base_raw: Dictionary = server.reader.get_record_data(base_id)
+			if String(base_raw.get("record_type", "")) != type_tag:
+				continue
+			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			if reference == null:
+				continue
+			found_reference = true
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
+			_check(node is EsmItemNode, "%s physicalises as EsmItemNode" % type_tag)
+			_check(node is EsmItemNode and (node as EsmItemNode).reference == reference, "%s EsmItemNode retains its typed reference" % type_tag)
+			_check(node.get_node_or_null("RigidBody3D") is GamebryoRigidBody or node.get_child_count() == 0, "%s uses the shared item construction path" % type_tag)
+			node.free()
+			break
+		_check(found_reference, "a real %s reference is available" % type_tag)
+
+func _check_static_resource(server, index: Array) -> void:
+	var found_base := false
+	for row in index:
+		if String(row.get("record_type", "")) != "STAT":
+			continue
+		var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+		if base is StaticBase:
+			found_base = true
+			_check(not (base as StaticBase).model_path.is_empty(), "STAT Base exposes model path")
+			break
+	_check(found_base, "a real STAT Base is available")
+
+	var found_reference := false
+	for row in index:
+		var refr_type := String(row.get("record_type", ""))
+		if refr_type != "REFR" and refr_type != "ACHR":
+			continue
+		var refr_raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+		var base_id := _u32(_subrecord(refr_raw, "NAME"))
+		var base_raw: Dictionary = server.reader.get_record_data(base_id)
+		if String(base_raw.get("record_type", "")) != "STAT":
+			continue
+		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		if reference == null:
+			continue
+		found_reference = true
+		var node := EsmReferencePhysicaliser.new().physicalise(reference)
+		_check(node is EsmStaticNode, "STAT physicalises as EsmStaticNode")
+		_check(node.get_node_or_null("CollisionBody") is GamebryoCollisionBody or node.get_child_count() > 0, "STAT uses individual static construction")
+		node.free()
+		break
+	_check(found_reference, "a real STAT reference is available")
+
+func _check_interactive_resources(server, index: Array) -> void:
+	var expected_bases := {"ACTI": ActivatorBase, "CONT": ContainerBase, "FURN": FurnitureBase}
+	var expected_refs := {"ACTI": ActivatorReference, "CONT": ContainerReference, "FURN": FurnitureReference}
+	var expected_nodes := {"ACTI": EsmActivatorNode, "CONT": EsmContainerNode, "FURN": EsmFurnitureNode}
+	for tag in expected_bases:
+		var found_base := false
+		for row in index:
+			if String(row.get("record_type", "")) != tag: continue
+			var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+			if base == null: continue
+			found_base = true
+			_check(base.get_script() == expected_bases[tag], "%s resolves as typed Base" % tag)
+			break
+		_check(found_base, "a real %s Base is available" % tag)
+
+		var found_reference := false
+		for row in index:
+			var refr_type := String(row.get("record_type", ""))
+			if refr_type != "REFR" and refr_type != "ACHR": continue
+			var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+			var base_id := _u32(_subrecord(raw, "NAME"))
+			var base_raw: Dictionary = server.reader.get_record_data(base_id)
+			if String(base_raw.get("record_type", "")) != tag: continue
+			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			if reference == null: continue
+			found_reference = true
+			_check(reference.get_script() == expected_refs[tag], "%s resolves as typed Reference" % tag)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
+			_check(node.get_script() == expected_nodes[tag], "%s physicalises as typed EsmNode" % tag)
+			if tag == "CONT":
+				_check(node.get_node_or_null("InventoryComponent") is InventoryComponent, "CONT uses shared InventoryComponent")
+			node.free()
+			break
+		_check(found_reference, "a real %s reference is available" % tag)
+
+func _check_collection_and_movable_resources(server, index: Array) -> void:
+	var expected := {
+		"SCOL": {"base": StaticCollectionBase, "reference": StaticCollectionReference, "node": EsmStaticCollectionNode},
+		"MSTT": {"base": MovableStaticBase, "reference": MovableStaticReference, "node": EsmMovableStaticNode},
+	}
+	for tag in expected:
+		var found_base := false
+		for row in index:
+			if String(row.get("record_type", "")) != tag: continue
+			var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+			if base == null: continue
+			found_base = true
+			_check(base.get_script() == expected[tag]["base"], "%s resolves as typed Base" % tag)
+			break
+		_check(found_base, "a real %s Base is available" % tag)
+
+		var found_reference := false
+		for row in index:
+			var refr_type := String(row.get("record_type", ""))
+			if refr_type != "REFR" and refr_type != "ACHR": continue
+			var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+			var base_id := _u32(_subrecord(raw, "NAME"))
+			var base_raw: Dictionary = server.reader.get_record_data(base_id)
+			if String(base_raw.get("record_type", "")) != tag: continue
+			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			if reference == null: continue
+			found_reference = true
+			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
+			_check(node.get_script() == expected[tag]["node"], "%s physicalises as typed Node" % tag)
+			if tag == "SCOL":
+				_check((node as EsmStaticCollectionNode).is_batch_candidate, "SCOL exposes future batch-candidate metadata")
+				_check(node.get_child_count() > 0, "SCOL expands into part nodes")
+			else:
+				_check((reference as MovableStaticReference).emittance_form_id >= 0, "MSTT preserves emittance identity")
+			node.free()
+			break
+		_check(found_reference, "a real %s reference is available" % tag)
+
+func _check_talking_activator_and_terminal_resources(server, index: Array) -> void:
+	var expected := {
+		"TACT": {"base": TalkingActivatorBase, "reference": TalkingActivatorReference, "node_script": "res://GodotBryo/Types/Node/esm_talking_activator_node.gd"},
+		"TERM": {"base": TerminalBase, "reference": TerminalReference, "node_script": "res://GodotBryo/Types/Node/esm_terminal_node.gd"},
+	}
+	for tag in expected:
+		var found_base := false
+		for row in index:
+			if String(row.get("record_type", "")) != tag: continue
+			var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+			if base == null: continue
+			found_base = true
+			_check(base.get_script() == expected[tag]["base"], "%s resolves as typed Base" % tag)
+			if tag == "TACT":
+				_check(not (base as TalkingActivatorBase).model_path.is_empty() or (base as TalkingActivatorBase).sound_form_id >= 0, "TACT exposes verified model/sound fields")
+			else:
+				var terminal := base as TerminalBase
+				_check(terminal.welcome_text is String and terminal.menu_items is Array, "TERM exposes welcome text and ordered menu data")
+				if not terminal.menu_items.is_empty():
+					_check(terminal.menu_items[0] is TerminalMenuItem, "TERM menu entries use the typed convenience resource")
+			break
+		_check(found_base, "a real %s Base is available" % tag)
+
+		var found_reference := false
+		for row in index:
+			var refr_type := String(row.get("record_type", ""))
+			if refr_type != "REFR" and refr_type != "ACHR": continue
+			var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+			var base_id := _u32(_subrecord(raw, "NAME"))
+			var base_raw: Dictionary = server.reader.get_record_data(base_id)
+			if String(base_raw.get("record_type", "")) != tag: continue
+			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			if reference == null: continue
+			found_reference = true
+			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
+			_check(node.get_script() == load(expected[tag]["node_script"]), "%s physicalises as dedicated EsmNode" % tag)
+			node.free()
+			break
+		_check(found_reference, "a real %s reference is available" % tag)
+
+func _check_dropped_item_resources(server, index: Array) -> void:
+	var expected := {
+		"ARMO": {"base": ArmorBase, "reference": ArmorReference},
+		"BOOK": {"base": BookBase, "reference": BookReference},
+		"CCRD": {"base": CaravanCardBase, "reference": CaravanCardReference},
+		"CMNY": {"base": CaravanMoneyBase, "reference": CaravanMoneyReference},
+	}
+	for tag in expected:
+		var found_base := false
+		for row in index:
+			if String(row.get("record_type", "")) != tag: continue
+			var base: EsmBase = server.get_base(int(row.get("form_id", 0)))
+			if base == null: continue
+			found_base = true
+			_check(base.get_script() == expected[tag]["base"], "%s resolves as typed dropped-item Base" % tag)
+			_check(base.get("model_path") != null, "%s exposes dropped-item model path" % tag)
+			break
+		_check(found_base, "a real %s Base is available" % tag)
+
+		var found_reference := false
+		for row in index:
+			var refr_type := String(row.get("record_type", ""))
+			if refr_type != "REFR" and refr_type != "ACHR": continue
+			var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
+			var base_id := _u32(_subrecord(raw, "NAME"))
+			var base_raw: Dictionary = server.reader.get_record_data(base_id)
+			if String(base_raw.get("record_type", "")) != tag: continue
+			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			if reference == null: continue
+			found_reference = true
+			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed dropped-item Reference" % tag)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
+			_check(node is EsmItemNode, "%s physicalises as EsmItemNode" % tag)
+			node.free()
+			break
+		_check(found_reference, "a real %s reference is available" % tag)
 
 func _check_saved_base_rehydrates(server) -> void:
 	var source: NpcBase = null
