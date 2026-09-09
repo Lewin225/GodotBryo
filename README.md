@@ -12,6 +12,10 @@ Why Godot? Lightweight, existing renderer, zero cost and easily modifiable thoug
 
 
 **Current Status**
+* Editor
+  * Editor has been modified to be able to browse, place and preview most esm resource types.
+  * MovieMaker mode can be used to make animations with the ESM/BSA assets
+  * 
 * Gameplay
   * Walk around only at the moment
   * Open world terrain rendering using Terrain3D sourced from LAND records, including the 7+1 layer terrain blending from gamebyro
