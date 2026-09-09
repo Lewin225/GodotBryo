@@ -105,6 +105,7 @@ public:
 	// bool, "off_by_default": bool }, or an empty Dictionary if the FormID
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
+	String get_sound_path(int64_t sound_form_id) const;
 
 	// Issue #52 chunk 5: a RACE record's real body-part model paths for one
 	// gender (UpperBody/LeftHand/RightHand for a human race) -- see

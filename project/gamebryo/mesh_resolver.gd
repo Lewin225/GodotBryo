@@ -623,6 +623,7 @@ func build_geometry_entries(raw: Dictionary, lod_raw: Dictionary = {}) -> Dictio
 	for d in descriptors:
 		shape_entries.append({
 			"shape": d["shape"], "transform": d["transform"], "name": d.get("name", "collision"),
+			"physics_body_index": d.get("physics_body_index", -1),
 			# phases/3/00-door-completion.md step 5: which scene_nodes entry
 			# this shape is really attached to in the source NIF (-1 if the
 			# NIF's root, or a fabricated fallback_bbox that isn't tied to
@@ -2443,7 +2444,10 @@ func populate_rigid_body_children(parent: ItemNode, geometry: Dictionary, mass: 
 	body.contact_monitor = true
 	body.max_contacts_reported = 8
 	body.can_sleep = true
-	body.sleeping = true # wake automatically on a player/prop collision or drag force
+	body.freeze = true
+	body.sleeping = true
+	# Preview/initial construction is stationary; gameplay can explicitly
+	# unfreeze the body when the item is released into the world.
 	parent.add_child(body)
 	populate_mesh_children(body, null, "", geometry)
 	for entry in geometry["shape_entries"]:
@@ -2453,6 +2457,71 @@ func populate_rigid_body_children(parent: ItemNode, geometry: Dictionary, mass: 
 		col.transform = entry["transform"]
 		body.add_child(col)
 	return body
+
+## Builds movable bodies from the NIF's authored bhkRigidBody descriptors.
+## The source body properties are applied directly; ESM inventory weight is
+## intentionally not consulted. A NIF may contain more than one body, so
+## each descriptor gets its own Godot RigidBody3D and only its associated
+## collision shapes are attached to it. The visual hierarchy is attached to
+## the first body, which is the normal single-body item case; the per-body
+## extraction and shape associations remain intact for future compound-item
+## visual composition.
+func populate_authored_rigid_bodies(parent: Node3D, nif: NifReader, model_path: String, geometry: Dictionary = {}) -> Array:
+	if geometry.is_empty():
+		geometry = build_geometry_entries(resolve_raw_geometry(nif, model_path))
+	var authored: Array = nif.get_physics_bodies()
+	var bodies: Array = []
+	if authored.is_empty():
+		if geometry.get("shape_entries", []).is_empty():
+			return bodies
+		authored.append({
+			"mass": 1.0, "linear_damping": 0.1, "angular_damping": 0.05,
+			"gravity_factor": 1.0, "friction": 0.5, "restitution": 0.4,
+			"collision_shape_indices": PackedInt32Array(),
+		})
+	for body_index in authored.size():
+		var source: Dictionary = authored[body_index]
+		var body := GamebryoRigidBody.new()
+		body.name = "RigidBody3D" if body_index == 0 else "RigidBody3D%d" % body_index
+		body.owner_ref = parent
+		body.nif_node_name = String(source.get("node_name", ""))
+		body.nif_physics_body_index = body_index
+		body.nif_body_data = source.duplicate(true)
+		body.set_meta("nif_node_name", body.nif_node_name)
+		body.set_meta("nif_physics_body_index", body_index)
+		body.set_meta("nif_body_data", source.duplicate(true))
+		body.mass = max(float(source.get("mass", 1.0)), 0.001)
+		body.linear_damp = max(float(source.get("linear_damping", 0.1)), 0.0)
+		body.angular_damp = max(float(source.get("angular_damping", 0.05)), 0.0)
+		body.gravity_scale = float(source.get("gravity_factor", 1.0))
+		var material := PhysicsMaterial.new()
+		material.friction = clampf(float(source.get("friction", 0.5)), 0.0, 1.0)
+		material.bounce = clampf(float(source.get("restitution", 0.4)), 0.0, 1.0)
+		body.physics_material_override = material
+		body.continuous_cd = 2
+		body.contact_monitor = true
+		body.max_contacts_reported = 8
+		body.can_sleep = true
+		body.freeze = true
+		body.sleeping = true
+		parent.add_child(body)
+		# The wrapper owns the authored REFR identity, but the body owns the
+		# live transform. Keeping it top-level prevents the wrapper's mirrored
+		# transform from being composed into the body a second time.
+		body.top_level = true
+		bodies.append(body)
+		if body_index == 0:
+			populate_mesh_children(body, null, "", geometry)
+	for entry in geometry.get("shape_entries", []):
+		var source_index := int(entry.get("physics_body_index", -1))
+		if source_index < 0 or source_index >= bodies.size():
+			source_index = 0
+		var col := CollisionShape3D.new()
+		col.name = String(entry.get("name", "collision"))
+		col.shape = entry["shape"]
+		col.transform = entry["transform"]
+		bodies[source_index].add_child(col)
+	return bodies
 
 func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
 	var pos_flat: PackedFloat32Array = e["positions"]
@@ -2812,6 +2881,7 @@ func _build_collision_shapes(raw_shapes: Array) -> Array:
 		out.append({
 			"kind": kind, "shape": shape, "transform": transform, "name": "collision_%s" % String(s.get("name", kind)),
 			"owning_node_index": s.get("owning_node_index", -1), # absent (fallback_bbox) -> -1, not tied to a single node
+			"physics_body_index": s.get("physics_body_index", -1),
 		})
 	return out
 

@@ -2,10 +2,13 @@
 extends PanelContainer
 
 signal activated(card: Control)
+signal context_requested(card: Control, screen_position: Vector2i)
 
 var instance_id := ""
+var reference_id := 0
 
 func configure(reference_type: String, reference_id: int, base_id: int, base_name: String) -> void:
+	self.reference_id = reference_id
 	custom_minimum_size = Vector2(240, 68)
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -32,5 +35,11 @@ func configure(reference_type: String, reference_id: int, base_id: int, base_nam
 	box.add_child(metadata)
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
-		activated.emit(self)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
+			activated.emit(self)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			context_requested.emit(self, Vector2i(DisplayServer.mouse_get_position()))
+
+func get_reference_id() -> int:
+	return reference_id

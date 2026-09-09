@@ -34,6 +34,7 @@ void NifReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_submesh_owning_node_index", "index"), &NifReader::get_submesh_owning_node_index);
 	ClassDB::bind_method(D_METHOD("export_gltf", "path"), &NifReader::export_gltf);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifReader::get_collision_shapes);
+	ClassDB::bind_method(D_METHOD("get_physics_bodies"), &NifReader::get_physics_bodies);
 	ClassDB::bind_method(D_METHOD("has_collision_data"), &NifReader::has_collision_data);
 	ClassDB::bind_method(D_METHOD("get_animation_sequences"), &NifReader::get_animation_sequences);
 	ClassDB::bind_method(D_METHOD("get_direct_animation_controllers"), &NifReader::get_direct_animation_controllers);
@@ -498,6 +499,7 @@ Array NifReader::get_collision_shapes() const {
 		d["kind"] = String(collision_kind_name(cs.kind));
 		d["name"] = String(cs.node_name.c_str());
 		d["owning_node_index"] = cs.owning_node_index;
+		d["physics_body_index"] = cs.physics_body_index;
 
 		const float *r = cs.rotation;
 	Basis basis(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
@@ -537,6 +539,37 @@ Array NifReader::get_collision_shapes() const {
 			default:
 				break;
 		}
+		out.push_back(d);
+	}
+	return out;
+}
+
+Array NifReader::get_physics_bodies() const {
+	Array out;
+	if (!loaded_) {
+		return out;
+	}
+	for (const nif::PhysicsBody &pb : mesh_.physics_bodies) {
+		Dictionary d;
+		d["node_name"] = String(pb.node_name.c_str());
+		d["owning_node_index"] = pb.owning_node_index;
+		d["mass"] = pb.mass;
+		d["linear_damping"] = pb.linear_damping;
+		d["angular_damping"] = pb.angular_damping;
+		d["gravity_factor"] = pb.gravity_factor;
+		d["friction"] = pb.friction;
+		d["rolling_friction_mult"] = pb.rolling_friction_mult;
+		d["restitution"] = pb.restitution;
+		d["motion_system"] = pb.motion_system;
+		d["quality_type"] = pb.quality_type;
+		d["body_flags_int"] = pb.body_flags_int;
+		d["body_flags"] = pb.body_flags;
+		PackedInt32Array shape_indices;
+		shape_indices.resize(static_cast<int>(pb.collision_shape_indices.size()));
+		for (size_t i = 0; i < pb.collision_shape_indices.size(); ++i) {
+			shape_indices[static_cast<int>(i)] = pb.collision_shape_indices[i];
+		}
+		d["collision_shape_indices"] = shape_indices;
 		out.push_back(d);
 	}
 	return out;

@@ -103,7 +103,7 @@ source_uri = "esm://FalloutNV.esm/FLST/00020428"
 script = ExtResource("4_hg6s5")
 full_name = "Leather Armor"
 value = 160
-weight = 2.0999999999999993e-43
+weight = 2.099999999999999e-43
 biped_flags = 4
 equipment_type = 7
 male_biped_model = "Armor\\LeatherArmor\\M\\OutfitM.NIF"
@@ -577,26 +577,6 @@ far = 1000.0
 [node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
 target_position = Vector3(0, 0, -2.5)
 script = ExtResource("4_interactray")
-
-[node name="SubViewportContainer" type="SubViewportContainer" parent="Camera3D" unique_id=14349478]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-stretch = true
-
-[node name="SubViewport" type="SubViewport" parent="Camera3D/SubViewportContainer" unique_id=1113046087]
-transparent_bg = true
-size = Vector2i(1920, 1080)
-
-[node name="RemoteTransform3D" type="RemoteTransform3D" parent="Camera3D/SubViewportContainer/SubViewport" unique_id=1065235602]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
-remote_path = NodePath("../../..")
-
-[node name="Camera3D" type="Camera3D" parent="Camera3D/SubViewportContainer/SubViewport/RemoteTransform3D" unique_id=1899401759]
-near = 1000.0
-far = 6000.0
 
 [node name="MouseCaptureManager" type="Node" parent="." unique_id=1257446344]
 script = ExtResource("2_mouse")

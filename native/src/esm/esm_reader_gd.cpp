@@ -104,6 +104,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
 	ClassDB::bind_method(D_METHOD("get_light_data", "light_form_id"), &EsmReader::get_light_data);
+	ClassDB::bind_method(D_METHOD("get_sound_path", "sound_form_id"), &EsmReader::get_sound_path);
 	ClassDB::bind_method(D_METHOD("get_race_body_parts", "race_form_id", "female"), &EsmReader::get_race_body_parts);
 	ClassDB::bind_method(D_METHOD("get_race_head_parts", "race_form_id", "female"), &EsmReader::get_race_head_parts);
 	ClassDB::bind_method(D_METHOD("get_actor_by_form_id", "base_form_id"), &EsmReader::get_actor_by_form_id);
@@ -515,18 +516,31 @@ Dictionary EsmReader::get_light_data(int64_t light_form_id) const {
 		if (!light) {
 			return out;
 		}
+		out["time"] = light->time;
 		out["radius"] = light->radius;
 		out["color"] = Color(light->color[0] / 255.0f, light->color[1] / 255.0f, light->color[2] / 255.0f, 1.0f);
 		out["color_alpha"] = static_cast<int64_t>(light->color[3]);
 		out["flags"] = static_cast<int64_t>(light->flags);
 		out["falloff"] = light->falloff;
 		out["fov_degrees"] = light->fov_degrees;
+		out["value"] = light->value;
+		out["weight"] = light->weight;
 		out["is_spot"] = light->is_spot();
 		out["off_by_default"] = light->off_by_default();
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}
 	return out;
+}
+
+String EsmReader::get_sound_path(int64_t sound_form_id) const {
+	if (!opened_) return String();
+	try {
+		return String(file_.resolve_soun_filename(static_cast<uint32_t>(sound_form_id)).c_str());
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return String();
 }
 
 Array EsmReader::get_race_body_parts(int64_t race_form_id, bool female) const {
@@ -614,14 +628,23 @@ Array EsmReader::get_record_index() const {
 			Dictionary entry;
 			entry["form_id"] = static_cast<int64_t>(r.form_id);
 			entry["record_type"] = String(r.type.c_str());
-			std::string editor_id;
-			std::string full_name;
-			for (const auto &sub : esm::EsmFile::parse_subrecords(file_.read_record_data(r))) {
-				if (sub.type == "EDID") editor_id = sub.as_string();
-				else if (sub.type == "FULL") full_name = sub.as_string();
+			entry["editor_id"] = String();
+			entry["full_name"] = String();
+			try {
+				std::string editor_id;
+				std::string full_name;
+				for (const auto &sub : esm::EsmFile::parse_subrecords(file_.read_record_data(r))) {
+					if (sub.type == "EDID") editor_id = sub.as_string();
+					else if (sub.type == "FULL") full_name = sub.as_string();
+				}
+				entry["editor_id"] = String(editor_id.c_str());
+				entry["full_name"] = String(full_name.c_str());
+			} catch (const std::exception &e) {
+				// A bad optional payload must not hide every record that follows it.
+				// The header remains useful to the browser (type/FormID), while
+				// callers can hydrate the record separately if needed.
+				last_error_ = String((std::string("record ") + std::to_string(r.form_id) + ": " + e.what()).c_str());
 			}
-			entry["editor_id"] = String(editor_id.c_str());
-			entry["full_name"] = String(full_name.c_str());
 			out.push_back(entry);
 		});
 	} catch (const std::exception &e) {

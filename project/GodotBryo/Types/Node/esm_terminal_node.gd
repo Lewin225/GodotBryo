@@ -1,0 +1,38 @@
+@tool
+@icon("res://GodotBryo/Types/Node/terminal.svg")
+class_name EsmTerminalNode
+extends EsmNode
+
+@export_tool_button("Activate") var activate_button: Callable = activate
+
+## The menu is immutable Base data. TerminalSession remains the owner of UI
+## and navigation state when the runtime interaction path is used.
+var menu_items: Array[TerminalMenuItem] = []
+
+func build_visual(resolver: GamebryoMeshResolver) -> void:
+	var terminal_ref := reference as TerminalReference
+	if terminal_ref == null or not terminal_ref.base is TerminalBase:
+		return
+	var base := terminal_ref.base as TerminalBase
+	build_dynamic_visual(resolver, base.model_path)
+	menu_items = base.menu_items.duplicate(true)
+	_add_looping_sound(resolver, base.looping_sound_path)
+	_visual_built = true
+
+## UI/session opening remains owned by Game. This hook provides the same
+## activation contract as DoorNode while that session is being routed.
+func activate(_actor: Node = null) -> Dictionary:
+	return {"terminal": self, "menu_items": menu_items}
+
+func _add_looping_sound(resolver: GamebryoMeshResolver, path: String) -> void:
+	if path.is_empty():
+		return
+	var stream := resolver.load_sound(path)
+	if stream == null:
+		return
+	var player := AudioStreamPlayer3D.new()
+	player.name = "LoopingSound"
+	player.stream = stream.duplicate()
+	if player.stream is AudioStreamWAV:
+		(player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+	add_child(player)
