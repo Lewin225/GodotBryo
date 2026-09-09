@@ -10,5 +10,4 @@ extends EsmReference
 @export var idle_form_id: int = 0
 @export var topic_form_id: int = 0
 @export var alive: bool = true
-var contents: Array[EsmReference] = []
-var equipped_instance_ids: PackedStringArray = []
+@export var contents: Inventory
