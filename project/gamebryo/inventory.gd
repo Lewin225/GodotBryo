@@ -189,6 +189,8 @@ func serialize_state() -> Dictionary:
 			"item_instance_id": item.instance_id,
 			"count": item.count,
 			"is_equipped": item.is_equipped,
+			"owner_form_id": item.owner_form_id,
+			"health_percent": item.health_percent,
 		}
 		if reference is WeaponReference:
 			state["reference_type"] = "WeaponReference"
@@ -232,6 +234,8 @@ func restore_state(state: Dictionary, reference_factory: Callable) -> bool:
 		item.instance_id = String(data.get("item_instance_id", ""))
 		item.count = int(data.get("count", 0))
 		item.is_equipped = bool(data.get("is_equipped", false))
+		item.owner_form_id = int(data.get("owner_form_id", 0))
+		item.health_percent = float(data.get("health_percent", -1.0))
 		if item.count > 0:
 			items.append(item)
 			_connect_item(item)

@@ -16,5 +16,9 @@ signal item_changed
 			return
 		is_equipped = value
 		item_changed.emit()
+## COED owner metadata inherited from a leveled-list entry.
+@export var owner_form_id: int = 0
+## COED health percentage; -1 means unspecified.
+@export var health_percent: float = -1.0
 ## Temporary derived compatibility data for the old player inventory UI.
 var compatibility_data: Dictionary = {}
