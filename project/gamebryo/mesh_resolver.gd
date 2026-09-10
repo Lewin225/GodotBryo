@@ -6,6 +6,17 @@ const NO_LIGHTING_FALLOFF_SHADER := preload("res://gamebryo/no_lighting_falloff.
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const KF_ANIMATION_CACHE_VERSION := "kf-animation-v4"
 const KF_ANIMATION_CACHE_DIR := "user://nv_kf_animation_cache"
+const LOCOMOTION_FOLDER_PREFIX := "meshes/characters/_male/locomotion/"
+const THIRD_PERSON_ANIMATION_FOLDER_PREFIX := "meshes/characters/_male/"
+
+# Animation discovery is independent of an individual actor.  Keep the
+# archive census process-wide so each resolver/actor does not walk every BSA
+# entry again.  The clip-set entries remain keyed by the requested NIF path;
+# two models may therefore have separate logical entries while sharing the
+# same discovered source paths and converted Animation resources.
+static var _shared_animation_file_lists: Dictionary = {}
+static var _shared_animation_clip_sets: Dictionary = {}
+static var _shared_converted_animation_cache: Dictionary = {}
 
 ## BSA-priority search + NIF/DDS resolution, shared by every object factory.
 ## Previously duplicated per-script across test_integration.gd, test_dds.gd,
@@ -228,6 +239,79 @@ func list_files_with_prefix(folder_prefix: String) -> PackedStringArray:
 				seen[entry_path] = true
 				out.append(entry_path)
 	return out
+
+## Returns the animation sources associated with a model NIF.  The public
+## lookup is deliberately model-path keyed: callers do not need to know
+## about the shared human skeleton or Bethesda's folder conventions.
+##
+## The optional weapon argument supplies the ESM-authored animation family
+## and action names.  It is not part of the cache identity because a given
+## model path is expected to have one authored animation association.  The
+## returned dictionary contains source paths only; conversion to Godot
+## Animation resources remains target-aware and is handled by the existing
+## KF conversion cache.
+func get_animation_clip_set(nif_path: String, weapon = null) -> Dictionary:
+	var model_key := nif_path.to_lower().replace("/", "\\")
+	if model_key.is_empty():
+		return {"clips": {}, "weapon_clip_names": []}
+	var source_key := _animation_source_key()
+	var cache_key := source_key + "|" + model_key
+	if _shared_animation_clip_sets.has(cache_key):
+		return _shared_animation_clip_sets[cache_key]
+
+	var locomotion := _shared_animation_file_list(source_key, LOCOMOTION_FOLDER_PREFIX)
+	var third_person := _shared_animation_file_list(source_key, THIRD_PERSON_ANIMATION_FOLDER_PREFIX)
+	var clips := {}
+	var weapon_clip_names: Array[String] = []
+	var family := String(weapon.animation_family).to_lower() if weapon != null else ""
+
+	for entry in locomotion:
+		var path := String(entry)
+		if not path.ends_with(".kf"):
+			continue
+		var relative := path.trim_prefix(LOCOMOTION_FOLDER_PREFIX)
+		var filename := relative.get_file().to_lower()
+		if not filename.begins_with("mt") and (family.is_empty() or not filename.begins_with(family)):
+			continue
+		var clip_name := relative.replace("/", "__")
+		clips[clip_name] = "characters\\_male\\locomotion\\" + relative.replace("/", "\\")
+		if not family.is_empty() and filename.begins_with(family):
+			weapon_clip_names.append(clip_name)
+
+	if weapon != null:
+		var desired_actions := {}
+		for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
+			var action_clip := String(weapon.action_clip_name(action)).to_lower()
+			if not action_clip.is_empty():
+				desired_actions[action_clip] = true
+		for entry in third_person:
+			var path := String(entry).to_lower()
+			if not path.ends_with(".kf") or "/locomotion/" in path:
+				continue
+			var relative := path.trim_prefix(THIRD_PERSON_ANIMATION_FOLDER_PREFIX)
+			if relative.contains("/"):
+				continue
+			var filename := relative.get_file()
+			if not desired_actions.has(filename):
+				continue
+			var clip_name := relative.replace("/", "__")
+			clips[clip_name] = "characters\\_male\\" + relative.replace("/", "\\")
+			weapon_clip_names.append(clip_name)
+
+	var result := {"clips": clips, "weapon_clip_names": weapon_clip_names}
+	_shared_animation_clip_sets[cache_key] = result
+	return result
+
+func _animation_source_key() -> String:
+	return _data_dir.to_lower() + "|" + ",".join(_bsa_order).to_lower()
+
+func _shared_animation_file_list(source_key: String, folder_prefix: String) -> PackedStringArray:
+	var key := source_key + "|" + folder_prefix
+	if _shared_animation_file_lists.has(key):
+		return _shared_animation_file_lists[key]
+	var files := list_files_with_prefix(folder_prefix)
+	_shared_animation_file_lists[key] = files
+	return files
 
 ## Returns { "bsa": String, "data": PackedByteArray } or {} if not found in
 ## any archive. Worker-safe -- BsaReader I/O only, no RenderingServer/
@@ -1363,13 +1447,19 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state, female: boo
 				if not addon_path.is_empty():
 					paths.append({"path": addon_path, "source": addon, "field": "MOD3" if female else "MODL"})
 		for model in paths:
-			var equipment_nif := load_nif(String(model.path))
+			var equipment_model_path := String(model.path)
+			var nif_cache_hit := _nif_cache.has(equipment_model_path)
+			var nif_load_start_usec := Time.get_ticks_usec()
+			var equipment_nif := load_nif(equipment_model_path)
+			_print_equipment_timing("nif_cache_%s" % ("hit" if nif_cache_hit else "miss"), equipment_model_path, nif_load_start_usec)
 			if equipment_nif == null:
 				diagnostics.append("Equipment NIF not found: %s" % model.path)
 				continue
+			var geometry_build_start_usec := Time.get_ticks_usec()
 			if equipment_nif.get_skin_data().is_empty():
 				if not _populate_unskinned_equipment(parent, skeleton, equipment_nif, String(model.path), model.source, model.field):
 					diagnostics.append("Skipped unskinned armor model with no supported attachment bone: %s" % model.path)
+				_print_equipment_timing("geometry_node_build", equipment_model_path, geometry_build_start_usec)
 				continue
 			_populate_skinned_mesh_instances(parent, skeleton, equipment_nif, String(model.path), morphed, null, {
 				"gamebryo_equipment": true,
@@ -1377,6 +1467,7 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state, female: boo
 				"gamebryo_equipment_biped_flags": model.source.biped_flags,
 				"gamebryo_equipment_model_field": model.field
 			})
+			_print_equipment_timing("geometry_node_build", equipment_model_path, geometry_build_start_usec)
 	var equipped_weapon: WeaponBase = state.get_weapon_base() if state is EsmActorEquipmentState else state.weapon
 	if equipped_weapon != null:
 		var weapon_models: Array[Dictionary] = []
@@ -1392,13 +1483,23 @@ func populate_equipment(parent: Node3D, skeleton: Skeleton3D, state, female: boo
 		if weapon_models.is_empty() and not equipped_weapon.model_path.is_empty():
 			weapon_models.append({"path": equipped_weapon.model_path, "source": equipped_weapon, "field": "MODL"})
 		for model in weapon_models:
-			var weapon_nif := load_nif(String(model.path))
+			var weapon_model_path := String(model.path)
+			var nif_cache_hit := _nif_cache.has(weapon_model_path)
+			var nif_load_start_usec := Time.get_ticks_usec()
+			var weapon_nif := load_nif(weapon_model_path)
+			_print_equipment_timing("nif_cache_%s" % ("hit" if nif_cache_hit else "miss"), weapon_model_path, nif_load_start_usec)
 			if weapon_nif == null:
 				diagnostics.append("Weapon NIF not found: %s" % model.path)
 				continue
+			var geometry_build_start_usec := Time.get_ticks_usec()
 			if not _populate_weapon_model(parent, skeleton, weapon_nif, String(model.path), model.source, String(model.field), equipped_weapon):
 				diagnostics.append("Skipped weapon model with no supported attachment: %s" % model.path)
+			_print_equipment_timing("geometry_node_build", weapon_model_path, geometry_build_start_usec)
 	return diagnostics
+
+func _print_equipment_timing(stage: String, model_path: String, start_usec: int) -> void:
+	var elapsed_ms := float(Time.get_ticks_usec() - start_usec) / 1000.0
+	print("GamebryoMeshResolver timing [%s] %s: %.2f ms" % [stage, model_path, elapsed_ms])
 
 ## Adds one authored equipped weapon model to the actor's shared skeleton.
 ## Skin-backed BIPL models retain their own bone names and bind poses; plain
@@ -1436,16 +1537,6 @@ func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader
 	var local_player := populate_direct_controller_player(hand, nif, built)
 	if local_player != null and local_player.has_animation("embedded"):
 		local_player.play("embedded")
-	var local_clips := {}
-	var available_local_files := {}
-	for entry in list_files_with_prefix("meshes/characters/_male/"):
-		available_local_files[String(entry).to_lower()] = true
-	for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
-		var clip: String = weapon.action_clip_name(action) if weapon != null else ""
-		var archive_path: String = "meshes/characters/_male/" + clip.to_lower()
-		if not clip.is_empty() and available_local_files.has(archive_path):
-			local_clips[clip] = "characters\\_male\\" + clip
-	populate_external_node_animations(hand, built, local_clips)
 	for child in hand.find_children("*", "MeshInstance3D", true, false):
 		for metadata_key in metadata:
 			child.set_meta(String(metadata_key), metadata[metadata_key])
@@ -1982,8 +2073,66 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 	player.add_animation_library("", library)
 	return player
 
+## Adds shared actor/weapon KF clips to one AnimationPlayer rooted at `parent`.
+## A real actor KF can contain both Bip01 skeleton targets and weapon-local
+## targets in the same sequence. Resolve both against the common Body root so
+## one playback operation drives the actor and its equipped weapon together.
+## `animated_nodes` is the current weapon subtree; its nodes are instance-
+## specific, so these clips are rebuilt when the equipped weapon changes.
+func populate_actor_kf_animations(parent: Node3D, skeleton: Skeleton3D, animated_nodes: Node3D, clips: Dictionary, existing_player: AnimationPlayer = null) -> AnimationPlayer:
+	if clips.is_empty():
+		return existing_player
+	var player := existing_player
+	if player == null:
+		player = AnimationPlayer.new()
+		player.name = "LocomotionAnimationPlayer"
+		parent.add_child(player)
+		player.root_node = NodePath("..")
+	var library := player.get_animation_library("")
+	if library == null:
+		library = AnimationLibrary.new()
+		player.add_animation_library("", library)
+	var skeleton_path: NodePath = parent.get_path_to(skeleton)
+	var node_by_name: Dictionary = {}
+	if animated_nodes != null:
+		for node in animated_nodes.find_children("*", "Node3D", true, false):
+			if not node_by_name.has(String(node.name)):
+				node_by_name[String(node.name)] = node
+	var resolve_target := func(target_name: String):
+		if skeleton.find_bone(target_name) != -1:
+			return NodePath(str(skeleton_path) + ":" + target_name)
+		# The actor KF visibility controller uses the authored pseudo-target
+		# ##VisCtrl rather than the visible Weapon node itself. Resolve that
+		# engine convention to the generated weapon hierarchy's Weapon node.
+		if target_name == "##VisCtrl" and node_by_name.has("Weapon"):
+			return parent.get_path_to(node_by_name["Weapon"])
+		if node_by_name.has(target_name):
+			return parent.get_path_to(node_by_name[target_name])
+		return null
+	for clip_name in clips:
+		var name := String(clip_name)
+		if library.has_animation(name):
+			library.remove_animation(name)
+		var target_signature := _animation_target_signature(skeleton, node_by_name)
+		var cache_key := KF_ANIMATION_CACHE_VERSION + "|" + _animation_source_key() + "|combined|" + String(clips[clip_name]).to_lower() + "|" + target_signature
+		var animation: Animation = _shared_converted_animation_cache.get(cache_key)
+		if animation == null:
+			var kf_nif := load_nif(String(clips[clip_name]))
+			if kf_nif == null:
+				continue
+			var sequences: Array = kf_nif.get_animation_sequences()
+			if sequences.is_empty():
+				continue
+			animation = _build_sequence_animation(sequences[0], resolve_target, skeleton)
+			_shared_converted_animation_cache[cache_key] = animation
+		if animation.get_track_count() > 0:
+			library.add_animation(name, animation)
+	return player
+
 func _load_or_build_kf_animation(kf_path: String, skeleton: Skeleton3D, resolve_bone: Callable, skeleton_path: NodePath) -> Animation:
-	var cache_key := KF_ANIMATION_CACHE_VERSION + "|" + kf_path.to_lower()
+	var cache_key := KF_ANIMATION_CACHE_VERSION + "|" + _animation_source_key() + "|" + kf_path.to_lower() + "|" + String(skeleton_path)
+	if _shared_converted_animation_cache.has(cache_key):
+		return _shared_converted_animation_cache[cache_key]
 	if _animation_cache.has(cache_key):
 		return _animation_cache[cache_key]
 	var disk_path := _kf_animation_cache_path(cache_key)
@@ -2001,9 +2150,22 @@ func _load_or_build_kf_animation(kf_path: String, skeleton: Skeleton3D, resolve_
 		_animation_cache[cache_key] = null
 		return null
 	var anim := _build_sequence_animation(sequences[0], resolve_bone, skeleton)
+	_shared_converted_animation_cache[cache_key] = anim
 	_animation_cache[cache_key] = anim
 	_save_kf_animation_cache(anim, disk_path)
 	return anim
+
+func _animation_target_signature(skeleton: Skeleton3D, named_nodes: Dictionary = {}) -> String:
+	var parts: Array[String] = []
+	if skeleton != null:
+		for index in skeleton.get_bone_count():
+			parts.append(String(skeleton.get_bone_name(index)))
+	var node_names: Array[String] = []
+	for node_name in named_nodes:
+		var node: Node = named_nodes[node_name]
+		node_names.append(String(node_name) + "@" + String(node.get_path()))
+	node_names.sort()
+	return ",".join(parts) + "|" + ",".join(node_names)
 
 func _kf_animation_cache_path(cache_key: String) -> String:
 	return KF_ANIMATION_CACHE_DIR + "/" + str(abs(cache_key.hash())) + ".tres"
@@ -2251,6 +2413,20 @@ func _build_sequence_animation(seq: Dictionary, resolve_target_path: Callable, s
 			anim.track_set_interpolation_type(idx, _godot_interp(int(scale_keys[0]["interp"])))
 			for k in scale_keys:
 				anim.track_insert_key(idx, float(k["time"]), Vector3.ONE * float(k["value"]))
+	for track in seq.get("bool_tracks", []):
+		var target_name: String = track["target_node_name"]
+		var resolved = resolve_target_path.call(target_name)
+		if resolved == null:
+			continue
+		# NiBoolInterpolator is the authored visibility-controller form in
+		# supported FNV sequence/KF data. Keep the source property/controller
+		# metadata in the native representation, but bind the runtime value to
+		# Godot's ordinary Node.visible property here.
+		var visibility_idx := anim.add_track(Animation.TYPE_VALUE)
+		anim.track_set_path(visibility_idx, NodePath(str(resolved) + ":visible"))
+		anim.track_set_interpolation_type(visibility_idx, Animation.INTERPOLATION_NEAREST)
+		for key in track.get("keys", []):
+			anim.track_insert_key(visibility_idx, float(key["time"]), bool(key["value"]))
 	if skeleton != null and not non_accum_path.is_empty():
 		var bone_index := skeleton.find_bone(non_accum_bone_name)
 		if bone_index != -1:

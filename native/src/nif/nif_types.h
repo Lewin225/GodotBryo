@@ -307,6 +307,18 @@ struct BoolKey {
 	bool value = false;
 };
 
+// One boolean-valued ControllerLink preserved from a
+// NiControllerSequence. In the supported FNV animation data these are
+// visibility controllers, but the source link metadata remains attached so
+// callers can distinguish/extend boolean properties without changing the
+// native decoder again.
+struct BoolAnimationTrack {
+	std::string target_node_name;
+	std::string property_type;
+	std::string controller_type;
+	std::vector<BoolKey> keys;
+};
+
 struct DirectAnimationController {
 	std::string target_node_name;
 	int32_t target_node_index = -1;
@@ -342,6 +354,9 @@ struct AnimationSequence {
 	float stop_time = 0.0f;
 	std::vector<AnimationTrack> tracks;
 	std::vector<FloatAnimationTrack> float_tracks;
+	// Boolean sequence tracks are currently authored visibility controllers;
+	// link metadata is retained by BoolAnimationTrack for future properties.
+	std::vector<BoolAnimationTrack> bool_tracks;
 };
 
 // General (not animation-specific) preservation of the NIF's own node

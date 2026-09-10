@@ -898,11 +898,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// compressed NiBSplineTransformInterpolator path above (see nif_types.h's
 	// own doc comment for the real-data census that scoped this) — every
 	// other interpolator type a ControllerLink can reference
-	// (NiFloatInterpolator, NiBoolInterpolator, NiPoint3Interpolator, ...)
-	// is silently skipped per-link, not per-file, so a sequence that mixes
-	// real transform tracks with particle/visibility tracks (confirmed
-	// real — e.g. a door-adjacent dust-blast effect NIF) still yields
-	// exactly the transform tracks that matter here.
+	// (NiPoint3Interpolator, ...) is silently skipped per-link, not per-file,
+	// so a sequence that mixes real transform tracks with particle/visibility
+	// tracks (confirmed real — e.g. a door-adjacent dust-blast effect NIF)
+	// still yields exactly the supported transform and boolean tracks here.
 	auto extract_sequence = [&](nifly::NiControllerSequence *seq) -> AnimationSequence {
 		AnimationSequence sequence;
 		sequence.name = seq->name.get();
@@ -947,7 +946,24 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 						sequence.float_tracks.push_back(std::move(track));
 					}
 				}
-				continue; // real particle/visibility/color or facial float track
+				auto *bool_interp = dynamic_cast<nifly::NiBoolInterpolator *>(interp);
+				if (bool_interp) {
+					auto *bd = nif.GetHeader().GetBlock<nifly::NiBoolData>(bool_interp->dataRef);
+					BoolAnimationTrack track;
+					track.target_node_name = link.nodeName.get();
+					track.property_type = link.propType.get();
+					track.controller_type = link.ctrlType.get();
+					if (bd) {
+						for (uint32_t k = 0; k < bd->data.GetNumKeys(); ++k) {
+							auto key = bd->data.GetKey(static_cast<int>(k));
+							track.keys.push_back({key.time, key.value != 0});
+						}
+					}
+					if (track.keys.empty())
+						track.keys.push_back({sequence.start_time, bool_interp->boolValue != 0});
+					sequence.bool_tracks.push_back(std::move(track));
+				}
+				continue; // real particle/color or unsupported non-transform track
 			}
 			auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
 			if (!td) {

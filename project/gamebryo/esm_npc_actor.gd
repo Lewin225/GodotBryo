@@ -333,11 +333,13 @@ func _rehydrate_and_build() -> void:
 	build_visual(GamebryoMeshResolver.new())
 
 func refresh_equipment(mesh_resolver: GamebryoMeshResolver = null, state_override: EsmActorEquipmentState = null) -> void:
+	var refresh_start_usec := Time.get_ticks_usec()
 	var resolver := mesh_resolver if mesh_resolver != null else _active_mesh_resolver
 	var body := get_node_or_null(NodePath(BODY_NODE_NAME))
 	var skeleton: Skeleton3D = body.get_node_or_null(^"Skeleton3D") if body != null else null
 	if body == null or skeleton == null or resolver == null:
 		return
+	_ensure_weapon_animation_player(body)
 	_remove_weapon_animation_clips()
 	var old_equipment := body.get_node_or_null(^"Equipment")
 	if old_equipment != null:
@@ -349,21 +351,62 @@ func refresh_equipment(mesh_resolver: GamebryoMeshResolver = null, state_overrid
 	_active_weapon = state.get_weapon_base() if state != null and state is EsmActorEquipmentState else (state.weapon if state != null else null)
 	var animation_component: Node = get_node_or_null(^"ActorAnimationComponent")
 	if animation_component != null:
+		var actor_animation_start_usec := Time.get_ticks_usec()
 		animation_component.set_equipped_weapon(_active_weapon)
+		_print_equipment_timing("actor_animation_refresh_initial", actor_animation_start_usec)
+	var equipment_start_usec := Time.get_ticks_usec()
 	for diagnostic in resolver.populate_equipment(equipment, skeleton, state, _is_female):
 		push_warning("EsmNpcActor equipment: %s" % diagnostic)
+	_print_equipment_timing("populate_equipment", equipment_start_usec)
 	if Engine.is_editor_hint():
+		var ownership_start_usec := Time.get_ticks_usec()
 		_own_recursive(equipment)
+		_print_equipment_timing("editor_ownership", ownership_start_usec)
+	var render_mode_start_usec := Time.get_ticks_usec()
 	_apply_equipment_body_coverage(body)
 	_apply_possessed_first_person_render_mode()
+	_print_equipment_timing("render_property_traversals", render_mode_start_usec)
 	if _weapon_animation_player != null:
+		var animation_discovery_start_usec := Time.get_ticks_usec()
 		var clips := _discover_locomotion_clips(resolver, _active_weapon)
+		_print_equipment_timing("animation_file_discovery", animation_discovery_start_usec)
+		var action_clips := {}
+		for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
+			var action_clip := _active_weapon.action_clip_name(action) if _active_weapon != null else ""
+			if not action_clip.is_empty() and clips.has(action_clip):
+				action_clips[action_clip] = clips[action_clip]
+				clips.erase(action_clip)
+		var animation_population_start_usec := Time.get_ticks_usec()
 		resolver.populate_locomotion_animations(body, skeleton, clips, _weapon_animation_player)
+		_print_equipment_timing("animation_kf_population", animation_population_start_usec)
+		var combined_animation_start_usec := Time.get_ticks_usec()
+		resolver.populate_actor_kf_animations(body, skeleton, equipment, action_clips, _weapon_animation_player)
+		_print_equipment_timing("combined_actor_weapon_animation_population", combined_animation_start_usec)
+		_weapon_clip_names = _discovered_weapon_clip_names.duplicate()
+		for action_clip_name in action_clips:
+			_weapon_clip_names.append(String(action_clip_name))
+		var animation_alias_start_usec := Time.get_ticks_usec()
 		_register_animation_aliases(_weapon_animation_player, resolver, _active_weapon)
+		_print_equipment_timing("animation_alias_registration", animation_alias_start_usec)
 		_weapon_clip_names = _discovered_weapon_clip_names.duplicate()
 		if animation_component != null:
+			var final_actor_animation_start_usec := Time.get_ticks_usec()
 			animation_component.set_equipped_weapon(_active_weapon)
 			animation_component.play_default_idle()
+			_print_equipment_timing("actor_animation_refresh_final", final_actor_animation_start_usec)
+	_print_equipment_timing("refresh_equipment_total", refresh_start_usec)
+
+func _ensure_weapon_animation_player(body: Node3D) -> void:
+	if _weapon_animation_player != null and is_instance_valid(_weapon_animation_player):
+		return
+	_weapon_animation_player = AnimationPlayer.new()
+	_weapon_animation_player.name = "LocomotionAnimationPlayer"
+	body.add_child(_weapon_animation_player)
+	_weapon_animation_player.root_node = NodePath("..")
+
+func _print_equipment_timing(stage: String, start_usec: int) -> void:
+	var elapsed_ms := float(Time.get_ticks_usec() - start_usec) / 1000.0
+	print("EsmNpcActor timing [%s] %s: %.2f ms" % [name, stage, elapsed_ms])
 
 func _remove_weapon_animation_clips() -> void:
 	if _weapon_animation_player == null:
@@ -477,45 +520,10 @@ func _rebuild_body_container() -> Node3D:
 var _discovered_weapon_clip_names: Array[String] = []
 
 func _discover_locomotion_clips(mesh_resolver: GamebryoMeshResolver, weapon: WeaponBase = null) -> Dictionary:
-	var clips := {}
-	_discovered_weapon_clip_names.clear()
-	for entry in mesh_resolver.list_files_with_prefix(LOCOMOTION_FOLDER_PREFIX):
-		var e := String(entry)
-		if not e.ends_with(".kf"):
-			continue
-		var rel := e.trim_prefix(LOCOMOTION_FOLDER_PREFIX)
-		var filename := rel.get_file().to_lower()
-		if weapon == null:
-			if not filename.begins_with("mt"):
-				continue
-		elif not filename.begins_with("mt") and not filename.begins_with(weapon.animation_family):
-			continue
-		var load_path := "characters\\_male\\locomotion\\" + rel.replace("/", "\\")
-		clips[rel.replace("/", "__")] = load_path
-		if weapon != null and filename.begins_with(weapon.animation_family):
-			_discovered_weapon_clip_names.append(rel.replace("/", "__"))
-	if weapon == null:
-		return clips
-	var desired_actions: Dictionary = {}
-	for action in ["equip", "unequip", "idle", "block", "holster", "attack", "reload", "grip"]:
-		var action_clip := weapon.action_clip_name(action)
-		if not action_clip.is_empty():
-			desired_actions[action_clip] = true
-	for entry in mesh_resolver.list_files_with_prefix(THIRD_PERSON_ANIMATION_FOLDER_PREFIX):
-		var e := String(entry).to_lower()
-		if not e.ends_with(".kf") or "/locomotion/" in e:
-			continue
-		var rel := e.trim_prefix(THIRD_PERSON_ANIMATION_FOLDER_PREFIX)
-		if rel.contains("/"):
-			continue
-		var filename := rel.get_file()
-		if not desired_actions.has(filename):
-			continue
-		var clip_name := rel.replace("/", "__")
-		var load_path := "characters\\_male\\" + rel.replace("/", "\\")
-		clips[clip_name] = load_path
-		_discovered_weapon_clip_names.append(clip_name)
-	return clips
+	var model_path := _active_record.model_path if weapon == null and _active_record != null else (weapon.model_path if weapon != null else "")
+	var result := mesh_resolver.get_animation_clip_set(model_path, weapon)
+	_discovered_weapon_clip_names = result.get("weapon_clip_names", []).duplicate()
+	return result.get("clips", {})
 
 
 ## Adds stable, per-actor names for the hand-authored AnimationTree. The
@@ -720,15 +728,6 @@ func _soft_load_actor(record: NpcBase, resolver: GamebryoMeshResolver, generatio
 	_facial_controller.configure(facial_meshes)
 
 	_soft_stage(generation, 0.86, "Animations")
-	var clips := _discover_locomotion_clips(resolver, _active_weapon)
-	var player := resolver.populate_locomotion_animations(body, skeleton, clips)
-	_register_animation_aliases(player, resolver, _active_weapon)
-	_weapon_animation_player = player
-	_weapon_clip_names = _discovered_weapon_clip_names.duplicate()
-	var animation_component: Node = get_node_or_null(^"ActorAnimationComponent")
-	if animation_component != null:
-		animation_component.set_equipped_weapon(_active_weapon)
-		animation_component.play_default_idle()
 	_apply_possessed_first_person_render_mode()
 	_apply_race_skin_overrides(record, resolver)
 	_apply_equipment_body_coverage(body)
