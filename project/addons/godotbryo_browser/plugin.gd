@@ -14,7 +14,7 @@ func _enter_tree() -> void:
 	browser.name = "GodotBryo"
 	loader = LoaderScript.new()
 	ResourceLoader.add_resource_format_loader(loader, false)
-	add_control_to_dock(DOCK_SLOT_BOTTOM, browser)
+	add_control_to_bottom_panel(browser, "GodotBryo")
 	var editor_viewport := EditorInterface.get_editor_viewport_3d()
 	drop_target = DropTargetScript.new()
 	drop_target.drop_received.connect(_on_viewport_drop)
@@ -33,14 +33,14 @@ func _exit_tree() -> void:
 	if is_instance_valid(drop_target):
 		drop_target.queue_free()
 	if browser != null:
-		remove_control_from_docks(browser)
+		remove_control_from_bottom_panel(browser)
 		browser.queue_free()
 
 func _on_viewport_drop(screen_position: Vector2, data: Variant) -> void:
 	if not data is Dictionary:
 		return
 	var base = data.get("resource")
-	if not base is EsmBase:
+	if not base is EsmBase or base is LeveledItemBase:
 		return
 	var editor_viewport := EditorInterface.get_editor_viewport_3d()
 	var camera := editor_viewport.get_camera_3d()
@@ -67,7 +67,7 @@ func _forward_3d_gui_input(p_viewport_camera: Camera3D, p_event: InputEvent) -> 
 	if String(drag_data.get("type", "")) != "resource":
 		return AFTER_GUI_INPUT_PASS
 	var base = drag_data.get("resource")
-	if not base is EsmBase:
+	if not base is EsmBase or base is LeveledItemBase:
 		return AFTER_GUI_INPUT_PASS
 
 	if _drop_base_into_scene(base as EsmBase, p_viewport_camera, p_event.position):
@@ -79,7 +79,7 @@ func _drop_base_into_scene(base: EsmBase, camera: Camera3D, screen_position: Vec
 	var scene_root := EditorInterface.get_edited_scene_root()
 	if scene_root == null or not scene_root is Node3D:
 		return false
-	if base.form_id == 0:
+	if base.form_id == 0 or base is LeveledItemBase:
 		return false
 
 	var server = get_tree().root.get_node_or_null("EsmServer")

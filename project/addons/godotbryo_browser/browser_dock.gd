@@ -1,7 +1,7 @@
 @tool
 extends VBoxContainer
 
-const BASE_TYPES := ["NPC_", "RACE", "HAIR", "EYES", "CLAS", "PACK", "ARMO", "ARMA", "FLST", "WEAP", "ALCH", "LVLI", "AMMO", "BOOK", "CCRD", "CMNY", "KEYM", "MISC", "DOOR", "SCOL", "LIGH", "CONT", "ACTI", "FURN", "TACT", "MSTT", "TERM", "STAT", "CREA"]
+const BASE_TYPES := ["ACTI", "ALCH", "AMMO", "ARMA", "ARMO", "BOOK", "CCRD", "CLAS", "CMNY", "CONT", "CREA", "DOOR", "EYES", "FLST", "FURN", "HAIR", "KEYM", "LIGH", "LVLI", "MISC", "MSTT", "NPC_", "PACK", "RACE", "SCOL", "STAT", "TACT", "TERM", "WEAP"]
 const CardScript := preload("res://addons/godotbryo_browser/base_card.gd")
 const ReferenceCardScript := preload("res://addons/godotbryo_browser/reference_card.gd")
 const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_physicaliser.gd")
@@ -15,6 +15,9 @@ var filter_edit: LineEdit
 var grid: GridContainer
 var status: Label
 var find_button: Button
+var preview_button: Button
+var preview_level: SpinBox
+var preview_count: SpinBox
 var context_menu: PopupMenu
 var rows: Array = []
 var selected_card
@@ -51,6 +54,9 @@ func _build_ui() -> void:
 	filter_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	filter_edit.text_changed.connect(func(_t: String) -> void: _refresh_grid()); controls.add_child(filter_edit)
 	find_button = Button.new(); find_button.text = "Find References"; find_button.disabled = true; find_button.pressed.connect(_find_selected); controls.add_child(find_button)
+	preview_level = SpinBox.new(); preview_level.min_value = 1; preview_level.max_value = 100; preview_level.value = 1; preview_level.tooltip_text = "Actor level used for LVLI preview"; controls.add_child(preview_level)
+	preview_count = SpinBox.new(); preview_count.min_value = 1; preview_count.max_value = 20; preview_count.value = 1; preview_count.tooltip_text = "Number of LVLI generations to preview"; controls.add_child(preview_count)
+	preview_button = Button.new(); preview_button.text = "Preview Result"; preview_button.disabled = true; preview_button.pressed.connect(_preview_selected_list); controls.add_child(preview_button)
 	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; add_child(scroll)
 	grid = GridContainer.new(); grid.columns = 1; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", GRID_H_SEPARATION)
@@ -113,6 +119,7 @@ func _refresh_grid() -> void:
 	_rendering = true
 	selected_card = null
 	find_button.disabled = true
+	if preview_button != null: preview_button.disabled = true
 	_clear_grid()
 	status.text = "Filtering records..."
 
@@ -120,6 +127,7 @@ func _clear_grid() -> void:
 	_render_generation += 1
 	selected_card = null
 	find_button.disabled = true
+	if preview_button != null: preview_button.disabled = true
 	if grid == null: return
 	for child in grid.get_children():
 		grid.remove_child(child)
@@ -177,6 +185,8 @@ func _activate_card(card) -> void:
 	selected_card = card; find_button.disabled = false
 	var resource: EsmBase = server.get_base(int(card.row.get("form_id", 0))) if server != null else null
 	card.set_resource(resource)
+	if preview_button != null:
+		preview_button.disabled = not resource is LeveledItemBase
 	if resource != null: EditorInterface.inspect_object(resource)
 
 func _context_card(card, screen_position: Vector2i) -> void:
@@ -189,6 +199,8 @@ func _context_card(card, screen_position: Vector2i) -> void:
 		find_button.disabled = false
 		context_menu.add_item("Find References", 1)
 		context_menu.add_item("Open As Scene", 2)
+		if String(card.row.get("record_type", "")) == "LVLI":
+			context_menu.add_item("Preview Calculated Result", 3)
 	context_menu.position = screen_position
 	context_menu.popup()
 
@@ -197,6 +209,32 @@ func _context_menu_pressed(id: int) -> void:
 		_find_selected()
 	elif id == 2:
 		_open_selected_reference_scene()
+	elif id == 3:
+		_preview_selected_list()
+
+func _preview_selected_list() -> void:
+	if selected_card == null or server == null or not server.is_ready(): return
+	var base: EsmBase = server.get_base(int(selected_card.row.get("form_id", 0)))
+	if not base is LeveledItemBase: return
+	var resolver := LeveledItemResolver.new(server)
+	_rendering = false
+	_clear_grid()
+	var generated := 0
+	var runs := int(preview_count.value) if preview_count != null else 1
+	var level := int(preview_level.value) if preview_level != null else 1
+	for run in runs:
+		for item in resolver.resolve(base as LeveledItemBase, level, {"seed": base.form_id + run}):
+			if item == null or item.item_reference == null or item.item_reference.base == null: continue
+			var item_base: EsmBase = item.item_reference.base
+			var row := {"record_type": item_base.record_type, "form_id": item_base.form_id, "full_name": item_base.full_name, "editor_id": item_base.editor_id}
+			row["display_name"] = item_base.full_name if not item_base.full_name.is_empty() else item_base.editor_id
+			var card := CardScript.new()
+			card.configure(row)
+			card.activated.connect(_activate_card)
+			card.context_requested.connect(_context_card)
+			grid.add_child(card)
+			generated += 1
+	status.text = "%d generated item(s) at actor level %d" % [generated, level]
 
 func _find_selected() -> void:
 	if selected_card == null or server == null or not server.is_ready(): return
@@ -208,8 +246,16 @@ func _find_selected() -> void:
 	var count := 0
 	for candidate in rows:
 		var tag := String(candidate.get("record_type", ""))
-		if tag not in ["REFR", "ACHR", "ACRE"]: continue
 		var raw: Dictionary = server.reader.get_record_data(int(candidate.get("form_id", 0)))
+		if String(selected_card.row.get("record_type", "")) == "LVLI":
+			var usage := _find_leveled_usage(raw, tag, target)
+			if usage.is_empty(): continue
+			var usage_card = ReferenceCardScript.new()
+			usage_card.configure(tag + " " + String(usage.get("kind", "usage")), int(candidate.get("form_id", 0)), target, base_name)
+			grid.add_child(usage_card)
+			count += 1
+			continue
+		if tag not in ["REFR", "ACHR", "ACRE"]: continue
 		if _u32(_subrecord(raw, "NAME")) != target: continue
 		var reference_card = ReferenceCardScript.new()
 		reference_card.configure(tag, int(candidate.get("form_id", 0)), target, base_name)
@@ -218,6 +264,25 @@ func _find_selected() -> void:
 		grid.add_child(reference_card)
 		count += 1
 	status.text = "%d references found" % count
+
+func _find_leveled_usage(raw: Dictionary, tag: String, target: int) -> Dictionary:
+	if tag not in ["NPC_", "CONT", "LVLI"]:
+		return {}
+	var subrecords: Array = raw.get("subrecords", [])
+	for index in subrecords.size():
+		var sub: Dictionary = subrecords[index]
+		var sub_tag := String(sub.get("type", ""))
+		var data: PackedByteArray = sub.get("data", PackedByteArray())
+		if tag in ["NPC_", "CONT"] and sub_tag == "CNTO" and data.size() >= 4 and _u32(data) == target:
+			return {"kind": "CNTO"}
+		if tag == "LVLI" and sub_tag == "LVLO" and data.size() >= 8 and _lvlo_item_form_id(data) == target:
+			return {"kind": "LVLO[%d]" % index}
+	return {}
+
+func _lvlo_item_form_id(data: PackedByteArray) -> int:
+	if data.size() >= 12:
+		return int(data.decode_u32(4))
+	return int(data.decode_u32(2)) if data.size() >= 8 else 0
 
 func _activate_reference_card(_card, reference_id: int) -> void:
 	var reference = server.get_reference("authored:%08X" % reference_id) if server != null else null
