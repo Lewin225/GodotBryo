@@ -13,6 +13,7 @@ const StaticCollectionNodeScript := preload("res://GodotBryo/Types/Node/esm_stat
 const MovableStaticNodeScript := preload("res://GodotBryo/Types/Node/esm_movable_static_node.gd")
 const TalkingActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_talking_activator_node.gd")
 const TerminalNodeScript := preload("res://GodotBryo/Types/Node/esm_terminal_node.gd")
+const LeveledItemPreviewNodeScript := preload("res://GodotBryo/Types/Node/esm_leveled_item_preview_node.gd")
 const NpcActorScene := preload("res://gamebryo/esm_npc_actor.tscn")
 var _mesh_resolver: GamebryoMeshResolver
 
@@ -33,6 +34,10 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		var door_node: EsmDoorNode = DoorNodeScript.new()
 		door_node.configure(reference as DoorReference)
 		root = door_node
+	elif reference is LeveledItemReference:
+		var leveled_preview: EsmLeveledItemPreviewNode = LeveledItemPreviewNodeScript.new()
+		leveled_preview.configure(reference)
+		root = leveled_preview
 	elif reference is MiscReference or reference is AlchemyReference \
 			or reference is AmmoReference or reference is KeyReference \
 			or reference is WeaponReference or reference is ArmorReference \

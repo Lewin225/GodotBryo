@@ -270,12 +270,23 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 	if owner_base == null:
 		return
 	var item_index := 0
+	var resolver := LeveledItemResolver.new(self)
+	var level := int(reference.get("actor_level")) if reference.get("actor_level") != null else 1
 	for item_data in owner_base.all_subrecord_data("CNTO"):
 		if item_data.size() < 8:
 			continue
 		var item_form_id := _u32(item_data)
 		var count := _i32(item_data, 4)
 		var item_base := get_base(item_form_id)
+		if item_base is LeveledItemBase:
+			var resolved := resolver.resolve(item_base as LeveledItemBase, level, {"seed": owner_base.form_id ^ item_index})
+			for resolved_item in resolved:
+				resolved_item.instance_id = "inventory:%08X:%d" % [resolved_item.item_reference.base_form_id, item_index]
+				if count > 1:
+					resolved_item.count *= count
+				reference.contents.add_inventory_item(resolved_item)
+				item_index += 1
+			continue
 		var item_reference := _create_inventory_item_reference(item_base, item_form_id, item_index)
 		if item_reference == null or count <= 0:
 			item_index += 1
@@ -317,7 +328,9 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		result.raw_subrecords.append(subrecord)
 	result.editor_id = _string(_subrecord(raw, "EDID"))
 	result.full_name = _string(_subrecord(raw, "FULL"))
-	if result is WeaponBase:
+	if result is LeveledItemBase:
+		_populate_leveled_item(result as LeveledItemBase, raw)
+	elif result is WeaponBase:
 		var weapon: WeaponBase = result
 		weapon.model_path = _string(_subrecord(raw, "MODL"))
 		var data := _subrecord(raw, "DATA")
@@ -617,6 +630,41 @@ func _all_subrecords(raw: Dictionary, tag: String) -> Array[PackedByteArray]:
 			result.append(subrecord.get("data", PackedByteArray()))
 	return result
 
+func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
+	result.chance_none = _u8(_subrecord(raw, "LVLD"))
+	result.flags = _u8(_subrecord(raw, "LVLF"))
+	result.global_form_id = _u32(_subrecord(raw, "LVLG"))
+	result.entries.clear()
+	var subrecords: Array = raw.get("subrecords", [])
+	for index in subrecords.size():
+		var sub: Dictionary = subrecords[index]
+		if String(sub.get("type", "")) != "LVLO":
+			continue
+		var data: PackedByteArray = sub.get("data", PackedByteArray())
+		if data.size() < 8:
+			result.diagnostics.append("LVLI 0x%08X has truncated LVLO at %d" % [result.form_id, index])
+			continue
+		var entry := LeveledItemEntry.new()
+		entry.level = _i16(data)
+		if data.size() >= 12:
+			entry.item_form_id = _u32(data, 4)
+			entry.count = _i16(data, 8)
+		elif data.size() >= 8:
+			# Older records omit the two unknown words around the FormID.
+			entry.item_form_id = _u32(data, 2)
+			entry.count = _i16(data, 6)
+		entry.item_base = get_base(entry.item_form_id)
+		if data.size() != 12 and data.size() != 8:
+			result.diagnostics.append("LVLI 0x%08X has non-standard LVLO size %d" % [result.form_id, data.size()])
+		if index + 1 < subrecords.size() and String(subrecords[index + 1].get("type", "")) == "COED":
+			var extra: PackedByteArray = subrecords[index + 1].get("data", PackedByteArray())
+			entry.raw_extra_data = extra
+			if extra.size() >= 4:
+				entry.owner_form_id = _u32(extra)
+			if extra.size() >= 12:
+				entry.health_percent = _f32(extra, 8)
+		result.entries.append(entry)
+
 func _string(data: PackedByteArray) -> String:
 	var end := data.size()
 	for i in data.size():
@@ -625,6 +673,8 @@ func _string(data: PackedByteArray) -> String:
 
 func _u32(data: PackedByteArray, offset := 0) -> int:
 	return int(data.decode_u32(offset)) if data.size() >= offset + 4 else 0
+func _i16(data: PackedByteArray, offset := 0) -> int:
+	return int(data.decode_s16(offset)) if data.size() >= offset + 2 else 0
 func _u16(data: PackedByteArray, offset := 0) -> int:
 	return int(data.decode_u16(offset)) if data.size() >= offset + 2 else 0
 func _u8(data: PackedByteArray, offset := 0) -> int:
