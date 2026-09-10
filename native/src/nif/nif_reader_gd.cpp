@@ -320,6 +320,23 @@ Array NifReader::get_animation_sequences() const {
 			float_tracks.push_back(td);
 		}
 		sd["float_tracks"] = float_tracks;
+		Array bool_tracks;
+		for (const nif::BoolAnimationTrack &track : seq.bool_tracks) {
+			Dictionary td;
+			td["target_node_name"] = String(track.target_node_name.c_str());
+			td["property_type"] = String(track.property_type.c_str());
+			td["controller_type"] = String(track.controller_type.c_str());
+			Array keys;
+			for (const auto &key : track.keys) {
+				Dictionary kd;
+				kd["time"] = key.time;
+				kd["value"] = key.value;
+				keys.push_back(kd);
+			}
+			td["keys"] = keys;
+			bool_tracks.push_back(td);
+		}
+		sd["bool_tracks"] = bool_tracks;
 		out.push_back(sd);
 	}
 	return out;

@@ -157,6 +157,17 @@ func _ready() -> void:
 		var kf_sequences: Array = kf_reader.get_animation_sequences() if kf_reader != null else []
 		check(not kf_sequences.is_empty(), "native KF decoder exposes the real mtforward sequence")
 		check(not kf_sequences.is_empty() and String(kf_sequences[0].get("accum_root_name", "")) == "Bip01", "native KF decoder preserves NiControllerSequence accumRootName")
+		var holster_reader := resolver.load_nif("characters\\_male\\1hmholster.kf")
+		var holster_sequences: Array = holster_reader.get_animation_sequences() if holster_reader != null else []
+		check(not holster_sequences.is_empty() and not holster_sequences[0].get("bool_tracks", []).is_empty(), "native KF decoder exposes the real holster NiBoolInterpolator")
+		if not holster_sequences.is_empty() and not holster_sequences[0].get("bool_tracks", []).is_empty():
+			var visibility_animation: Animation = resolver._build_sequence_animation(holster_sequences[0], func(_target_name: String): return NodePath("Weapon"))
+			var has_visibility_track := false
+			for visibility_index in visibility_animation.get_track_count():
+				if visibility_animation.track_get_type(visibility_index) == Animation.TYPE_VALUE and String(visibility_animation.track_get_path(visibility_index)) == "Weapon:visible":
+					has_visibility_track = true
+					break
+			check(has_visibility_track, "holster NiBoolInterpolator converts to a Godot Weapon:visible track")
 		var non_accum_index := skeleton.find_bone("Bip01 NonAccum")
 		check(non_accum_index != -1, "human skeleton contains the authored Bip01 NonAccum sibling")
 		if non_accum_index != -1:

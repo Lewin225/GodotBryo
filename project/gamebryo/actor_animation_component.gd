@@ -9,7 +9,10 @@ enum ActorAction { EQUIP, UNEQUIP, IDLE, BLOCK, HOLSTER, ATTACK, RELOAD, GRIP }
 @export var movement_enabled := true
 @export var action_blend_time := 0.0
 
-var equipped_weapon: WeaponRecord = null
+## Both the legacy WeaponRecord and the typed WeaponBase expose
+## action_clip_name(); the animation component only needs that shared
+## capability and must not force the new actor back through the legacy record.
+var equipped_weapon: Resource = null
 var _locomotion_player: AnimationPlayer = null
 var _animation_tree: AnimationTree = null
 var _facial_player: AnimationPlayer = null
@@ -43,7 +46,7 @@ func _refresh_layers() -> void:
 	if _locomotion_player != null and not _locomotion_player.animation_finished.is_connected(_on_locomotion_animation_finished):
 		_locomotion_player.animation_finished.connect(_on_locomotion_animation_finished)
 
-func set_equipped_weapon(weapon: WeaponRecord) -> void:
+func set_equipped_weapon(weapon: Resource) -> void:
 	equipped_weapon = weapon
 	_refresh_layers()
 
@@ -55,7 +58,7 @@ func play_default_idle() -> void:
 		return
 	var clip := _find_clip("mtidle.kf")
 	if equipped_weapon != null:
-		var weapon_idle := equipped_weapon.action_clip_name("idle")
+		var weapon_idle := _weapon_action_clip_name("idle")
 		if _has_clip(_locomotion_player, weapon_idle):
 			clip = weapon_idle
 	if not clip.is_empty():
@@ -89,7 +92,7 @@ func request_action(action: ActorAction) -> bool:
 	if equipped_weapon == null or _locomotion_player == null:
 		return false
 	var action_name := _action_name(action)
-	var clip := equipped_weapon.action_clip_name(action_name)
+	var clip := _weapon_action_clip_name(action_name)
 	if clip.is_empty() or not _has_clip(_locomotion_player, clip):
 		return false
 	_action_active = true
@@ -146,6 +149,11 @@ func _find_clip(base_name: String) -> String:
 
 func _has_clip(player: AnimationPlayer, clip: String) -> bool:
 	return player.has_animation(clip)
+
+func _weapon_action_clip_name(action: String) -> String:
+	if equipped_weapon == null or not equipped_weapon.has_method("action_clip_name"):
+		return ""
+	return String(equipped_weapon.action_clip_name(action))
 
 func _action_name(action: ActorAction) -> String:
 	match action:
