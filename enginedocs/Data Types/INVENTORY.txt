@@ -11,14 +11,16 @@ CENSUS RESULTS
 - All CNTO FormIDs resolved against the combined official-master record set.
 - CNTO references include direct items and LVLI records; CNTO is not an
   equipped-state marker and must not be rendered as equipment automatically.
-- LVLO references are retained as authored references until leveled-list
-  selection rules are implemented. This census does not expand them.
+- LVLO references are retained as authored references in the census. This
+  census does not expand them because resolution depends on selecting actor
+  level, LVLF flags, Chance None, optional GLOB/LVLG, RNG, and the
+  iLevItemLevelDifferenceMax game setting.
 
 The observed CNTO target types include ARMO, WEAP, ALCH, AMMO, MISC, KEYM,
 BOOK, CCRD, CMNY, and LVLI, plus a small number of other records. Unexpected
 types are deliberately retained rather than discarded.
-ALCH now resolves to a typed AlchemyRecord, and LVLI resolves to a typed
-LeveledItemRecord whose LVLO references remain unexpanded.
+The record census is format-level data and does not imply that any referenced
+item has been equipped, spawned, or physically resolved.
 
 RUNTIME CONTRACT
 Inventory is a composition component, not an NPC base class. NPCs and CONT
