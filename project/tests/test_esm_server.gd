@@ -78,6 +78,7 @@ func _ready() -> void:
 	_check_collection_and_movable_resources(server, index)
 	_check_talking_activator_and_terminal_resources(server, index)
 	_check_dropped_item_resources(server, index)
+	_check_leveled_item_resources(server, index)
 	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	await _check_saved_base_rehydrates(server)
@@ -462,6 +463,52 @@ func _check_dropped_item_resources(server, index: Array) -> void:
 			node.free()
 			break
 		_check(found_reference, "a real %s reference is available" % tag)
+
+func _check_leveled_item_resources(server, index: Array) -> void:
+	var found := false
+	for row in index:
+		if String(row.get("record_type", "")) != "LVLI":
+			continue
+		var list: EsmBase = server.get_base(int(row.get("form_id", 0)))
+		if not list is LeveledItemBase:
+			continue
+		found = true
+		_check(list.entries.size() > 0, "LVLI exposes typed entries")
+		if not list.entries.is_empty():
+			var entry: LeveledItemEntry = list.entries[0]
+			_check(entry.item_form_id != 0, "LVLI entry exposes referenced FormID")
+			_check(entry.item_base == server.get_base(entry.item_form_id), "LVLI entry reuses cached item Base")
+		break
+	_check(found, "a real LVLI resolves as LeveledItemBase")
+	if not found:
+		return
+
+	var synthetic := LeveledItemBase.new()
+	synthetic.form_id = 0x7FFF0001
+	var first := LeveledItemEntry.new()
+	first.level = 1
+	first.item_form_id = 0x000E3778
+	first.item_base = server.get_base(first.item_form_id)
+	first.count = 2
+	var second := LeveledItemEntry.new()
+	second.level = 5
+	second.item_form_id = first.item_form_id
+	second.item_base = first.item_base
+	synthetic.entries = [first, second]
+	var resolver := LeveledItemResolver.new(server)
+	var resolved := resolver.resolve(synthetic, 5, {"seed": 1234})
+	_check(resolved.size() == 1, "LVLI nearest-level selection chooses the nearest eligible level")
+	_check(resolved[0].count == 1, "LVLI selected entry produces a single inventory stack")
+	synthetic.flags = 0x04
+	resolved = resolver.resolve(synthetic, 5, {"seed": 1234})
+	_check(resolved.size() == 2, "LVLI Use All emits one stack per entry")
+	_check(resolved[0].count == 2, "LVLI Use All preserves entry count in the stack")
+	var preview_reference := LeveledItemReference.new()
+	preview_reference.base_form_id = synthetic.form_id
+	preview_reference.base = synthetic
+	var preview_node := EsmReferencePhysicaliser.new().physicalise(preview_reference)
+	_check(preview_node is EsmLeveledItemPreviewNode, "LVLI physicalises as a non-world preview node")
+	preview_node.free()
 
 func _check_saved_base_rehydrates(server) -> void:
 	var source: NpcBase = null
