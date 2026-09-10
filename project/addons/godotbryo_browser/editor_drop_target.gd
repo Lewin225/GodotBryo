@@ -15,12 +15,14 @@ func _process(_delta: float) -> void:
 	# the sibling surface underneath.
 	var drag_data := get_viewport().gui_get_drag_data()
 	var should_accept := drag_data is Dictionary and String(drag_data.get("type", "")) == "resource" \
-			and drag_data.get("resource") is EsmBase
+			and drag_data.get("resource") is EsmBase \
+			and not drag_data.get("resource") is LeveledItemBase
 	mouse_filter = Control.MOUSE_FILTER_PASS if should_accept else Control.MOUSE_FILTER_IGNORE
 
 func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
 	return data is Dictionary and String(data.get("type", "")) == "resource" \
-			and data.get("resource") is EsmBase
+			and data.get("resource") is EsmBase \
+			and not data.get("resource") is LeveledItemBase
 
 func _drop_data(at_position: Vector2, data: Variant) -> void:
 	drop_received.emit(at_position, data)

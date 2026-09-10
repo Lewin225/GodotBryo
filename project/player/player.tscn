@@ -549,7 +549,6 @@ shape = SubResource("CapsuleShape3D_player")
 [node name="NPCActor" parent="." unique_id=27428201 instance=ExtResource("5_npc_actor")]
 npc_record = SubResource("Resource_8rogd")
 equipment_state = SubResource("Resource_x7c3f")
-possessed_first_person = true
 
 [node name="InventoryComponent2" type="Node" parent="NPCActor" unique_id=921720935]
 script = ExtResource("17_knn7v")
