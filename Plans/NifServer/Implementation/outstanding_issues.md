@@ -20,6 +20,7 @@ Each is either a known gap in what was built or a decision not yet made.
 | [8](#8-windows-positional-read-unverified) | Windows positional read unverified | `DECISION` |
 | [9](#9-loose-files-not-supported) | Loose files not supported | `DECISION` |
 | [10](#10-4s-threading-rationale-does-not-hold-for-godot-472) | §4's threading rationale does not hold for Godot 4.7.2 | `DECISION` |
+| [11](#11-nifserver-does-not-cache) | NifServer does not cache | `GAP` |
 
 ---
 
@@ -176,3 +177,38 @@ question, not a RID one.
 
 **Open:** re-derive §4 against this engine version before Stage E is built, rather than
 implementing the split as written.
+
+## 11. NifServer does not cache
+
+`GAP` — every request re-reads, re-parses and rebuilds, and the result does not batch.
+
+`build()` holds no cache of any kind. A cell load asking for the same model 50 times gets 50
+independent trees with 50 independent `ArrayMesh`, `StandardMaterial3D` and `Shape3D` instances.
+
+This is a rendering problem, not just wasted work. Godot batches on **RID identity, not content**:
+`render_forward_clustered.cpp` builds the draw-list sort key from `p_mesh.get_local_index()` and the
+material's own index, and coalesces consecutive elements into one instanced draw only when the whole
+key matches. Two byte-identical `ArrayMesh` objects are two RIDs, so 50 copies are 50 draw calls
+where one shared mesh would be one instanced draw.
+
+**The fix is cheap because `Node.duplicate()` shares resources.** Object-typed properties are
+assigned by reference, not copied — `scene/main/node.cpp` duplicates a property's value only when it
+carries `PROPERTY_USAGE_ALWAYS_DUPLICATE`, which engine-wide is used by seven things
+(`VoxelGI.data`, `TextEdit.syntax_highlighter`, some Skeleton2D and TileSet internals) and by nothing
+on `MeshInstance3D`, `CollisionShape3D`, `AnimationPlayer` or `Skeleton3D`. So a cached tree plus
+`duplicate()` yields new nodes sharing the same mesh, material, shape, skin and animation RIDs —
+exactly the condition the coalesce tests for.
+
+Caching whole trees also dissolves the separate question of caching collision, skin and animation
+resources: they are sub-resources of the cached tree.
+
+**Unmeasured, and it decides whether this is worth building:** whether `duplicate()` actually beats a
+warm `build()`. A warm build is 21.4 ms for 60 models; `duplicate()` walks the tree copying every
+property Variant and is not free. Also unverified: that a skinned tree survives duplication, since
+`MeshInstance3D.skeleton` is a `NodePath` that must re-resolve inside the copy while the `Skin`
+resource is shared.
+
+**Not applicable to FaceGen.** Per-NPC morph deformation means a unique mesh by definition.
+
+A separate MeshServer was considered and declined for now — see
+`project/GodotBryo/Servers/MeshServer/README.md`.
