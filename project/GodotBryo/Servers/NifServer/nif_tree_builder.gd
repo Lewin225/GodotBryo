@@ -14,6 +14,7 @@ class_name NifTreeBuilder
 ## exists so the tree can be looked at in the editor first.
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -177,55 +178,7 @@ static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
 	# also build a StaticBody3D for them.
 	var ragdolled := _build_ragdoll(src, nodes, skeleton, bone_of_node)
 	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated, ragdolled)
-	_apply_billboards(nodes, built)
 	return root
-
-
-## Section 5.3: Godot expresses billboarding as material state, not as a node
-## type, so NiBillboardNode's mode is applied to every descendant material
-## rather than becoming a node of its own. 280 files carry one.
-##
-## Safe to mutate in place only because materials are built per shape here and
-## shared with nothing. A MaterialServer handing out shared instances would make
-## this a per-instance override instead.
-static func _apply_billboards(nodes: Array, built: Array) -> void:
-	for i in nodes.size():
-		var mode := String(nodes[i]["billboard_mode"])
-		if mode.is_empty():
-			continue
-		if i >= built.size() or built[i] == null:
-			continue
-		var godot_mode := _billboard_mode(mode)
-		var stack: Array = [built[i]]
-		while not stack.is_empty():
-			var node: Node = stack.pop_back()
-			for c in node.get_children():
-				stack.append(c)
-			if not (node is MeshInstance3D):
-				continue
-			var mesh: Mesh = (node as MeshInstance3D).mesh
-			if mesh == null:
-				continue
-			for surface in mesh.get_surface_count():
-				var mat := mesh.surface_get_material(surface) as BaseMaterial3D
-				if mat == null:
-					continue
-				mat.billboard_mode = godot_mode
-				# Godot's billboard resets scale unless told otherwise, which
-				# would shrink authored billboard geometry to unit size.
-				mat.billboard_keep_scale = true
-				mat.set_meta("nif_billboard_mode", mode)
-
-
-## Gamebryo has six billboard modes; Godot has two usable ones. The "rigid" and
-## "face centre" variants collapse onto the nearest equivalent and keep the
-## authored name in metadata, since the distinction is not expressible.
-static func _billboard_mode(mode: String) -> int:
-	match mode:
-		"rotate_about_up", "bs_rotate_about_up":
-			return BaseMaterial3D.BILLBOARD_FIXED_Y
-		_:
-			return BaseMaterial3D.BILLBOARD_ENABLED
 
 
 ## Section 5.3: bhkBlendCollisionObject is the ragdoll discriminator -- 60 files,
@@ -411,6 +364,15 @@ static func _bind_skins_to_skeleton(root: Node3D, skeleton: Skeleton3D) -> void:
 static func _make_node(nd: Dictionary, textures: Dictionary) -> Node3D:
 	var block_type := String(nd["block_type"])
 	match block_type:
+		"NiBillboardNode":
+			# Section 5.3 said material state, which is only equivalent when a
+			# billboard node holds exactly one shape at its own origin. Across
+			# meshes/effects/ 46 of 203 do not -- 35 hold several shapes that
+			# would counter-rotate, 11 hold one offset by up to 4.75 m. So this
+			# is a node that orients itself, as Gamebryo does.
+			var billboard := NifBillboardNodeScript.new()
+			billboard.billboard_mode = String(nd["billboard_mode"])
+			return billboard
 		"NiCamera":
 			return Camera3D.new()
 		"NiPointLight":

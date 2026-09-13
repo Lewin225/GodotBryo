@@ -527,7 +527,7 @@ func test_ragdoll() -> void:
 
 
 func test_billboard() -> void:
-	print("--- E4 / section 5.3: NiBillboardNode becomes material state ---")
+	print("--- E4 / section 5.3: NiBillboardNode becomes a self-orienting node ---")
 	var src := NifSource.new()
 	var r: Dictionary = ArchiveServer.read(BILLBOARD)
 	if not bool(r["found"]) or not src.load(PackedByteArray(r["data"])):
@@ -542,13 +542,15 @@ func test_billboard() -> void:
 	var root := await _build(BILLBOARD)
 	if root == null:
 		return
-	var billboarded := 0
-	var kept_scale := 0
+	var billboards: Array = []
+	var material_billboarded := 0
 	var stack: Array = [root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		for c in n.get_children():
 			stack.append(c)
+		if n is NifBillboardNode:
+			billboards.append(n)
 		if not (n is MeshInstance3D):
 			continue
 		var mesh: Mesh = (n as MeshInstance3D).mesh
@@ -556,20 +558,20 @@ func test_billboard() -> void:
 			continue
 		for i in mesh.get_surface_count():
 			var mat := mesh.surface_get_material(i) as BaseMaterial3D
-			if mat == null or mat.billboard_mode == BaseMaterial3D.BILLBOARD_DISABLED:
-				continue
-			billboarded += 1
-			if mat.billboard_keep_scale:
-				kept_scale += 1
-			# bs_rotate_about_up is a spin about the up axis, not a full face.
-			check(mat.billboard_mode == BaseMaterial3D.BILLBOARD_FIXED_Y,
-				"bs_rotate_about_up maps to BILLBOARD_FIXED_Y (got %d)" % mat.billboard_mode)
-			check(String(mat.get_meta("nif_billboard_mode", "")) == "bs_rotate_about_up",
-				"the authored mode survives in metadata")
-	check(billboarded > 0, "%d descendant materials billboard" % billboarded)
-	# Godot's billboard resets scale unless told not to, which would shrink
-	# authored billboard geometry to unit size.
-	check(kept_scale == billboarded, "all of them keep their authored scale")
+			if mat != null and mat.billboard_mode != BaseMaterial3D.BILLBOARD_DISABLED:
+				material_billboarded += 1
+
+	check(billboards.size() == declared,
+		"every NiBillboardNode became a NifBillboardNode (%d of %d)" % [billboards.size(), declared])
+	# Gamebryo billboards the NODE and children follow rigidly. Doing it on the
+	# material instead spins each mesh about its own origin, which breaks any
+	# billboard holding several shapes or one shape offset from the node --
+	# 46 of 203 in meshes/effects/. So the material must be left alone.
+	check(material_billboarded == 0,
+		"no material-level billboard is applied on top (%d)" % material_billboarded)
+	if not billboards.is_empty():
+		check(String((billboards[0] as NifBillboardNode).billboard_mode) == "bs_rotate_about_up",
+			"the authored mode reaches the node (%s)" % (billboards[0] as NifBillboardNode).billboard_mode)
 	root.queue_free()
 
 

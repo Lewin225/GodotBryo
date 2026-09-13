@@ -214,7 +214,7 @@ children. Named nodes are never pruned (only 3.4% are inert, and a pruned node f
 | case | policy | examples |
 |---|---|---|
 | Godot has a native construct | **build it** | collision, ragdoll, lights, cameras, particles |
-| Godot expresses it as state on something else | apply it there | `NiBillboardNode` mode → descendant materials |
+| Godot expresses it as state on something else | apply it there | alpha blend/test → material transparency |
 | Godot has no construct at all | node metadata | `BSBlastNode` / `BSDamageStage` stages, `BSValueNode` value, `NiBSBoneLODController` |
 
 NifServer does not withhold a construct because no consumer wants it yet. Turning something off is
@@ -236,6 +236,28 @@ child, and `bhkRagdollConstraint`/`bhkMalleableConstraint`/`bhkLimitedHingeConst
 
 > Constraints are **not** a ragdoll signal: 164 files carry one with no `bhkBlendCollisionObject`,
 > `bhkLimitedHingeConstraint` alone appearing in 190 files of which 90 are `meshes/armor`.
+
+`bhkMalleableConstraint` is a **wrapper**, not a constraint: it holds a `ConstraintData` whose own
+`type` selects the live descriptor. Read as opaque, `skeleton.nif` yields 3 ragdoll constraints and
+14 unsupported; unwrapped, 9 ragdoll and 8 limited hinge. 82% of that rig's joints are behind it.
+
+`pivotA` is zero on all 17 — the joint sits at the bone's own origin, which is what Godot's
+`joint_offset` means. `pivotB`, the same point in the parent's frame, is carried as metadata.
+
+**`NiBillboardNode` is a node, not material state.** Gamebryo rewrites the node's transform each
+frame and children inherit it rigidly; Godot's material billboard rewrites each mesh's model matrix
+independently about its own origin. Those agree only when a billboard node holds exactly one shape
+at its origin. Measured across `meshes/effects/`, of 203 billboard nodes:
+
+| | count | per-material equivalent? |
+|---|---:|---|
+| one shape at the node origin | 155 | yes |
+| one shape offset from the node, up to 4.75 m | 11 | no |
+| several shapes under one billboard | 35 | no — they counter-rotate |
+
+So it returns `NifBillboardNode`, a `Node3D` that orients itself, and no material billboard is
+applied. That costs a per-frame orientation per billboard node, which is the price of matching the
+source rather than approximating it for three quarters of cases.
 
 If the per-actor body count ever measures badly, the consumer frees or disables the simulator
 subtree — a decision that needs a profile, not a guess.
