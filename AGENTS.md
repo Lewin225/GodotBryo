@@ -405,6 +405,15 @@ Output: `project/bin/libnv_engine.linux.template_debug.x86_64.so` — builds
 directly into place, no manual copy step. See `native/README.md` for why
 each flag is needed.
 
+**The build patches the `native/nifly` submodule** from `native/nifly_patches/`
+before compiling it, because nifly is pinned to upstream and local fixes have
+nowhere to be committed. Two consequences: `git status` reports `native/nifly
+(modified content)` on any built tree and that is correct — do not `git checkout`
+or `git submodule update --force` it away; and a patch that no longer applies
+stops the build with a message rather than silently building an unpatched nifly,
+which would read NIFs subtly wrong instead of failing to link. See
+`native/nifly_patches/README.md`.
+
 **Rebuild after pulling or making any change under `native/src/`** — a real
 gotcha, found the hard way: `project/bin/*.so` is gitignored, so `git pull`
 never rebuilds it. A stale `.so` doesn't fail loudly — GDScript call sites
