@@ -39,23 +39,32 @@ A subfolder test's `.tscn` must point at its own script path (`res://tests/<sub>
 any `DATA_DIR`-style relative path stays relative to the **project directory** — the process CWD —
 not to the script.
 
-**Run every headless test in one go** (skips the one interactive viewer,
-`test_exterior_cell.tscn` — see below):
+**Run every self-checking headless test in one go** from the repository root:
 
 ```
-cd project
-GODOT="../tools/Godot_v4.7.1-stable_linux.x86_64"
-for t in $(find tests -name 'test_*.tscn' | sort); do
-  [ "$t" = "tests/test_exterior_cell.tscn" ] && continue
-  echo "### $t ###"
-  timeout 150 "$GODOT" --headless --path . "$t" 2>&1 | grep -E "FAIL|ALL CHECKS|FAILURES"
-done
+./run_tests.sh
 ```
 
-Some of these take real wall-clock time against the real ~2.5GB of game data (BSA
-scans, full worldspace streaming) — `test_world_streamer.tscn` and `test_cell_loader.tscn`
-in particular can take a minute or more. A 150s per-test timeout has been generous
-enough in practice; raise it if a slower machine needs more.
+The runner first loads every selected test scene through a dedicated preflight scene
+after the project's autoloads have registered, then runs each scene with a 150-second
+default timeout. It fails if Godot exits nonzero, times out, writes `SCRIPT ERROR:`, or
+exits without `ALL CHECKS PASSED`; this prevents an unloaded root script from
+presenting as a hang and prevents runtime script errors from being reported as passing
+checks. Override the timeout with
+`TIMEOUT_SECONDS=300 ./run_tests.sh`, choose another Godot executable with
+`GODOT=/path/to/godot ./run_tests.sh`, or run selected scenes with
+`./run_tests.sh tests/test_bsa.tscn`.
+
+The runner intentionally excludes `test_exterior_cell.tscn` (interactive viewer),
+`servers/test_texture_corpus_sweep.tscn` (throughput measurement),
+`test_script_corpus_survey.tscn` (real-data survey), and
+`test_facial_animation_data.tscn` (diagnostic listing). Run those directly when their
+report or visual output is wanted.
+
+Some self-checking tests take real wall-clock time against the real ~2.5GB of game data
+(BSA scans, full worldspace streaming) — `test_world_streamer.tscn` and
+`test_cell_loader.tscn` in particular can take a minute or more. A 150s per-test
+timeout has been generous enough in practice; raise it if a slower machine needs more.
 
 **A fresh checkout (or after adding/moving/renaming any test file) needs one
 `--headless --editor --quit` pass first** to (re)generate `.uid` sidecar files and the
