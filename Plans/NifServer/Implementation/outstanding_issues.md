@@ -46,6 +46,24 @@ rather than silently producing a library that reads NIFs wrong. See
 All 365 palette-addressed links across the five files now resolve. `test_nif_source` D6 asserts
 this per file and fails if the patch is ever dropped from the build.
 
+The resolved names are verified correct rather than merely non-empty: 50 of the 73 targets in each
+file match a node in `meshes/characters/_male/skeleton.nif` exactly, which misaligned offsets could
+not produce.
+
+**The remaining 23 targets per file name bones the New Vegas male skeleton does not have** —
+`Bip01 L Finger0`/`01`/`02`, `Bip01 L ForearmTwist`, `Bip01 L UpperArmTwist`, `Torch`. Those are
+Fallout 3-era names; New Vegas uses `Bip01 L Thumb1`, `Bip01 L ForeTwist`, `Bip01 LUpArmTwistBone`.
+Of 2,109 `meshes/characters/_male/*.kf` files, exactly these five carry them, so they are FO3 assets
+shipped unused. Roughly a third of their tracks will bind to nothing whatever the caller does. That
+is the asset, not the reader — do not chase it as a defect.
+
+Unmatched targets are ordinary in any case: 647 of those 2,109 files address `##Cover`, `##Trigger`,
+`##Shells` and similar weapon-part bones carried by the weapon's own NIF, which is the composed-rig
+case [#6](#6-sequences-addressing-an-external-rig-stay-unbound) covers.
+
+All five are single `SpecialIdle*` sequences carrying only `NiTransformController`. Binding stays
+caller-side per #6; nothing consumes them yet.
+
 Inert elsewhere: every other NIF string is read at its exact length with no embedded NUL, so
 assigning by length yields the same bytes. SHA-256 over all 140,475 node names in the corpus is
 identical with and without it.
