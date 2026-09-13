@@ -1,0 +1,45 @@
+diff --git a/src/BasicTypes.cpp b/src/BasicTypes.cpp
+index f6ff217..9436973 100644
+--- a/src/BasicTypes.cpp
++++ b/src/BasicTypes.cpp
+@@ -55,6 +55,7 @@ void NiVersion::SetFile(NiFileVersion fileVer) {
+ 
+ void NiString::Read(NiIStream& stream, const int szSize) {
+ 	std::unique_ptr<char[]> buf;
++	size_t sizeRead = 0;
+ 
+ 	if (szSize == 1) {
+ 		uint8_t smSize = 0;
+@@ -63,6 +64,7 @@ void NiString::Read(NiIStream& stream, const int szSize) {
+ 		buf = std::make_unique<char[]>(smSize + 1);
+ 		stream.read(buf.get(), smSize);
+ 		buf[smSize] = 0;
++		sizeRead = smSize;
+ 	}
+ 	else if (szSize == 2) {
+ 		uint16_t medSize = 0;
+@@ -71,6 +73,7 @@ void NiString::Read(NiIStream& stream, const int szSize) {
+ 		buf = std::make_unique<char[]>(medSize + 1);
+ 		stream.read(buf.get(), medSize);
+ 		buf[medSize] = 0;
++		sizeRead = medSize;
+ 	}
+ 	else if (szSize == 4) {
+ 		uint32_t bigSize = 0;
+@@ -82,11 +85,15 @@ void NiString::Read(NiIStream& stream, const int szSize) {
+ 		buf = std::make_unique<char[]>(static_cast<size_t>(bigSize) + 1);
+ 		stream.read(buf.get(), bigSize);
+ 		buf[bigSize] = 0;
++		sizeRead = bigSize;
+ 	}
+ 	else
+ 		return;
+ 
+-	str = buf.get();
++	// Assign by length, not as a C string. NiStringPalette is a single NiString
++	// holding NUL-separated entries; a char* assignment stops at the first
++	// embedded NUL and truncates the palette to its first entry.
++	str.assign(buf.get(), sizeRead);
+ }
+ 
+ void NiString::Write(NiOStream& stream, const int szSize) {
