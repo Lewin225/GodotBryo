@@ -93,10 +93,25 @@ func _drop_base_into_scene(base: EsmBase, camera: Camera3D, screen_position: Vec
 	if world_position == null:
 		return false
 
+	# Deliberately not awaited, and this function stays synchronous: both
+	# callers are engine virtuals, and _forward_3d_gui_input must return
+	# AFTER_GUI_INPUT_STOP/PASS in the same call. The bool here answers "was
+	# this drop accepted", which is known now; building the node is not, since
+	# physicalise() suspends for texture residency when use_nif_server is on.
+	_complete_drop(reference, scene_root as Node3D, world_position)
+	return true
+
+
+## Finishes an accepted drop once the physicaliser has the node.
+func _complete_drop(reference: EsmReference, scene_root: Node3D, world_position: Vector3) -> void:
 	var physicaliser := PhysicaliserScript.new()
 	var generated: Node3D = await physicaliser.physicalise(reference)
 	if generated == null:
-		return false
+		return
+	if not is_instance_valid(scene_root) or scene_root != EditorInterface.get_edited_scene_root():
+		# The edited scene changed while the build was in flight.
+		generated.queue_free()
+		return
 	generated.name = _unique_node_name(scene_root, generated.name)
 	generated.position = world_position
 
@@ -107,7 +122,6 @@ func _drop_base_into_scene(base: EsmBase, camera: Camera3D, screen_position: Vec
 	undo.add_undo_method(scene_root, "remove_child", generated)
 	undo.add_undo_method(self, "_clear_owner_recursive", generated)
 	undo.commit_action()
-	return true
 
 func _drop_position(camera: Camera3D, screen_position: Vector2) -> Variant:
 	var ray_origin := camera.project_ray_origin(screen_position)

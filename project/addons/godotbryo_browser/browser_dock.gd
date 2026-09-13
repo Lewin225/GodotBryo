@@ -208,7 +208,7 @@ func _context_menu_pressed(id: int) -> void:
 	if id == 1:
 		_find_selected()
 	elif id == 2:
-		_open_selected_reference_scene()
+		await _open_selected_reference_scene()
 	elif id == 3:
 		_preview_selected_list()
 
