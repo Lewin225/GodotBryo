@@ -2,6 +2,7 @@
 #define BSA_ARCHIVE_H
 
 #include "bsa_types.h"
+#include "positional_read.h"
 
 #include <cstdio>
 #include <string>
@@ -11,8 +12,12 @@
 namespace bsa {
 
 // Read-only reader for Oblivion/FO3/New Vegas BSA archives (version 103/104).
-// Not thread-safe (uses a single FILE* with seek+read); open one instance
-// per thread if concurrent extraction is ever needed.
+//
+// open() is single-threaded initialization and must complete before any
+// concurrent use. After that, find()/extract()/read_at() are thread-safe on a
+// shared instance: reads are positional (pread / ReadFile with an OVERLAPPED
+// offset) and never touch the stream cursor, so no per-thread reader and no
+// mutex is required. See positional_read.h.
 class BsaArchive {
 public:
 	BsaArchive() = default;
@@ -39,6 +44,7 @@ public:
 
 private:
 	std::FILE *file_ = nullptr;
+	FileHandle handle_; // borrowed from file_, for positional reads
 	Header header_;
 	std::vector<Entry> entries_;
 	std::unordered_map<std::string, size_t> path_index_; // normalized_path() -> entries_ index
