@@ -10,7 +10,7 @@ from the format.
 | | |
 |---|---|
 | **built standalone** | not an in-place edit of `mesh_resolver.gd`'s 6 construction paths |
-| **companions** | [Texture Server](../texture_server.md) · [Archive Server](../archive_server.md) · [Research findings](Research/nifserver_design_findings.md) |
+| **companions** | [Texture Server](../TextureServer/texture_server.md) · [Archive Server](../ArchiveServer/archive_server.md) · [Research findings](Research/nifserver_design_findings.md) |
 
 ---
 

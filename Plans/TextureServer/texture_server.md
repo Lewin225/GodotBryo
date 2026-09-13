@@ -2,14 +2,14 @@
 
 *Clean-slate design.*
 
-Same thread/cache/return-when-ready shape as [NIF Server](nif_server.md), applied to textures — one
+Same thread/cache/return-when-ready shape as [NIF Server](../NifServer/nif_server_v2.md), applied to textures — one
 decode-and-upload primitive, used by NIF Server's material step *and* the terrain streamer, instead of
 each owning its own.
 
 | | |
 |---|---|
 | **replaces** | `mesh_resolver._load_image`/`_get_texture_from_image` + terrain's direct `resolver.load_texture()` calls |
-| **companions** | [NIF Server](nif_server.md) · [NifServer Build Order](nif_server_build_order.md) · Mesh Resolver Refactor (pin-down) |
+| **companions** | [NIF Server](../NifServer/nif_server_v2.md) · [NifServer Build Order](../server_stack_build_order.md) · Mesh Resolver Refactor (pin-down) |
 | **status** | design sketch |
 
 ---
@@ -81,7 +81,7 @@ then awaits `request()`.
 - `ImageTexture.create_from_image()` — an RS call, cannot move off main
 - cached by the same key `_decode()` used, so repeat callers hit cache instead of re-uploading
 
-> Same constraint as [NIF Server](nif_server.md)'s: `mesh_resolver.gd`'s own top-of-file comment
+> Same constraint as [NIF Server](../NifServer/nif_server_v2.md)'s: `mesh_resolver.gd`'s own top-of-file comment
 > documents a real, repeatable RID-table-corruption crash from constructing RS-backed Resources
 > (ArrayMesh, ImageTexture, StandardMaterial3D, Shape3D) off the main thread, with this project's
 > Separate Rendering Thread model off. `_decode()` stops at `Image` for exactly that reason.
@@ -96,7 +96,7 @@ then awaits `request()`.
 
 Per Godot's own `WorkerThreadPool` docs: `add_group_task()`'s `tasks_needed` parameter defaults to
 `-1`, which the docs state plainly: *"the default value -1 means it is distributed to all worker
-threads."* If either this server or [NIF Server](nif_server.md) ever batches its own work through
+threads."* If either this server or [NIF Server](../NifServer/nif_server_v2.md) ever batches its own work through
 `add_group_task()` at that default, it occupies *every* thread in the one shared pool for the group
 task's full duration — and since both servers submit into that same pool, the other server's tasks
 (texture decode, or NIF resolve) simply cannot be scheduled at all until it finishes. Combined with the

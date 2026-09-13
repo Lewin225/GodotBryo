@@ -46,6 +46,11 @@ var use_nif_server: bool = ProjectSettings.get_setting("godotbryo/use_nif_server
 #endregion
 
 ## Takes any EsmReference type and returns its world space representation, with the provided reference inserted
+## AWAIT THIS. NifServer's build() waits for texture residency, so with
+## `use_nif_server` on this suspends until the visual exists. With the flag off
+## it never reaches a suspend point and returns in the same frame, but callers
+## must await either way for the return value to be the node rather than a
+## half-finished coroutine.
 func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bool = true) -> Node3D:
 	if reference == null:
 		return null
@@ -169,14 +174,9 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		parent.add_child(root)
 		attached_before_build = true
 	if root is EsmStaticCollectionNode:
-		(root as EsmStaticCollectionNode).build_collection(self)
-	elif use_nif_server:
-		# Deliberately not awaited. NifServer's build() waits for texture
-		# residency, so this completes over the next few frames and attaches
-		# the visual when it is ready. Acceptable because use_nif_server is an
-		# inspection flag, off by default; a caller that needs the node to
-		# exist on return has to await build() itself.
-		_build_visual_via_nif_server(root, reference)
+		await (root as EsmStaticCollectionNode).build_collection(self)
+	elif use_nif_server and await _build_visual_via_nif_server(root, reference):
+		pass # built through NifServer; see use_nif_server
 	else:
 		root.build_visual(_mesh_resolver)
 	if unsupported:
@@ -216,7 +216,11 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 func _build_visual_via_nif_server(root: Node3D, reference: EsmReference) -> bool:
 	if reference == null or reference.base == null:
 		return false
-	var model_path := String(reference.base.get("model_path") if reference.base.has_method("get") else "")
+	# Not every base carries one -- a LeveledItemBase has no model at all, and
+	# `String(null)` is a hard error rather than an empty string.
+	if not ("model_path" in reference.base):
+		return false
+	var model_path := String(reference.base.model_path)
 	if model_path.is_empty():
 		return false
 
@@ -268,7 +272,7 @@ func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:
 	reference.position = part.get("position", Vector3.ZERO)
 	reference.rotation = part.get("rotation", Vector3.ZERO)
 	reference.scale = float(part.get("scale", 1.0))
-	return physicalise(reference, null, false)
+	return await physicalise(reference, null, false)
 
 ## PackedScene only serializes descendants that have an owner in the scene
 ## being packed. Physicalisation builds the visual hierarchy before the root

@@ -36,7 +36,7 @@ NUL. A string palette is NUL-*separated*, so a 1,107-byte palette loads as 5 byt
 `Fallout - Meshes.bsa`: `eatidle.kf`, `pistolvariant01.kf`, `talk_handsatside_moving.kf`,
 `talk_handsatside_moving2.kf`, `talk_handsatside_still2.kf`.
 
-**Status:** reported upstream. Repro and issue text in [`tools/nifly_bug_repro/`](../../../tools/nifly_bug_repro/).
+**Status:** reported upstream. Repro and issue text in `tools/nifly_bug_repro/` (local only — `tools/` is gitignored).
 
 **Local patch is verified but NOT applied.** `str.assign(buf.get(), size_read)` takes those 360 links
 to 0 and is provably inert elsewhere — SHA-256 over all 140,475 node names is byte-identical with and
@@ -206,7 +206,7 @@ Two constraints on any policy, both measured:
   it frees nothing and the next `request()` decodes a *second* copy. Demonstrated directly. A naive
   eviction pass can therefore increase memory.
 
-LRU under a byte watermark fits both. See [`texture_server.md`](../../texture_server.md).
+LRU under a byte watermark fits both. See [`texture_server.md`](../../TextureServer/texture_server.md).
 
 ## 8. Windows positional read unverified
 

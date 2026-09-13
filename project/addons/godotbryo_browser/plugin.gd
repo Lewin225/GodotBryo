@@ -94,7 +94,7 @@ func _drop_base_into_scene(base: EsmBase, camera: Camera3D, screen_position: Vec
 		return false
 
 	var physicaliser := PhysicaliserScript.new()
-	var generated: Node3D = physicaliser.physicalise(reference)
+	var generated: Node3D = await physicaliser.physicalise(reference)
 	if generated == null:
 		return false
 	generated.name = _unique_node_name(scene_root, generated.name)

@@ -8,7 +8,7 @@ breaking-change constraint: one function, one flag, redesigned threading and cac
 | | |
 |---|---|
 | **built standalone** | migrated in later — not an in-place edit of `mesh_resolver.gd`'s 6 construction paths |
-| **companions** | [Shared Texture Server](texture_server.md) · [NifServer Build Order](nif_server_build_order.md) · Mesh Resolver Refactor (pin-down) |
+| **companions** | [Shared Texture Server](../TextureServer/texture_server.md) · [NifServer Build Order](../server_stack_build_order.md) · Mesh Resolver Refactor (pin-down) |
 | **status** | design sketch, open to changes |
 
 ---
@@ -84,13 +84,13 @@ right and up in a right-handed basis determines the third axis, leaving no yaw c
 - fires `TextureServer.warm()` for each, **before** geometry conversion starts
 - skin, controller and collision data extraction
 - touches raw data only — **never** ArrayMesh, ImageTexture, Material, Shape3D, decoded texture bytes,
-  or any Node (texture decode is [TextureServer](texture_server.md)'s job, not this class's)
+  or any Node (texture decode is [TextureServer](../TextureServer/texture_server.md)'s job, not this class's)
 
 →
 
 **Main thread — `_build()`**
 - ArrayMesh / Shape3D / StandardMaterial3D construction — assigns an already-uploaded `ImageTexture`
-  from [TextureServer](texture_server.md), doesn't call `create_from_image()` itself (that upload
+  from [TextureServer](../TextureServer/texture_server.md), doesn't call `create_from_image()` itself (that upload
   already happened, on TextureServer's own budgeted queue, likely before `_build()` even runs)
 - Node3D / Skeleton3D / MeshInstance3D / CollisionShape3D — orphaned subtree, not yet parented
 - caller then does the actual attach: `call_deferred("add_child", node)`
@@ -119,7 +119,7 @@ instance that owns all GPU-backed construction.
 > Linux/macOS, `ReadFile()` + an `OVERLAPPED` offset on Windows) instead of shared-cursor
 > `fseek()`+`fread()` (`bsa_archive.cpp:175-180`), making concurrent `read_at()` calls on one shared
 > instance safe by construction. In scope as a native prerequisite for the NifServer work; also removes
-> the same need from [TextureServer](texture_server.md)'s `decode()`, since DDS textures come from the
+> the same need from [TextureServer](../TextureServer/texture_server.md)'s `decode()`, since DDS textures come from the
 > same BSA files.
 
 > **Hard rule, shared with TextureServer:** `_resolve()` must never batch through
@@ -127,7 +127,7 @@ instance that owns all GPU-backed construction.
 > the one pool both servers share for the group task's full duration, and `_build()` cannot proceed
 > without a real uploaded texture (no lazy reference), so TextureServer's decode/upload work being
 > unable to run is a hang, not a stall. Citations in
-> [Shared Texture Server](texture_server.md)'s "Hard rule" section.
+> [Shared Texture Server](../TextureServer/texture_server.md)'s "Hard rule" section.
 
 ---
 
@@ -213,7 +213,7 @@ A `.kf` file is a NIF whose blocks are `NiControllerSequence` data instead of ge
 ## Self-contained: owns its own budget and perf surface
 
 Pacing and queue both live inside `NifServer`, not in whatever calls `request()` — same shape as
-[Shared Texture Server](texture_server.md)'s upload budget.
+[Shared Texture Server](../TextureServer/texture_server.md)'s upload budget.
 
 | config var | default | meaning |
 |---|---|---|
@@ -273,7 +273,7 @@ them:
 shared DDS-decode-and-cache entry point, not a NIF-material detail. `_resolve()`'s material step
 consumes a decoded texture from a separate texture-cache primitive rather than owning decode+cache
 itself; terrain and NifServer both call into that primitive. Full design in
-[Shared Texture Server](texture_server.md).
+[Shared Texture Server](../TextureServer/texture_server.md).
 
 ---
 
