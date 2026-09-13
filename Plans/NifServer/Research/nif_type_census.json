@@ -1,0 +1,2541 @@
+{
+ "nif_kf_files_parsed": 25760,
+ "versions": [
+  [
+   "14020007 u11 bs34",
+   25090
+  ],
+  [
+   "14020007 u11 bs33",
+   310
+  ],
+  [
+   "14020007 u11 bs32",
+   125
+  ],
+  [
+   "14020007 u11 bs27",
+   81
+  ],
+  [
+   "14020007 u11 bs31",
+   37
+  ],
+  [
+   "14020007 u11 bs25",
+   31
+  ],
+  [
+   "14020007 u11 bs21",
+   31
+  ],
+  [
+   "14020007 u11 bs30",
+   17
+  ],
+  [
+   "14020007 u11 bs26",
+   13
+  ],
+  [
+   "14020007 u11 bs14",
+   9
+  ],
+  [
+   "14020007 u11 bs24",
+   8
+  ],
+  [
+   "14000004 u11 bs11",
+   3
+  ],
+  [
+   "14000004 u10 bs11",
+   3
+  ],
+  [
+   "14020007 u11 bs28",
+   2
+  ]
+ ],
+ "ext_counts": [
+  [
+   ".ogg",
+   63575
+  ],
+  [
+   ".lip",
+   60702
+  ],
+  [
+   ".dds",
+   26907
+  ],
+  [
+   ".nif",
+   20746
+  ],
+  [
+   ".kf",
+   5014
+  ],
+  [
+   ".wav",
+   4638
+  ],
+  [
+   ".egm",
+   275
+  ],
+  [
+   ".xml",
+   121
+  ],
+  [
+   ".tri",
+   49
+  ],
+  [
+   ".egt",
+   36
+  ],
+  [
+   ".txt",
+   32
+  ],
+  [
+   ".dlodsettings",
+   25
+  ],
+  [
+   ".psa",
+   14
+  ],
+  [
+   ".spt",
+   10
+  ],
+  [
+   ".fnt",
+   9
+  ],
+  [
+   ".tex",
+   9
+  ],
+  [
+   ".dat",
+   6
+  ],
+  [
+   ".mp3",
+   5
+  ],
+  [
+   ".psd",
+   2
+  ],
+  [
+   ".ctl",
+   1
+  ],
+  [
+   ".tai",
+   1
+  ]
+ ],
+ "failures": [],
+ "n_failures": 0,
+ "types": [
+  {
+   "type": "BSShaderPPLightingProperty",
+   "files": 19578,
+   "blocks": 58706,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 19578,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSShaderTextureSet",
+   "files": 19578,
+   "blocks": 56789,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 19578,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiMaterialProperty",
+   "files": 16376,
+   "blocks": 30414,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 16376,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTriStrips",
+   "files": 15278,
+   "blocks": 57796,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 15278,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTriStripsData",
+   "files": 15278,
+   "blocks": 57794,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 15278,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSFadeNode",
+   "files": 15121,
+   "blocks": 15121,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 15121,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiStringExtraData",
+   "files": 12692,
+   "blocks": 32161,
+   "example": "ClassicPack - Main.bsa :: meshes\\nvdlcpre1\\weapons\\1handpistol\\10mmpistolpreorder.nif",
+   "nif": 12692,
+   "kf": 0,
+   "bsas": [
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSXFlags",
+   "files": 12578,
+   "blocks": 12578,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 12578,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkCollisionObject",
+   "files": 11134,
+   "blocks": 15645,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 11134,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiAlphaProperty",
+   "files": 10422,
+   "blocks": 15253,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 10422,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "hkPackedNiTriStripsData",
+   "files": 8465,
+   "blocks": 9759,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\architecture\\casino\\lobby\\nvdlc01lobbyfountain.nif",
+   "nif": 8465,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkPackedNiTriStripsShape",
+   "files": 8465,
+   "blocks": 9914,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\architecture\\casino\\lobby\\nvdlc01lobbyfountain.nif",
+   "nif": 8465,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkMoppBvTreeShape",
+   "files": 8465,
+   "blocks": 9947,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\architecture\\casino\\lobby\\nvdlc01lobbyfountain.nif",
+   "nif": 8465,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkRigidBody",
+   "files": 7926,
+   "blocks": 12109,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 7926,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTransformInterpolator",
+   "files": 6850,
+   "blocks": 169595,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 1856,
+   "kf": 4994,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTransformData",
+   "files": 6507,
+   "blocks": 110780,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 1744,
+   "kf": 4763,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTextKeyExtraData",
+   "files": 6393,
+   "blocks": 7748,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 1379,
+   "kf": 5014,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiControllerSequence",
+   "files": 6178,
+   "blocks": 7483,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 1164,
+   "kf": 5014,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiNode",
+   "files": 5690,
+   "blocks": 51831,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 5690,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTriShapeData",
+   "files": 5194,
+   "blocks": 10178,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 5194,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTriShape",
+   "files": 4633,
+   "blocks": 9189,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 4633,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSMultiBoundNode",
+   "files": 4137,
+   "blocks": 4137,
+   "example": "DeadMoney - Main.bsa :: meshes\\landscape\\lod\\nvdlc01villachristine\\nvdlc01villachristine.level4.x-4.y-3.nif",
+   "nif": 4137,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSMultiBound",
+   "files": 4137,
+   "blocks": 4137,
+   "example": "DeadMoney - Main.bsa :: meshes\\landscape\\lod\\nvdlc01villachristine\\nvdlc01villachristine.level4.x-4.y-3.nif",
+   "nif": 4137,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSMultiBoundAABB",
+   "files": 4136,
+   "blocks": 4136,
+   "example": "DeadMoney - Main.bsa :: meshes\\landscape\\lod\\nvdlc01villachristine\\nvdlc01villachristine.level4.x-4.y-3.nif",
+   "nif": 4136,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineData",
+   "files": 4102,
+   "blocks": 4124,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\hologram\\locomotion\\mtbackward.kf",
+   "nif": 0,
+   "kf": 4102,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineCompTransformInterpolator",
+   "files": 4065,
+   "blocks": 105312,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\hologram\\locomotion\\mtbackward.kf",
+   "nif": 0,
+   "kf": 4065,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineBasisData",
+   "files": 4049,
+   "blocks": 4119,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\hologram\\locomotion\\mtbackward.kf",
+   "nif": 0,
+   "kf": 4049,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSShaderNoLightingProperty",
+   "files": 3663,
+   "blocks": 9582,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 3663,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiAdditionalGeometryData",
+   "files": 3567,
+   "blocks": 3567,
+   "example": "DeadMoney - Main.bsa :: meshes\\landscape\\lod\\nvdlc01villachristine\\nvdlc01villachristine.level4.x-4.y-3.nif",
+   "nif": 3567,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkRigidBodyT",
+   "files": 3531,
+   "blocks": 4701,
+   "example": "ClassicPack - Main.bsa :: meshes\\nvdlcpre1\\armor\\preordvault\\vault13_go.nif",
+   "nif": 3531,
+   "kf": 0,
+   "bsas": [
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiFloatInterpolator",
+   "files": 2852,
+   "blocks": 13427,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 1252,
+   "kf": 1600,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiFloatData",
+   "files": 2652,
+   "blocks": 10379,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 1103,
+   "kf": 1549,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkConvexVerticesShape",
+   "files": 1980,
+   "blocks": 2793,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 1980,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTexturingProperty",
+   "files": 1616,
+   "blocks": 3018,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 1616,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiSourceTexture",
+   "files": 1616,
+   "blocks": 2854,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 1616,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiBoolInterpolator",
+   "files": 1516,
+   "blocks": 8696,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 680,
+   "kf": 836,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTransformController",
+   "files": 1299,
+   "blocks": 7321,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\weapons\\2handrifle\\caravanshotgunpreorder.nif",
+   "nif": 1299,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiControllerManager",
+   "files": 1164,
+   "blocks": 1164,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 1164,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiMultiTargetTransformController",
+   "files": 1164,
+   "blocks": 1164,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 1164,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiDefaultAVObjectPalette",
+   "files": 1164,
+   "blocks": 1164,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 1164,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiSkinData",
+   "files": 1038,
+   "blocks": 5396,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 1038,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiSkinPartition",
+   "files": 1038,
+   "blocks": 5396,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 1038,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBoolData",
+   "files": 1028,
+   "blocks": 6508,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 666,
+   "kf": 362,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkBoxShape",
+   "files": 908,
+   "blocks": 1498,
+   "example": "ClassicPack - Main.bsa :: meshes\\nvdlcpre1\\armor\\preordvault\\vault13_go.nif",
+   "nif": 908,
+   "kf": 0,
+   "bsas": [
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSDismemberSkinInstance",
+   "files": 860,
+   "blocks": 5157,
+   "example": "CaravanPack - Main.bsa :: meshes\\nvdlcpre3\\armor\\preordleather\\preordleatherarmorf.nif",
+   "nif": 860,
+   "kf": 0,
+   "bsas": [
+    "CaravanPack - Main.bsa",
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "MercenaryPack - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPosData",
+   "files": 852,
+   "blocks": 2266,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 570,
+   "kf": 282,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSSegmentedTriShape",
+   "files": 849,
+   "blocks": 989,
+   "example": "DeadMoney - Main.bsa :: meshes\\landscape\\lod\\nvdlc01westtownn\\blocks\\nvdlc01westtownn.level4.x0.y1.nif",
+   "nif": 849,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiPoint3Interpolator",
+   "files": 835,
+   "blocks": 2252,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 552,
+   "kf": 283,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiStencilProperty",
+   "files": 823,
+   "blocks": 839,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 823,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiTextureTransformController",
+   "files": 687,
+   "blocks": 2077,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 687,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBlendFloatInterpolator",
+   "files": 568,
+   "blocks": 3708,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 568,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiMaterialColorController",
+   "files": 535,
+   "blocks": 994,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 535,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysUpdateCtlr",
+   "files": 392,
+   "blocks": 1599,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 392,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysAgeDeathModifier",
+   "files": 392,
+   "blocks": 1599,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 392,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysSpawnModifier",
+   "files": 392,
+   "blocks": 1599,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 392,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysPositionModifier",
+   "files": 392,
+   "blocks": 1599,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 392,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysBoundUpdateModifier",
+   "files": 392,
+   "blocks": 1599,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 392,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiParticleSystem",
+   "files": 388,
+   "blocks": 1587,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 388,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysData",
+   "files": 388,
+   "blocks": 1587,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 388,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiVisController",
+   "files": 370,
+   "blocks": 2820,
+   "example": "DeadMoney - Main.bsa :: meshes\\weapons\\2handhandle\\plasmacasterhselectrode.nif",
+   "nif": 370,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterCtlr",
+   "files": 353,
+   "blocks": 1528,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 353,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSPSysSimpleColorModifier",
+   "files": 352,
+   "blocks": 1270,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 352,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysRotationModifier",
+   "files": 343,
+   "blocks": 1387,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 343,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBlendPoint3Interpolator",
+   "files": 342,
+   "blocks": 677,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\nvdlc01_autodoc\\nvdlc01_autodoc.nif",
+   "nif": 342,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiAlphaController",
+   "files": 333,
+   "blocks": 843,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 333,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysGrowFadeModifier",
+   "files": 299,
+   "blocks": 1165,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 299,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBillboardNode",
+   "files": 280,
+   "blocks": 689,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\nvdlc01_elijah-projector\\nvdlc01_elijah-projector.nif",
+   "nif": 280,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysBoxEmitter",
+   "files": 266,
+   "blocks": 1088,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handgrenadethrow\\throwingknifespear\\nvdlc01knifespearprojectile.nif",
+   "nif": 266,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysGravityModifier",
+   "files": 263,
+   "blocks": 889,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 263,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBlendBoolInterpolator",
+   "files": 259,
+   "blocks": 4075,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 259,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSMaterialEmittanceMultController",
+   "files": 252,
+   "blocks": 471,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 252,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineCompPoint3Interpolator",
+   "files": 221,
+   "blocks": 447,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\hologram\\1hpholster.kf",
+   "nif": 0,
+   "kf": 221,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "bhkLimitedHingeConstraint",
+   "files": 190,
+   "blocks": 596,
+   "example": "ClassicPack - Main.bsa :: meshes\\nvdlcpre1\\armor\\preordvault\\vault13_go.nif",
+   "nif": 190,
+   "kf": 0,
+   "bsas": [
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiSkinInstance",
+   "files": 178,
+   "blocks": 239,
+   "example": "ClassicPack - Main.bsa :: meshes\\nvdlcpre1\\armor\\preordvault\\vault13_go.nif",
+   "nif": 178,
+   "kf": 0,
+   "bsas": [
+    "ClassicPack - Main.bsa",
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiCamera",
+   "files": 162,
+   "blocks": 162,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\terminals\\nvdlc01_blackjack\\nvdlc01_blackjack-table.nif",
+   "nif": 162,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineCompFloatInterpolator",
+   "files": 154,
+   "blocks": 237,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc03\\creatures\\smbonecrusher\\2hhattackloopdown.kf",
+   "nif": 0,
+   "kf": 154,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "Update.bsa"
+   ]
+  },
+  {
+   "type": "BSFurnitureMarker",
+   "files": 142,
+   "blocks": 142,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\furniture\\nvdlc01computerchair.nif",
+   "nif": 142,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkListShape",
+   "files": 141,
+   "blocks": 162,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\dungeons\\casino\\restaurant\\nvdlc01_smrestaurantstairshalfturn01.nif",
+   "nif": 141,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSValueNode",
+   "files": 139,
+   "blocks": 482,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holoriflemflash.nif",
+   "nif": 139,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSAnimNotes",
+   "files": 134,
+   "blocks": 136,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\hologram\\idleanims\\mt_clapandpoint.kf",
+   "nif": 0,
+   "kf": 134,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBoolTimelineInterpolator",
+   "files": 122,
+   "blocks": 1691,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\mtidle.kf",
+   "nif": 120,
+   "kf": 2,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysModifierActiveCtlr",
+   "files": 120,
+   "blocks": 1150,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\nvdlc01_ghostbreathe.nif",
+   "nif": 120,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkCapsuleShape",
+   "files": 116,
+   "blocks": 1363,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 116,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysDragModifier",
+   "files": 103,
+   "blocks": 917,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\nvdlc01_ghostbreathe.nif",
+   "nif": 103,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSDecalPlacementVectorExtraData",
+   "files": 95,
+   "blocks": 95,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handmelee\\nvdlc01spaceageknifeheated.nif",
+   "nif": 95,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa",
+    "TribalPack - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysCylinderEmitter",
+   "files": 92,
+   "blocks": 224,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\forcefieldfx\\forcefieldrightglow02.nif",
+   "nif": 92,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiFloatExtraData",
+   "files": 81,
+   "blocks": 94,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 81,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSOrderedNode",
+   "files": 81,
+   "blocks": 81,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchgaussexplosion01.nif",
+   "nif": 81,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkRagdollConstraint",
+   "files": 78,
+   "blocks": 708,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 78,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysMeshEmitter",
+   "files": 74,
+   "blocks": 175,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchgastankexplosion01.nif",
+   "nif": 74,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSBound",
+   "files": 66,
+   "blocks": 66,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 66,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSRefractionStrengthController",
+   "files": 66,
+   "blocks": 87,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\lights\\nvdlc01_sconceanim.nif",
+   "nif": 66,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSBlastNode",
+   "files": 63,
+   "blocks": 81,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\weapons\\1handminedrop\\nvdlc01demolitioncharge.nif",
+   "nif": 63,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysColliderManager",
+   "files": 61,
+   "blocks": 126,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 61,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysPlanarCollider",
+   "files": 60,
+   "blocks": 490,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx512b.nif",
+   "nif": 60,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiIntegerExtraData",
+   "files": 60,
+   "blocks": 60,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 60,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkBlendController",
+   "files": 60,
+   "blocks": 1165,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 60,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkBlendCollisionObject",
+   "files": 60,
+   "blocks": 1165,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 60,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPointLight",
+   "files": 58,
+   "blocks": 119,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\terminals\\nvdlc01_blackjack\\nvdlc01_blackjack-table.nif",
+   "nif": 58,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSFrustumFOVController",
+   "files": 56,
+   "blocks": 56,
+   "example": "Fallout - Meshes.bsa :: meshes\\vatscameras\\misslauncherfollow01.nif",
+   "nif": 56,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiGeomMorpherController",
+   "files": 55,
+   "blocks": 83,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx01.nif",
+   "nif": 55,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiMorphData",
+   "files": 55,
+   "blocks": 83,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fogwallfx01.nif",
+   "nif": 55,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysSphereEmitter",
+   "files": 53,
+   "blocks": 112,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 53,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSDamageStage",
+   "files": 51,
+   "blocks": 69,
+   "example": "Fallout - Meshes.bsa :: meshes\\clutter\\electricbox\\electricbox1.nif",
+   "nif": 51,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterSpeedCtlr",
+   "files": 49,
+   "blocks": 75,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\holorifle\\nvdlc01holorifleimpact.nif",
+   "nif": 49,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkTransformShape",
+   "files": 47,
+   "blocks": 57,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\dungeons\\casino\\restaurant\\nvdlc01_smrestaurantstairshalfturn01.nif",
+   "nif": 47,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiFloatExtraDataController",
+   "files": 42,
+   "blocks": 54,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 42,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSPSysMultiTargetEmitterCtlr",
+   "files": 42,
+   "blocks": 71,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc05\\effects\\dlc05mpsalienenergytrail.nif",
+   "nif": 42,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBSBoneLODController",
+   "files": 41,
+   "blocks": 41,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 41,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkSimpleShapePhantom",
+   "files": 40,
+   "blocks": 40,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc05\\dungeons\\mz\\misc\\dlc05terminal01.nif",
+   "nif": 40,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkSPCollisionObject",
+   "files": 40,
+   "blocks": 40,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc05\\dungeons\\mz\\misc\\dlc05terminal01.nif",
+   "nif": 40,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSMasterParticleSystem",
+   "files": 38,
+   "blocks": 38,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc05\\effects\\dlc05mpsalienenergytrail.nif",
+   "nif": 38,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysBombModifier",
+   "files": 35,
+   "blocks": 231,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\effects\\fireworks\\nvdlc01fwevent.nif",
+   "nif": 35,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkConvexTransformShape",
+   "files": 34,
+   "blocks": 109,
+   "example": "Fallout - Meshes.bsa :: meshes\\architecture\\nellis afb\\nvnelliscrate.nif",
+   "nif": 34,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysGravityStrengthCtlr",
+   "files": 27,
+   "blocks": 107,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchpulsefx.nif",
+   "nif": 27,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterLifeSpanCtlr",
+   "files": 25,
+   "blocks": 40,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchgastankexplosion01.nif",
+   "nif": 25,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterInitialRadiusCtlr",
+   "files": 23,
+   "blocks": 47,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchgastankexplosion01.nif",
+   "nif": 23,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkSphereShape",
+   "files": 23,
+   "blocks": 38,
+   "example": "Fallout - Meshes.bsa :: meshes\\clutter\\toys\\ball01.nif",
+   "nif": 23,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSRotAccumTransfInterpolator",
+   "files": 21,
+   "blocks": 38,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\creatures\\chimera\\locomotion\\mtforward.kf",
+   "nif": 0,
+   "kf": 21,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPathInterpolator",
+   "files": 19,
+   "blocks": 56,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlcanch\\effects\\dlcanchfxbomberloop01.nif",
+   "nif": 19,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa"
+   ]
+  },
+  {
+   "type": "TallGrassShaderProperty",
+   "files": 18,
+   "blocks": 18,
+   "example": "Fallout - Meshes.bsa :: meshes\\landscape\\grass\\grasswasteland01.nif",
+   "nif": 18,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSRefractionFirePeriodController",
+   "files": 17,
+   "blocks": 30,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\lights\\nvdlc01_sconceanim.nif",
+   "nif": 17,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysColorModifier",
+   "files": 13,
+   "blocks": 94,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\smsign\\nvdlc01smsign.nif",
+   "nif": 13,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiColorData",
+   "files": 13,
+   "blocks": 94,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\clutter\\smsign\\nvdlc01smsign.nif",
+   "nif": 13,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiLightColorController",
+   "files": 13,
+   "blocks": 13,
+   "example": "Fallout - Meshes.bsa :: meshes\\dungeons\\caves\\lamplight\\lamplightwarm.nif",
+   "nif": 13,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiAmbientLight",
+   "files": 12,
+   "blocks": 12,
+   "example": "Fallout - Meshes.bsa :: meshes\\dungeons\\caves\\lamplight\\lamplightchandelier.nif",
+   "nif": 12,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSStripParticleSystem",
+   "files": 11,
+   "blocks": 12,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\tests\\flamestriptest.nif",
+   "nif": 11,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSStripPSysData",
+   "files": 11,
+   "blocks": 12,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\tests\\flamestriptest.nif",
+   "nif": 11,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSPSysStripUpdateModifier",
+   "files": 11,
+   "blocks": 12,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\tests\\flamestriptest.nif",
+   "nif": 11,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkMalleableConstraint",
+   "files": 10,
+   "blocks": 143,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\creatures\\ghosts\\skeleton.nif",
+   "nif": 10,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysSphericalCollider",
+   "files": 10,
+   "blocks": 243,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc04\\dungeons\\lab\\rooms\\dlc04braincontroldevice01.nif",
+   "nif": 10,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiBinaryExtraData",
+   "files": 8,
+   "blocks": 8,
+   "example": "Fallout - Meshes.bsa :: meshes\\interface\\testloadanim01c.nif",
+   "nif": 8,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "WaterShaderProperty",
+   "files": 8,
+   "blocks": 8,
+   "example": "Fallout - Meshes.bsa :: meshes\\water_placeable\\water_bathtub.nif",
+   "nif": 8,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiLookAtInterpolator",
+   "files": 7,
+   "blocks": 21,
+   "example": "DeadMoney - Main.bsa :: meshes\\nvdlc01\\terminals\\nvdlc01_roulette\\nvdlc01_roulette-table.nif",
+   "nif": 7,
+   "kf": 0,
+   "bsas": [
+    "DeadMoney - Main.bsa",
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "SkyShaderProperty",
+   "files": 6,
+   "blocks": 9,
+   "example": "Fallout - Meshes.bsa :: meshes\\sky\\stars.nif",
+   "nif": 6,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "HonestHearts - Main.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "BSDebrisNode",
+   "files": 6,
+   "blocks": 6,
+   "example": "Fallout - Meshes.bsa :: meshes\\vehicles\\vertibirdmq11animations.nif",
+   "nif": 6,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "BSWindModifier",
+   "files": 6,
+   "blocks": 10,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\explosiongrenadefrag.nif",
+   "nif": 6,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa"
+   ]
+  },
+  {
+   "type": "TileShaderProperty",
+   "files": 5,
+   "blocks": 49,
+   "example": "Fallout - Meshes.bsa :: meshes\\interface\\circular loading\\loading01.nif",
+   "nif": 5,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "BSTreadTransfInterpolator",
+   "files": 5,
+   "blocks": 5,
+   "example": "Fallout - Meshes.bsa :: meshes\\creatures\\libertyprime\\1gtequip.kf",
+   "nif": 0,
+   "kf": 5,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiStringPalette",
+   "files": 5,
+   "blocks": 5,
+   "example": "Fallout - Meshes.bsa :: meshes\\characters\\_male\\idleanims\\talk_handsatside_moving2.kf",
+   "nif": 0,
+   "kf": 5,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiBSplineTransformInterpolator",
+   "files": 4,
+   "blocks": 148,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc05\\creatures\\alien\\locomotion\\forwardwalk.kf",
+   "nif": 0,
+   "kf": 4,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkHingeConstraint",
+   "files": 4,
+   "blocks": 4,
+   "example": "Fallout - Meshes.bsa :: meshes\\creatures\\zaxeye\\skeleton.nif",
+   "nif": 4,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiLightDimmerController",
+   "files": 4,
+   "blocks": 4,
+   "example": "Fallout - Meshes.bsa :: meshes\\clutter\\questitems\\monumentlight01.nif",
+   "nif": 4,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "LonesomeRoad - Main.bsa",
+    "OldWorldBlues - Main.bsa"
+   ]
+  },
+  {
+   "type": "bhkLiquidAction",
+   "files": 3,
+   "blocks": 25,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc03\\effects\\dlc03flamerexplosion.nif",
+   "nif": 3,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa",
+    "GunRunnersArsenal - Main.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterPlanarAngleVarCtlr",
+   "files": 2,
+   "blocks": 3,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 2,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterDeclinationVarCtlr",
+   "files": 2,
+   "blocks": 3,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 2,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkPrismaticConstraint",
+   "files": 2,
+   "blocks": 3,
+   "example": "Fallout - Meshes.bsa :: meshes\\creatures\\protectron\\skeleton.nif",
+   "nif": 2,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "BSParentVelocityModifier",
+   "files": 2,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\gore\\bloodspraylimb01.nif",
+   "nif": 2,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkOrientHingedBodyAction",
+   "files": 2,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\creatures\\sentryturret\\skeleton.nif",
+   "nif": 2,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysInitialRotAngleCtlr",
+   "files": 1,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysInitialRotSpeedVarCtlr",
+   "files": 1,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysInitialRotSpeedCtlr",
+   "files": 1,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterPlanarAngleCtlr",
+   "files": 1,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysEmitterDeclinationCtlr",
+   "files": 1,
+   "blocks": 2,
+   "example": "Fallout - Meshes.bsa :: meshes\\animobjects\\nvvomit.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "BSMultiBoundSphere",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\effects\\tests\\testmultiboundyes.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkBreakableConstraint",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\creatures\\protectron\\skeleton.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "BSWArray",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\projectiles\\libertyprimeprojectile.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkStiffSpringConstraint",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\dlc04\\effects\\dlc04slimebubble03.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "NiPSysResetOnLoopCtlr",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\dungeons\\nvlucky38\\nvlucky38reactor.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  },
+  {
+   "type": "bhkNiTriStripsShape",
+   "files": 1,
+   "blocks": 1,
+   "example": "Fallout - Meshes.bsa :: meshes\\traps\\terminaldesktrap01.nif",
+   "nif": 1,
+   "kf": 0,
+   "bsas": [
+    "Fallout - Meshes.bsa"
+   ]
+  }
+ ]
+}
