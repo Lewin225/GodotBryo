@@ -70,59 +70,13 @@ NifServer does not cache yet. See
 
 ---
 
-## Related: materials, and per-instance variation
+## Related
 
-MaterialServer is a **different** question with a stronger case: UI needs
-materials with no NIF involved, which is the two-caller test MeshServer fails
-and TextureServer passes. It is not blocked on any of the above.
-
-The findings below came out of sizing that question and are recorded here
-because they constrain any caching decision on either side.
-
-**A material is an instance of a shader, and the renderer agrees.** `shader_id`
-and `material_id` are separate fields in the draw-list sort key, ordered
-coarsest first — the source comment says the order exists "to reduce the amount
-of rebinding of shaders, materials, and geometry". So a unique material is one
-tier of cost, not a cliff:
-
-| case | cost |
-|---|---|
-| same shader, same material, same mesh | coalesces into one instanced draw |
-| same shader, different material | no coalesce; sorted adjacent, uniform-set rebind |
-| different shader | pipeline rebind, worst |
-
-Runtime material duplication therefore costs the instanced draw but keeps the
-pipeline bound. Negligible for a handful of UI panels, decisive for a few
-hundred world objects.
-
-**Only instance uniforms give per-instance variation without breaking
-batching.** They live in the instance data rather than the material, so
-`material_id` is unchanged and the coalesce still fires. Two constraints:
-
-- `MAX_INSTANCE_UNIFORM_INDICES = 16` per shader
-  (`servers/rendering/shader_language.h`).
-- `BaseMaterial3D` declares **none** — `scene/resources/material.cpp` contains
-  zero `instance uniform` declarations. They require a `ShaderMaterial` with a
-  hand-written shader, so per-instance variation and staying on
-  `StandardMaterial3D` are mutually exclusive. Dispatching on the NIF's own
-  `shader_type` is the enabler.
-
-`material_override` does not help: it replaces the material for that instance,
-so a unique override is a unique `material_id` and is just duplication by
-another name. It only pays when the override itself is shared by a group.
-
-This suggests splitting by axis of variation rather than picking one mechanism:
-
-| varies | mechanism |
-|---|---|
-| per instance, cheap and numeric (tint, fade, glow, damage blend) | instance uniform, within the 16-slot budget |
-| per group (faction colour, weather state) | one shared material per group, batches within it |
-| structurally (different textures, different blend mode) | genuinely a different material |
-
-Which gives MaterialServer a sharper contract than "a cache with a copy path":
-it hands out shared materials keyed by structural identity, and per-instance
-variation is explicitly not its problem. Nobody mutates a MaterialServer
-material; callers vary the instance.
+[`MaterialServer`](../MaterialServer/README.md) is the same question for
+materials, with a stronger case: UI needs materials with no NIF involved, which
+is the two-caller test meshes fail. The batching findings that constrain both —
+instance uniforms, the shader-versus-material cost tiers, and why
+`material_override` is duplication by another name — are recorded there.
 
 **One case sits outside all of this.** FaceGen deformation is per-NPC, so head
 geometry is a unique mesh by definition and can never come from a shared cached

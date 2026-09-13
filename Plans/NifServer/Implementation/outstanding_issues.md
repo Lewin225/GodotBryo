@@ -211,4 +211,6 @@ resource is shared.
 **Not applicable to FaceGen.** Per-NPC morph deformation means a unique mesh by definition.
 
 A separate MeshServer was considered and declined for now — see
-`project/GodotBryo/Servers/MeshServer/README.md`.
+`project/GodotBryo/Servers/MeshServer/README.md`. MaterialServer is the stronger
+case and is recorded alongside it in
+`project/GodotBryo/Servers/MaterialServer/README.md`.
