@@ -11,9 +11,9 @@ Each is either a known gap in what was built or a decision not yet made.
 | # | Issue | Severity |
 |---|---|---|
 | [1](#1-nifly-nistringpalette-truncation) | nifly `NiStringPalette` truncation | `BLOCKER` |
-| [2](#2-morph-controller-traversal-incomplete) | Morph controller traversal incomplete | `GAP` |
-| [3](#3-collision-transform-shapes-discarded) | Collision transform shapes discarded | `GAP` |
-| [4](#4-text-keys-reachable-from-only-one-link) | Text keys reachable from only one link | `GAP` |
+| [2](#2-morph-controller-traversal-incomplete) | Morph controller traversal incomplete | `FIXED` |
+| [3](#3-collision-transform-shapes-extracted-not-applied) | Collision transform shapes extracted, not applied | `DECISION` |
+| [4](#4-text-keys-reachable-from-only-one-link) | Text keys reachable from only one link | `FIXED` |
 | [5](#5-property-tracks-not-bound) | Property tracks not bound | `GAP` |
 | [6](#6-sequences-addressing-an-external-rig-stay-unbound) | Sequences addressing an external rig stay unbound | `DECISION` |
 | [7](#7-texture-eviction-policy) | Texture eviction policy | `DECISION` |
@@ -21,6 +21,7 @@ Each is either a known gap in what was built or a decision not yet made.
 | [9](#9-loose-files-not-supported) | Loose files not supported | `DECISION` |
 | [10](#10-4s-threading-rationale-does-not-hold-for-godot-472) | §4's threading rationale does not hold for Godot 4.7.2 | `DECISION` |
 | [11](#11-nifserver-does-not-cache) | NifServer does not cache | `GAP` |
+| [12](#12-collision-alignment) | Collision alignment | `PARKED` |
 
 ---
 
@@ -44,34 +45,83 @@ without it §7.4 stays unmet regardless of upstream turnaround.
 
 ## 2. Morph controller traversal incomplete
 
-`GAP` — morph frames are extracted correctly but often not found.
+`FIXED`
 
-`NiGeomMorpherController` is looked for on `NiAVObject::controllerRef` directly. Controllers form a
-chain via `nextControllerRef`, so a morpher that is not first is missed. `skeleton.nif` contains
-`NiGeomMorpherController` + `NiMorphData` and yields nothing.
+`NiGeomMorpherController` was looked for on `NiAVObject::controllerRef` directly. Controllers chain
+through `nextControllerRef`, so a morpher that was not first was missed.
 
-**Fix:** walk the controller chain rather than checking the head. Extraction itself is unchanged.
+`nif_source.cpp` now walks the chain, guarded at 64 links. `skeleton.nif` yields 31 morph frames on
+`HeadAnims:0` — the FaceGen expression set (`Base`, `BlinkLeft`/`Right`, `LookUp`/`Down`/`Left`/
+`Right`, the `Aah`/`BMP`/`FV`/`W`/`Oh` phonemes, `Anger`/`Fear`/`Sad`/`Happy`) — where it previously
+yielded none. Asserted in `test_nif_source` D10.
 
-## 3. Collision transform shapes discarded
+## 3. Collision transform shapes extracted, not applied
 
-`GAP` — affects 81 files.
+`DECISION` — the transform is now reported. Applying it measurably makes placement worse.
 
-`collect_shapes()` recurses through `bhkTransformShape` and `bhkConvexTransformShape` to reach the
-leaf, but discards the transform those wrappers carry, so their shapes land at the wrong offset.
-`bhkTransformShape` appears in 47 files, `bhkConvexTransformShape` in 34. The 11,134 ordinary
-collision files are unaffected.
+`bhkTransformShape` and `bhkConvexTransformShape` wrap a shape to place it. `collect_shapes()`
+recursed through them to reach the leaf and discarded the transform. It now accumulates down the
+recursion and reports it per shape as `has_transform` + a row-major 4x4 with translation in metres.
 
-**Fix:** accumulate the transform down the recursion and store it per shape.
+**`nif_tree_builder.gd` deliberately does not apply it**, on measurement. Comparing the union of
+every collision shape against the union of every render mesh, per file:
+
+| | files |
+|---|---:|
+| carry a wrapper transform | 51 (145 shapes) |
+| applying it improves AABB agreement | 3 |
+| applying it worsens it | **11** |
+| no measurable change | 24 |
+
+The raw reading matches the render mesh closely and the wrapped one does not:
+
+| file | mesh | collision raw | collision wrapped |
+|---|---|---|---|
+| `usonianhomedamm02.nif` | 3.26, 2.31, 3.78 | **3.16, 2.31, 3.78** | 0.45, 0.33, 0.54 |
+| `nv_noso_neonsign05a.nif` | 5.18, 0.63, 5.33 | **5.16, 0.55, 5.31** | 0.74, 0.18, 1.32 |
+| `pedwalkstrip.nif` | 40.17, 11.21, 13.96 | **38.94, 11.16, 13.98** | 5.56, 1.59, 2.00 |
+
+Agreement to within 1–3% on all three axes is not coincidence: the leaf shape is already in correct
+metres and the wrapper's `1/7` applies it a second time.
+
+The scale content is exactly two values: 119 shapes at `1.0` and 26 at `0.143`. That second figure is
+`1/7`, which is `kGamebryoUnitsToMeters / kHavokToMeters` — so the wrapper is carrying a unit
+conversion the shape data has already had applied. What it converts *between* is not established, and
+the obvious reading (leaf vertices are in Gamebryo units and need the extra `/7`) is contradicted by
+the raw shape already matching the mesh.
+
+The extraction itself is verified: the layout assumption is confirmed against nifly's own
+`Matrix4::Translate`, which writes `m[3]`, `m[7]`, `m[11]`. Every wrapper in the corpus carries
+rotation and/or scale and **never** a translation, so the metre conversion on those indices is
+untested by real data.
+
+45 shapes carry a real rotation. Whether those should be applied is not settled either — the AABB
+metric above compares extents and is close to rotation-invariant, so it cannot distinguish them.
+A better test would compare oriented hulls, not AABBs.
+
+`previews/usonianhomedamm02.tscn` carries both readings in one scene for visual comparison: the
+ordinary `Collision` node as the builder produces it, and a `CollisionWithWrapperApplied` node
+holding the same shapes with the transform applied.
+
+**Settled by the original game.** Base `0x0015CDF2` spawned in Fallout New Vegas with collision
+debug rendering shows the authored collision at the same scale as the render mesh. The 1/7 is not to
+be applied. NifSkope renders it scaled and is wrong. See issue #12 for the separate question of
+where the collision sits.
+
+The 45 rotation-carrying shapes are still unverified — the AABB metric used above is close to
+rotation-invariant and cannot judge them.
 
 ## 4. Text keys reachable from only one link
 
-`GAP` — 263 of 7,745 blocks currently reachable.
+`FIXED`
 
-`NiTextKeyExtraData` is read through `NiObjectNET::extraDataRefs`, which finds only node-attached
-ones. The rest hang off `NiControllerSequence::textKeyRef`, a different link that is not yet walked.
-Nothing is mis-parsed; the traversal is narrow.
+`NiTextKeyExtraData` was read only through `NiObjectNET::extraDataRefs`, which finds node-attached
+blocks. Most hang off `NiControllerSequence::textKeyRef`, a separate link.
 
-**Fix:** expose `textKeyRef` alongside the sequence, where animation events belong anyway.
+`Sequence` now carries `text_keys`, read from that ref — where animation events belong anyway.
+Corpus-wide **7,212 sequences carry text keys, 29,574 keys total**, against 263 blocks reachable
+before. `barracksdoor.nif`'s `Open` reads `0.00s 'start'`, `1.67s 'end'`. Asserted in
+`test_nif_source` D10.
 
 ## 5. Property tracks not bound
 
@@ -255,3 +305,125 @@ A separate MeshServer was considered and declined for now — see
 `project/GodotBryo/Servers/MeshServer/README.md`. MaterialServer is the stronger
 case and is recorded alongside it in
 `project/GodotBryo/Servers/MaterialServer/README.md`.
+
+## 12. Collision alignment
+
+`PARKED` — cannot be validated with the tools that exist today.
+
+Collision alignment in the previous renderer took sustained tweaking, and it was driven **empirically
+by walking the map** and finding things that were wrong — the fridges being the memorable case.
+Static comparison is a poor substitute: an AABB metric cannot tell legitimate hull simplification
+from a real offset, and inferring the placement rule from geometry alone does not work — it was
+tried several ways here and each answer failed against the next file. NifServer cannot yet be driven
+over the world, so the feedback loop that actually solved this last time is not available. Parked
+until it is.
+
+Everything below is current and verified. Do not act on part of it without reading the ruled-out
+list.
+
+A collision object is attached to a node, and `_build_collision()` parents its body under that
+node — so the owning node's transform chain places it. For `usonianhomedamm02.nif` the collision
+object is on the root `BSFadeNode`, whose transform is identity, while the three `NiTriStrips`
+carrying the geometry each hold a translation of `(-582.197, -70.309, 0)` raw. The meshes move, the
+collision does not.
+
+Measured in the built tree:
+
+| file | mesh ↔ collision offset |
+|---|---|
+| `usonianhomedamm02.nif` | (-8.310, -1.005, 0.003) m — exactly the node translation |
+| `ramshacklebusdoor02.nif` | (-2.056, 0.115, 1.350) m |
+| `barracks01.nif` | (0.000, 0.017, -0.007) m — its geometry nodes carry no translation |
+
+**The collision data is authored in the same space as the untransformed mesh vertices.** Before any
+node transform, the two unions sit in the same place to within 7 mm:
+
+```
+mesh      vertex centre = (8.319, 1.155, 1.890) m
+collision vertex centre = (8.312, 1.155, 1.888) m
+```
+
+That also confirms the unit handling: 582.3 Gamebryo / 83.12 Havok = 7.005, so each converts to the
+same metres by its own factor, and the `bhkTransformShape` 1/7 of issue #3 is redundant rather than
+load-bearing.
+
+Corpus census, comparing the mesh union with node transforms applied against the collision union
+without them — i.e. exactly what the builder produces — across the 10,162 files carrying both:
+
+| centre offset | files |
+|---|---:|
+| < 0.1 m | 5,617 |
+| 0.1–1 m | 2,945 |
+| 1–5 m | 1,004 |
+| > 5 m | 596 |
+
+**These numbers measure disagreement and must not be read as a defect count.** `boxcarwall02.nif`
+sits in the 0.1–1 m bucket at 0.84 m and is *correct* — a simplified hull does not share a centre
+with its render mesh. The proven legacy path handles that file, and our output for it is fine. Only
+the far tail is suspicious, and even there the cause is unestablished.
+
+### The defect
+
+`usonianhomedamm02.nif` and `ramshacklebusdoor02.nif` both carry a plain `bhkRigidBody` whose
+translation is exactly zero, so the offset comes entirely from the geometry nodes' own translations,
+which collision never receives. nifly supplies node transforms, body transforms and shape vertices
+correctly; this is policy in `nif_source.cpp` / `nif_tree_builder.gd`, not a parsing problem.
+
+### Ground truth: Fallout New Vegas itself
+
+Base `0x0015CDF2` spawned in the original game with collision debug rendering shows the authored
+collision **co-located with the render mesh and at the same scale**. That is the reference, and it
+settles two things:
+
+- The `bhkTransformShape` 1/7 must **not** be applied — issue #3's conclusion, confirmed. NifSkope
+  renders it scaled and is simply wrong here.
+- The 8.3 m separation NifServer produces is **ours**. Issue #12(a) is a real defect.
+
+Supporting facts, verified but not conclusions in themselves: both readers agree exactly on node
+transforms (legacy reports `UsonianDamM02_Trim:0 origin = (-8.317094, -1.004414, 0)`, matching
+`-582.197 / 70`), and `NifReader.get_collision_shapes()` returns zero shapes for this file because
+its `unwrap_shape()` handles only `bhkMoppBvTreeShape`. So the shipping path never extracted this
+collision at all, and cannot be used as a comparison case — but the original game can, and did.
+
+### The rule the shipping loader uses
+
+```cpp
+flatten_transform(flatten_via_scene_nodes(av, ...).ComposeTransforms(rigid_body_transform(body)), cs);
+```
+
+Collision receives the **collision-bearing AV node's** transform-to-root, composed with the body
+transform for `bhkRigidBodyT` only.
+
+For this file that AV is the root block and its own transform is never composed in, so that rule
+alone does not close the 8.3 m gap. Since the original game clearly does close it, the offset comes
+from somewhere this has not yet read. Unread candidates on the blocks involved include
+`bhkCollisionObject`'s own target pointer, `bhkPackedNiTriStripsShape::scaling`, and
+`hkSubPartData`. **Open, and not to be guessed at.**
+
+### What is ruled out
+
+- `NiCollisionObject::targetRef` — checked, points at the same root block that `collisionRef` reached.
+  No hidden owning node. (Now extracted and exposed as `collision_target_block_index` regardless.)
+- **A plain `bhkRigidBody`'s transform.** Correctly skipped, and it must stay skipped.
+  `meshes/vehicles/vertibirdencount01.nif` has six of them carrying real translations around −50 m
+  in Z with real rotations, which looks like recoverable placement data and is not.
+  `nif_loader.cpp`, proven in play, documents why:
+
+  > A PLAIN `bhkRigidBody` (not "T") must NOT have this applied, even though nifly parses the exact
+  > same translation/rotation fields for it — those values are Bethesda's own re-expression of the
+  > SAME offset the AV's node chain already carries (in Havok's unit scale), not an additional delta.
+
+  Applying them double-counts.
+- The `bhkTransformShape` 1/7 as the fix — applying it lands the shape at 1.19 m, not the 0 m the
+  geometry occupies.
+
+### The one distinguishing feature found
+
+`usonianhomedamm02.nif` reaches its collision through `bhkTransformShape`; `boxcarwall02.nif` reaches
+its through `bhkMoppBvTreeShape`. Legacy's `unwrap_shape()` handles only Mopp, so the shipping path
+never extracted a transform-wrapped shape at all — this is unexplored territory, not a regression.
+51 files are in that class, which cannot by itself account for the 596-file tail.
+
+**Why this was missed:** the alignment check added for issue #3 compared AABB *sizes* only, never
+centres, so a pure translation error was invisible to it. Found by inspecting
+`usonianhomedamm02.nif` in NifSkope against the generated preview scene.

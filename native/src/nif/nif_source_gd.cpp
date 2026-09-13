@@ -67,6 +67,7 @@ Array NifSource::get_nodes() const {
 		d["is_declared_bone"] = n.is_declared_bone;
 		d["collision_type"] = String(n.collision_type.c_str());
 		d["collision_block_index"] = n.collision_block_index;
+		d["collision_target_block_index"] = n.collision_target_block_index;
 		PackedStringArray slots;
 		for (const auto &t : n.texture_slots) {
 			slots.push_back(String(t.c_str()));
@@ -330,6 +331,14 @@ Array NifSource::get_sequences() const {
 			blocks.push_back(b);
 		}
 		d["controlled_blocks"] = blocks;
+		Array text_keys;
+		for (const auto &tk : seq.text_keys) {
+			Dictionary k;
+			k["time"] = tk.time;
+			k["value"] = String(tk.value.c_str());
+			text_keys.push_back(k);
+		}
+		d["text_keys"] = text_keys;
 		out.push_back(d);
 	}
 	return out;
@@ -362,6 +371,13 @@ Array NifSource::get_collision_shapes() const {
 			indices.push_back(static_cast<int32_t>(i));
 		}
 		d["indices"] = indices;
+		d["has_transform"] = cs.has_transform;
+		// Row-major, translation already in meters.
+		d["transform"] = Transform3D(
+				Basis(cs.transform[0], cs.transform[1], cs.transform[2],
+						cs.transform[4], cs.transform[5], cs.transform[6],
+						cs.transform[8], cs.transform[9], cs.transform[10]),
+				Vector3(cs.transform[3], cs.transform[7], cs.transform[11]));
 		out.push_back(d);
 	}
 	return out;

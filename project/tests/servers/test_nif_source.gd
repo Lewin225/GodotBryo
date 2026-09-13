@@ -18,6 +18,7 @@ const SKYDOME := "meshes/nvdlc04/dungeons/utemple/nvdlc04uskydome.nif"
 const EATIDLE := "meshes/characters/_male/idleanims/eatidle.kf"
 const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
+const TRANSFORM_SHAPE := "meshes/architecture/freeside/ramshacklebusdoor02.nif"
 const BSPLINE := "meshes/dlc05/creatures/alien/locomotion/forwardwalk.kf"
 
 var failures := 0
@@ -297,6 +298,57 @@ func test_d9_interpolators() -> void:
 	check(spline_keys > 0, "they yielded %d keys" % spline_keys)
 
 
+func test_d10_controller_chain_and_text_keys() -> void:
+	print("--- D10: controller chain, sequence text keys, shape transforms ---")
+
+	# Controllers form a chain through nextControllerRef. Checking only the
+	# head missed every morpher that is not first.
+	var skel := _load(SKELETON)
+	if skel == null:
+		return
+	var morph_nodes := 0
+	var frames := 0
+	for n in skel.get_nodes():
+		var m: Array = n.get("morphs", [])
+		if m.is_empty():
+			continue
+		morph_nodes += 1
+		frames += m.size()
+	check(morph_nodes >= 1, "skeleton.nif yields morph frames (%d nodes)" % morph_nodes)
+	check(frames == 31, "31 FaceGen morph frames (got %d)" % frames)
+
+	# NiControllerSequence::textKeyRef, a different link from the node-attached
+	# NiObjectNET::extraDataRefs chain.
+	var door := _load(DOOR)
+	if door == null:
+		return
+	var seq_with_keys := 0
+	var seen_start := false
+	for seq in door.get_sequences():
+		var tk: Array = seq["text_keys"]
+		if tk.is_empty():
+			continue
+		seq_with_keys += 1
+		for k in tk:
+			if String(k["value"]) == "start":
+				seen_start = true
+	check(seq_with_keys > 0, "%d door sequences carry text keys" % seq_with_keys)
+	check(seen_start, "a 'start' marker is present")
+
+	# bhkTransformShape / bhkConvexTransformShape wrappers. The transform is
+	# reported; whether it should be APPLIED is unresolved -- measured against
+	# render-mesh AABBs it improves 1 shape and worsens 25, so the builder
+	# deliberately does not apply it. See outstanding_issues.md #3.
+	var wrapped := 0
+	var xform_src := _load(TRANSFORM_SHAPE)
+	if xform_src == null:
+		return
+	for cs in xform_src.get_collision_shapes():
+		if bool(cs["has_transform"]):
+			wrapped += 1
+	check(wrapped > 0, "%s reports %d wrapper transforms" % [TRANSFORM_SHAPE.get_file(), wrapped])
+
+
 func test_d7_extra_data() -> void:
 	print("--- D7: extra data ---")
 	var src := _load(BARRACKS)
@@ -515,6 +567,7 @@ func _ready() -> void:
 	test_d7_extra_data()
 	test_d8_geometry_skin_collision()
 	test_d9_interpolators()
+	test_d10_controller_chain_and_text_keys()
 	test_node_transform_units()
 	test_corpus_parses()
 
