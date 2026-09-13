@@ -76,17 +76,58 @@ Nothing is mis-parsed; the traversal is narrow.
 ## 5. Property tracks not bound
 
 `GAP` — transform curves are extracted and played; property curves are extracted and left.
+**271 files return an AnimationPlayer with no tracks at all.**
 
-`get_sequences()` now returns each `ControllerLink`'s interpolator with its key data:
+`get_sequences()` returns each `ControllerLink`'s interpolator with its key data:
 `NiTransformInterpolator`, the B-spline transform pair (sampled — cubic control points have no
 keyframe equivalent), `NiFloatInterpolator`, `NiBoolInterpolator` and `NiPoint3Interpolator`.
 `NiBlend*` reports `kind == "blend"` and carries no keys, which is what it is.
 
-`nif_tree_builder.gd` builds `AnimationPlayer` tracks from the **transform** kind only. Float, bool
-and point3 links address a *property block* on a node, and §7.3's addressing problem is unsettled:
-~34% of `NiMaterialProperty` blocks are shared between two or more nodes, so one property track has
-to fan out to every node that referenced the same block, and a Godot `StandardMaterial3D` fuses
-properties whose sharing granularity differs. The keys reach the caller; the binding does not.
+`nif_tree_builder.gd` builds `AnimationPlayer` tracks from the **transform** kind only. Measured
+across the shipped `.nif` corpus:
+
+| | |
+|---|---:|
+| files with sequences | 1,153 |
+| …with at least one property-targeted link | **582** |
+| …**property-only**, so the emitted AnimationPlayer is empty | **271** |
+| links: transform / property | 25,717 / 5,295 |
+
+`meshes/nvdlc04/dungeons/utemple/nvdlc04uskydome.nif` is the shape of the failure: a 266-second
+looping `Idle` whose three controlled blocks are two scrolling UV transforms and a `SELF_ILLUM`
+colour curve, and not one transform track. The sky is static.
+
+Exactly **11** distinct `(propType, ctrlType, ctrlID)` triples exist corpus-wide — a closed,
+hand-writable mapping table, corroborating nif_server_v2.md §7.3's independent count:
+
+| triple | links | Godot |
+|---|---:|---|
+| `NiMaterialProperty / NiMaterialColorController / SELF_ILLUM` | 1218 | `emission` |
+| `NiMaterialProperty / NiAlphaController` | 1182 | `albedo_color.a` |
+| `NiMaterialProperty / BSMaterialEmittanceMultController` | 879 | `emission_energy_multiplier` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_TRANSLATE_U` | 704 | `uv1_offset.x` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_TRANSLATE_V` | 672 | `uv1_offset.y` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_SCALE_U` | 177 | `uv1_scale.x` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_SCALE_V` | 153 | `uv1_scale.y` |
+| `BSShaderPPLightingProperty / BSRefractionStrengthController` | 106 | ~`refraction` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_ROTATE` | 105 | **none** |
+| `BSShaderPPLightingProperty / BSRefractionFirePeriodController` | 57 | **none** |
+| `NiMaterialProperty / NiMaterialColorController / SPEC` | 42 | specular |
+
+Two have no `StandardMaterial3D` equivalent and force a custom shader regardless of anything else.
+
+**Two things have to be settled before this can be implemented, and they are not track-plumbing.**
+
+Property blocks are shared: ~34% of `NiMaterialProperty` are referenced by two or more nodes, while
+shader properties never are. A Godot material fuses blocks whose sharing granularity differs, so one
+property track has to fan out to every node that referenced the same block. `SceneNode` already
+carries `property_block_indices` so a consumer can do it; nothing does it yet.
+
+An `AnimationPlayer` track pointed at a material is **in-place mutation, every frame**. Implementing
+this creates the shared-material hazard across 582 files, which is the caching question, not an
+animation one — see `project/GodotBryo/Servers/MaterialServer/README.md`. Deciding the track target
+(a shared material, a per-instance material, or an instance uniform) decides whether those files can
+batch.
 
 ## 6. Sequences addressing an external rig stay unbound
 
