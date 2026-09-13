@@ -34,9 +34,33 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 ## Contract
 
 ```gdscript
-NifTreeBuilder.warm_textures(src: NifSource) -> void              # prefetch, worker-safe
+NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
+NifServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
+NifServer.canonical(nif_path) -> String   # static
+
 await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
 ```
+
+`NifServer` is the autoloaded entry point: it owns the archive read, the parse, the resolve queue,
+the admission cap and the per-frame build budget. `NifTreeBuilder` is the construction half and is
+called directly only by code that already holds a `NifSource`.
+
+**Delivery is a callback, not an await, and that is the leak guarantee.** `on_complete` must be a
+method on `owner` — not a closure capturing it, which the server rejects — so the server can tell
+whether anyone is still there to receive the result. An owner that goes away before the build starts
+gets no tree built at all; one that goes away during the build has the result freed rather than
+orphaned.
+
+**`prefer_static` is a preference, not an override.** It asks for §10's flattened form — one wrapper
+with one `MeshInstance3D` per mesh, hierarchy removed, nothing merged. A file with dynamic content
+comes back hierarchical instead, because flattening it would discard the behaviour that makes it
+work. The root always carries `nif_flattened`, and when that is false
+`nif_not_flattened_because` names the blocker, so the decision is reported rather than silent. A
+caller placing scenery does not know whether a given SCOL animates, and should not have to.
+
+On success ownership transfers to the caller, which must parent or free it. A result still
+unparented **one full frame later** is freed by the safety net — a full frame, not a deferred call,
+so a caller that parents on the next frame is not freed underneath it.
 
 **Honest return.** What the file contains is what comes back. Nothing is invented to make a result
 more convenient, and nothing is withheld because a caller might not want it. If a return needs
@@ -50,6 +74,8 @@ work, and NifServer offers no entry point for it.
 | sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
 | collision | one body per owning node, parented under that node |
+| `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
+| `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
 
 **Already converted.** Positions are metres, the tree is Y-up and Godot-forward, triangle winding is
@@ -60,9 +86,6 @@ Godot's. No consumer applies an axis correction, a unit scale or a winding flip 
 awaits `TextureServer.request()` for each, and then builds the tree in a single synchronous pass from
 an already-resident set. That is the whole of TextureServer's external surface: `warm()` and
 `request()`. Node construction itself never awaits.
-
-`warm_textures()` is the same prefetch without the wait, for a caller resolving many files at once
-that wants every warm in flight before the first `build()` starts.
 
 **Names are reversible.** Authored NIF names survive Godot's node-name restrictions through
 `nif_names.gd`, and the authored form is always on the node as `nif_name` metadata.

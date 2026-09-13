@@ -202,14 +202,25 @@ contract layer.
 | E5 | Implement §6 resolution order including palette aliases. |
 | E6 | Stamp source property-block identity per node for the §7.3 fan-out. |
 | E7 | Fix the ownership safety net: the unparented check must be deferred, not synchronous — the current version frees the node under a caller that parents a line later. |
-| E8 | Keep as-is: threading split, admission, budget, cache identity, canonical paths, name mapping, named skin binds, `flatten_static`. |
+| E8 | Keep as-is: threading split, admission, budget, cache identity, canonical paths, name mapping, named skin binds, `prefer_static`. |
+
+**Stage E is complete.** E1 landed as `nif_server.gd` (autoload, queue, admission, budget, document
+cache); E2/E3/E5/E6 in `nif_tree_builder.gd`; E4 as `PhysicalBone3D` under an inert
+`PhysicalBoneSimulator3D` plus `NifBillboardNode`; E7 as a full-frame orphan net rather than a
+deferred call; §10 as `prefer_static`. Gates: `test_nif_server`, `test_nif_tree_builder`,
+`test_nif_source`, `test_nif_parity`.
+
+Two spec sections changed during E and are recorded in `nif_server_v2.md` rather than here: §4's
+threading rationale (the `RID_Owner` claim did not hold for 4.7.2; the split stands for different
+reasons) and §10 (`flatten_static` override became `prefer_static` preference, since the caller
+cannot know whether a SCOL animates).
 
 **Prerequisite check:** Stage D gate green.
 
 **Gate — `project/tests/servers/test_nif_server.tscn` must prove:**
 
-- **parity** against `mesh_resolver` for a fixed corpus sample: vertex counts, indices, world transforms, material texture paths, collision descriptors, skin bind names
-- hierarchy and `flatten_static` place every mesh identically (already passing: 0.000000 m across 10 meshes)
+- **parity** against `mesh_resolver` for a fixed corpus sample: vertex counts, indices, world transforms, material texture paths, collision descriptors, skin bind names — `test_nif_parity`, 10 files, 71 checks: 21,265 vertices and 56,457 indices identical, world transforms agreeing to 0.000000 m, 0 diffuse path mismatches, skin binds identical. Collision **placement** is out of scope (issue #12 parked) and the legacy reader is no reference for it anyway: its `unwrap_shape()` handles only `bhkMoppBvTreeShape`, so it returns 0 shapes for `UsonianHomeDamM02.NIF` where NifServer returns 2.
+- hierarchy and `prefer_static` place every mesh identically (already passing: 0.000000 m across 10 meshes)
 - a light NIF yields `OmniLight3D`, a camera NIF `Camera3D`, a particle NIF `GPUParticles3D`
 - `skeleton.nif` yields `PhysicalBone3D` under a simulator that is **not** simulating
 - name escape round-trips for every authored name in the sample, including duplicates

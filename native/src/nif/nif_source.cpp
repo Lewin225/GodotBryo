@@ -99,6 +99,80 @@ void compose_4x4(const float *a, const float *b, float *out) {
 	}
 }
 
+// Constraints on a ragdoll body (nif_server_v2.md 5.3). Pivots carry a Havok
+// length; axes and angles do not.
+void fill_constraints(nifly::NiHeader &header, nifly::bhkRigidBody *body, CollisionBody &out) {
+	for (const auto &ref : body->constraintRefs) {
+		if (ref.IsEmpty()) {
+			continue;
+		}
+		auto *constraint = header.GetBlock<nifly::bhkConstraint>(ref.index);
+		if (constraint == nullptr) {
+			continue;
+		}
+		CollisionConstraint cc;
+		cc.block_index = ref.index;
+		cc.block_type = header.GetBlockTypeStringById(ref.index);
+		cc.kind = "unsupported";
+
+		// bhkMalleableConstraint is a wrapper: it holds a ConstraintData whose
+		// own `type` selects which descriptor is live. 14 of skeleton.nif's 17
+		// constraints are this, so reading it as opaque loses most of the rig.
+		const nifly::RagdollDesc *ragdoll_desc = nullptr;
+		const nifly::LimitedHingeDesc *hinge_desc = nullptr;
+		if (auto *malleable = dynamic_cast<nifly::bhkMalleableConstraint *>(constraint)) {
+			cc.wrapped_by = cc.block_type;
+			switch (malleable->subConstraint.type) {
+				case nifly::Ragdoll: ragdoll_desc = &malleable->subConstraint.desc5; break;
+				case nifly::LimitedHinge: hinge_desc = &malleable->subConstraint.desc3; break;
+				default: break;
+			}
+		} else if (auto *ragdoll = dynamic_cast<nifly::bhkRagdollConstraint *>(constraint)) {
+			ragdoll_desc = &ragdoll->ragdoll;
+		} else if (auto *hinge = dynamic_cast<nifly::bhkLimitedHingeConstraint *>(constraint)) {
+			hinge_desc = &hinge->limitedHinge;
+		}
+
+		if (ragdoll_desc != nullptr) {
+			const auto &d = *ragdoll_desc;
+			cc.kind = "ragdoll";
+			cc.pivot_a[0] = d.pivotA.x * units::kHavokToMeters;
+			cc.pivot_a[1] = d.pivotA.y * units::kHavokToMeters;
+			cc.pivot_a[2] = d.pivotA.z * units::kHavokToMeters;
+			cc.pivot_b[0] = d.pivotB.x * units::kHavokToMeters;
+			cc.pivot_b[1] = d.pivotB.y * units::kHavokToMeters;
+			cc.pivot_b[2] = d.pivotB.z * units::kHavokToMeters;
+			cc.axis_a[0] = d.twistA.x; cc.axis_a[1] = d.twistA.y; cc.axis_a[2] = d.twistA.z;
+			cc.axis_b[0] = d.twistB.x; cc.axis_b[1] = d.twistB.y; cc.axis_b[2] = d.twistB.z;
+			cc.plane_a[0] = d.planeA.x; cc.plane_a[1] = d.planeA.y; cc.plane_a[2] = d.planeA.z;
+			cc.plane_b[0] = d.planeB.x; cc.plane_b[1] = d.planeB.y; cc.plane_b[2] = d.planeB.z;
+			cc.cone_max_angle = d.coneMaxAngle;
+			cc.plane_min_angle = d.planeMinAngle;
+			cc.plane_max_angle = d.planeMaxAngle;
+			cc.twist_min_angle = d.twistMinAngle;
+			cc.twist_max_angle = d.twistMaxAngle;
+			cc.max_friction = d.maxFriction;
+		} else if (hinge_desc != nullptr) {
+			const auto &d = *hinge_desc;
+			cc.kind = "hinge";
+			cc.pivot_a[0] = d.pivotA.x * units::kHavokToMeters;
+			cc.pivot_a[1] = d.pivotA.y * units::kHavokToMeters;
+			cc.pivot_a[2] = d.pivotA.z * units::kHavokToMeters;
+			cc.pivot_b[0] = d.pivotB.x * units::kHavokToMeters;
+			cc.pivot_b[1] = d.pivotB.y * units::kHavokToMeters;
+			cc.pivot_b[2] = d.pivotB.z * units::kHavokToMeters;
+			cc.axis_a[0] = d.axleA.x; cc.axis_a[1] = d.axleA.y; cc.axis_a[2] = d.axleA.z;
+			cc.axis_b[0] = d.axleB.x; cc.axis_b[1] = d.axleB.y; cc.axis_b[2] = d.axleB.z;
+			cc.plane_a[0] = d.axleInA1.x; cc.plane_a[1] = d.axleInA1.y; cc.plane_a[2] = d.axleInA1.z;
+			cc.plane_b[0] = d.axleInB1.x; cc.plane_b[1] = d.axleInB1.y; cc.plane_b[2] = d.axleInB1.z;
+			cc.min_angle = d.minAngle;
+			cc.max_angle = d.maxAngle;
+			cc.max_friction = d.maxFriction;
+		}
+		out.constraints.push_back(std::move(cc));
+	}
+}
+
 void collect_shapes(const nifly::NifFile &nif, uint32_t shape_block, int32_t node_index,
 		int32_t body_index, Document &doc, int depth = 0,
 		const float *parent_transform = nullptr) {
@@ -775,6 +849,19 @@ Document load(const uint8_t *data, size_t size) {
 			out.property_types.push_back(header.GetBlockTypeStringById(prop.index));
 		}
 
+		if (auto *billboard = header.GetBlock<nifly::NiBillboardNode>(block)) {
+			switch (billboard->billboardMode) {
+				case nifly::ALWAYS_FACE_CAMERA: out.billboard_mode = "always_face_camera"; break;
+				case nifly::ROTATE_ABOUT_UP:
+				case nifly::ROTATE_ABOUT_UP2: out.billboard_mode = "rotate_about_up"; break;
+				case nifly::RIGID_FACE_CAMERA: out.billboard_mode = "rigid_face_camera"; break;
+				case nifly::ALWAYS_FACE_CENTER: out.billboard_mode = "always_face_center"; break;
+				case nifly::RIGID_FACE_CENTER: out.billboard_mode = "rigid_face_center"; break;
+				case nifly::BSROTATE_ABOUT_UP: out.billboard_mode = "bs_rotate_about_up"; break;
+				default: out.billboard_mode = "always_face_camera"; break;
+			}
+		}
+
 		if (auto *shape = header.GetBlock<nifly::NiShape>(block)) {
 			if (auto *alpha = nif.GetAlphaProperty(shape)) {
 				out.has_alpha_property = true;
@@ -963,6 +1050,7 @@ Document load(const uint8_t *data, size_t size) {
 						cb.rotation[1] = body->rotation.y;
 						cb.rotation[2] = body->rotation.z;
 						cb.rotation[3] = body->rotation.w;
+						fill_constraints(header, body, cb);
 						const int32_t body_index = static_cast<int32_t>(doc.collision_bodies.size());
 						doc.collision_bodies.push_back(std::move(cb));
 						if (!body->shapeRef.IsEmpty()) {

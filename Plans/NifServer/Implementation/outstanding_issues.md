@@ -19,7 +19,7 @@ Each is either a known gap in what was built or a decision not yet made.
 | [7](#7-texture-eviction-policy) | Texture eviction policy | `DECISION` |
 | [8](#8-windows-positional-read-unverified) | Windows positional read unverified | `DECISION` |
 | [9](#9-loose-files-not-supported) | Loose files not supported | `DECISION` |
-| [10](#10-4s-threading-rationale-does-not-hold-for-godot-472) | §4's threading rationale does not hold for Godot 4.7.2 | `DECISION` |
+| [10](#10-4s-threading-rationale-does-not-hold-for-godot-472) | §4's threading rationale does not hold for Godot 4.7.2 | `FIXED` |
 | [11](#11-nifserver-does-not-cache) | NifServer does not cache | `GAP` |
 | [12](#12-collision-alignment) | Collision alignment | `PARKED` |
 
@@ -225,49 +225,26 @@ consumer.
 
 ## 10. §4's threading rationale does not hold for Godot 4.7.2
 
-`DECISION` — the split may still be right; the stated reason for it is not.
+`FIXED` — §4 re-derived. The split is unchanged; its justification is replaced.
 
-`nif_server_v2.md` §4 pins `_build()` to the main thread and bars `_resolve()` from touching **any**
-`Node`, on this rationale:
+The old rationale claimed `RID_Owner<T>` locking is compiled out off the main thread. Checked against
+`enginedocs/godot-4.7.2 source/`: `THREAD_SAFE` is a per-owner template argument, and `mesh_owner`,
+`texture_owner`, `material_owner`, `shader_owner` and `skeleton_owner` all request it. The owners
+that do not are renderer-internal per-instance bookkeeping. The old §4 also barred `_resolve()` from
+touching any `Node`, which contradicts Godot's own documentation that building scene chunks outside
+the active tree is fine.
 
-> The split exists because `RID_Owner<T>` locking is compiled out off the main thread with the
-> Separate Rendering Thread model off.
+§4 now rests on two things that are true:
 
-Both halves fail a check against `enginedocs/godot-4.7.2 source/`.
+- TextureServer's caches are main-thread-owned with no atomics by design, and `_build()` reads them
+  for every texture slot. Moving `_build()` to a worker means making another server's internals
+  thread-safe.
+- Measured over a 60-model burst with textures resident, `_resolve()` is already the larger half:
+  read 33.1 ms + parse 14.7 ms against build 21.4 ms. `_build()` is 0.36 ms per model, which a frame
+  budget absorbs.
 
-**`THREAD_SAFE` is a per-owner template argument, not a global gated on the rendering thread model.**
-The owners behind the types §4 names request it:
-
-| owner | `THREAD_SAFE` |
-|---|---|
-| `RID_Owner<Mesh, true> mesh_owner` | true |
-| `RID_Owner<Texture, true> texture_owner` | true |
-| `RID_Owner<Material, true> material_owner` | true |
-| `RID_Owner<Shader, true> shader_owner` | true |
-| `RID_Owner<Skeleton, true> skeleton_owner` | true |
-| `MeshInstance`, `LightInstance`, `RenderTarget`, `ShadowAtlas`, … | false |
-
-The unsafe owners are the renderer's own per-instance bookkeeping, which script never addresses
-directly.
-
-**Barring `Node` construction off the main thread contradicts Godot's documentation**, which states
-that creating scene chunks in tree arrangement outside the active tree is fine, and that the
-resulting chunk is then added on the main thread via `call_deferred`.
-
-**Provenance.** §4 inherits this from `nif_server_v1.md`, which attributes it to the top-of-file
-comment in `project/gamebryo/mesh_resolver.gd`, which cites `phases/2/10-threaded-streaming-workers.md`
-— prototype-era work. The crash it records ("Attempting to initialize the wrong RID") was real; the
-mechanism recorded for it does not match this engine version.
-
-**What is still true**, and is the real constraint on Stage E: Godot's documentation warns that
-creating scene chunks from *multiple* threads risks resources being tweaked by several at once,
-because a resource is loaded only once. NifServer shares resources heavily — one `ImageTexture` out
-of TextureServer's cache is referenced by many materials — so one loader thread is the sanctioned
-pattern and N concurrent `build()` calls is the case the warning is about. That is a cache-sharing
-question, not a RID one.
-
-**Open:** re-derive §4 against this engine version before Stage E is built, rather than
-implementing the split as written.
+§4.2 also records that queue ordering must not be FIFO — `world_streamer.gd` learned that a plain
+queue builds the far side of a cell first, and orders by real circular distance instead.
 
 ## 11. NifServer does not cache
 
