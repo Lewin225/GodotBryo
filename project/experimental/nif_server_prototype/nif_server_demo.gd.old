@@ -1,0 +1,165 @@
+extends SceneTree
+
+## Self-contained NifServer demo. Instantiates the server directly (no
+## autoload registration, no other system touched) and exercises the v2
+## contract against real game data.
+##
+##   tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path project \
+##       --script res://GodotBryo/Servers/NifServer/nif_server_demo.gd
+
+const NifServerScript := preload("res://GodotBryo/Servers/NifServer/nif_server.gd")
+const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+
+const CASES := [
+	{"path": "architecture/barracks/barracks01.nif", "flatten": false, "label": "static + collision"},
+	{"path": "architecture/barracks/barracks01.nif", "flatten": true, "label": "same file, flatten_static"},
+	{"path": "characters/_male/upperbody.nif", "flatten": false, "label": "skinned body part"},
+	{"path": "characters/_male/skeleton.nif", "flatten": false, "label": "skeleton (rig + ragdoll)"},
+	{"path": "clutter/junk/milkbottle01.nif", "flatten": false, "label": "small clutter"},
+	{"path": "does/not/exist.nif", "flatten": false, "label": "missing file"},
+]
+
+## The delivery contract wants a callback that is a method on an owner Node,
+## so the demo uses a real owner rather than the SceneTree.
+class DemoOwner extends Node:
+	var demo: SceneTree
+	func on_built(node: Node3D, case_index: int) -> void:
+		demo.call("_on_built", node, case_index)
+
+
+var _server: Node
+var _owner: DemoOwner
+var _results := {}
+var _frames := 0
+var _issued := false
+
+
+func _initialize() -> void:
+	_server = NifServerScript.new()
+	_server.name = "NifServer"
+	root.add_child(_server)
+	_owner = DemoOwner.new()
+	_owner.name = "DemoOwner"
+	_owner.demo = self
+	root.add_child(_owner)
+	print("\n=== NifServer demo ===\n")
+
+
+func _process(_delta: float) -> bool:
+	_frames += 1
+	if _frames == 2 and not _issued:
+		_issued = true
+		for i in CASES.size():
+			var c: Dictionary = CASES[i]
+			_server.request(c["path"], _owner, _owner.on_built.bind(i), c["flatten"])
+		print("issued %d requests\n" % CASES.size())
+	if _frames < 240 and _results.size() < CASES.size():
+		return false
+	_report()
+	return true
+
+
+func _on_built(node: Node3D, case_index: int) -> void:
+	_results[case_index] = node
+	if node != null:
+		# Ownership transferred. Park it under the demo owner; rename first so
+		# several results do not collide and get auto-renamed by Godot.
+		node.name = "Case%d_%s" % [case_index, node.name]
+		_owner.add_child(node)
+
+
+func _report() -> void:
+	for i in CASES.size():
+		var c: Dictionary = CASES[i]
+		var node = _results.get(i)
+		print("--- [%s] %s%s" % [c["label"], c["path"], "  (flatten_static)" if c["flatten"] else ""])
+		if node == null:
+			print("    -> null\n")
+			continue
+		var s := _summarise(node)
+		print("    nodes=%d  meshes=%d  surfaces=%d  verts=%d  skinned=%d  collision_shapes=%d  textured=%d"
+			% [s["nodes"], s["meshes"], s["surfaces"], s["verts"], s["skinned"], s["shapes"], s["textured"]])
+		print("    root.transform.basis = %s" % str(node.transform.basis).replace("\n", " "))
+		if not s["escaped"].is_empty():
+			print("    escaped names: %s" % str(s["escaped"].slice(0, 3)))
+		if not s["bind_sample"].is_empty():
+			print("    named skin binds (unresolved, skeleton unset): %s ..." % str(s["bind_sample"]))
+		print("    tree:")
+		_print_tree(node, "      ", 0, 3)
+		print("")
+
+	print("--- stats")
+	var st: Dictionary = _server.get_stats()
+	for k in st.keys():
+		print("    %-26s %s" % [k, st[k]])
+
+	print("\n--- request_kf (AnimationLibrary)")
+	for kf in ["characters/_male/idleanims/eatidle.kf", "characters/_male/locomotion/male/mtforward.kf"]:
+		var lib: AnimationLibrary = _server.request_kf(kf)
+		if lib == null:
+			print("    %s -> null" % kf)
+			continue
+		var names := lib.get_animation_list()
+		print("    %s -> %d animation(s): %s" % [kf, names.size(), str(names)])
+		for n in names:
+			var a: Animation = lib.get_animation(n)
+			var paths := []
+			for t in mini(a.get_track_count(), 3):
+				paths.append(str(a.track_get_path(t)))
+			print("        '%s' length=%.2fs tracks=%d  first paths=%s" % [n, a.length, a.get_track_count(), str(paths)])
+
+	print("\n--- name mapping round-trip")
+	for n in ["HeadAnims:0", "##Screen:0", "Bip01 NonAccum", "Object01:2"]:
+		var esc := NifNamesScript.escape(n)
+		print("    %-18s -> %-22s -> %s  %s" % [n, esc, NifNamesScript.unescape(esc),
+			"OK" if NifNamesScript.unescape(esc) == n else "MISMATCH"])
+	print("")
+
+
+func _summarise(node: Node) -> Dictionary:
+	var s := {"nodes": 0, "meshes": 0, "surfaces": 0, "verts": 0, "skinned": 0,
+		"shapes": 0, "textured": 0, "escaped": [], "bind_sample": []}
+	var stack: Array = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		s["nodes"] += 1
+		if n is MeshInstance3D:
+			s["meshes"] += 1
+			var m: ArrayMesh = n.mesh
+			if m != null:
+				s["surfaces"] += m.get_surface_count()
+				for si in m.get_surface_count():
+					s["verts"] += m.surface_get_array_len(si)
+					var mat := m.surface_get_material(si)
+					if mat is StandardMaterial3D and mat.albedo_texture != null:
+						s["textured"] += 1
+			if n.skin != null:
+				s["skinned"] += 1
+				if s["bind_sample"].is_empty():
+					for b in mini(n.skin.get_bind_count(), 3):
+						s["bind_sample"].append(n.skin.get_bind_name(b))
+		if n is CollisionShape3D:
+			s["shapes"] += 1
+		var authored := String(n.get_meta(NifNamesScript.META_NIF_NAME, ""))
+		if not authored.is_empty() and authored != n.name:
+			s["escaped"].append("%s -> %s" % [authored, n.name])
+		for c in n.get_children():
+			stack.append(c)
+	return s
+
+
+func _print_tree(n: Node, indent: String, depth: int, max_depth: int) -> void:
+	var extra := ""
+	if n is MeshInstance3D:
+		extra = "  [mesh%s]" % ("+skin" if n.skin != null else "")
+	elif n is StaticBody3D:
+		extra = "  [body]"
+	elif n is CollisionShape3D:
+		extra = "  [%s]" % (n.shape.get_class() if n.shape else "no shape")
+	print("%s%s%s" % [indent, n.name, extra])
+	if depth >= max_depth:
+		if n.get_child_count() > 0:
+			print("%s  ... %d more" % [indent, n.get_child_count()])
+		return
+	for c in n.get_children():
+		_print_tree(c, indent + "  ", depth + 1, max_depth)
