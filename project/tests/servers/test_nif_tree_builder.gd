@@ -14,6 +14,7 @@ const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
 const CONSOLE := "meshes/dungeons/vault/accessories/nvvwallconsole01.nif"
 const TERMINAL := "meshes/terminals/terminaldesk01.nif"
 const SIGN := "meshes/architecture/strip/newvegassign.nif"
+const BILLBOARD := "meshes/effects/actorfirefx/fireball01.nif"
 
 var failures := 0
 
@@ -480,6 +481,98 @@ func test_collision_alignment() -> void:
 	root.queue_free()
 
 
+func test_ragdoll() -> void:
+	print("--- E4 / section 5.3: bhkBlendCollisionObject becomes a ragdoll ---")
+	var root := await _build("meshes/characters/_male/skeleton.nif")
+	if root == null:
+		check(false, "skeleton.nif built")
+		return
+	var sim: PhysicalBoneSimulator3D = null
+	var bones: Array = []
+	var shaped := 0
+	var joints := {}
+	var other_bodies := 0
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if n is PhysicalBoneSimulator3D:
+			sim = n
+		elif n is PhysicalBone3D:
+			bones.append(n)
+			joints[n.joint_type] = int(joints.get(n.joint_type, 0)) + 1
+			for c in n.get_children():
+				if c is CollisionShape3D:
+					shaped += 1
+					break
+		elif n is StaticBody3D or n is AnimatableBody3D:
+			other_bodies += 1
+
+	check(sim != null, "a PhysicalBoneSimulator3D is emitted")
+	# The whole point of the simulator: an actor that never wants a ragdoll
+	# pays nothing behaviourally and calls nothing.
+	check(sim != null and not sim.is_simulating_physics(), "and it is inert until started")
+	check(bones.size() == 18, "18 PhysicalBone3D, one per blend collision object (got %d)" % bones.size())
+	check(shaped == bones.size(), "every bone carries a CollisionShape3D (%d of %d)" % [shaped, bones.size()])
+	check(other_bodies == 0, "ordinary collision did not also build bodies for them (%d)" % other_bodies)
+
+	# bhkMalleableConstraint wraps a ConstraintData whose own type selects the
+	# live descriptor. Read as opaque it loses 14 of the rig's 17 joints.
+	var cone: int = joints.get(PhysicalBone3D.JOINT_TYPE_CONE, 0)
+	var hinge: int = joints.get(PhysicalBone3D.JOINT_TYPE_HINGE, 0)
+	check(cone == 9, "9 ragdoll constraints became cone joints (got %d)" % cone)
+	check(hinge == 8, "8 limited hinges became hinge joints (got %d)" % hinge)
+	root.queue_free()
+
+
+func test_billboard() -> void:
+	print("--- E4 / section 5.3: NiBillboardNode becomes material state ---")
+	var src := NifSource.new()
+	var r: Dictionary = ArchiveServer.read(BILLBOARD)
+	if not bool(r["found"]) or not src.load(PackedByteArray(r["data"])):
+		check(false, "loaded %s" % BILLBOARD)
+		return
+	var declared := 0
+	for n in src.get_nodes():
+		if not String(n["billboard_mode"]).is_empty():
+			declared += 1
+	check(declared > 0, "%d NiBillboardNode declared" % declared)
+
+	var root := await _build(BILLBOARD)
+	if root == null:
+		return
+	var billboarded := 0
+	var kept_scale := 0
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if not (n is MeshInstance3D):
+			continue
+		var mesh: Mesh = (n as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for i in mesh.get_surface_count():
+			var mat := mesh.surface_get_material(i) as BaseMaterial3D
+			if mat == null or mat.billboard_mode == BaseMaterial3D.BILLBOARD_DISABLED:
+				continue
+			billboarded += 1
+			if mat.billboard_keep_scale:
+				kept_scale += 1
+			# bs_rotate_about_up is a spin about the up axis, not a full face.
+			check(mat.billboard_mode == BaseMaterial3D.BILLBOARD_FIXED_Y,
+				"bs_rotate_about_up maps to BILLBOARD_FIXED_Y (got %d)" % mat.billboard_mode)
+			check(String(mat.get_meta("nif_billboard_mode", "")) == "bs_rotate_about_up",
+				"the authored mode survives in metadata")
+	check(billboarded > 0, "%d descendant materials billboard" % billboarded)
+	# Godot's billboard resets scale unless told not to, which would shrink
+	# authored billboard geometry to unit size.
+	check(kept_scale == billboarded, "all of them keep their authored scale")
+	root.queue_free()
+
+
 func _set_owner_recursive(node: Node, owner: Node) -> void:
 	for c in node.get_children():
 		c.owner = owner
@@ -527,6 +620,8 @@ func _ready() -> void:
 	await test_vertex_colour_and_alpha()
 	await test_texture_conventions()
 	await test_collision_alignment()
+	await test_ragdoll()
+	await test_billboard()
 	await write_previews()
 
 	print("=======================")
