@@ -34,8 +34,26 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 ## Contract
 
 ```gdscript
+NifServer.request(nif_path, owner, on_complete: Callable, flatten_static := false) -> void
+NifServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
+NifServer.canonical(nif_path) -> String   # static
+
 await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
 ```
+
+`NifServer` is the autoloaded entry point: it owns the archive read, the parse, the resolve queue,
+the admission cap and the per-frame build budget. `NifTreeBuilder` is the construction half and is
+called directly only by code that already holds a `NifSource`.
+
+**Delivery is a callback, not an await, and that is the leak guarantee.** `on_complete` must be a
+method on `owner` — not a closure capturing it, which the server rejects — so the server can tell
+whether anyone is still there to receive the result. An owner that goes away before the build starts
+gets no tree built at all; one that goes away during the build has the result freed rather than
+orphaned.
+
+On success ownership transfers to the caller, which must parent or free it. A result still
+unparented **one full frame later** is freed by the safety net — a full frame, not a deferred call,
+so a caller that parents on the next frame is not freed underneath it.
 
 **Honest return.** What the file contains is what comes back. Nothing is invented to make a result
 more convenient, and nothing is withheld because a caller might not want it. If a return needs

@@ -166,9 +166,15 @@ So the split stands; only its justification changed. Revisit if `_build()` ever 
 the pool both servers share, and `_build()` cannot proceed without a real uploaded texture, so
 starving TextureServer is a hang, not a stall.
 
-**Ordering is not FIFO.** A plain queue builds the far side of a cell before what is in front of the
-player; `world_streamer.gd` already learned this and orders by real circular distance. A NifServer
-queue inherits the same requirement.
+**Ordering is FIFO, deliberately.** A distance-ordered queue matters when a burst is large enough
+that the player sees it drain — `world_streamer.gd` orders by real circular distance for that reason.
+NifServer's two cases do not reach that scale: entering a new area is behind a loading screen, so
+nothing is visible mid-drain, and as-you-walk streaming arrives in tens rather than thousands.
+Revisit if a case appears where the drain is both large and visible.
+
+NifServer also could not order by distance as specified: `request()` takes a path, not a placement,
+so the caller would have to supply a priority. That stays out of the contract until something needs
+it.
 
 ---
 
