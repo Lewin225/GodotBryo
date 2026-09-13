@@ -18,8 +18,12 @@ const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tre
 ## finish without an uploaded texture, so starving TextureServer is a hang.
 @export var num_workers: int = -1
 
-## Canonical path -> NifSource. The parsed document only: a tree is built fresh
-## per delivered instance. Caching built trees and handing out duplicate() is
+## Canonical path -> NifSource. The parsed document only, so it is shared across
+## both prefer_static settings: flattening happens at build time and changes the
+## tree, never the parse. Section 10's (path, flatten) cache identity applies to
+## a built-tree cache, which does not exist yet.
+##
+## A tree is built fresh per delivered instance. Caching built trees and handing out duplicate() is
 ## outstanding_issues.md #11 and is entangled with the mesh/material sharing
 ## decision, so it stays out until that is settled.
 var _documents := {}
@@ -74,14 +78,14 @@ static func canonical(nif_path: String) -> String:
 ##
 ## On success ownership transfers to the caller: parent it or free it. A result
 ## still unparented after delivery is freed by the safety net below.
-func request(nif_path: String, owner: Node, on_complete: Callable, flatten_static := false) -> void:
+## `prefer_static` asks for section 10's flattened form. A file with dynamic
+## content -- animation, billboards, ragdoll, particles, a skeleton -- comes back
+## hierarchical instead, with `nif_not_flattened_because` on the root saying
+## which. A caller placing scenery does not know in advance whether a given SCOL
+## animates, and should not have to.
+func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
 	_stats["request_count"] += 1
-	if flatten_static:
-		# Section 10 is specified but not built. Loud rather than silently
-		# ignored: a caller asking for a flattened tree and getting a
-		# hierarchical one would look like a NifServer bug at the far end.
-		_warn_once("flatten_static", "NifServer: flatten_static is not implemented (nif_server_v2.md section 10); returning the hierarchical tree")
-	var waiter := { "owner": owner, "cb": on_complete }
+	var waiter := { "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
 	if not _valid_callback(owner, on_complete):
 		push_error("NifServer: on_complete must be a method on `owner` (nif_server_v2.md section 3.2); request for '%s' refused" % nif_path)
 		return
@@ -212,7 +216,7 @@ func _build(entry: Dictionary) -> void:
 		_deliver(waiter, null)
 		return
 
-	var root: Node3D = await NifTreeBuilderScript.build(src)
+	var root: Node3D = await NifTreeBuilderScript.build(src, true, bool(waiter.get("prefer_static", false)))
 	if root == null:
 		_stats["build_failure_count"] += 1
 		_deliver(waiter, null)

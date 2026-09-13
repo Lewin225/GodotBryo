@@ -34,7 +34,7 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 ## Contract
 
 ```gdscript
-NifServer.request(nif_path, owner, on_complete: Callable, flatten_static := false) -> void
+NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
 NifServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
 NifServer.canonical(nif_path) -> String   # static
 
@@ -50,6 +50,13 @@ method on `owner` — not a closure capturing it, which the server rejects — s
 whether anyone is still there to receive the result. An owner that goes away before the build starts
 gets no tree built at all; one that goes away during the build has the result freed rather than
 orphaned.
+
+**`prefer_static` is a preference, not an override.** It asks for §10's flattened form — one wrapper
+with one `MeshInstance3D` per mesh, hierarchy removed, nothing merged. A file with dynamic content
+comes back hierarchical instead, because flattening it would discard the behaviour that makes it
+work. The root always carries `nif_flattened`, and when that is false
+`nif_not_flattened_because` names the blocker, so the decision is reported rather than silent. A
+caller placing scenery does not know whether a given SCOL animates, and should not have to.
 
 On success ownership transfers to the caller, which must parent or free it. A result still
 unparented **one full frame later** is freed by the safety net — a full frame, not a deferred call,

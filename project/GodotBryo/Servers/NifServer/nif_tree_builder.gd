@@ -95,7 +95,17 @@ static func _texture_slot_map(convention: String) -> Array:
 	return [0, 1, 2]
 
 
-static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
+## `prefer_static` asks for section 10's flattened form: one wrapper Node3D with
+## one MeshInstance3D per mesh, authored hierarchy removed, each mesh keeping its
+## own surfaces, materials and collision. It is a PREFERENCE, not an override --
+## a file with dynamic content comes back hierarchical, because flattening it
+## would discard the behaviour that makes it work.
+##
+## The decision is never silent: the returned root always carries
+## `nif_flattened`, and when the answer is false, `nif_not_flattened_because`
+## names the content that prevented it.
+static func build(src: NifSource, apply_root_basis: bool = true,
+		prefer_static: bool = false) -> Node3D:
 	if src == null:
 		return null
 	# The only await in the whole builder. Textures are resolved up front so
@@ -178,7 +188,89 @@ static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
 	# also build a StaticBody3D for them.
 	var ragdolled := _build_ragdoll(src, nodes, skeleton, bone_of_node)
 	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated, ragdolled)
+
+	if prefer_static:
+		var blocker := _dynamic_content(root)
+		root.set_meta("nif_flattened", blocker.is_empty())
+		if blocker.is_empty():
+			_flatten(root)
+		else:
+			root.set_meta("nif_not_flattened_because", blocker)
 	return root
+
+
+## What in this tree stops it being flattened, or "" if nothing does.
+##
+## Each of these is behaviour that lives in the hierarchy: collapsing the
+## hierarchy discards it. A caller that genuinely wants the geometry regardless
+## can flatten the result itself -- that is its decision to make, with the
+## consequence visible.
+static func _dynamic_content(root: Node3D) -> String:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if n is AnimationPlayer:
+			return "AnimationPlayer"
+		if n is NifBillboardNode:
+			return "NiBillboardNode"
+		if n is PhysicalBoneSimulator3D:
+			return "ragdoll"
+		if n is GPUParticles3D:
+			return "particles"
+		if n is AnimatableBody3D:
+			return "animated collision"
+		if n is Skeleton3D:
+			return "Skeleton3D"
+		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
+			return "skinned mesh"
+	return ""
+
+
+## Section 10: one wrapper, one MeshInstance3D per mesh, hierarchy removed.
+## NOT a mesh merge -- each keeps its own surfaces and materials. Transforms are
+## composed onto each leaf so geometry lands where it did, relative to the
+## wrapper; nothing is baked to world space.
+static func _flatten(root: Node3D) -> void:
+	var leaves: Array = []
+	var stack: Array = [{ "node": root, "xform": Transform3D.IDENTITY }]
+	while not stack.is_empty():
+		var entry: Dictionary = stack.pop_back()
+		var node: Node = entry["node"]
+		for c in node.get_children():
+			var child_xform: Transform3D = entry["xform"]
+			if c is Node3D:
+				child_xform = child_xform * (c as Node3D).transform
+			stack.append({ "node": c, "xform": child_xform })
+		if node == root:
+			continue
+		if node is MeshInstance3D or node is CollisionShape3D:
+			leaves.append({ "node": node, "xform": entry["xform"] })
+
+	# Collision keeps one body, since the hierarchy that separated bodies per
+	# owning node is exactly what is being removed.
+	var body: StaticBody3D = null
+	for leaf in leaves:
+		var node: Node3D = leaf["node"]
+		node.get_parent().remove_child(node)
+		node.transform = leaf["xform"]
+		if node is CollisionShape3D:
+			if body == null:
+				body = StaticBody3D.new()
+				body.name = "Collision"
+				root.add_child(body)
+			body.add_child(node)
+		else:
+			root.add_child(node)
+
+	# Everything the leaves used to hang from is now empty.
+	for c in root.get_children():
+		if c == body:
+			continue
+		if c is MeshInstance3D:
+			continue
+		c.free()
 
 
 ## Section 5.3: bhkBlendCollisionObject is the ragdoll discriminator -- 60 files,

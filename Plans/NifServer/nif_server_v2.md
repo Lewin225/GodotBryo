@@ -27,7 +27,7 @@ from the format.
 | [7](#7-animation) | Animation | `SETTLED` |
 | [8](#8-materials-and-texture-slots) | Materials and texture slots | `SETTLED` scope / `OPEN` rendering |
 | [9](#9-skinning-and-the-actor-path) | Skinning and the actor path | `SETTLED` |
-| [10](#10-flatten_static) | `flatten_static` | `SETTLED` |
+| [10](#10-prefer_static) | `prefer_static` | `SETTLED` |
 | [11](#11-lod-is-a-policy-layer-not-nif-content) | LOD is a policy layer, not NIF content | `SETTLED` |
 | [12](#12-caching) | Caching | `OPEN` |
 | [13](#13-tracker-items-closed-by-research) | Tracker items closed by research | — |
@@ -55,7 +55,7 @@ Unchanged from v1.
 | v1 position | measured finding | v2 position |
 |---|---|---|
 | Authored in-NIF LOD drives Godot LOD; native work required to expose `NiLODNode`/`NiRangeLODData`/`NiScreenLODData`/`BSLODTriShape` | **all four have zero occurrences** in 25,760 files | [§11](#11-lod-is-a-policy-layer-not-nif-content) — removed from scope, native work cancelled |
-| `flatten_static` is ignored when the file turns out dynamic — "content decides" | — | [§10](#10-flatten_static) — tracker settled the opposite: explicit caller override |
+| `flatten_static` is ignored when the file turns out dynamic — "content decides" | — | [§10](#10-prefer_static) — settled as `prefer_static`: content decides, and the decision is reported |
 | `await request()` returns an orphan `Node3D` | — | [§3](#3-contract-surface) — owner-aware callback |
 | `request_kf()` returns one `Animation` | 4,981 of 5,014 KFs hold one sequence, **33 hold 2–5** | [§7](#7-animation) — returns an `AnimationLibrary` |
 | `Animation` is worker-safe because it is not RS-backed | verified on 4.7.1, 8 concurrent workers | [§7](#7-animation) — confirmed, retarget rename is worker-side too |
@@ -75,7 +75,7 @@ Unchanged from v1.
 
 | function | params | delivery | thread |
 |---|---|---|---|
-| `request()` | `nif_path: String`<br>`owner: Node`<br>`on_complete: Callable`<br>`flatten_static := false` | callback with `Node3D` or `null` | callback on main thread |
+| `request()` | `nif_path: String`<br>`owner: Node`<br>`on_complete: Callable`<br>`prefer_static := false` | callback with `Node3D` or `null` | callback on main thread |
 | `request_kf()` | `kf_path: String` | `AnimationLibrary` | worker-safe |
 | `get_stats()` / `reset_stats()` | — | `Dictionary` | main thread |
 
@@ -515,23 +515,44 @@ caller.
 
 ---
 
-## 10. `flatten_static`
+## 10. `prefer_static`
 
-`SETTLED`, per the tracker.
+`SETTLED`
 
 | | |
 |---|---|
 | meaning | one wrapper `Node3D` containing one `MeshInstance3D` per mesh; authored hierarchy removed |
 | **not** | a mesh merge — each mesh keeps its own surfaces and materials |
 | coordinate space | relative to the returned wrapper; no world-space baking |
-| collision | each flattened mesh keeps its applicable authored collision |
-| dynamic content | flag is an **explicit override** and flattens dynamic NIFs too, discarding their behaviour — it is never silently ignored *(reverses v1)* |
-| detection | still used to decide what data to skip decoding, and for diagnostics |
-| cache identity | `(canonical_path, flatten_static)` — distinct entries |
+| collision | kept, under one `StaticBody3D` — the hierarchy that separated bodies per owning node is what is being removed |
+| dynamic content | **returns the hierarchical tree instead**, and says so |
+| reporting | the root always carries `nif_flattened`; when false, `nif_not_flattened_because` names the blocker |
+| cache identity | the document cache is per path — flattening changes the tree, never the parse |
 | `DirectGeometryBatch` | never used here; remains a separate placement API |
 
 This is a representation flag, not a caller-intent mode: it changes *how much of the file is
 expressed*, never *what the file is interpreted as*.
+
+**It is a preference, not an override — this reverses v2's own earlier position.** That position was
+that the flag flattens dynamic NIFs too, discarding their behaviour, on the grounds that silently
+ignoring a flag is worse than obeying it destructively. The requirement behind that is sound and is
+kept: the flag is never silently ignored. But the caller it exists for is `WorldStreamer` placing
+scenery, and it cannot know whether a given SCOL animates. Making it an override means every
+animated prop placed as scenery loses its animation, and the caller has no way to have known.
+
+So the decision moves to where the knowledge is, and the result is reported rather than assumed. A
+caller that genuinely wants the geometry regardless can flatten what it gets back.
+
+Blockers, any one of which returns the hierarchical tree:
+
+| blocker | why |
+|---|---|
+| `AnimationPlayer` | tracks address nodes by path |
+| `NiBillboardNode` | orients itself per frame |
+| ragdoll | `PhysicalBone3D` needs the simulator and skeleton |
+| particles | emitter placement is hierarchical |
+| animated collision | an `AnimatableBody3D` moves with its owner |
+| `Skeleton3D` / skinned mesh | binds resolve through the skeleton |
 
 ---
 
@@ -618,7 +639,7 @@ shape.
 
 `OPEN`
 
-Settled: one resolve cache keyed `(canonical_path, flatten_static)`, holding only Resources and
+Settled: one resolve cache keyed `(canonical_path, prefer_static)`, holding only Resources and
 plain data; a fresh node tree is constructed per delivered instance; cache hits still consume the
 build budget. Prototype-tree caching with `Node.duplicate()` is a measured v2 investigation, not a
 v1 assumption.
