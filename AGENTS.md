@@ -5,9 +5,10 @@ repo without the user's explicit, per-instance permission.** Not a style
 preference — ask first, every time, no exceptions for "it seemed safer."
 
 Guide for coding agents (and humans) working in this repository. See also
-`ROADMAP.md` (phased plan + current status) and `phases/*/README.md` (per-phase
-task docs with real acceptance criteria) for deeper history — this file is the
-orientation map, not a replacement for either.
+`ROADMAP.md` (phased plan + current status), `Plans/` (design docs and build
+orders for work in flight) and `enginedocs/` (file-format and engine-behaviour
+reference) — this file is the orientation map, not a replacement for any of
+them.
 
 ## What this project is
 
@@ -151,7 +152,7 @@ project/
   _repro/                  — throwaway minimal repro scenes for one specific bug
                              investigation, same convention as _diag/
   bin/                     — nv_engine GDExtension build output (gitignored)
-phases/                    — per-phase task docs with real acceptance criteria
+Plans/                     — design docs and build orders for work in flight
 enginedocs/                — reference notes on file formats / engine behavior
 fresh_nv_copy/              — gitignored, your own legally-owned FNV install
 tools/                      — gitignored, holds the native Godot binary
