@@ -21,6 +21,16 @@ const MODELS := {
 	"vdoorslidingvault22 (animated)": "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif",
 }
 
+## Worst case in the corpus by block count. A cache hit duplicates
+## synchronously on the main thread, so the frame cost is
+## builds_per_frame_budget x the cost of one duplicate. These are the models
+## that decide whether that budget is safe.
+const HEAVY := {
+	"dlc04mansionwindows01 (2514 blocks)": "meshes/dlc04/effects/mansionfx/dlc04mansionwindows01.nif",
+	"villatest.nif (SCOL, 710 blocks)": "meshes/scol/villatest.nif",
+	"nvlucky38reactor (254 blocks)": "meshes/dungeons/nvlucky38/nvlucky38reactor.nif",
+}
+
 const Builder := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
 
 var failures := 0
@@ -276,6 +286,64 @@ func _ready() -> void:
 		copy.free()
 		fresh.free()
 		template.free()
+
+	# --- worst-case frame cost -------------------------------------------
+	print("\n--- worst case: one frame of cache hits ---")
+	var budget: int = NifServer.builds_per_frame_budget
+	print("  builds_per_frame_budget = %d" % budget)
+	print("  %-38s %6s %10s %10s %14s %8s" % [
+		"model", "nodes", "build ms", "dup ms", "budget x dup", "saving"])
+	for label in HEAVY:
+		var path: String = HEAVY[label]
+		var src := _load(path)
+		if src == null:
+			check(false, "load %s" % path)
+			continue
+		var template: Node3D = await Builder.build(src)
+		if template == null:
+			check(false, "build %s" % path)
+			continue
+		# Median of 5, so one allocator hiccup does not set the figure.
+		var samples: Array = []
+		for i in 5:
+			var t0 := Time.get_ticks_usec()
+			var c := template.duplicate()
+			samples.append(Time.get_ticks_usec() - t0)
+			c.free()
+		samples.sort()
+		var dup_ms: float = float(samples[2]) / 1000.0
+		# The alternative, not zero: without a cache this model is built every
+		# time, and a warm build is also synchronous once its textures are in.
+		var builds: Array = []
+		for i in 3:
+			var t0 := Time.get_ticks_usec()
+			var c: Node3D = await Builder.build(src)
+			builds.append(Time.get_ticks_usec() - t0)
+			c.free()
+		builds.sort()
+		var build_ms: float = float(builds[1]) / 1000.0
+		print("  %-38s %6d %10.1f %10.1f %11.1f ms %8.1fx" % [
+			label, _count_nodes(template), build_ms, dup_ms, dup_ms * budget,
+			build_ms / dup_ms if dup_ms > 0 else 0.0])
+		template.free()
+
+		# prefer_static is the only lever that changes the node count, and node
+		# count is what a duplicate pays for. For an SCOL -- which is what the
+		# World Streamer places -- this is the difference that matters.
+		var flat: Node3D = await Builder.build(src, true, true)
+		if flat != null:
+			var flat_samples: Array = []
+			for i in 5:
+				var t0 := Time.get_ticks_usec()
+				var c := flat.duplicate()
+				flat_samples.append(Time.get_ticks_usec() - t0)
+				c.free()
+			flat_samples.sort()
+			var flattened := bool(flat.get_meta("nif_flattened", false))
+			print("      prefer_static: %s  nodes=%d  dup=%.1f ms%s" % [
+				str(flattened), _count_nodes(flat), float(flat_samples[2]) / 1000.0,
+				"" if flattened else "  (%s)" % String(flat.get_meta("nif_not_flattened_because", "?"))])
+			flat.free()
 
 	print("\n=======================")
 	if failures == 0:

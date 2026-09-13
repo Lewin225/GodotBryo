@@ -9,6 +9,9 @@ extends Node
 const BARRACKS := "meshes/architecture/barracks/barracks01.nif"
 const BOTTLE := "meshes/clutter/junk/milkbottle01.nif"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
+## 710 blocks / 2,111 built nodes, 12.8 ms per duplicate -- and an SCOL, so it
+## is on the World Streamer's own path rather than a pathological outlier.
+const HEAVY_SCOL := "meshes/scol/villatest.nif"
 
 var failures := 0
 var _received: Array = []
@@ -174,6 +177,206 @@ func _on_result_parent_next_frame(node: Node3D) -> void:
 	_adopt = node
 
 
+## Issue #11: the tree cache. The point is not the clock -- it is that every
+## delivered instance shares the template's resource RIDs, which is what lets
+## Godot coalesce them into one instanced draw.
+func test_tree_cache_shares_resources() -> void:
+	print("--- tree cache: instances share resources, never the template ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+
+	for i in 4:
+		NifServer.request(BARRACKS, self, _on_result)
+	await _drain(4)
+	check(_received.size() == 4, "4 instances delivered (got %d)" % _received.size())
+	if _received.size() < 4:
+		_free_received()
+		return
+
+	var stats: Dictionary = NifServer.get_stats()
+	check(int(stats["tree_cache_misses"]) == 1,
+		"exactly one build populated the template (misses=%d)" % int(stats["tree_cache_misses"]))
+	check(int(stats["tree_cache_hits"]) == 3,
+		"the other 3 came from the cache (hits=%d)" % int(stats["tree_cache_hits"]))
+	check(int(stats["resident_tree_count"]) == 1,
+		"1 resident template (got %d)" % int(stats["resident_tree_count"]))
+	check(int(stats["resident_tree_node_count"]) > 0,
+		"residency reports a node count (%d)" % int(stats["resident_tree_node_count"]))
+
+	# Distinct nodes...
+	var roots: Array = _received
+	var distinct := {}
+	for r in roots:
+		distinct[r.get_instance_id()] = true
+	check(distinct.size() == 4, "every instance is a distinct node (%d)" % distinct.size())
+
+	# ...sharing one set of resources.
+	var first := _mesh_ids(roots[0])
+	check(not first.is_empty(), "instance carries meshes (%d)" % first.size())
+	var all_shared := true
+	for r in roots:
+		if _mesh_ids(r) != first:
+			all_shared = false
+	check(all_shared, "all 4 instances share one set of mesh/material resources")
+
+	# The template is never handed out.
+	var template_is_parented := false
+	for r in roots:
+		if r.get_parent() == null:
+			template_is_parented = true
+	check(not template_is_parented, "every delivered instance was adopted, none left unparented")
+	_free_received()
+
+
+## Metadata is how section 5.3 extra data, block types and the flatten decision
+## reach the caller. duplicate() must carry it or a cached tree silently loses
+## everything a fresh build reported.
+func test_tree_cache_preserves_metadata() -> void:
+	print("--- tree cache: duplicated trees keep their metadata ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	NifServer.request(DOOR, self, _on_result)
+	await _drain(1)
+	NifServer.request(DOOR, self, _on_result)
+	await _drain(2)
+	if _received.size() < 2:
+		check(false, "2 door instances delivered (got %d)" % _received.size())
+		_free_received()
+		return
+	var a: Node3D = _received[0]
+	var b: Node3D = _received[1]
+	check(int(NifServer.get_stats()["tree_cache_hits"]) == 1, "second door was a cache hit")
+	var a_meta := _meta_of(a)
+	var b_meta := _meta_of(b)
+	check(not a_meta.is_empty(), "the built tree carries metadata (%d keys)" % a_meta.size())
+	check(a_meta == b_meta, "the duplicated tree carries identical metadata")
+	var a_anim := _has_class(a, "AnimationPlayer")
+	check(a_anim == _has_class(b, "AnimationPlayer"),
+		"the duplicated tree keeps its AnimationPlayer (%s)" % str(a_anim))
+	_free_received()
+
+
+## Section 10's cache identity is (path, flatten): the two forms are different
+## artefacts from one document and must not collide.
+func test_tree_cache_identity_includes_flatten() -> void:
+	print("--- tree cache: (path, flatten) are separate entries ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	NifServer.request(BARRACKS, self, _on_result, false)
+	await _drain(1)
+	NifServer.request(BARRACKS, self, _on_result, true)
+	await _drain(2)
+	var stats: Dictionary = NifServer.get_stats()
+	check(int(stats["tree_cache_misses"]) == 2,
+		"both forms built (misses=%d, not a collision)" % int(stats["tree_cache_misses"]))
+	check(int(stats["resident_tree_count"]) == 2,
+		"2 resident templates (got %d)" % int(stats["resident_tree_count"]))
+	if _received.size() == 2 and _received[0] != null and _received[1] != null:
+		check(_received[0].get_meta("nif_flattened", false) != _received[1].get_meta("nif_flattened", false)
+				or String(_received[1].get_meta("nif_not_flattened_because", "")) != "",
+			"the two forms differ, or the static one says why it could not flatten")
+	_free_received()
+
+
+## Residency has to fall again, or there is no pressure valve at all.
+func test_tree_cache_purge() -> void:
+	print("--- tree cache: purge releases templates ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	NifServer.request(BOTTLE, self, _on_result)
+	await _drain(1)
+	check(int(NifServer.get_stats()["resident_tree_count"]) == 1, "1 template resident")
+	NifServer.purge(BOTTLE)
+	var after: Dictionary = NifServer.get_stats()
+	check(int(after["resident_tree_count"]) == 0,
+		"purge() dropped it (%d resident)" % int(after["resident_tree_count"]))
+	check(int(after["resident_tree_node_count"]) == 0, "node residency fell to 0")
+	check(int(after["tree_purge_count"]) == 1, "purge counted")
+	# The delivered instance must survive its template being dropped.
+	check(_received.size() == 1 and is_instance_valid(_received[0]),
+		"the already-delivered instance is unaffected by the purge")
+	_free_received()
+	NifServer.purge_all()
+
+
+## A cache hit duplicates synchronously, so the per-frame drain has to be
+## bounded by wall clock rather than by count. Without that, 12 hits on a heavy
+## SCOL is a quarter-second frame.
+func test_tree_cache_frame_budget() -> void:
+	print("--- tree cache: a frame of heavy cache hits stays budgeted ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	check(NifServer.build_time_budget_usec > 0,
+		"a wall-clock build budget is set (%d usec)" % NifServer.build_time_budget_usec)
+
+	# Populate the template first, so every request below is a hit.
+	NifServer.request(HEAVY_SCOL, self, _on_result)
+	await _drain(1)
+	if _received.size() != 1 or _received[0] == null:
+		check(false, "heavy SCOL built")
+		_free_received()
+		return
+	_free_received()
+
+	const HITS := 24
+	for i in HITS:
+		NifServer.request(HEAVY_SCOL, self, _on_result)
+
+	var worst := 0
+	var frames := 0
+	while _received.size() < HITS and frames < 600:
+		var t0 := Time.get_ticks_usec()
+		await get_tree().process_frame
+		worst = maxi(worst, Time.get_ticks_usec() - t0)
+		frames += 1
+	check(_received.size() == HITS, "%d instances delivered (got %d)" % [HITS, _received.size()])
+	check(frames > 1, "the drain spread across %d frames rather than one" % frames)
+	# Generous against CI jitter: the point is that it is bounded at all, not
+	# that it hits the budget exactly.
+	var ceiling := NifServer.build_time_budget_usec * 4
+	check(worst < ceiling,
+		"worst frame %.1f ms is under the %.1f ms ceiling" % [worst / 1000.0, ceiling / 1000.0])
+	print("     %d hits over %d frames, worst frame %.1f ms" % [HITS, frames, worst / 1000.0])
+	_free_received()
+	NifServer.purge_all()
+
+
+func _mesh_ids(root: Node) -> Array:
+	var out: Array = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.push_back(c)
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			out.append((n as MeshInstance3D).mesh.get_instance_id())
+	out.sort()
+	return out
+
+
+func _meta_of(root: Node) -> Dictionary:
+	var out := {}
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.push_back(c)
+		for k in n.get_meta_list():
+			out["%s/%s" % [n.name, k]] = n.get_meta(k)
+	return out
+
+
+func _has_class(root: Node, klass: String) -> bool:
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.is_class(klass):
+			return true
+		for c in n.get_children():
+			stack.push_back(c)
+	return false
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_canonical_paths()
@@ -183,6 +386,11 @@ func _ready() -> void:
 	await test_missing_path()
 	await test_owner_gone()
 	await test_orphan_safety_net()
+	await test_tree_cache_shares_resources()
+	await test_tree_cache_preserves_metadata()
+	await test_tree_cache_identity_includes_flatten()
+	await test_tree_cache_purge()
+	await test_tree_cache_frame_budget()
 
 	print("=======================")
 	if failures == 0:
