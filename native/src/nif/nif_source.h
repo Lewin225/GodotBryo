@@ -101,6 +101,38 @@ struct CollisionShape {
 	};
 };
 
+// One constraint on a rigid body. Presence is NOT a ragdoll signal -- 164
+// files carry one without a bhkBlendCollisionObject -- but on a body that IS
+// part of a ragdoll it is what gives the joint its type and limits.
+//
+// Pivots are METERS (kHavokToMeters); axes and angles are unitless. `a` is the
+// frame on this body, `b` the frame on the body it is jointed to.
+struct CollisionConstraint {
+	uint32_t block_index = 0;
+	std::string block_type; // bhkRagdollConstraint | bhkLimitedHingeConstraint | ...
+	std::string kind; // ragdoll | hinge | unsupported
+	// Set when the real descriptor came out of a bhkMalleableConstraint
+	// wrapper, which holds a ConstraintData whose own type selects it.
+	std::string wrapped_by;
+
+	float pivot_a[3] = { 0.0f, 0.0f, 0.0f };
+	float pivot_b[3] = { 0.0f, 0.0f, 0.0f };
+	// ragdoll: twist + plane. hinge: axle + perpendicular.
+	float axis_a[3] = { 0.0f, 0.0f, 0.0f };
+	float axis_b[3] = { 0.0f, 0.0f, 0.0f };
+	float plane_a[3] = { 0.0f, 0.0f, 0.0f };
+	float plane_b[3] = { 0.0f, 0.0f, 0.0f };
+
+	float cone_max_angle = 0.0f; // ragdoll only
+	float plane_min_angle = 0.0f;
+	float plane_max_angle = 0.0f;
+	float twist_min_angle = 0.0f;
+	float twist_max_angle = 0.0f;
+	float min_angle = 0.0f; // hinge only
+	float max_angle = 0.0f;
+	float max_friction = 0.0f;
+};
+
 // One rigid body. bhkRigidBodyT carries its own transform; bhkRigidBody does
 // not. The collision OBJECT's block type (SceneNode::collision_type) is what
 // distinguishes a ragdoll from ordinary collision, not anything here.
@@ -117,6 +149,8 @@ struct CollisionBody {
 	// the rotation leaves a rotated collider sitting square to its mesh.
 	float translation[3] = { 0.0f, 0.0f, 0.0f }; // meters, bhkRigidBodyT only
 	float rotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; // XYZW, bhkRigidBodyT only
+
+	std::vector<CollisionConstraint> constraints;
 };
 
 // One morph frame: a named set of per-vertex deltas against the base mesh.
@@ -146,6 +180,13 @@ struct SceneNode {
 	// skeleton.nif uses: 62 bones across 8 LOD groups). Bones are authored
 	// data, not an inference from naming.
 	bool is_declared_bone = false;
+
+	// NiBillboardNode's mode. Godot expresses this as material state rather
+	// than a node type (nif_server_v2.md 5.3), so it is reported here and
+	// applied to descendant materials. Empty when the node is not a billboard.
+	//   always_face_camera | rotate_about_up | rigid_face_camera
+	//   always_face_center | rigid_face_center | bs_rotate_about_up
+	std::string billboard_mode;
 
 	std::string collision_type; // empty when the node has no collision object
 	int32_t collision_block_index = -1;

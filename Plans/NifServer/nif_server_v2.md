@@ -27,7 +27,7 @@ from the format.
 | [7](#7-animation) | Animation | `SETTLED` |
 | [8](#8-materials-and-texture-slots) | Materials and texture slots | `SETTLED` scope / `OPEN` rendering |
 | [9](#9-skinning-and-the-actor-path) | Skinning and the actor path | `SETTLED` |
-| [10](#10-flatten_static) | `flatten_static` | `SETTLED` |
+| [10](#10-prefer_static) | `prefer_static` | `SETTLED` |
 | [11](#11-lod-is-a-policy-layer-not-nif-content) | LOD is a policy layer, not NIF content | `SETTLED` |
 | [12](#12-caching) | Caching | `OPEN` |
 | [13](#13-tracker-items-closed-by-research) | Tracker items closed by research | — |
@@ -55,7 +55,7 @@ Unchanged from v1.
 | v1 position | measured finding | v2 position |
 |---|---|---|
 | Authored in-NIF LOD drives Godot LOD; native work required to expose `NiLODNode`/`NiRangeLODData`/`NiScreenLODData`/`BSLODTriShape` | **all four have zero occurrences** in 25,760 files | [§11](#11-lod-is-a-policy-layer-not-nif-content) — removed from scope, native work cancelled |
-| `flatten_static` is ignored when the file turns out dynamic — "content decides" | — | [§10](#10-flatten_static) — tracker settled the opposite: explicit caller override |
+| `flatten_static` is ignored when the file turns out dynamic — "content decides" | — | [§10](#10-prefer_static) — settled as `prefer_static`: content decides, and the decision is reported |
 | `await request()` returns an orphan `Node3D` | — | [§3](#3-contract-surface) — owner-aware callback |
 | `request_kf()` returns one `Animation` | 4,981 of 5,014 KFs hold one sequence, **33 hold 2–5** | [§7](#7-animation) — returns an `AnimationLibrary` |
 | `Animation` is worker-safe because it is not RS-backed | verified on 4.7.1, 8 concurrent workers | [§7](#7-animation) — confirmed, retarget rename is worker-side too |
@@ -75,7 +75,7 @@ Unchanged from v1.
 
 | function | params | delivery | thread |
 |---|---|---|---|
-| `request()` | `nif_path: String`<br>`owner: Node`<br>`on_complete: Callable`<br>`flatten_static := false` | callback with `Node3D` or `null` | callback on main thread |
+| `request()` | `nif_path: String`<br>`owner: Node`<br>`on_complete: Callable`<br>`prefer_static := false` | callback with `Node3D` or `null` | callback on main thread |
 | `request_kf()` | `kf_path: String` | `AnimationLibrary` | worker-safe |
 | `get_stats()` / `reset_stats()` | — | `Dictionary` | main thread |
 
@@ -117,13 +117,45 @@ Warnings are emitted once per canonical path; detailed diagnostics are available
 
 | stage | thread | does | never touches |
 |---|---|---|---|
-| `_resolve()` | worker | BSA/NIF parse, block-table classification, `TextureServer.warm()` per slot, skin/controller/collision extraction | `ArrayMesh`, `ImageTexture`, `Material`, `Shape3D`, decoded `Image`, any `Node` |
-| texture gate | main | wait until every `TextureServer.is_finished(path, alpha_safe)` key is finished | — |
-| `_build()` | main | `ArrayMesh`/`Shape3D`/`Material`/`Node` construction from already-uploaded textures | — |
+| `_resolve()` | worker | `ArchiveServer.read()`, `NifSource.load()`, `TextureServer.warm()` per slot | any cache, any `Node`, any RID-backed resource |
+| texture gate | main | wait until every warmed key reports `TextureServer.is_finished()` | — |
+| `_build()` | main | `NifTreeBuilder.build()` — nodes, meshes, materials, shapes, animations | — |
 
-The split exists because `RID_Owner<T>` locking is compiled out off the main thread with the
-Separate Rendering Thread model off — the documented cause of this project's "Attempting to
-initialize the wrong RID" crash.
+### 4.1 Why the split falls here
+
+**Not because of `RID_Owner`.** An earlier version of this section claimed `RID_Owner<T>` locking is
+compiled out off the main thread. That is not true of this engine version: `THREAD_SAFE` is a
+per-owner template argument, and `mesh_owner`, `texture_owner`, `material_owner`, `shader_owner` and
+`skeleton_owner` all request it. The owners that do not are the renderer's own per-instance
+bookkeeping, which script never addresses. Nor does Godot forbid building nodes off the main thread —
+its own documentation states that creating scene chunks outside the active tree is fine.
+
+Two things actually constrain it:
+
+**The shared caches are main-thread-owned by design.** TextureServer holds `_textures`, `_jobs`,
+`_admission` and `_uploads` with no atomics and no mutexes, on the stated basis that only the main
+thread mutates them. `_build()` reads that cache for every texture slot. Moving `_build()` to a
+worker means making those structures thread-safe for every caller, not just this one. Godot's own
+guidance points the same way: one thread loading data is the sanctioned pattern, and the risk it
+names for several is precisely shared resources being written by more than one.
+
+**The measurements say the worker half is where the time is.** Over a 60-model burst, with textures
+resident:
+
+| stage | time | share |
+|---|---:|---:|
+| `ArchiveServer.read()` — BSA + inflate | 33.1 ms | 48% |
+| `NifSource.load()` — nifly parse | 14.7 ms | 21% |
+| `NifTreeBuilder.build()` | 21.4 ms | 31% |
+
+`_resolve()` is already the larger half and is worker-safe by construction — positional `pread` means
+concurrent `read_at()` takes no lock, and a parse writes only its own `Document`. `_build()` is
+0.36 ms per model, which a frame budget absorbs. Moving it off-main would buy a third of the time in
+exchange for making two servers' caches thread-safe.
+
+So the split stands; only its justification changed. Revisit if `_build()` ever dominates.
+
+### 4.2 Budgets
 
 | budget | default | meaning |
 |---|---|---|
@@ -134,9 +166,15 @@ initialize the wrong RID" crash.
 the pool both servers share, and `_build()` cannot proceed without a real uploaded texture, so
 starving TextureServer is a hang, not a stall.
 
-**Native prerequisite:** `BsaArchive` must use positional reads (`pread()` / `ReadFile()` +
-`OVERLAPPED`) instead of shared-cursor `fseek()`+`fread()`, making concurrent `read_at()` safe by
-construction.
+**Ordering is FIFO, deliberately.** A distance-ordered queue matters when a burst is large enough
+that the player sees it drain — `world_streamer.gd` orders by real circular distance for that reason.
+NifServer's two cases do not reach that scale: entering a new area is behind a loading screen, so
+nothing is visible mid-drain, and as-you-walk streaming arrives in tens rather than thousands.
+Revisit if a case appears where the drain is both large and visible.
+
+NifServer also could not order by distance as specified: `request()` takes a path, not a placement,
+so the caller would have to supply a priority. That stays out of the contract until something needs
+it.
 
 ---
 
@@ -176,7 +214,7 @@ children. Named nodes are never pruned (only 3.4% are inert, and a pruned node f
 | case | policy | examples |
 |---|---|---|
 | Godot has a native construct | **build it** | collision, ragdoll, lights, cameras, particles |
-| Godot expresses it as state on something else | apply it there | `NiBillboardNode` mode → descendant materials |
+| Godot expresses it as state on something else | apply it there | alpha blend/test → material transparency |
 | Godot has no construct at all | node metadata | `BSBlastNode` / `BSDamageStage` stages, `BSValueNode` value, `NiBSBoneLODController` |
 
 NifServer does not withhold a construct because no consumer wants it yet. Turning something off is
@@ -198,6 +236,28 @@ child, and `bhkRagdollConstraint`/`bhkMalleableConstraint`/`bhkLimitedHingeConst
 
 > Constraints are **not** a ragdoll signal: 164 files carry one with no `bhkBlendCollisionObject`,
 > `bhkLimitedHingeConstraint` alone appearing in 190 files of which 90 are `meshes/armor`.
+
+`bhkMalleableConstraint` is a **wrapper**, not a constraint: it holds a `ConstraintData` whose own
+`type` selects the live descriptor. Read as opaque, `skeleton.nif` yields 3 ragdoll constraints and
+14 unsupported; unwrapped, 9 ragdoll and 8 limited hinge. 82% of that rig's joints are behind it.
+
+`pivotA` is zero on all 17 — the joint sits at the bone's own origin, which is what Godot's
+`joint_offset` means. `pivotB`, the same point in the parent's frame, is carried as metadata.
+
+**`NiBillboardNode` is a node, not material state.** Gamebryo rewrites the node's transform each
+frame and children inherit it rigidly; Godot's material billboard rewrites each mesh's model matrix
+independently about its own origin. Those agree only when a billboard node holds exactly one shape
+at its origin. Measured across `meshes/effects/`, of 203 billboard nodes:
+
+| | count | per-material equivalent? |
+|---|---:|---|
+| one shape at the node origin | 155 | yes |
+| one shape offset from the node, up to 4.75 m | 11 | no |
+| several shapes under one billboard | 35 | no — they counter-rotate |
+
+So it returns `NifBillboardNode`, a `Node3D` that orients itself, and no material billboard is
+applied. That costs a per-frame orientation per billboard node, which is the price of matching the
+source rather than approximating it for three quarters of cases.
 
 If the per-actor body count ever measures badly, the consumer frees or disables the simulator
 subtree — a decision that needs a profile, not a guess.
@@ -455,23 +515,44 @@ caller.
 
 ---
 
-## 10. `flatten_static`
+## 10. `prefer_static`
 
-`SETTLED`, per the tracker.
+`SETTLED`
 
 | | |
 |---|---|
 | meaning | one wrapper `Node3D` containing one `MeshInstance3D` per mesh; authored hierarchy removed |
 | **not** | a mesh merge — each mesh keeps its own surfaces and materials |
 | coordinate space | relative to the returned wrapper; no world-space baking |
-| collision | each flattened mesh keeps its applicable authored collision |
-| dynamic content | flag is an **explicit override** and flattens dynamic NIFs too, discarding their behaviour — it is never silently ignored *(reverses v1)* |
-| detection | still used to decide what data to skip decoding, and for diagnostics |
-| cache identity | `(canonical_path, flatten_static)` — distinct entries |
+| collision | kept, under one `StaticBody3D` — the hierarchy that separated bodies per owning node is what is being removed |
+| dynamic content | **returns the hierarchical tree instead**, and says so |
+| reporting | the root always carries `nif_flattened`; when false, `nif_not_flattened_because` names the blocker |
+| cache identity | the document cache is per path — flattening changes the tree, never the parse |
 | `DirectGeometryBatch` | never used here; remains a separate placement API |
 
 This is a representation flag, not a caller-intent mode: it changes *how much of the file is
 expressed*, never *what the file is interpreted as*.
+
+**It is a preference, not an override — this reverses v2's own earlier position.** That position was
+that the flag flattens dynamic NIFs too, discarding their behaviour, on the grounds that silently
+ignoring a flag is worse than obeying it destructively. The requirement behind that is sound and is
+kept: the flag is never silently ignored. But the caller it exists for is `WorldStreamer` placing
+scenery, and it cannot know whether a given SCOL animates. Making it an override means every
+animated prop placed as scenery loses its animation, and the caller has no way to have known.
+
+So the decision moves to where the knowledge is, and the result is reported rather than assumed. A
+caller that genuinely wants the geometry regardless can flatten what it gets back.
+
+Blockers, any one of which returns the hierarchical tree:
+
+| blocker | why |
+|---|---|
+| `AnimationPlayer` | tracks address nodes by path |
+| `NiBillboardNode` | orients itself per frame |
+| ragdoll | `PhysicalBone3D` needs the simulator and skeleton |
+| particles | emitter placement is hierarchical |
+| animated collision | an `AnimatableBody3D` moves with its owner |
+| `Skeleton3D` / skinned mesh | binds resolve through the skeleton |
 
 ---
 
@@ -558,7 +639,7 @@ shape.
 
 `OPEN`
 
-Settled: one resolve cache keyed `(canonical_path, flatten_static)`, holding only Resources and
+Settled: one resolve cache keyed `(canonical_path, prefer_static)`, holding only Resources and
 plain data; a fresh node tree is constructed per delivered instance; cache hits still consume the
 build budget. Prototype-tree caching with `Node.duplicate()` is a measured v2 investigation, not a
 v1 assumption.

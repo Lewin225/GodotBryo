@@ -14,6 +14,7 @@ class_name NifTreeBuilder
 ## exists so the tree can be looked at in the editor first.
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -24,8 +25,8 @@ const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 
 ## Every (path, alpha_safe) pair this file's materials will ask for, deduped.
-## Shared by warm_textures() and _resolve_textures() so the warmed key and the
-## looked-up key cannot drift apart.
+## Used by _resolve_textures() so the warmed key and the looked-up key cannot
+## drift apart.
 static func _texture_refs(src: NifSource) -> Array:
 	var refs: Array = []
 	if src == null:
@@ -54,21 +55,6 @@ static func _texture_refs(src: NifSource) -> Array:
 			seen[key] = true
 			refs.append(ref)
 	return refs
-
-
-## Queues every texture this file references and returns, without waiting.
-## Worker-safe: TextureServer.warm() marshals its own enqueue through
-## call_deferred, and NifSource is read-only here.
-##
-## build() does this itself. It is public for a caller running its own resolve
-## pass over many files, which wants every warm in flight before the first
-## build starts rather than one file's worth at a time.
-static func warm_textures(src: NifSource) -> void:
-	var server := _texture_server()
-	if server == null:
-		return
-	for ref in _texture_refs(src):
-		server.warm(ref["path"], ref["alpha_safe"])
 
 
 ## Warms every texture, then awaits them all. Returns cache key -> ImageTexture.
@@ -109,7 +95,17 @@ static func _texture_slot_map(convention: String) -> Array:
 	return [0, 1, 2]
 
 
-static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
+## `prefer_static` asks for section 10's flattened form: one wrapper Node3D with
+## one MeshInstance3D per mesh, authored hierarchy removed, each mesh keeping its
+## own surfaces, materials and collision. It is a PREFERENCE, not an override --
+## a file with dynamic content comes back hierarchical, because flattening it
+## would discard the behaviour that makes it work.
+##
+## The decision is never silent: the returned root always carries
+## `nif_flattened`, and when the answer is false, `nif_not_flattened_because`
+## names the content that prevented it.
+static func build(src: NifSource, apply_root_basis: bool = true,
+		prefer_static: bool = false) -> Node3D:
 	if src == null:
 		return null
 	# The only await in the whole builder. Textures are resolved up front so
@@ -188,8 +184,191 @@ static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
 	# Animations first: which nodes move decides what kind of body their
 	# collision hangs from, and collision now hangs off those nodes.
 	var animated := _build_animations(src, root, nodes, built, skeleton, bone_of_node)
-	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated)
+	# Ragdoll first: it claims its owning nodes so ordinary collision does not
+	# also build a StaticBody3D for them.
+	var ragdolled := _build_ragdoll(src, nodes, skeleton, bone_of_node)
+	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated, ragdolled)
+
+	if prefer_static:
+		var blocker := _dynamic_content(root)
+		root.set_meta("nif_flattened", blocker.is_empty())
+		if blocker.is_empty():
+			_flatten(root)
+		else:
+			root.set_meta("nif_not_flattened_because", blocker)
 	return root
+
+
+## What in this tree stops it being flattened, or "" if nothing does.
+##
+## Each of these is behaviour that lives in the hierarchy: collapsing the
+## hierarchy discards it. A caller that genuinely wants the geometry regardless
+## can flatten the result itself -- that is its decision to make, with the
+## consequence visible.
+static func _dynamic_content(root: Node3D) -> String:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if n is AnimationPlayer:
+			return "AnimationPlayer"
+		if n is NifBillboardNode:
+			return "NiBillboardNode"
+		if n is PhysicalBoneSimulator3D:
+			return "ragdoll"
+		if n is GPUParticles3D:
+			return "particles"
+		if n is AnimatableBody3D:
+			return "animated collision"
+		if n is Skeleton3D:
+			return "Skeleton3D"
+		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
+			return "skinned mesh"
+	return ""
+
+
+## Section 10: one wrapper, one MeshInstance3D per mesh, hierarchy removed.
+## NOT a mesh merge -- each keeps its own surfaces and materials. Transforms are
+## composed onto each leaf so geometry lands where it did, relative to the
+## wrapper; nothing is baked to world space.
+static func _flatten(root: Node3D) -> void:
+	var leaves: Array = []
+	var stack: Array = [{ "node": root, "xform": Transform3D.IDENTITY }]
+	while not stack.is_empty():
+		var entry: Dictionary = stack.pop_back()
+		var node: Node = entry["node"]
+		for c in node.get_children():
+			var child_xform: Transform3D = entry["xform"]
+			if c is Node3D:
+				child_xform = child_xform * (c as Node3D).transform
+			stack.append({ "node": c, "xform": child_xform })
+		if node == root:
+			continue
+		if node is MeshInstance3D or node is CollisionShape3D:
+			leaves.append({ "node": node, "xform": entry["xform"] })
+
+	# Collision keeps one body, since the hierarchy that separated bodies per
+	# owning node is exactly what is being removed.
+	var body: StaticBody3D = null
+	for leaf in leaves:
+		var node: Node3D = leaf["node"]
+		node.get_parent().remove_child(node)
+		node.transform = leaf["xform"]
+		if node is CollisionShape3D:
+			if body == null:
+				body = StaticBody3D.new()
+				body.name = "Collision"
+				root.add_child(body)
+			body.add_child(node)
+		else:
+			root.add_child(node)
+
+	# Everything the leaves used to hang from is now empty.
+	for c in root.get_children():
+		if c == body:
+			continue
+		if c is MeshInstance3D:
+			continue
+		c.free()
+
+
+## Section 5.3: bhkBlendCollisionObject is the ragdoll discriminator -- 60 files,
+## 56 of them named skeleton*.nif. Not the presence of a constraint: 164 files
+## carry one without being a ragdoll.
+##
+## The bodies go under a PhysicalBoneSimulator3D, which is inert until
+## physical_bones_start_simulation(), so an actor that never wants a ragdoll
+## pays nothing behaviourally and calls nothing.
+##
+## Returns the set of node indices claimed, so _build_collision skips them.
+static func _build_ragdoll(src: NifSource, nodes: Array, skeleton: Skeleton3D,
+		bone_of_node: Dictionary) -> Dictionary:
+	var claimed := {}
+	if skeleton == null:
+		# A ragdoll needs bones to hang off. A file declaring blend collision
+		# without a hierarchy is a skin whose rig lives elsewhere, and its
+		# collision stays ordinary rather than being invented into a ragdoll.
+		return claimed
+	var wanted := {}
+	for i in nodes.size():
+		if String(nodes[i]["collision_type"]) == "bhkBlendCollisionObject" and bone_of_node.has(i):
+			wanted[i] = true
+	if wanted.is_empty():
+		return claimed
+
+	var bodies: Array = src.get_collision_bodies()
+	var shapes_by_owner := {}
+	for cs in src.get_collision_shapes():
+		var owner := int(cs["owning_node_index"])
+		if not wanted.has(owner):
+			continue
+		if not shapes_by_owner.has(owner):
+			shapes_by_owner[owner] = []
+		(shapes_by_owner[owner] as Array).append(cs)
+
+	var simulator := PhysicalBoneSimulator3D.new()
+	simulator.name = "PhysicalBoneSimulator3D"
+	skeleton.add_child(simulator)
+
+	for i in wanted.keys():
+		var bone := int(bone_of_node[i])
+		var bone_name := skeleton.get_bone_name(bone)
+		var phys := PhysicalBone3D.new()
+		phys.name = "Physical_%s" % bone_name
+		phys.bone_name = bone_name
+
+		var body: Dictionary = {}
+		for cs in shapes_by_owner.get(i, []):
+			var bi := int(cs["body_index"])
+			if bi >= 0 and bi < bodies.size():
+				body = bodies[bi]
+				break
+		if not body.is_empty():
+			phys.mass = maxf(float(body["mass"]), 0.001)
+			phys.friction = float(body["friction"])
+			phys.bounce = float(body["restitution"])
+			phys.linear_damp = float(body["linear_damping"])
+			phys.angular_damp = float(body["angular_damping"])
+			_apply_ragdoll_joint(phys, body)
+
+		simulator.add_child(phys)
+		for cs in shapes_by_owner.get(i, []):
+			var shape := _make_shape(cs)
+			if shape == null:
+				continue
+			var col := CollisionShape3D.new()
+			col.name = "%s_%d" % [String(cs["kind"]), int(cs["block_index"])]
+			col.shape = shape
+			phys.add_child(col)
+		claimed[i] = true
+	return claimed
+
+
+## Constraint -> joint. A bhkRagdollConstraint is a cone-twist; a limited hinge
+## is a hinge. Anything else leaves the bone jointless rather than guessing.
+static func _apply_ragdoll_joint(phys: PhysicalBone3D, body: Dictionary) -> void:
+	var constraints: Array = body.get("constraints", [])
+	for c in constraints:
+		match String(c["kind"]):
+			"ragdoll":
+				phys.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+				# pivot_a is the joint in THIS body's frame and is zero across
+				# the corpus -- the joint sits at the bone's own origin, which
+				# is what Godot's joint_offset means. pivot_b is the same point
+				# in the parent's frame and is kept rather than dropped.
+				phys.joint_offset = Transform3D(Basis.IDENTITY, Vector3(c["pivot_a"]))
+				phys.set_meta("nif_joint_pivot_parent", Vector3(c["pivot_b"]))
+				phys.set_meta("nif_cone_max_angle", float(c["cone_max_angle"]))
+				phys.set_meta("nif_twist_span", Vector2(float(c["twist_min_angle"]), float(c["twist_max_angle"])))
+				return
+			"hinge":
+				phys.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
+				phys.joint_offset = Transform3D(Basis.IDENTITY, Vector3(c["pivot_a"]))
+				phys.set_meta("nif_joint_pivot_parent", Vector3(c["pivot_b"]))
+				phys.set_meta("nif_hinge_span", Vector2(float(c["min_angle"]), float(c["max_angle"])))
+				return
+	phys.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
 
 
 ## Returns the single BoneAttachment3D for a bone, creating it on first use.
@@ -277,6 +456,15 @@ static func _bind_skins_to_skeleton(root: Node3D, skeleton: Skeleton3D) -> void:
 static func _make_node(nd: Dictionary, textures: Dictionary) -> Node3D:
 	var block_type := String(nd["block_type"])
 	match block_type:
+		"NiBillboardNode":
+			# Section 5.3 said material state, which is only equivalent when a
+			# billboard node holds exactly one shape at its own origin. Across
+			# meshes/effects/ 46 of 203 do not -- 35 hold several shapes that
+			# would counter-rotate, 11 hold one offset by up to 4.75 m. So this
+			# is a node that orients itself, as Gamebryo does.
+			var billboard := NifBillboardNodeScript.new()
+			billboard.billboard_mode = String(nd["billboard_mode"])
+			return billboard
 		"NiCamera":
 			return Camera3D.new()
 		"NiPointLight":
@@ -672,7 +860,7 @@ static func _track_interp(keys: Array, resampled: bool) -> int:
 ## anything it moves into.
 static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		skeleton: Skeleton3D, bone_of_node: Dictionary, attachments: Dictionary,
-		animated: Dictionary) -> void:
+		animated: Dictionary, ragdolled: Dictionary) -> void:
 	var shapes: Array = src.get_collision_shapes()
 	if shapes.is_empty():
 		return
@@ -683,6 +871,8 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		if shape == null:
 			continue
 		var owner_index := int(s["owning_node_index"])
+		if ragdolled.has(owner_index):
+			continue # already a PhysicalBone3D's shape
 		var parent := _collision_parent(owner_index, root, built, skeleton, bone_of_node, attachments)
 		if parent == null:
 			continue
