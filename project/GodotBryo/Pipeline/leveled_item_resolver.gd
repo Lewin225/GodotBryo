@@ -3,7 +3,10 @@ class_name LeveledItemResolver
 extends RefCounted
 
 ## Resolves authored LVLI data into concrete InventoryItems. The caller passes
-## one actor level; player level is not a separate resolver concept.
+## one actor level; player level is not a separate concept.
+
+## TODO - This is probbaly inaccurate to what a real LVLI would return, but it can be improved as we go
+
 const MAX_DEPTH := 32
 
 var server

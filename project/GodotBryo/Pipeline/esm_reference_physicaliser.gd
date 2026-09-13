@@ -2,6 +2,16 @@
 class_name EsmReferencePhysicaliser
 extends RefCounted
 
+## Converts an authored EsmReference into its *worldspace* physical representation.
+## This should be treated as a singleton, not instanciated as needed
+
+## The Provided EsmReference is placed into the returned node's EsmBase
+## Worldspace is the key word - eg. WeaponReference passed in to this is returned like a dropped item
+
+## Unknown reference types intentionally produce an empty Node3D root. This
+## keeps editor inspection useful while missing physicalisations are added.
+
+#region Script/Prefab References
 const DoorNodeScript := preload("res://GodotBryo/Types/Node/esm_door_node.gd")
 const ItemNodeScript := preload("res://GodotBryo/Types/Node/esm_item_node.gd")
 const StaticNodeScript := preload("res://GodotBryo/Types/Node/esm_static_node.gd")
@@ -17,27 +27,56 @@ const LeveledItemPreviewNodeScript := preload("res://GodotBryo/Types/Node/esm_le
 const NpcActorScene := preload("res://gamebryo/esm_npc_actor.tscn")
 var _mesh_resolver: GamebryoMeshResolver
 
-## Converts an authored EsmReference into its runtime/physical representation.
-## Unknown reference types intentionally produce an empty Node3D root. This
-## keeps editor inspection useful while typed physicalisation is added.
+const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
 
+## Opt-in second visual path: build through NifServer's nifly-backed NifSource
+## instead of GamebryoMeshResolver. Off by default -- the existing path is
+## untouched and still the one everything ships on.
+##
+## Enable for a session with the project setting `godotbryo/use_nif_server`, or
+## per-instance by setting this before calling physicalise(). The browser dock
+## preview picks up the project setting with no changes of its own.
+##
+## What differs: nodes are typed from their real block type (section 3's node
+## map -- a NiPointLight becomes an OmniLight3D, a NiCamera a Camera3D), names
+## round-trip through the reversible escape rather than being sanitised, every
+## node carries its authored name and block type as metadata, extra data lands
+## as metadata, and all six texture slots are read.
+var use_nif_server: bool = ProjectSettings.get_setting("godotbryo/use_nif_server", false)
+#endregion
+
+## Takes any EsmReference type and returns its world space representation, with the provided reference inserted
 func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bool = true) -> Node3D:
 	if reference == null:
 		return null
+		
 	var root: EsmNode
 	var unsupported := false
+	
+	#region Lookup Table
+	# This is the lookup table that binds the given EsmReference derived type to it's node representation
+	
+	# ACTI / ActorReference
 	if reference is ActorReference and reference.base is NpcBase:
 		var actor_node: EsmNpcActor = NpcActorScene.instantiate()
 		actor_node.configure(reference)
 		root = actor_node
+		
+	# DOOR/DoorReference
 	elif reference is DoorReference:
 		var door_node: EsmDoorNode = DoorNodeScript.new()
 		door_node.configure(reference as DoorReference)
 		root = door_node
+		
+	# LVLI/LeveledItem
+	# These should never actually be physicalised, but this supports previewing them in the resource browser
 	elif reference is LeveledItemReference:
 		var leveled_preview: EsmLeveledItemPreviewNode = LeveledItemPreviewNodeScript.new()
 		leveled_preview.configure(reference)
 		root = leveled_preview
+		
+	# MISC/AMMO/WEAP(Dropped)/BOOK/CCRD
+	# All of these are physics props that you can pick up to add to your inventory, so they all use ItemNodeScript
 	elif reference is MiscReference or reference is AlchemyReference \
 			or reference is AmmoReference or reference is KeyReference \
 			or reference is WeaponReference or reference is ArmorReference \
@@ -46,56 +85,81 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		var item_node: EsmItemNode = ItemNodeScript.new()
 		item_node.configure(reference)
 		root = item_node
+		
+	# STAT / StaticReference
 	elif reference is StaticReference:
 		var static_node: EsmStaticNode = StaticNodeScript.new()
 		static_node.configure(reference)
 		root = static_node
+		
+	# LIGH / LightReference
 	elif reference is LightReference:
 		var light_node: EsmLightNode = LightNodeScript.new()
 		light_node.configure(reference)
 		root = light_node
+		
+	# ACTI / ActivatorReference
 	elif reference is ActivatorReference:
 		var activator_node: EsmActivatorNode = ActivatorNodeScript.new()
 		activator_node.configure(reference)
 		root = activator_node
+		
+	# CONT / ContainerReference
 	elif reference is ContainerReference:
 		var container_node: EsmContainerNode = ContainerNodeScript.new()
 		container_node.configure(reference)
 		root = container_node
+		
+	# FURN / FurnitureReference
 	elif reference is FurnitureReference:
 		var furniture_node: EsmFurnitureNode = FurnitureNodeScript.new()
 		furniture_node.configure(reference)
 		root = furniture_node
+		
+	# SCOL / StaticCollectionReference
+	# These are a group of STAT, so configure just loops through and spawns a tree of STAT
 	elif reference is StaticCollectionReference:
 		var collection_node: EsmStaticCollectionNode = StaticCollectionNodeScript.new()
 		collection_node.configure(reference)
 		root = collection_node
+		
+	# MSST / MovableStaticReference - Pushable physics props, but can't be picked up
 	elif reference is MovableStaticReference:
 		var movable_node: EsmMovableStaticNode = MovableStaticNodeScript.new()
 		movable_node.configure(reference)
 		root = movable_node
+		
+	# TACT / TalkingActivatorReference - talk to intercoms, radios ect.
 	elif reference is TalkingActivatorReference:
 		var talking_activator_node = TalkingActivatorNodeScript.new()
 		talking_activator_node.configure(reference)
 		root = talking_activator_node
+		
+	# TERM / TerminalReference - TERM can be a real object or a screen used by another TERM
+	# Best you check it has a non null world model before spawning it
 	elif reference is TerminalReference:
 		var terminal_node = TerminalNodeScript.new()
 		terminal_node.configure(reference)
 		root = terminal_node
+		
+	# Shouldn't happen, but will
 	else:
 		root = EsmNode.new()
 		unsupported = true
+	
+	#endregion Lookup Table
+		
 	root.name = _node_name(reference)
-	# REFR rotation/position are Bethesda-space values. The old node-based
-	# registry applied the authored transform beneath a -90 degree X RefrRoot;
-	# reproduce that composition here because a preview physicalizer has no
-	# RefrRoot parent. Do not pass these values through MeshResolver: this is
-	# placement-space conversion, not mesh/NIF resolution.
-	# A normal physicalized reference has no RefrRoot parent, so it needs the
+	
+	
+	# REFR rotation/position are Bethesda-space values. A normal physicalized 
+	# reference has no RefrRoot parent, so it needs the
 	# fixed Bethesda Z-up -> Godot Y-up conversion here. SCOL parts are local
 	# children of an already-converted collection anchor and must retain only
 	# their authored relative transform; applying the conversion to both levels
 	# rotates the collection onto its side.
+	
+	# TODO - This should be NifServer's job to return 
 	root.transform = _world_transform(reference.position, reference.rotation, reference.scale) \
 		if world_space else GamebryoMeshResolver.refr_transform(reference.position, reference.rotation, reference.scale)
 	if _mesh_resolver == null:
@@ -106,6 +170,13 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		attached_before_build = true
 	if root is EsmStaticCollectionNode:
 		(root as EsmStaticCollectionNode).build_collection(self)
+	elif use_nif_server:
+		# Deliberately not awaited. NifServer's build() waits for texture
+		# residency, so this completes over the next few frames and attaches
+		# the visual when it is ready. Acceptable because use_nif_server is an
+		# inspection flag, off by default; a caller that needs the node to
+		# exist on return has to await build() itself.
+		_build_visual_via_nif_server(root, reference)
 	else:
 		root.build_visual(_mesh_resolver)
 	if unsupported:
@@ -132,6 +203,50 @@ func physicalise(reference: EsmReference, parent: Node3D = null, world_space: bo
 		if root is EsmItemNode:
 			(root as EsmItemNode)._sync_physics_transform()
 	return root
+
+## Builds the visual through NifServer's NifSource. Returns false when there is
+## nothing to build, so the caller falls back to the established path rather
+## than producing an empty node.
+##
+## Deliberately does NOT apply NifTreeBuilder's own root basis: physicalise()
+## already composes the Z-up -> Y-up conversion into the placement transform
+## (see _world_transform), so applying it again would rotate the object twice.
+## nif_server_v2.md has NifServer own that conversion and callers drop theirs;
+## that migration is separate work and is not started here.
+func _build_visual_via_nif_server(root: Node3D, reference: EsmReference) -> bool:
+	if reference == null or reference.base == null:
+		return false
+	var model_path := String(reference.base.get("model_path") if reference.base.has_method("get") else "")
+	if model_path.is_empty():
+		return false
+
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return false
+	var archive: Node = (loop as SceneTree).root.get_node_or_null("ArchiveServer")
+	if archive == null or not archive.is_ready():
+		push_warning("EsmReferencePhysicaliser: use_nif_server is on but ArchiveServer is unavailable")
+		return false
+
+	var result: Dictionary = archive.read("meshes/" + model_path)
+	if not bool(result["found"]):
+		push_warning("EsmReferencePhysicaliser: %s not found (%s)" % [model_path, result["error"]])
+		return false
+
+	var source := NifSource.new()
+	if not source.load(PackedByteArray(result["data"])):
+		push_warning("EsmReferencePhysicaliser: %s failed to parse (%s)" % [model_path, source.get_last_error()])
+		return false
+
+	var visual: Node3D = await NifTreeBuilderScript.build(source, false)
+	if visual == null:
+		return false
+	visual.name = "NifServerVisual"
+	visual.set_meta("nif_path", model_path)
+	visual.set_meta("nif_block_count", source.get_block_count())
+	root.add_child(visual)
+	return true
+
 
 ## Build one derived SCOL part as an ordinary StaticReference. Parts have no
 ## REFR identity of their own, so their synthetic ID is traceability-only.
@@ -197,7 +312,7 @@ func _world_transform(position: Vector3, rotation: Vector3, scale: float) -> Tra
 	var z_up_to_y_up := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
 	return Transform3D(z_up_to_y_up, Vector3.ZERO) * authored
 
-## Bethesda stores REFR Euler angles in radians. The established NV path uses
+## Gamebryo stores REFR Euler angles in radians. The established NV path uses
 ## the negated authored angles in X/Y/Z composition order.
 func _authored_rotation_basis(rotation: Vector3) -> Basis:
 	var bx := Basis(Vector3.RIGHT, -rotation.x)

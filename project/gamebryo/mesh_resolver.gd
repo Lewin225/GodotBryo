@@ -1038,6 +1038,14 @@ func populate_skeleton(parent: Node3D, nif: NifReader, model_path: String) -> Sk
 
 	return skeleton
 
+## Attaches the skinned geometry from `nif` to an existing skeleton. This is
+## deliberately format/rendering-oriented and has no knowledge of which ESM
+## record or caller selected either asset.
+func populate_skinned_geometry(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, metadata: Dictionary = {}) -> void:
+	if skeleton == null or nif == null or nif.get_skin_data().is_empty():
+		return
+	_populate_skinned_mesh_instances(parent, skeleton, nif, model_path, [], null, metadata)
+
 ## Issue #52 chunk 4: a "full humanoid assembly" (enginedocs/
 ## nv_class_hierarchy.md; the real ESM structure confirmed on issue #52's own
 ## chunk 2 gate) — unlike populate_skeleton()'s single self-contained file,

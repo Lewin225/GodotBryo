@@ -1,11 +1,70 @@
 CREA — Creature base record
 
 ROLE
-CREA is authored creature base data. ACRE supplies a placed creature instance.
-CREA is not treated as an NPC_ and does not automatically use the humanoid RACE
-head/body assembly.
+CREA is authored creature-base data. ACRE supplies a placed creature
+instance. CREA is an actor record, but it is not an NPC_ record and does not
+carry the NPC_ RACE-linked human appearance contract.
+
+FRESH ESM CENSUS
+The official master files in `fresh_nv_copy/Data/` were scanned directly with
+the native ESM reader on 2026-09-10. The census covered 2,238 CREA records:
+
+- FalloutNV.esm: 1,578
+- DeadMoney.esm: 77
+- HonestHearts.esm: 96
+- LonesomeRoad.esm: 141
+- OldWorldBlues.esm: 346
+- CaravanPack.esm, ClassicPack.esm, GunRunnersArsenal.esm,
+  MercenaryPack.esm, and TribalPack.esm: 0
+
+Observed across those records:
+
+- EDID, ACBS, AIDT, DATA, BNAM, EAMT, NAM4, NAM5, NIFT, OBND, PNAM, RNAM,
+  TNAM, and WNAM: 2,238/2,238
+- CNTO inventory entries: 3,035 total occurrences
+- NIFZ model-list subrecord: 1,573/2,238
+- MODL: 1,668/2,238
+- KFFZ animation-file list: 202/2,238
+- PKID AI-package links: 3,470 total occurrences
+- SPLO spell links: 1,893 total occurrences
+- SNAM faction entries: 4,071 total occurrences
+- SCRI script links: 473/2,238
+
+These are raw observations. They include records inherited from templates and
+records with optional fields absent; they do not imply that every field is
+currently decoded by this project.
+
+CONFIRMED APPEARANCE AND ANIMATION SHAPE
+CREA has explicit model-list data. NIFZ contains one or more NIF filenames;
+the census found examples containing multiple filenames. MODL is also present on many records and
+is commonly a creature skeleton path in the shipped data. KFFZ is an explicit
+list of KF filenames on a subset of CREA records, so creature animation data
+cannot be assumed to be the human `Characters\\_Male` animation set.
+
+The GECK Creature window exposes ModelList, Animation, Blood, Sounds,
+Destruction, Inventory, Scripts, and AI-related tabs. These are consistent
+with the observed CREA subrecords and establish that creatures share actor
+composition concerns such as inventory, animation, scripts, and
+gore-related data.
+
+WHAT CREA DOES NOT CONFIRM
+No NPC-style race link was found. RNAM occurs on all 2,238 records, but in the
+CREA layout it is the impact-data-set field and must not be interpreted as an
+NPC race FormID. CREA therefore must not be routed through NPC RACE/HAIR/EYES
+or FaceGen assembly by default.
+
+PNAM occurs on all 2,238 records, but its meaning and relationship to the
+creature ModelList remain undecoded in this project. It is recorded here as
+raw observed data rather than being promoted to a guessed appearance contract.
+Likewise, the exact rule connecting each CREA.MODL skeleton path to the NIFZ
+model list still needs to be implemented from these explicit fields; no
+filename-convention fallback should be introduced without a separate census.
 
 RUNTIME MODEL
-Creature data will use the same composition-oriented actor interfaces where they
-apply, while retaining a separate CreatureActor leaf and creature-specific mesh
-assembly path.
+Creature and NPC nodes should share the actor-level implementation for
+inventory, equipment attachment, animation playback, root motion, scripts,
+and common actor state where their assets support those operations. They need
+separate appearance assembly leaves: NPC uses RACE/HAIR/EYES/FaceGen, while
+CREA uses its own MODL/NIFZ/KFFZ/PNAM data. Creature-specific embedded weapons
+and weapon-list behavior belong to the creature path, even when they reuse
+the common equipment renderer.

@@ -392,6 +392,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		for package_data in _all_subrecords(raw, "PKID"):
 			var package_base := get_base(_u32(package_data)) as PackageBase
 			if package_base != null: npc.packages.append(package_base)
+	elif result is CreatureBase:
+		_populate_creature(result as CreatureBase, raw)
 	elif result is RaceBase:
 		_populate_race(result as RaceBase, raw)
 	elif result is ArmorBase:
@@ -665,11 +667,53 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 				entry.health_percent = _f32(extra, 8)
 		result.entries.append(entry)
 
+func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
+	result.model_path = _string(_subrecord(raw, "MODL"))
+	result.model_list_filenames.clear()
+	result.model_list_paths.clear()
+	result.animation_filenames.clear()
+	result.animation_paths.clear()
+	result.pnam_values.clear()
+	# Bethesda asset paths are commonly stored with backslashes. Normalize only
+	# while extracting the directory; the resolved values retain the project's
+	# established backslash path convention.
+	var model_directory := result.model_path.replace("\\", "/").get_base_dir()
+	for data in _all_subrecords(raw, "NIFZ"):
+		for filename in _zero_terminated_strings(data):
+			result.model_list_filenames.append(filename)
+			result.model_list_paths.append(_join_creature_asset_path(model_directory, filename))
+	for data in _all_subrecords(raw, "KFFZ"):
+		for filename in _zero_terminated_strings(data):
+			result.animation_filenames.append(filename)
+			result.animation_paths.append(_join_creature_asset_path(model_directory, filename))
+	for data in _all_subrecords(raw, "PNAM"):
+		if data.size() >= 4:
+			result.pnam_values.append(_u32(data))
+
+func _join_creature_asset_path(directory: String, filename: String) -> String:
+	var clean_filename := filename.replace("/", "\\")
+	if directory.is_empty():
+		return clean_filename
+	return (directory + "\\" + clean_filename).replace("/", "\\")
+
 func _string(data: PackedByteArray) -> String:
 	var end := data.size()
 	for i in data.size():
 		if data[i] == 0: end = i; break
 	return data.slice(0, end).get_string_from_ascii()
+
+func _zero_terminated_strings(data: PackedByteArray) -> Array[String]:
+	var result: Array[String] = []
+	var start := 0
+	for index in data.size():
+		if data[index] != 0:
+			continue
+		if index > start:
+			result.append(data.slice(start, index).get_string_from_ascii())
+		start = index + 1
+	if start < data.size():
+		result.append(data.slice(start, data.size()).get_string_from_ascii())
+	return result
 
 func _u32(data: PackedByteArray, offset := 0) -> int:
 	return int(data.decode_u32(offset)) if data.size() >= offset + 4 else 0
