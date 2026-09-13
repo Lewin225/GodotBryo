@@ -20,7 +20,7 @@ Each is either a known gap in what was built or a decision not yet made.
 | [8](#8-windows-positional-read-unverified) | Windows positional read unverified | `DECISION` |
 | [9](#9-loose-files-not-supported) | Loose files not supported | `DECISION` |
 | [10](#10-4s-threading-rationale-does-not-hold-for-godot-472) | §4's threading rationale does not hold for Godot 4.7.2 | `FIXED` |
-| [11](#11-nifserver-does-not-cache) | NifServer does not cache | `GAP` |
+| [11](#11-nifserver-does-not-cache) | NifServer does not cache | `FIXED` |
 | [12](#12-collision-alignment) | Collision alignment | `PARKED` |
 
 ---
@@ -276,7 +276,7 @@ queue builds the far side of a cell first, and orders by real circular distance 
 
 ## 11. NifServer does not cache
 
-`GAP` — every request re-reads, re-parses and rebuilds, and the result does not batch.
+`FIXED` — built trees are cached as templates and delivered as `duplicate()`.
 
 `build()` holds no cache of any kind. A cell load asking for the same model 50 times gets 50
 independent trees with 50 independent `ArrayMesh`, `StandardMaterial3D` and `Shape3D` instances.
@@ -298,11 +298,137 @@ exactly the condition the coalesce tests for.
 Caching whole trees also dissolves the separate question of caching collision, skin and animation
 resources: they are sub-resources of the cached tree.
 
-**Unmeasured, and it decides whether this is worth building:** whether `duplicate()` actually beats a
-warm `build()`. A warm build is 21.4 ms for 60 models; `duplicate()` walks the tree copying every
-property Variant and is not free. Also unverified: that a skinned tree survives duplication, since
-`MeshInstance3D.skeleton` is a `NodePath` that must re-resolve inside the copy while the `Skin`
-resource is shared.
+**Measured.** `duplicate()` beats a warm `build()` on every shape tested, by 3-10x.
+`project/tests/servers/test_nif_duplicate_bench.tscn` is the harness; it is a measurement, not a gate,
+and the runner skips it. Godot 4.7.1, Linux, per instance at N=100:
+
+| model | nodes | build | duplicate | |
+|---|---:|---:|---:|---:|
+| `milkbottle01` trivial prop | 5 | 0.107 ms | 0.036 ms | 2.9x |
+| `barracks01` architecture | 15 | 1.590 ms | 0.151 ms | **10.6x** |
+| `upperbody` skin, no hierarchy | 34 | 1.234 ms | 0.214 ms | 5.8x |
+| `nvdlc01stealthsuit_go` skin + `Skeleton3D` | 10 | 0.405 ms | 0.109 ms | 3.7x |
+| `vdoorslidingvault22` animated | 27 | 0.805 ms | 0.222 ms | 3.6x |
+
+At N=1 the margin narrows to 2-6.7x; the ratio is stable from N=10 upward. The gain tracks material
+and texture count rather than node count -- `barracks01` has 15 nodes and 10 materials and gains
+most, `upperbody` has 34 nodes and 6 materials and gains less.
+
+Timing is the smaller half. The bench also asserts the resource sharing the draw-call argument
+depends on: a copy shares **every** mesh, material, shape and `Animation` with its template, and two
+fresh `build()` calls share none. That is the RID identity the coalesce tests for, so 100 placements
+become 1 instanced draw instead of 100.
+
+**The skinned unknown is resolved.** A tree carrying its own `Skeleton3D` binds its skin through the
+relative `NodePath` `../..`, and in a copy that resolves to the **copy's** `Skeleton3D`, not the
+template's, while the `Skin` resource itself is shared. `BoneAttachment3D` bone indices are correct
+once parented, and match the template exactly.
+
+Two caveats found while measuring, neither blocking:
+
+- Duplicating a tree containing `BoneAttachment3D` logs `Bone index -1 out of range` per attachment,
+  because the attachment is copied before the copy's `Skeleton3D` has bones. Harmless -- the index
+  resolves on entering the tree -- but the bench run emitted 336 of them, so at cell-load scale this
+  is real log spam.
+- Only 185 corpus files carry a bone hierarchy, and `meshes/characters/_male/upperbody.nif` is not
+  one: it leaves `skeleton` unset by design (§9). A skinned model alone does not exercise the
+  `NodePath` path; a file with both is needed, hence `nvdlc01stealthsuit_go.nif` above.
+
+### Implemented
+
+`nif_server.gd` holds `_trees`, keyed on §10's `(path, flatten)` identity. A template is never
+delivered and never parented; callers receive `template.duplicate()`, including on the build that
+created it. Two requests for one key can both miss, because the document cache deduplicates the
+parse but each build spans frames — whichever finishes first becomes the template and the rest
+deliver the tree they already built, rather than discarding work or replacing a template other
+instances share.
+
+`get_stats()` adds `resident_tree_count` and `resident_tree_node_count`; `purge(path, prefer_static)`
+drops one template and `purge_all()` drops all, matching TextureServer's shape. Node count is the
+residency figure because meshes and textures are shared — counting those would attribute the same
+bytes to several caches. There is still no eviction policy, and a resident template pins its
+textures, which is [#7](#7-texture-eviction-policy).
+
+### The per-frame cost changed shape
+
+A cache miss suspends at `build()`'s await and costs the frame almost nothing. A cache **hit**
+duplicates synchronously, so `builds_per_frame_budget` — a count of builds started — stopped
+bounding frame time. `build_time_budget_usec` (default 8,000) now caps the drain's wall clock. Both
+apply, and whichever is reached first ends the drain.
+
+`build()` never spread construction across frames: it has one `await`, for textures, after which the
+tree is assembled synchronously. A warm build of `dlc04mansionwindows01.nif` is 244.7 ms in a single
+frame, *per instance*. The cache makes that 20.5 ms. The stall is not new; it is reduced.
+
+At least one item is always processed, so **one heavy model still exceeds a frame** — 16.5 ms worst
+frame for a 2,111-node SCOL including the caller's `add_child`. `prefer_static` is the lever that
+fixes it, because node count is what a copy pays for:
+
+| model | nodes | build | duplicate | with `prefer_static` |
+|---|---:|---:|---:|---|
+| `dlc04mansionwindows01.nif` | 2,516 | 244.7 ms | 20.5 ms | won't flatten (`AnimationPlayer`) |
+| `meshes/scol/villatest.nif` | 2,111 | 34.4 ms | 13.0 ms | **711 nodes, 4.8 ms** |
+| `nvlucky38reactor.nif` | 258 | 14.4 ms | 2.4 ms | won't flatten (`AnimationPlayer`) |
+
+### Threaded duplication: built, measured, rejected — NEEDS RETRY
+
+Copying a template on a `WorkerThreadPool` task is correct and faster, and still cannot be used.
+
+It worked: eight concurrent copies of 2,100- and 2,500-node trees, taken under Vulkan Forward+ with
+the renderer running, were each structurally and resource-identical to a main-thread copy. Adding a
+delivery pacer — worker completions bunch, and the callers' `add_child` then stacks inside one frame
+— took the worst frame from 14.4 ms to 8.3 ms.
+
+**But every configuration aborted the process during engine shutdown**, after `ALL CHECKS PASSED`,
+with no error printed. Ruled out by bisection: it is not the shutdown cleanup (aborts with cleanup
+removed entirely), not `call_deferred` from the worker (aborts with the handoff replaced by
+main-thread polling), not task draining (aborts with and without `wait_for_task_completion`), and
+not the new gates (aborts with all of them disabled). The synchronous version of the same cache
+exits `0` repeatedly.
+
+The core dump says what it is: **`SIGSEGV` inside `__pthread_mutex_lock`**, reached from Godot's
+shutdown path, converted to `abort` by Godot's crash handler. Locking a mutex that has already been
+freed — a use-after-free of a mutex-bearing object during teardown, not a cosmetic exit code and not
+a failed assertion. 25 cores, one signature.
+
+**This is a retry, not a dead end.** What is NOT established: whose bug it is. The Godot binary
+carries no symbols, so the faulting function has no name, and "creating Nodes on a worker is not
+viable in 4.7.1" is a hypothesis, not a finding. The copies themselves verify correct every time.
+
+To retry, in rough order of cost:
+
+1. Symbolise the crash. A Godot build with symbols, or a debug build, names the function in one
+   run and probably settles it outright.
+2. Establish whether it reproduces without NifServer at all — a bare scene that duplicates any
+   node tree on a `WorkerThreadPool` task and quits. If it does, it is an engine-level constraint
+   and belongs upstream; if it does not, it is ours.
+3. Check whether the tree's contents matter. `MeshInstance3D` takes a RenderingServer instance RID
+   in its constructor, so a copy containing no `VisualInstance3D` is the obvious control.
+
+The frame-cost prize is real — 14.4 ms to 8.3 ms worst frame, and it is the only approach measured
+that brings an un-flattened heavy SCOL inside a frame — so this is worth returning to once there is
+a symbolised stack.
+
+Note that the project has a *separate* pre-existing shutdown abort: `EsmServer` starts a `Thread` in
+`_ready()` and only calls `wait_to_finish()` from `_process` once it is no longer alive, so any
+scene quitting early destroys a running `Thread`. A scene that awaits one frame and quits aborts on
+`master`. That is the source of the `134` exits across the terrain, BSA and tri gates, and it is not
+the threaded-duplication abort above — which reproduces in long-running scenes where the ESM thread
+has long since finished.
+
+### Not needed yet: chunking a copy across frames
+
+Measured in case the frame cost has to come down further. Every tree is a thin spine that fans out
+at a shallow depth — `villatest` is 2 spine nodes then 709 subtrees of ~3 nodes, and
+`dlc04mansionwindows01` is 3 then 45 subtrees of 57 — so a copy can be sliced by hand-copying the
+spine and `duplicate()`ing the fan-out in budgeted slices. Recorded, not built.
+
+### Still undecided, and not a performance question
+
+An `AnimationPlayer` property track pointed at a shared material is in-place mutation every frame,
+and sharing is exactly what makes this fast. Implementing
+[#5](#5-property-tracks-not-bound) now would mutate every instance of a model together. That is #5's
+question and MaterialServer's, not this one's — the cache makes it sharper, not different.
 
 **Not applicable to FaceGen.** Per-NPC morph deformation means a unique mesh by definition.
 

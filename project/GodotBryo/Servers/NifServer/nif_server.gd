@@ -12,6 +12,26 @@ const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tre
 
 ## Section 4.2: _build() calls started per frame.
 @export var builds_per_frame_budget: int = 12
+## Wall-clock cap on one frame's drain, in microseconds. 0 disables it, leaving
+## the count budget alone in charge.
+##
+## Both caps apply, because they bound different things: the count budget
+## limits how many builds are STARTED, which paces worker and TextureServer
+## pressure, while this limits how long the drain may actually spend, which is
+## what a synchronous cache hit consumes. Whichever is reached first ends the
+## frame's drain.
+##
+## A count budget alone stopped bounding frame time once the tree cache landed.
+## A cache miss suspends at build()'s await and costs the frame almost nothing;
+## a cache HIT duplicates synchronously and costs the full copy. Measured, the
+## corpus worst case is `dlc04mansionwindows01.nif` at 20.4 ms per duplicate and
+## `meshes/scol/villatest.nif` -- an SCOL, so on the World Streamer's own path --
+## at 12.8 ms, which at a budget of 12 is a 245 ms and a 153 ms frame.
+##
+## As in TextureServer, at least one item is always processed, so a single
+## duplicate costlier than the whole budget still makes progress rather than
+## wedging the queue.
+@export var build_time_budget_usec: int = 8000
 ## Admission cap on concurrent _resolve() tasks -- NOT a thread count. -1 means
 ## max(2, cpus - 1). Never add_group_task() at tasks_needed = -1: it claims
 ## every thread in the pool this shares with TextureServer, and a build cannot
@@ -20,13 +40,39 @@ const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tre
 
 ## Canonical path -> NifSource. The parsed document only, so it is shared across
 ## both prefer_static settings: flattening happens at build time and changes the
-## tree, never the parse. Section 10's (path, flatten) cache identity applies to
-## a built-tree cache, which does not exist yet.
-##
-## A tree is built fresh per delivered instance. Caching built trees and handing out duplicate() is
-## outstanding_issues.md #11 and is entangled with the mesh/material sharing
-## decision, so it stays out until that is settled.
+## tree, never the parse.
 var _documents := {}
+
+## Section 10's (path, flatten) identity -> a built tree kept as a TEMPLATE.
+##
+## A template is never delivered and never parented: callers receive
+## `template.duplicate()`. Measured at 3-10x cheaper than rebuilding
+## (tests/servers/test_nif_duplicate_bench.tscn), but the reason is the draw
+## call, not the clock -- Godot coalesces on RID identity, and duplicate()
+## assigns object-typed properties by reference, so every copy shares the
+## template's mesh, material, shape, skin and Animation RIDs. Fifty placements
+## become one instanced draw instead of fifty.
+##
+## The same sharing is a hazard: a caller that mutates a delivered node's
+## material or mesh mutates it for every other instance of that model. See
+## README.md. Property-track animation (outstanding_issues.md #5) is exactly
+## that mutation and is still unimplemented for exactly this reason.
+##
+## There is no eviction policy. Templates are resident until purged, which
+## pins their textures too -- TextureServer.purge() frees nothing while a
+## reference is held. get_stats() reports residency so a caller can watch it.
+var _trees := {}         # tree key -> Node3D template (orphan, never parented)
+var _tree_nodes := {}    # tree key -> node count, for the residency figure
+## Copying a template on a WorkerThreadPool task was built and measured, and is
+## NOT used. It worked: eight concurrent copies of 2,100- and 2,500-node trees
+## taken while the main thread kept rendering came back structurally and
+## resource-identical to a main-thread copy, and it cut the worst frame from
+## 14.4 ms to 8.3 ms. But every configuration of it aborted the process during
+## engine shutdown -- with and without call_deferred, with and without waiting
+## on the tasks, with the new gates disabled -- while the synchronous version
+## of the same cache exits cleanly. Creating Nodes on a worker is evidently not
+## viable here in 4.7.1, however correct the results look. See
+## outstanding_issues.md #11.
 var _inflight := {}      # key -> { waiters: Array }
 var _pending := []       # keys awaiting a worker slot
 var _build_queue := []   # [{ key, waiter }]
@@ -47,6 +93,10 @@ var _stats := {
 	"builds_this_frame": 0,
 	"owner_gone_count": 0,
 	"orphan_freed_count": 0,
+	"tree_cache_hits": 0,
+	"tree_cache_misses": 0,
+	"tree_purge_count": 0,
+	"template_discarded_count": 0,
 }
 
 
@@ -60,6 +110,9 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_shutting_down = true
+	# Templates are orphans by construction, so nothing else will ever free
+	# them and Godot would report every one as a leaked instance at exit.
+	_free_all_templates()
 
 
 ## Section 3.3: `\` -> `/`, lowercase, strip a leading `meshes/`. Both
@@ -119,6 +172,14 @@ func get_stats() -> Dictionary:
 	out["pending_admission_count"] = _pending.size()
 	out["pending_build_count"] = _build_queue.size()
 	out["resident_document_count"] = _documents.size()
+	out["resident_tree_count"] = _trees.size()
+	# Node count is the residency figure a template actually costs: its meshes,
+	# materials and textures are shared with every other tree that references
+	# them, so counting those would attribute the same bytes to several caches.
+	var nodes := 0
+	for n in _tree_nodes.values():
+		nodes += int(n)
+	out["resident_tree_node_count"] = nodes
 	return out
 
 
@@ -127,9 +188,68 @@ func reset_stats() -> void:
 		_stats[k] = 0
 
 
-## Drops cached documents. Manual, not a policy -- there is no eviction yet.
+## Drops one cached template. Manual eviction, not a policy -- V1 is
+## resident-until-purged, matching TextureServer.
+##
+## Delivered duplicates are unaffected: they hold their own references to the
+## shared resources, so purging a template frees the template's nodes and
+## nothing else until the last instance is gone.
+func purge(nif_path: String, prefer_static := false) -> void:
+	_drop_template(_tree_key(canonical(nif_path), prefer_static))
+
+
+## Drops every cached document and template.
 func purge_all() -> void:
 	_documents.clear()
+	_free_all_templates()
+
+
+## Copies a template. Synchronous, and therefore bounded by
+## build_time_budget_usec in the drain above rather than by concurrency.
+func _duplicate(template: Node3D) -> Node3D:
+	if template == null or not is_instance_valid(template):
+		return null
+	return template.duplicate() as Node3D
+
+
+## A template is an orphan: it has no parent and is in no tree, so queue_free()
+## needs a message-queue flush that never comes during shutdown and the node is
+## simply never freed. free() is correct for a node nothing else can be
+## traversing -- the refcount above guarantees no worker still holds it.
+func _free_template(template: Node) -> void:
+	if template != null and is_instance_valid(template):
+		template.free()
+
+
+func _drop_template(tree_key: String) -> void:
+	var template = _trees.get(tree_key)
+	_trees.erase(tree_key)
+	_tree_nodes.erase(tree_key)
+	if template == null or not is_instance_valid(template):
+		return
+	_stats["tree_purge_count"] += 1
+	_free_template(template)
+
+
+func _free_all_templates() -> void:
+	# keys() is snapshotted first: _drop_template() erases from _trees.
+	for tree_key in _trees.keys().duplicate():
+		_drop_template(tree_key)
+	_trees.clear()
+	_tree_nodes.clear()
+
+
+## Section 10: a flattened tree and a hierarchical one are different artefacts
+## from one document, so they are separate cache entries.
+static func _tree_key(key: String, prefer_static: bool) -> String:
+	return key + "#static" if prefer_static else key
+
+
+static func _count_nodes(root: Node) -> int:
+	var n := 1
+	for c in root.get_children():
+		n += _count_nodes(c)
+	return n
 
 
 ## Section 3.4: warnings are emitted once per canonical path. A cell holding
@@ -195,7 +315,13 @@ func _process(_delta: float) -> void:
 	_check_orphans()
 	_stats["builds_this_frame"] = 0
 	var budget := maxi(1, builds_per_frame_budget)
-	while not _build_queue.is_empty() and _stats["builds_this_frame"] < budget:
+	var started := Time.get_ticks_usec()
+	while not _build_queue.is_empty():
+		if _stats["builds_this_frame"] >= budget:
+			break
+		if build_time_budget_usec > 0 and _stats["builds_this_frame"] > 0 \
+				and Time.get_ticks_usec() - started >= build_time_budget_usec:
+			break
 		var entry: Dictionary = _build_queue.pop_front()
 		_stats["builds_this_frame"] += 1
 		# Deliberately not awaited: _build() suspends until its textures are
@@ -215,8 +341,20 @@ func _build(entry: Dictionary) -> void:
 	if src == null:
 		_deliver(waiter, null)
 		return
+	var prefer_static := bool(waiter.get("prefer_static", false))
+	var tree_key := _tree_key(entry["key"], prefer_static)
 
-	var root: Node3D = await NifTreeBuilderScript.build(src, true, bool(waiter.get("prefer_static", false)))
+	# Cache hit: no build, no await, no frame boundary. The copy is synchronous,
+	# so build_time_budget_usec above is what keeps a cell load's worth of them
+	# from landing in one frame.
+	var cached = _trees.get(tree_key)
+	if cached != null and is_instance_valid(cached):
+		_stats["tree_cache_hits"] += 1
+		_deliver(waiter, _duplicate(cached as Node3D))
+		return
+	_stats["tree_cache_misses"] += 1
+
+	var root: Node3D = await NifTreeBuilderScript.build(src, true, prefer_static)
 	if root == null:
 		_stats["build_failure_count"] += 1
 		_deliver(waiter, null)
@@ -227,7 +365,26 @@ func _build(entry: Dictionary) -> void:
 		_stats["owner_gone_count"] += 1
 		root.queue_free()
 		return
-	_deliver(waiter, root)
+	if _shutting_down:
+		_deliver(waiter, root)
+		return
+
+	# Two requests for one key can both miss, because the document cache
+	# deduplicates the parse but the build queue still holds an entry per
+	# waiter and each build spans frames. Whichever finishes first becomes the
+	# template; the rest deliver the tree they already built rather than
+	# discarding work or overwriting a template other instances now share.
+	var winner = _trees.get(tree_key)
+	if winner != null and is_instance_valid(winner):
+		_stats["template_discarded_count"] += 1
+		_deliver(waiter, root)
+		return
+
+	_trees[tree_key] = root
+	_tree_nodes[tree_key] = _count_nodes(root)
+	# The template is never delivered and never parented, so the caller gets a
+	# copy even on the build that created it.
+	_deliver(waiter, _duplicate(root))
 
 
 ## The liveness check below only means anything if the callable is bound to the

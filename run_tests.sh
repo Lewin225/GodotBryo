@@ -39,6 +39,9 @@ skip_reason() {
 		tests/servers/test_texture_corpus_sweep.tscn)
 			printf '%s' "throughput measurement, not a pass/fail gate"
 			;;
+		tests/servers/test_nif_duplicate_bench.tscn)
+			printf '%s' "timing measurement, not a pass/fail gate"
+			;;
 		tests/test_script_corpus_survey.tscn)
 			printf '%s' "real-data survey, not a pass/fail gate"
 			;;

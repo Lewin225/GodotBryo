@@ -35,7 +35,8 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 
 ```gdscript
 NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
-NifServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
+NifServer.get_stats() -> Dictionary  ·  reset_stats()
+NifServer.purge(nif_path, prefer_static := false)  ·  purge_all()
 NifServer.canonical(nif_path) -> String   # static
 
 await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
@@ -50,6 +51,46 @@ method on `owner` — not a closure capturing it, which the server rejects — s
 whether anyone is still there to receive the result. An owner that goes away before the build starts
 gets no tree built at all; one that goes away during the build has the result freed rather than
 orphaned.
+
+**Delivered trees share their resources, and callers must not mutate them.** A built tree is cached
+as a template keyed on §10's `(path, flatten)` identity and every delivery is a `duplicate()` of it.
+`duplicate()` assigns object-typed properties by reference, so all instances of one model share one
+mesh, material, shape, skin and `Animation`. That is the point — Godot coalesces a draw on RID
+identity, so fifty placements become one instanced draw — but it means **setting a material property
+on a delivered node changes every other instance of that model**. A caller needing per-instance
+appearance must duplicate the resource itself first, accepting that it leaves the batch.
+
+**The copy is synchronous, and one heavy model can still exceed a frame.**
+`builds_per_frame_budget` caps builds *started*, pacing worker and TextureServer pressure;
+`build_time_budget_usec` caps the wall clock one frame's drain may spend, which is what a cache hit
+actually consumes. At least one item is always processed, so a copy costlier than the whole budget
+still makes progress rather than wedging the queue — and therefore still blows the frame.
+
+**Why not simply build per instance.** `build()` has one `await`, for textures; after it the whole
+tree is assembled synchronously. A warm build is a single-frame cost, so the stall is not something
+the cache introduced — it is something the cache reduces:
+
+| model | nodes | build | duplicate | flattened |
+|---|---:|---:|---:|---:|
+| `dlc04mansionwindows01.nif` | 2,516 | 244.7 ms | 20.5 ms | won't flatten (`AnimationPlayer`) |
+| `meshes/scol/villatest.nif` | 2,111 | 34.4 ms | 13.0 ms | **711 nodes, 4.8 ms** |
+| `nvlucky38reactor.nif` | 258 | 14.4 ms | 2.4 ms | won't flatten (`AnimationPlayer`) |
+
+**`prefer_static` is what brings a heavy model inside a frame**, because node count is what a copy
+pays for. An SCOL flattened is 4.8 ms; the same SCOL hierarchical is 13.0 ms plus the caller's
+`add_child`. The two that cannot flatten are singular set pieces rather than bulk placements.
+
+**Copying on a worker thread was built, measured, and rejected.** It worked and it was faster —
+copies taken on `WorkerThreadPool` while the main thread kept rendering came back structurally and
+resource-identical to a main-thread copy, and the worst frame fell from 14.4 ms to 8.3 ms — but
+every configuration aborted the process during engine shutdown, while the synchronous version exits
+cleanly. Do not re-attempt it without reading `Plans/NifServer/Implementation/outstanding_issues.md`
+#11 first.
+
+**There is no eviction policy.** Templates stay resident until `purge()`/`purge_all()`, and a
+resident template pins its textures too — `TextureServer.purge()` frees nothing while a reference is
+held. `get_stats()` reports `resident_tree_count` and `resident_tree_node_count` so a caller can
+watch residency; acting on it is not yet automatic.
 
 **`prefer_static` is a preference, not an override.** It asks for §10's flattened form — one wrapper
 with one `MeshInstance3D` per mesh, hierarchy removed, nothing merged. A file with dynamic content
@@ -112,7 +153,9 @@ stops `_enter_tree`/`_ready` firing part-way through construction.
 
 | | |
 |---|---|
+| `nif_server.gd` | The autoload: queue, admission, budgets, document and tree caches. |
 | `nif_tree_builder.gd` | The builder. `build()` is the whole public surface. |
+| `nif_billboard_node.gd` | Per-frame billboard orientation for `NiBillboardNode`. |
 | `nif_names.gd` | Reversible NIF-name ↔ node-name escaping. |
 | `previews/` | Generated scenes for visual inspection. Written by the test, not by hand. |
 
@@ -125,6 +168,8 @@ without flattening or interpreting it.
 
 `project/tests/servers/test_nif_source.gd` — the native reader, gated on the whole corpus parsing.
 `project/tests/servers/test_nif_tree_builder.gd` — the tree, and it regenerates `previews/`.
+`project/tests/servers/test_nif_server.gd` — the contract: delivery, budgets, the tree cache.
+`project/tests/servers/test_nif_duplicate_bench.gd` — timing measurement, skipped by the runner.
 
 Both must print `ALL CHECKS PASSED` and exit `0` before a change here is done.
 
