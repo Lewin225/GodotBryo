@@ -575,6 +575,84 @@ func test_billboard() -> void:
 	root.queue_free()
 
 
+func _world_aabb(root: Node3D, want_collision: bool) -> AABB:
+	var out := AABB()
+	var first := true
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if not want_collision and n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var a := _local_to(n, root) * (n as MeshInstance3D).mesh.get_aabb()
+			out = a if first else out.merge(a)
+			first = false
+		elif want_collision and n is CollisionShape3D:
+			var sh: Shape3D = (n as CollisionShape3D).shape
+			var pts := PackedVector3Array()
+			if sh is ConcavePolygonShape3D:
+				pts = (sh as ConcavePolygonShape3D).get_faces()
+			elif sh is ConvexPolygonShape3D:
+				pts = (sh as ConvexPolygonShape3D).points
+			if pts.is_empty():
+				continue
+			var x := _local_to(n, root)
+			var b := AABB(x * pts[0], Vector3.ZERO)
+			for v in pts:
+				b = b.expand(x * v)
+			out = b if first else out.merge(b)
+			first = false
+	return out
+
+
+func test_prefer_static() -> void:
+	print("--- section 10: prefer_static ---")
+	var src := NifSource.new()
+	var r: Dictionary = ArchiveServer.read("meshes/architecture/barracks/barracks01.nif")
+	if not bool(r["found"]) or not src.load(PackedByteArray(r["data"])):
+		check(false, "loaded barracks01.nif")
+		return
+	var normal: Node3D = await NifTreeBuilderScript.build(src, true, false)
+	var flat: Node3D = await NifTreeBuilderScript.build(src, true, true)
+	check(bool(flat.get_meta("nif_flattened", false)), "a static file flattens")
+
+	# Not a mesh merge: each mesh keeps its own surfaces and materials.
+	check(_count(normal, "MeshInstance3D") == _count(flat, "MeshInstance3D"),
+		"every mesh survives (%d -> %d)" % [_count(normal, "MeshInstance3D"), _count(flat, "MeshInstance3D")])
+	check(_count(normal, "CollisionShape3D") == _count(flat, "CollisionShape3D"),
+		"collision survives (%d -> %d)" % [_count(normal, "CollisionShape3D"), _count(flat, "CollisionShape3D")])
+
+	# The authored hierarchy is gone: every mesh hangs directly off the wrapper.
+	var direct := 0
+	for c in flat.get_children():
+		if c is MeshInstance3D:
+			direct += 1
+	check(direct == _count(flat, "MeshInstance3D"),
+		"every mesh is a direct child of the wrapper (%d of %d)" % [direct, _count(flat, "MeshInstance3D")])
+
+	# Transforms are composed onto the leaves, so geometry does not move.
+	var dm := (_world_aabb(normal, false).get_center() - _world_aabb(flat, false).get_center()).length()
+	var dc := (_world_aabb(normal, true).get_center() - _world_aabb(flat, true).get_center()).length()
+	check(dm < 0.0001, "flattened meshes stay put (%.6f m)" % dm)
+	check(dc < 0.0001, "flattened collision stays put (%.6f m)" % dc)
+	normal.queue_free()
+	flat.queue_free()
+
+	# Dynamic content is a refusal with a reason, not a silent ignore.
+	for pair in [[DOOR, "AnimationPlayer"], ["meshes/characters/_male/skeleton.nif", "Skeleton3D"],
+			[BILLBOARD, "NiBillboardNode"]]:
+		var d := NifSource.new()
+		var dr: Dictionary = ArchiveServer.read(String(pair[0]))
+		if not bool(dr["found"]) or not d.load(PackedByteArray(dr["data"])):
+			continue
+		var got: Node3D = await NifTreeBuilderScript.build(d, true, true)
+		check(not bool(got.get_meta("nif_flattened", true)),
+			"%s is not flattened" % String(pair[0]).get_file())
+		check(String(got.get_meta("nif_not_flattened_because", "")) == String(pair[1]),
+			"  and says why: %s" % got.get_meta("nif_not_flattened_because", "(nothing)"))
+		got.queue_free()
+
+
 func _set_owner_recursive(node: Node, owner: Node) -> void:
 	for c in node.get_children():
 		c.owner = owner
@@ -624,6 +702,7 @@ func _ready() -> void:
 	await test_collision_alignment()
 	await test_ragdoll()
 	await test_billboard()
+	await test_prefer_static()
 	await write_previews()
 
 	print("=======================")
