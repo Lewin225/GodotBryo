@@ -84,8 +84,24 @@ void fill_shape(const nifly::NifFile &nif, nifly::bhkShape *shape, CollisionShap
 
 // Walks a shape tree, flattening wrappers (MOPP trees, lists, transform
 // shapes) down to the leaves that carry real geometry.
+// Row-major 4x4 compose, bottom row (0,0,0,1). nifly's Matrix4 has no
+// multiply, and the layout is a flat float[16] -- NOT [r][c] -- with the
+// translation at indices 3, 7, 11.
+void compose_4x4(const float *a, const float *b, float *out) {
+	for (int r = 0; r < 4; r++) {
+		for (int c = 0; c < 4; c++) {
+			float sum = 0.0f;
+			for (int k = 0; k < 4; k++) {
+				sum += a[r * 4 + k] * b[k * 4 + c];
+			}
+			out[r * 4 + c] = sum;
+		}
+	}
+}
+
 void collect_shapes(const nifly::NifFile &nif, uint32_t shape_block, int32_t node_index,
-		int32_t body_index, Document &doc, int depth = 0) {
+		int32_t body_index, Document &doc, int depth = 0,
+		const float *parent_transform = nullptr) {
 	if (depth > 8) {
 		return;
 	}
@@ -96,21 +112,41 @@ void collect_shapes(const nifly::NifFile &nif, uint32_t shape_block, int32_t nod
 	}
 	if (auto *mopp = dynamic_cast<nifly::bhkMoppBvTreeShape *>(shape)) {
 		if (!mopp->shapeRef.IsEmpty()) {
-			collect_shapes(nif, mopp->shapeRef.index, node_index, body_index, doc, depth + 1);
+			collect_shapes(nif, mopp->shapeRef.index, node_index, body_index, doc, depth + 1, parent_transform);
 		}
 		return;
 	}
 	if (auto *list = dynamic_cast<nifly::bhkListShape *>(shape)) {
 		for (const auto &sub : list->subShapeRefs) {
 			if (!sub.IsEmpty()) {
-				collect_shapes(nif, sub.index, node_index, body_index, doc, depth + 1);
+				collect_shapes(nif, sub.index, node_index, body_index, doc, depth + 1, parent_transform);
 			}
 		}
 		return;
 	}
+	// bhkConvexTransformShape derives from bhkTransformShape, so one cast
+	// catches both. The wrapper exists purely to place the shape it holds.
 	if (auto *xform = dynamic_cast<nifly::bhkTransformShape *>(shape)) {
 		if (!xform->shapeRef.IsEmpty()) {
-			collect_shapes(nif, xform->shapeRef.index, node_index, body_index, doc, depth + 1);
+			float local[16];
+			for (int i = 0; i < 16; i++) {
+				local[i] = xform->xform[i];
+			}
+			// Translation is a Havok length; the rotation block is unitless.
+			local[3] *= units::kHavokToMeters;
+			local[7] *= units::kHavokToMeters;
+			local[11] *= units::kHavokToMeters;
+
+			float composed[16];
+			if (parent_transform != nullptr) {
+				compose_4x4(parent_transform, local, composed);
+			} else {
+				for (int i = 0; i < 16; i++) {
+					composed[i] = local[i];
+				}
+			}
+			collect_shapes(nif, xform->shapeRef.index, node_index, body_index, doc,
+					depth + 1, composed);
 		}
 		return;
 	}
@@ -120,6 +156,12 @@ void collect_shapes(const nifly::NifFile &nif, uint32_t shape_block, int32_t nod
 	out.owning_node_index = node_index;
 	out.body_index = body_index;
 	fill_shape(nif, shape, out);
+	if (parent_transform != nullptr) {
+		out.has_transform = true;
+		for (int i = 0; i < 16; i++) {
+			out.transform[i] = parent_transform[i];
+		}
+	}
 	if (!out.kind.empty()) {
 		doc.collision_shapes.push_back(std::move(out));
 	}
@@ -892,6 +934,11 @@ Document load(const uint8_t *data, size_t size) {
 			out.collision_block_index = static_cast<int32_t>(av->collisionRef.index);
 			out.collision_type = header.GetBlockTypeStringById(av->collisionRef.index);
 
+			if (auto *co = header.GetBlock<nifly::NiCollisionObject>(av->collisionRef.index)) {
+				if (!co->targetRef.IsEmpty()) {
+					out.collision_target_block_index = static_cast<int32_t>(co->targetRef.index);
+				}
+			}
 			if (auto *collision = header.GetBlock<nifly::bhkNiCollisionObject>(av->collisionRef.index)) {
 				if (!collision->bodyRef.IsEmpty()) {
 					if (auto *body = header.GetBlock<nifly::bhkRigidBody>(collision->bodyRef.index)) {
@@ -927,8 +974,20 @@ Document load(const uint8_t *data, size_t size) {
 		}
 
 		// In-NIF morph targets hang off the shape's controller chain.
-		if (!av->controllerRef.IsEmpty()) {
-			if (auto *morpher = header.GetBlock<nifly::NiGeomMorpherController>(av->controllerRef.index)) {
+		// Controllers form a chain through nextControllerRef. Checking only
+		// the head misses every morpher that is not first -- skeleton.nif
+		// carries a NiGeomMorpherController and yielded nothing.
+		for (uint32_t ctrl = av->controllerRef.IsEmpty() ? nifly::NIF_NPOS : av->controllerRef.index,
+				guard = 0;
+				ctrl != nifly::NIF_NPOS && guard < 64; guard++) {
+			auto *controller = header.GetBlock<nifly::NiTimeController>(ctrl);
+			if (controller == nullptr) {
+				break;
+			}
+			ctrl = controller->nextControllerRef.IsEmpty()
+					? nifly::NIF_NPOS
+					: controller->nextControllerRef.index;
+			if (auto *morpher = dynamic_cast<nifly::NiGeomMorpherController *>(controller)) {
 				if (auto *morph_data = header.GetBlock<nifly::NiMorphData>(morpher->dataRef.index)) {
 					for (const auto &morph : morph_data->GetMorphs()) {
 						MorphFrame frame;
@@ -1009,6 +1068,16 @@ Document load(const uint8_t *data, size_t size) {
 		out.cycle_type = static_cast<uint32_t>(seq->cycleType);
 		out.start_time = seq->startTime;
 		out.stop_time = seq->stopTime;
+		if (!seq->textKeyRef.IsEmpty()) {
+			if (auto *tk = header.GetBlock<nifly::NiTextKeyExtraData>(seq->textKeyRef.index)) {
+				for (const auto &key : tk->textKeys) {
+					TextKey out_key;
+					out_key.time = key.time;
+					out_key.value = key.value.get();
+					out.text_keys.push_back(std::move(out_key));
+				}
+			}
+		}
 		for (const auto &link : seq->controlledBlocks) {
 			ControlledBlock cb;
 			cb.node_name = link.nodeName.get();

@@ -83,6 +83,22 @@ struct CollisionShape {
 	float capsule_radius = 0.0f;
 	std::vector<float> positions; // convex hull / triangle mesh, 3 per vertex
 	std::vector<uint32_t> indices; // triangle mesh, 3 per triangle
+
+	// Accumulated transform of every bhkTransformShape / bhkConvexTransformShape
+	// wrapping this shape. Those wrappers exist only to offset the shape they
+	// hold, so discarding them puts the collider in the wrong place --
+	// 47 files use the first, 34 the second.
+	//
+	// Row-major 4x4, translation at indices 3, 7, 11, already in METERS
+	// (kHavokToMeters). Identity, and has_transform false, when there are no
+	// wrappers -- which is the 11,134-file ordinary case.
+	bool has_transform = false;
+	float transform[16] = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
 };
 
 // One rigid body. bhkRigidBodyT carries its own transform; bhkRigidBody does
@@ -133,6 +149,10 @@ struct SceneNode {
 
 	std::string collision_type; // empty when the node has no collision object
 	int32_t collision_block_index = -1;
+	// NiCollisionObject::targetRef -- the NiAVObject the collision object
+	// declares itself attached to, which is NOT necessarily the node whose
+	// collisionRef reached it. -1 when unset.
+	int32_t collision_target_block_index = -1;
 
 	// BSShaderTextureSet slots for a shape node, empty for everything else.
 	// Always 6 entries when present: every one of the 56,789 texture sets in
@@ -335,6 +355,12 @@ struct Sequence {
 	float start_time = 0.0f;
 	float stop_time = 0.0f;
 	std::vector<ControlledBlock> controlled_blocks;
+
+	// NiControllerSequence::textKeyRef -- the animation's own event markers
+	// ("start", "end", sound cues, hit frames). A separate link from the
+	// NiObjectNET::extraDataRefs chain that node-attached NiTextKeyExtraData
+	// arrives through, and the one most blocks actually hang off.
+	std::vector<TextKey> text_keys;
 };
 
 struct Document {
