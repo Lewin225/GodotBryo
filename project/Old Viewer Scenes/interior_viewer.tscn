@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://p0qx5lyy4twg"]
 
-[ext_resource type="Script" uid="uid://dwj187nph802r" path="res://interior_viewer.gd" id="1"]
+[ext_resource type="Script" uid="uid://dwj187nph802r" path="res://Old Viewer Scenes/interior_viewer.gd" id="1"]
 
 [sub_resource type="Environment" id="Environment_porur"]
 ambient_light_source = 2

@@ -1,0 +1,237 @@
+extends RefCounted
+class_name NifBuilder
+
+## Main-thread half of NifServer. Every RenderingServer/PhysicsServer-backed
+## object is constructed here and nowhere else (nif_server_v2.md §4). The
+## returned tree is orphaned -- the caller parents or frees it.
+
+const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+
+## nif_server_v2.md §1: the returned tree is already Y-up and Godot-forward,
+## so no consumer applies an axis correction afterwards. Bethesda +X stays +X,
+## +Z (up) becomes +Y, +Y (north) becomes -Z.
+const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
+
+
+static func build(result: NifResolveResult, texture_cache: Dictionary) -> Node3D:
+	if not result.ok:
+		return null
+	var root := Node3D.new()
+	root.name = "NifRoot"
+	root.transform = Transform3D(ROOT_BASIS, Vector3.ZERO)
+	root.set_meta("nif_path", result.path)
+	root.set_meta("nif_flattened", result.flatten_static)
+
+	if result.flatten_static:
+		_build_flat(result, root, texture_cache)
+	else:
+		_build_hierarchy(result, root, texture_cache)
+	_build_collision(result, root)
+	return root
+
+
+static func _build_flat(result: NifResolveResult, root: Node3D, tc: Dictionary) -> void:
+	# One wrapper, one MeshInstance3D per mesh, authored hierarchy discarded.
+	# Not a mesh merge: each keeps its own surface and material (§10).
+	for entry in result.meshes:
+		var mi := _mesh_instance(entry, tc)
+		mi.transform = entry["transform"]
+		root.add_child(mi)
+
+
+static func _build_hierarchy(result: NifResolveResult, root: Node3D, tc: Dictionary) -> void:
+	var built: Array[Node3D] = []
+	built.resize(result.nodes.size())
+
+	# Real NIFs emit a parent before its children, but tolerate any order.
+	var remaining := range(result.nodes.size())
+	var progressed := true
+	while not remaining.is_empty() and progressed:
+		progressed = false
+		var still: Array = []
+		for i in remaining:
+			var nd: Dictionary = result.nodes[i]
+			var parent_index := int(nd.get("parent_index", -1))
+			if parent_index != -1 and built[parent_index] == null:
+				still.append(i)
+				continue
+			var n := Node3D.new()
+			var authored := String(nd.get("name", ""))
+			n.name = NifNamesScript.escape(authored) if not authored.is_empty() else "Node%d" % i
+			n.set_meta(NifNamesScript.META_NIF_NAME, authored)
+			n.transform = nd.get("transform", Transform3D.IDENTITY)
+			if parent_index == -1:
+				root.add_child(n)
+			else:
+				built[parent_index].add_child(n)
+			built[i] = n
+			progressed = true
+		remaining = still
+
+	for entry in result.meshes:
+		var mi := _mesh_instance(entry, tc)
+		var owner_index := int(entry["owning_node_index"])
+		if owner_index >= 0 and owner_index < built.size() and built[owner_index] != null:
+			# The owning node already carries the authored transform.
+			built[owner_index].add_child(mi)
+		else:
+			mi.transform = entry["transform"]
+			root.add_child(mi)
+
+
+static func _mesh_instance(entry: Dictionary, tc: Dictionary) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var authored := String(entry["name"])
+	mi.name = NifNamesScript.escape(authored) if not authored.is_empty() else "Mesh"
+	mi.set_meta(NifNamesScript.META_NIF_NAME, authored)
+
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = entry["verts"]
+	if entry["normals"].size() == entry["verts"].size():
+		arrays[Mesh.ARRAY_NORMAL] = entry["normals"]
+	if entry["uvs"].size() == entry["verts"].size():
+		arrays[Mesh.ARRAY_TEX_UV] = entry["uvs"]
+	if entry["colors"].size() == entry["verts"].size():
+		arrays[Mesh.ARRAY_COLOR] = entry["colors"]
+	arrays[Mesh.ARRAY_INDEX] = entry["indices"]
+
+	var skin_desc = entry["skin"]
+	if skin_desc != null:
+		var bi: PackedInt32Array = skin_desc["bone_indices"]
+		var bw: PackedFloat32Array = skin_desc["bone_weights"]
+		if bi.size() == entry["verts"].size() * 4 and bw.size() == bi.size():
+			arrays[Mesh.ARRAY_BONES] = bi
+			arrays[Mesh.ARRAY_WEIGHTS] = bw
+
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, _material(entry["material"], tc))
+	mi.mesh = mesh
+
+	if skin_desc != null:
+		mi.skin = _named_skin(skin_desc)
+		# skeleton deliberately left unset: 86% of skinned NIFs carry a flat
+		# bone list, so the rig belongs to the caller's assembly, not to this
+		# file (nif_server_v2.md §9). Godot resolves the named binds once the
+		# caller reparents and assigns mi.skeleton.
+	return mi
+
+
+static func _named_skin(skin_desc: Dictionary) -> Skin:
+	var skin := Skin.new()
+	var names: Array = skin_desc["bone_names"]
+	var binds: Array = skin_desc["bind_transforms"]
+	for i in names.size():
+		var pose: Transform3D = binds[i] if i < binds.size() else Transform3D.IDENTITY
+		skin.add_named_bind(String(names[i]), pose)
+	return skin
+
+
+static func _material(m: Dictionary, tc: Dictionary) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = _texture(String(m.get("diffuse", "")), tc)
+	var normal := _texture(String(m.get("normal", "")), tc)
+	if normal != null:
+		mat.normal_enabled = true
+		mat.normal_texture = normal
+	if bool(m.get("unlit", false)):
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if bool(m.get("double_sided", false)):
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if bool(m.get("alpha_blend", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	elif bool(m.get("alpha_test", false)):
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		mat.alpha_scissor_threshold = float(m.get("alpha_threshold", 0.5))
+	return mat
+
+
+## Stand-in for TextureServer: decode + upload happen once per path, on the
+## main thread, from bytes the worker already fetched.
+static func _texture(path: String, tc: Dictionary) -> ImageTexture:
+	if path.is_empty() or not tc.has(path):
+		return null
+	var cached = tc[path]
+	if cached is ImageTexture or cached == null:
+		return cached
+	var img := Image.new()
+	if img.load_dds_from_buffer(cached) != OK:
+		tc[path] = null
+		return null
+	var tex := ImageTexture.create_from_image(img)
+	tc[path] = tex
+	return tex
+
+
+static func _build_collision(result: NifResolveResult, root: Node3D) -> void:
+	if result.collision_shapes.is_empty():
+		return
+	# §5.3: build it, let the consumer disable it. One StaticBody3D for the
+	# file's authored collision, shapes flattened into their own transforms.
+	var body := StaticBody3D.new()
+	body.name = "Collision"
+	var added := 0
+	for cs in result.collision_shapes:
+		var shape := _shape_of(cs)
+		if shape == null:
+			continue
+		var node := CollisionShape3D.new()
+		node.shape = shape
+		node.transform = cs.get("transform", Transform3D.IDENTITY)
+		var authored := String(cs.get("name", ""))
+		if not authored.is_empty():
+			node.name = NifNamesScript.escape(authored)
+			node.set_meta(NifNamesScript.META_NIF_NAME, authored)
+		body.add_child(node)
+		added += 1
+	if added == 0:
+		body.free()
+		return
+	root.add_child(body)
+
+
+static func _shape_of(cs: Dictionary) -> Shape3D:
+	match String(cs.get("kind", "")):
+		"box":
+			var b := BoxShape3D.new()
+			b.size = Vector3(cs.get("half_extents", Vector3.ONE)) * 2.0
+			return b
+		"sphere":
+			var s := SphereShape3D.new()
+			s.radius = float(cs.get("radius", 0.5))
+			return s
+		"capsule":
+			var c := CapsuleShape3D.new()
+			c.radius = float(cs.get("capsule_radius", 0.5))
+			c.height = maxf(float(Vector3(cs.get("point_a", Vector3.ZERO)).distance_to(Vector3(cs.get("point_b", Vector3.ZERO)))), 0.001) + c.radius * 2.0
+			return c
+		"convex_hull":
+			var points: PackedVector3Array = _points(cs)
+			if points.is_empty():
+				return null
+			var ch := ConvexPolygonShape3D.new()
+			ch.points = points
+			return ch
+		"triangle_mesh":
+			var verts: PackedVector3Array = _points(cs)
+			var idx: PackedInt32Array = cs.get("indices", PackedInt32Array())
+			if verts.is_empty() or idx.is_empty():
+				return null
+			var faces := PackedVector3Array()
+			faces.resize(idx.size())
+			for i in idx.size():
+				faces[i] = verts[idx[i]]
+			var cs3 := ConcavePolygonShape3D.new()
+			cs3.set_faces(faces)
+			return cs3
+	return null
+
+
+static func _points(cs: Dictionary) -> PackedVector3Array:
+	var flat: PackedFloat32Array = cs.get("positions", PackedFloat32Array())
+	var out := PackedVector3Array()
+	out.resize(flat.size() / 3)
+	for i in out.size():
+		out[i] = Vector3(flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2])
+	return out

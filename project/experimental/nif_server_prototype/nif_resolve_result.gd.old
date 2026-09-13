@@ -1,0 +1,39 @@
+extends RefCounted
+class_name NifResolveResult
+
+## Plain-data output of NifServer._resolve(). Contains no Node, no
+## RenderingServer/PhysicsServer-backed Resource and no decoded Image, so it
+## is safe to produce on a worker thread and safe to share across every
+## placement of the same NIF (nif_server_v2.md §4).
+
+var path := ""                  ## canonical request path
+var flatten_static := false
+var ok := false
+var error := ""
+var diagnostics: PackedStringArray = []
+
+## Authored scene graph. Each entry: {name, parent_index, transform}.
+## Empty when flatten_static, which does not inspect the hierarchy.
+var nodes: Array = []
+
+## One entry per submesh:
+##   name, owning_node_index, transform,
+##   verts/normals/uvs/colors/indices (already typed Packed*Array),
+##   material {diffuse, normal, glow, unlit, double_sided, alpha_*},
+##   skin  (null, or {bone_names, bind_transforms, bone_indices, bone_weights})
+var meshes: Array = []
+
+## Raw passthrough from NifReader; shapes join to bodies by index.
+var collision_shapes: Array = []
+var physics_bodies: Array = []
+
+## path -> PackedByteArray. Gathered on the worker, decoded on the main
+## thread. Stand-in for TextureServer, which owns decode/upload/caching.
+var texture_bytes: Dictionary = {}
+
+var is_skinned := false
+var submesh_count := 0
+
+
+func note(msg: String) -> void:
+	diagnostics.append(msg)

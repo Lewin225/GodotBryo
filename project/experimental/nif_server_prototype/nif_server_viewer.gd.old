@@ -1,0 +1,90 @@
+extends Node3D
+
+## Minimal visual demo: instantiates NifServer, requests a NIF, parents the
+## result and frames it. Nothing outside this folder is touched.
+##
+## Run:  tools/Godot_v4.7.1-stable_linux.x86_64 --path project \
+##         res://GodotBryo/Servers/NifServer/nif_server_viewer.tscn
+
+const NifServerScript := preload("res://GodotBryo/Servers/NifServer/nif_server.gd")
+
+@export var nif_path := "architecture/barracks/barracks01.nif"
+@export var flatten_static := false
+
+var _server: Node
+var _current: Node3D
+var _orbit := 0.0
+var _distance := 8.0
+
+
+func _ready() -> void:
+	_server = NifServerScript.new()
+	_server.name = "NifServer"
+	add_child(_server)
+	_request()
+
+
+func _request() -> void:
+	if _current != null and is_instance_valid(_current):
+		_current.queue_free()
+		_current = null
+	_server.request(nif_path, self, _on_built, flatten_static)
+
+
+func _on_built(node: Node3D) -> void:
+	if node == null:
+		push_warning("NifServerViewer: %s failed to load" % nif_path)
+		return
+	_current = node
+	add_child(node)
+	var aabb := _tree_aabb(node)
+	if aabb.size.length() > 0.0:
+		node.position -= aabb.get_center()
+		_distance = maxf(aabb.size.length() * 1.2, 1.0)
+	print("NifServerViewer: %s -> %d nodes, extents %.2fm" % [nif_path, _count(node), aabb.size.length()])
+
+
+func _process(delta: float) -> void:
+	_orbit += delta * 0.4
+	var cam := $Camera3D as Camera3D
+	cam.position = Vector3(sin(_orbit), 0.45, cos(_orbit)) * _distance
+	cam.look_at(Vector3.ZERO, Vector3.UP)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F:
+			flatten_static = not flatten_static
+			print("flatten_static = %s" % flatten_static)
+			_request()
+		elif event.keycode == KEY_ESCAPE:
+			get_tree().quit()
+
+
+func _tree_aabb(n: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	for mi in _all_meshes(n):
+		var world: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+		if first:
+			out = world
+			first = false
+		else:
+			out = out.merge(world)
+	return out
+
+
+func _all_meshes(n: Node) -> Array:
+	var out := []
+	if n is MeshInstance3D:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_all_meshes(c))
+	return out
+
+
+func _count(n: Node) -> int:
+	var total := 1
+	for c in n.get_children():
+		total += _count(c)
+	return total

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://02ukouwln3o"]
 
-[ext_resource type="Script" uid="uid://cf3sb07lm68fj" path="res://exterior_viewer.gd" id="1"]
+[ext_resource type="Script" uid="uid://cf3sb07lm68fj" path="res://Old Viewer Scenes/exterior_viewer.gd" id="1"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_mq1s4"]
 energy_multiplier = 3.0
