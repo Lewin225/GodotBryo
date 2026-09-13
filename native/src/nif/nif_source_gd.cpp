@@ -68,6 +68,7 @@ Array NifSource::get_nodes() const {
 		d["collision_type"] = String(n.collision_type.c_str());
 		d["collision_block_index"] = n.collision_block_index;
 		d["collision_target_block_index"] = n.collision_target_block_index;
+		d["billboard_mode"] = String(n.billboard_mode.c_str());
 		PackedStringArray slots;
 		for (const auto &t : n.texture_slots) {
 			slots.push_back(String(t.c_str()));
@@ -400,6 +401,30 @@ Array NifSource::get_collision_bodies() const {
 		d["angular_damping"] = cb.angular_damping;
 		d["translation"] = Vector3(cb.translation[0], cb.translation[1], cb.translation[2]);
 		d["rotation"] = Quaternion(cb.rotation[0], cb.rotation[1], cb.rotation[2], cb.rotation[3]);
+		Array constraints;
+		for (const auto &cc : cb.constraints) {
+			Dictionary c;
+			c["block_index"] = static_cast<int>(cc.block_index);
+			c["block_type"] = String(cc.block_type.c_str());
+			c["kind"] = String(cc.kind.c_str());
+			c["wrapped_by"] = String(cc.wrapped_by.c_str());
+			c["pivot_a"] = Vector3(cc.pivot_a[0], cc.pivot_a[1], cc.pivot_a[2]);
+			c["pivot_b"] = Vector3(cc.pivot_b[0], cc.pivot_b[1], cc.pivot_b[2]);
+			c["axis_a"] = Vector3(cc.axis_a[0], cc.axis_a[1], cc.axis_a[2]);
+			c["axis_b"] = Vector3(cc.axis_b[0], cc.axis_b[1], cc.axis_b[2]);
+			c["plane_a"] = Vector3(cc.plane_a[0], cc.plane_a[1], cc.plane_a[2]);
+			c["plane_b"] = Vector3(cc.plane_b[0], cc.plane_b[1], cc.plane_b[2]);
+			c["cone_max_angle"] = cc.cone_max_angle;
+			c["plane_min_angle"] = cc.plane_min_angle;
+			c["plane_max_angle"] = cc.plane_max_angle;
+			c["twist_min_angle"] = cc.twist_min_angle;
+			c["twist_max_angle"] = cc.twist_max_angle;
+			c["min_angle"] = cc.min_angle;
+			c["max_angle"] = cc.max_angle;
+			c["max_friction"] = cc.max_friction;
+			constraints.push_back(c);
+		}
+		d["constraints"] = constraints;
 		out.push_back(d);
 	}
 	return out;

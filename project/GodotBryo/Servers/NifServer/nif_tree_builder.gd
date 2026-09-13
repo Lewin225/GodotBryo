@@ -173,8 +173,157 @@ static func build(src: NifSource, apply_root_basis: bool = true) -> Node3D:
 	# Animations first: which nodes move decides what kind of body their
 	# collision hangs from, and collision now hangs off those nodes.
 	var animated := _build_animations(src, root, nodes, built, skeleton, bone_of_node)
-	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated)
+	# Ragdoll first: it claims its owning nodes so ordinary collision does not
+	# also build a StaticBody3D for them.
+	var ragdolled := _build_ragdoll(src, nodes, skeleton, bone_of_node)
+	_build_collision(src, root, built, skeleton, bone_of_node, attachments, animated, ragdolled)
+	_apply_billboards(nodes, built)
 	return root
+
+
+## Section 5.3: Godot expresses billboarding as material state, not as a node
+## type, so NiBillboardNode's mode is applied to every descendant material
+## rather than becoming a node of its own. 280 files carry one.
+##
+## Safe to mutate in place only because materials are built per shape here and
+## shared with nothing. A MaterialServer handing out shared instances would make
+## this a per-instance override instead.
+static func _apply_billboards(nodes: Array, built: Array) -> void:
+	for i in nodes.size():
+		var mode := String(nodes[i]["billboard_mode"])
+		if mode.is_empty():
+			continue
+		if i >= built.size() or built[i] == null:
+			continue
+		var godot_mode := _billboard_mode(mode)
+		var stack: Array = [built[i]]
+		while not stack.is_empty():
+			var node: Node = stack.pop_back()
+			for c in node.get_children():
+				stack.append(c)
+			if not (node is MeshInstance3D):
+				continue
+			var mesh: Mesh = (node as MeshInstance3D).mesh
+			if mesh == null:
+				continue
+			for surface in mesh.get_surface_count():
+				var mat := mesh.surface_get_material(surface) as BaseMaterial3D
+				if mat == null:
+					continue
+				mat.billboard_mode = godot_mode
+				# Godot's billboard resets scale unless told otherwise, which
+				# would shrink authored billboard geometry to unit size.
+				mat.billboard_keep_scale = true
+				mat.set_meta("nif_billboard_mode", mode)
+
+
+## Gamebryo has six billboard modes; Godot has two usable ones. The "rigid" and
+## "face centre" variants collapse onto the nearest equivalent and keep the
+## authored name in metadata, since the distinction is not expressible.
+static func _billboard_mode(mode: String) -> int:
+	match mode:
+		"rotate_about_up", "bs_rotate_about_up":
+			return BaseMaterial3D.BILLBOARD_FIXED_Y
+		_:
+			return BaseMaterial3D.BILLBOARD_ENABLED
+
+
+## Section 5.3: bhkBlendCollisionObject is the ragdoll discriminator -- 60 files,
+## 56 of them named skeleton*.nif. Not the presence of a constraint: 164 files
+## carry one without being a ragdoll.
+##
+## The bodies go under a PhysicalBoneSimulator3D, which is inert until
+## physical_bones_start_simulation(), so an actor that never wants a ragdoll
+## pays nothing behaviourally and calls nothing.
+##
+## Returns the set of node indices claimed, so _build_collision skips them.
+static func _build_ragdoll(src: NifSource, nodes: Array, skeleton: Skeleton3D,
+		bone_of_node: Dictionary) -> Dictionary:
+	var claimed := {}
+	if skeleton == null:
+		# A ragdoll needs bones to hang off. A file declaring blend collision
+		# without a hierarchy is a skin whose rig lives elsewhere, and its
+		# collision stays ordinary rather than being invented into a ragdoll.
+		return claimed
+	var wanted := {}
+	for i in nodes.size():
+		if String(nodes[i]["collision_type"]) == "bhkBlendCollisionObject" and bone_of_node.has(i):
+			wanted[i] = true
+	if wanted.is_empty():
+		return claimed
+
+	var bodies: Array = src.get_collision_bodies()
+	var shapes_by_owner := {}
+	for cs in src.get_collision_shapes():
+		var owner := int(cs["owning_node_index"])
+		if not wanted.has(owner):
+			continue
+		if not shapes_by_owner.has(owner):
+			shapes_by_owner[owner] = []
+		(shapes_by_owner[owner] as Array).append(cs)
+
+	var simulator := PhysicalBoneSimulator3D.new()
+	simulator.name = "PhysicalBoneSimulator3D"
+	skeleton.add_child(simulator)
+
+	for i in wanted.keys():
+		var bone := int(bone_of_node[i])
+		var bone_name := skeleton.get_bone_name(bone)
+		var phys := PhysicalBone3D.new()
+		phys.name = "Physical_%s" % bone_name
+		phys.bone_name = bone_name
+
+		var body: Dictionary = {}
+		for cs in shapes_by_owner.get(i, []):
+			var bi := int(cs["body_index"])
+			if bi >= 0 and bi < bodies.size():
+				body = bodies[bi]
+				break
+		if not body.is_empty():
+			phys.mass = maxf(float(body["mass"]), 0.001)
+			phys.friction = float(body["friction"])
+			phys.bounce = float(body["restitution"])
+			phys.linear_damp = float(body["linear_damping"])
+			phys.angular_damp = float(body["angular_damping"])
+			_apply_ragdoll_joint(phys, body)
+
+		simulator.add_child(phys)
+		for cs in shapes_by_owner.get(i, []):
+			var shape := _make_shape(cs)
+			if shape == null:
+				continue
+			var col := CollisionShape3D.new()
+			col.name = "%s_%d" % [String(cs["kind"]), int(cs["block_index"])]
+			col.shape = shape
+			phys.add_child(col)
+		claimed[i] = true
+	return claimed
+
+
+## Constraint -> joint. A bhkRagdollConstraint is a cone-twist; a limited hinge
+## is a hinge. Anything else leaves the bone jointless rather than guessing.
+static func _apply_ragdoll_joint(phys: PhysicalBone3D, body: Dictionary) -> void:
+	var constraints: Array = body.get("constraints", [])
+	for c in constraints:
+		match String(c["kind"]):
+			"ragdoll":
+				phys.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+				# pivot_a is the joint in THIS body's frame and is zero across
+				# the corpus -- the joint sits at the bone's own origin, which
+				# is what Godot's joint_offset means. pivot_b is the same point
+				# in the parent's frame and is kept rather than dropped.
+				phys.joint_offset = Transform3D(Basis.IDENTITY, Vector3(c["pivot_a"]))
+				phys.set_meta("nif_joint_pivot_parent", Vector3(c["pivot_b"]))
+				phys.set_meta("nif_cone_max_angle", float(c["cone_max_angle"]))
+				phys.set_meta("nif_twist_span", Vector2(float(c["twist_min_angle"]), float(c["twist_max_angle"])))
+				return
+			"hinge":
+				phys.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
+				phys.joint_offset = Transform3D(Basis.IDENTITY, Vector3(c["pivot_a"]))
+				phys.set_meta("nif_joint_pivot_parent", Vector3(c["pivot_b"]))
+				phys.set_meta("nif_hinge_span", Vector2(float(c["min_angle"]), float(c["max_angle"])))
+				return
+	phys.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
 
 
 ## Returns the single BoneAttachment3D for a bone, creating it on first use.
@@ -657,7 +806,7 @@ static func _track_interp(keys: Array, resampled: bool) -> int:
 ## anything it moves into.
 static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		skeleton: Skeleton3D, bone_of_node: Dictionary, attachments: Dictionary,
-		animated: Dictionary) -> void:
+		animated: Dictionary, ragdolled: Dictionary) -> void:
 	var shapes: Array = src.get_collision_shapes()
 	if shapes.is_empty():
 		return
@@ -668,6 +817,8 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		if shape == null:
 			continue
 		var owner_index := int(s["owning_node_index"])
+		if ragdolled.has(owner_index):
+			continue # already a PhysicalBone3D's shape
 		var parent := _collision_parent(owner_index, root, built, skeleton, bone_of_node, attachments)
 		if parent == null:
 			continue
