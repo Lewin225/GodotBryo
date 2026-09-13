@@ -4,8 +4,8 @@ Sequenced plan for `pread` → ArchiveServer → TextureServer → NifServer. On
 gated behind a real test that runs against the shipped game data.
 
 Supersedes the sequencing in [`NifServer/nif_server_v1_build_order.md`](NifServer/nif_server_v1_build_order.md).
-Per-server contracts stay where they are: [ArchiveServer](archive_server.md),
-[TextureServer](texture_server.md), [NifServer v2](NifServer/nif_server_v2.md).
+Per-server contracts stay where they are: [ArchiveServer](ArchiveServer/archive_server.md),
+[TextureServer](TextureServer/texture_server.md), [NifServer v2](NifServer/nif_server_v2.md).
 
 ---
 
@@ -95,7 +95,7 @@ anywhere above it.
 
 ## Stage B: ArchiveServer
 
-**Goal:** one owner of archive discovery, priority and byte reads. Spec: [archive_server.md](archive_server.md).
+**Goal:** one owner of archive discovery, priority and byte reads. Spec: [archive_server.md](ArchiveServer/archive_server.md).
 
 **May use:** Stage A's `BsaArchive`, new native catalog code, a thin GDScript autoload.
 **Must not use:** `mesh_resolver.gd`, `resolve_bytes()`, `nif_loader.cpp`, `NifReader`.
@@ -122,7 +122,7 @@ anywhere above it.
 
 ## Stage C: TextureServer
 
-**Goal:** the project's one DDS decode/upload/cache primitive. Spec: [texture_server.md](texture_server.md).
+**Goal:** the project's one DDS decode/upload/cache primitive. Spec: [texture_server.md](TextureServer/texture_server.md).
 
 **May use:** ArchiveServer, Godot `Image`/`ImageTexture`.
 **Must not use:** `mesh_resolver.gd`'s texture cache, `nif_loader.cpp`, `NifReader`.

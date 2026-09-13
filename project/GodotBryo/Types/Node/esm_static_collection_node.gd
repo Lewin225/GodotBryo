@@ -7,6 +7,7 @@ extends EsmNode
 ## now, while this marker lets a future WorldStreamer opt into joining them.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_batch_candidate: bool = true
 
+## AWAIT THIS -- physicalise_scol_part() suspends when use_nif_server is on.
 func build_collection(physicaliser: EsmReferencePhysicaliser) -> void:
 	if reference == null or not reference.base is StaticCollectionBase:
 		return
@@ -17,7 +18,7 @@ func build_collection(physicaliser: EsmReferencePhysicaliser) -> void:
 		return
 	var parts: Array = server.reader.get_scol_parts(reference.base_form_id)
 	for index in parts.size():
-		var child := physicaliser.physicalise_scol_part(parts[index], index)
+		var child: Node3D = await physicaliser.physicalise_scol_part(parts[index], index)
 		if child == null:
 			continue
 		child.name = "%s_Part%02d" % [child.name, index]

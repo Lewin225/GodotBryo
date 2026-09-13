@@ -303,7 +303,7 @@ func _open_selected_reference_scene() -> void:
 	scene_root.name = _preview_scene_name(reference, selected_card.row if selected_card != null else {})
 	scene_root.set_script(PreviewScript)
 	var physicaliser := PhysicaliserScript.new()
-	physicaliser.physicalise(reference, scene_root)
+	await physicaliser.physicalise(reference, scene_root)
 	var packed_scene := PackedScene.new()
 	if packed_scene.pack(scene_root) != OK:
 		return
