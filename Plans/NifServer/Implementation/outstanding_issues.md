@@ -298,11 +298,45 @@ exactly the condition the coalesce tests for.
 Caching whole trees also dissolves the separate question of caching collision, skin and animation
 resources: they are sub-resources of the cached tree.
 
-**Unmeasured, and it decides whether this is worth building:** whether `duplicate()` actually beats a
-warm `build()`. A warm build is 21.4 ms for 60 models; `duplicate()` walks the tree copying every
-property Variant and is not free. Also unverified: that a skinned tree survives duplication, since
-`MeshInstance3D.skeleton` is a `NodePath` that must re-resolve inside the copy while the `Skin`
-resource is shared.
+**Measured.** `duplicate()` beats a warm `build()` on every shape tested, by 3-10x.
+`project/tests/servers/test_nif_duplicate_bench.tscn` is the harness; it is a measurement, not a gate,
+and the runner skips it. Godot 4.7.1, Linux, per instance at N=100:
+
+| model | nodes | build | duplicate | |
+|---|---:|---:|---:|---:|
+| `milkbottle01` trivial prop | 5 | 0.107 ms | 0.036 ms | 2.9x |
+| `barracks01` architecture | 15 | 1.590 ms | 0.151 ms | **10.6x** |
+| `upperbody` skin, no hierarchy | 34 | 1.234 ms | 0.214 ms | 5.8x |
+| `nvdlc01stealthsuit_go` skin + `Skeleton3D` | 10 | 0.405 ms | 0.109 ms | 3.7x |
+| `vdoorslidingvault22` animated | 27 | 0.805 ms | 0.222 ms | 3.6x |
+
+At N=1 the margin narrows to 2-6.7x; the ratio is stable from N=10 upward. The gain tracks material
+and texture count rather than node count -- `barracks01` has 15 nodes and 10 materials and gains
+most, `upperbody` has 34 nodes and 6 materials and gains less.
+
+Timing is the smaller half. The bench also asserts the resource sharing the draw-call argument
+depends on: a copy shares **every** mesh, material, shape and `Animation` with its template, and two
+fresh `build()` calls share none. That is the RID identity the coalesce tests for, so 100 placements
+become 1 instanced draw instead of 100.
+
+**The skinned unknown is resolved.** A tree carrying its own `Skeleton3D` binds its skin through the
+relative `NodePath` `../..`, and in a copy that resolves to the **copy's** `Skeleton3D`, not the
+template's, while the `Skin` resource itself is shared. `BoneAttachment3D` bone indices are correct
+once parented, and match the template exactly.
+
+Two caveats found while measuring, neither blocking:
+
+- Duplicating a tree containing `BoneAttachment3D` logs `Bone index -1 out of range` per attachment,
+  because the attachment is copied before the copy's `Skeleton3D` has bones. Harmless -- the index
+  resolves on entering the tree -- but the bench run emitted 336 of them, so at cell-load scale this
+  is real log spam.
+- Only 185 corpus files carry a bone hierarchy, and `meshes/characters/_male/upperbody.nif` is not
+  one: it leaves `skeleton` unset by design (§9). A skinned model alone does not exercise the
+  `NodePath` path; a file with both is needed, hence `nvdlc01stealthsuit_go.nif` above.
+
+**What is still undecided is not performance.** An `AnimationPlayer` property track pointed at a
+shared material is in-place mutation every frame, and sharing is exactly what makes this fast. That
+is [#5](#5-property-tracks-not-bound)'s open question and MaterialServer's, not this one's.
 
 **Not applicable to FaceGen.** Per-NPC morph deformation means a unique mesh by definition.
 
