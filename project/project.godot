@@ -18,6 +18,9 @@ config/features=PackedStringArray("4.7")
 
 GameDataSettings="*res://game_data_settings.gd"
 GodotBryoSettings="*res://godot_bryo_settings.gd"
+ArchiveServer="*res://GodotBryo/Servers/ArchiveServer/archive_server.gd"
+TextureServer="*res://GodotBryo/Servers/TextureServer/texture_server.gd"
+EsmServer="*res://GodotBryo/Servers/EsmServer/esm_server.gd"
 
 [display]
 
@@ -27,7 +30,11 @@ window/subwindows/embed_subwindows=false
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/script_viewer/plugin.cfg", "res://addons/esm_browser/plugin.cfg")
+enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/script_viewer/plugin.cfg", "res://addons/godotbryo_browser/plugin.cfg")
+
+[godotbryo]
+
+use_nif_server=false
 
 [input]
 

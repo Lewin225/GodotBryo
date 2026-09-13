@@ -62,6 +62,9 @@ public:
 	// phases/1/00-interior-cell-loader.md.
 	Dictionary find_cell_by_editor_id(const String &editor_id) const;
 	Dictionary find_cell_by_form_id(int64_t form_id) const;
+	// { "cell_form_id": int } if the placement is owned directly by a CELL,
+	// or {} when the FormID is not a cell-owned REFR/ACHR/ACRE.
+	Dictionary find_cell_containing_ref(int64_t refr_form_id) const;
 
 	// Resolves every REFR placed directly in the given cell (by FormID) to
 	// an Array of Dictionaries, each: { "refr_form_id": int, "base_form_id":
@@ -102,6 +105,7 @@ public:
 	// bool, "off_by_default": bool }, or an empty Dictionary if the FormID
 	// isn't a LIGH record / has no DATA. See esm::LightData.
 	Dictionary get_light_data(int64_t light_form_id) const;
+	String get_sound_path(int64_t sound_form_id) const;
 
 	// Issue #52 chunk 5: a RACE record's real body-part model paths for one
 	// gender (UpperBody/LeftHand/RightHand for a human race) -- see

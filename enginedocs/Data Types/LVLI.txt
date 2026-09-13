@@ -1,0 +1,103 @@
+LVLI — Leveled Item record
+
+AUTHORED ROLE
+LVLI is a leveled-list definition. It does not describe a physical object,
+mesh, collision shape, or placed world reference. GECK documentation states
+that LVLI records are placed into actor or container inventories and are
+resolved into concrete item records at runtime; they cannot be placed directly
+in the world.
+
+FORMAT
+The Fallout: New Vegas LVLI record contains the following confirmed fields:
+
+- EDID: Editor ID (cstring).
+- OBND: object bounds.
+- LVLD: Chance None, uint8 percentage.
+- LVLF: list flags, uint8.
+- LVLG: optional GLOB FormID used to calculate/override Chance None.
+- Repeated LVLO entry collections.
+
+LVLF FLAGS
+- 0x01 — Calculate from all levels less than or equal to the selecting
+  actor's level.
+- 0x02 — Calculate separately for each item in Count when the list is nested
+  in another leveled list.
+- 0x04 — Use All; all eligible entries are added and this supersedes the
+  other level-selection flags.
+
+LVLO
+The standard Fallout: New Vegas LVLO payload is 12 bytes:
+
+- offset 0: minimum level, int16
+- offset 2: two unused/unknown bytes
+- offset 4: referenced FormID
+- offset 8: count, int16
+- offset 10: two unused/unknown bytes
+
+OpenMW's ESM4 loader also accepts an 8-byte compatibility form containing the
+level, FormID, and count without the unknown words. The exhaustive Fallout:
+New Vegas census observed 12-byte LVLO entries in the shipped official-master
+set; the 8-byte form is retained as parser compatibility evidence rather than
+an observed FNV authored variant.
+
+The referenced FormID may target ARMO, AMMO, MISC, WEAP, BOOK, KEYM, ALCH,
+NOTE, IMOD, CMNY, CCRD, CHIP, or another LVLI. Nested LVLI records are
+therefore part of the native format, not a GodotBryo-specific relationship.
+
+LVLO EXTRA DATA
+The LVLO collection may be followed by COED extra data. GECK documents Owner
+and Health controls for leveled-list entries. The relationship is confirmed;
+the exact byte-level COED layout is not established by the local native census
+and should not be inferred from the editor labels alone. Unknown COED bytes
+remain part of the authored payload until independently verified.
+
+SELECTION BEHAVIOR
+The selecting level is one actor level: for an NPC or creature it is that
+actor's level; for player inventory and container/vendor selection it is the
+player actor's level. “Player level” is not a distinct native LVLI field.
+
+Without Calculate from all Levels, the list selects the closest eligible level
+not exceeding the selecting actor's level. With that flag, all eligible levels
+may participate. The game setting iLevItemLevelDifferenceMax can restrict the
+lower end of the eligible range when the all-levels flag is enabled; a value of
+zero means no additional restriction. The GECK documentation notes that this
+comparison is made against the highest selectable entry, which can produce
+counterintuitive lower-level results.
+
+Chance None is evaluated before item generation. If LVLG is present, the
+referenced Global supplies the chance value instead of the LVLD value.
+
+When an entry has a Count, the entry/list is normally calculated once and the
+result duplicated by that count. The nested list's Calculate for Each Item in
+Count flag requests a fresh calculation for every item in that count.
+
+Use All adds every eligible entry and overrides the other two LVLF selection
+flags. Mixing direct base forms and nested lists is documented as bad practice
+because base forms are favored; Use All is the documented exception for some
+mixed-list uses.
+
+SCRIPTING AND PERSISTENCE
+The LVLI record itself cannot have a script. Items selected from a list may be
+scripted. GECK specifically notes that an item's OnAdd block does not run when
+the item is granted to an actor during initial spawn through authored inventory
+or leveled-list selection.
+
+LVLI resolution is runtime behavior rather than an authored-record property.
+The exhaustive census intentionally records LVLO references in authored order
+and does not infer selection results, actor level, RNG, equipped state,
+ownership, or runtime save data.
+
+CENSUS
+Across the ten official masters, the local exhaustive census reports:
+
+- 20,990 LVLI references as inventory targets/types.
+- 16,959 LVLO entries.
+- zero unresolved CNTO targets in the combined official-master set.
+
+See enginedocs/inventory_census/leveled_entries.csv and summary.txt.
+
+SOURCES
+- enginedocs/Geck/LeveledItem - GECK.html
+- https://tes5edit.github.io/fopdoc/FalloutNV/Records/LVLI.html
+- enginedocs/OpenMW (Morrowwind Engine Replacement) source/openmw-master/components/esm4/loadlvli.hpp
+- enginedocs/OpenMW (Morrowwind Engine Replacement) source/openmw-master/components/esm4/loadlvli.cpp

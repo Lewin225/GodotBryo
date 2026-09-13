@@ -824,6 +824,7 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// parent NiNode rather than the visible mesh itself) looking for a
 	// non-empty collisionRef, then follow
 	// NiAVObject -> bhkCollisionObject -> bhkRigidBody -> bhkShape.
+	std::unordered_map<nifly::bhkRigidBody *, int32_t> physics_body_index;
 	for (uint32_t i = 0; i < num_blocks; ++i) {
 		nifly::NiAVObject *av = nif.GetHeader().GetBlock<nifly::NiAVObject>(i);
 		if (!av || av->collisionRef.IsEmpty()) {
@@ -839,6 +840,30 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		nifly::bhkRigidBody *body = nif.GetHeader().GetBlock<nifly::bhkRigidBody>(co->bodyRef);
 		if (!body) {
 			continue;
+		}
+		int32_t body_index = -1;
+		auto body_it = physics_body_index.find(body);
+		if (body_it != physics_body_index.end()) {
+			body_index = body_it->second;
+		} else {
+			PhysicsBody pb;
+			pb.node_name = av->name.get();
+			auto node_it = scene_node_index.find(av);
+			pb.owning_node_index = (node_it != scene_node_index.end()) ? node_it->second : -1;
+			pb.mass = body->mass;
+			pb.linear_damping = body->linearDamping;
+			pb.angular_damping = body->angularDamping;
+			pb.gravity_factor = body->gravityFactor;
+			pb.friction = body->friction;
+			pb.rolling_friction_mult = body->rollingFrictionMult;
+			pb.restitution = body->restitution;
+			pb.motion_system = body->motionSystem;
+			pb.quality_type = body->qualityType;
+			pb.body_flags_int = body->bodyFlagsInt;
+			pb.body_flags = body->bodyFlags;
+			body_index = static_cast<int32_t>(mesh.physics_bodies.size());
+			physics_body_index.emplace(body, body_index);
+			mesh.physics_bodies.push_back(std::move(pb));
 		}
 		nifly::bhkShape *shape = unwrap_shape(nif, nif.GetHeader().GetBlock<nifly::bhkShape>(body->shapeRef));
 		if (!shape) {
@@ -858,7 +883,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 		// the raw collision-shape data into the AV node's local frame,
 		// before the AV's own transform-to-root is applied on top.
 		flatten_transform(flatten_via_scene_nodes(av, scene_node_index, local_raw, mesh.scene_nodes).ComposeTransforms(rigid_body_transform(body)), cs);
+		cs.physics_body_index = body_index;
+		int32_t shape_index = static_cast<int32_t>(mesh.collision_shapes.size());
 		mesh.collision_shapes.push_back(std::move(cs));
+		mesh.physics_bodies[body_index].collision_shape_indices.push_back(shape_index);
 	}
 
 	// phases/3/00-door-completion.md, Part A: rigid single-node transform
@@ -870,11 +898,10 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 	// compressed NiBSplineTransformInterpolator path above (see nif_types.h's
 	// own doc comment for the real-data census that scoped this) — every
 	// other interpolator type a ControllerLink can reference
-	// (NiFloatInterpolator, NiBoolInterpolator, NiPoint3Interpolator, ...)
-	// is silently skipped per-link, not per-file, so a sequence that mixes
-	// real transform tracks with particle/visibility tracks (confirmed
-	// real — e.g. a door-adjacent dust-blast effect NIF) still yields
-	// exactly the transform tracks that matter here.
+	// (NiPoint3Interpolator, ...) is silently skipped per-link, not per-file,
+	// so a sequence that mixes real transform tracks with particle/visibility
+	// tracks (confirmed real — e.g. a door-adjacent dust-blast effect NIF)
+	// still yields exactly the supported transform and boolean tracks here.
 	auto extract_sequence = [&](nifly::NiControllerSequence *seq) -> AnimationSequence {
 		AnimationSequence sequence;
 		sequence.name = seq->name.get();
@@ -919,7 +946,24 @@ Mesh load_mesh(const std::vector<uint8_t> &bytes) {
 						sequence.float_tracks.push_back(std::move(track));
 					}
 				}
-				continue; // real particle/visibility/color or facial float track
+				auto *bool_interp = dynamic_cast<nifly::NiBoolInterpolator *>(interp);
+				if (bool_interp) {
+					auto *bd = nif.GetHeader().GetBlock<nifly::NiBoolData>(bool_interp->dataRef);
+					BoolAnimationTrack track;
+					track.target_node_name = link.nodeName.get();
+					track.property_type = link.propType.get();
+					track.controller_type = link.ctrlType.get();
+					if (bd) {
+						for (uint32_t k = 0; k < bd->data.GetNumKeys(); ++k) {
+							auto key = bd->data.GetKey(static_cast<int>(k));
+							track.keys.push_back({key.time, key.value != 0});
+						}
+					}
+					if (track.keys.empty())
+						track.keys.push_back({sequence.start_time, bool_interp->boolValue != 0});
+					sequence.bool_tracks.push_back(std::move(track));
+				}
+				continue; // real particle/color or unsupported non-transform track
 			}
 			auto *td = nif.GetHeader().GetBlock<nifly::NiTransformData>(xform_interp->dataRef);
 			if (!td) {

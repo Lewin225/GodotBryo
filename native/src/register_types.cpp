@@ -1,9 +1,11 @@
 #include "register_types.h"
 
+#include "bsa/archive_catalog_gd.h"
 #include "bsa/bsa_reader_gd.h"
 #include "esm/esm_reader_gd.h"
 #include "gamebryo/direct_geometry_batch.h"
 #include "nif/nif_reader_gd.h"
+#include "nif/nif_source_gd.h"
 #include "tri/tri_reader_gd.h"
 #include "ping.h"
 
@@ -18,9 +20,11 @@ void initialize_nv_engine_module(ModuleInitializationLevel p_level) {
 		return;
 	}
 	ClassDB::register_class<NVPing>();
+	ClassDB::register_class<ArchiveCatalog>();
 	ClassDB::register_class<BsaReader>();
 	ClassDB::register_class<EsmReader>();
 	ClassDB::register_class<NifReader>();
+	ClassDB::register_class<NifSource>();
 	ClassDB::register_class<TriReader>();
 	ClassDB::register_class<DirectGeometryBatch>();
 }
