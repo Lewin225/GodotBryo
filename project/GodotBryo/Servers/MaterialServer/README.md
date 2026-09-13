@@ -1,0 +1,97 @@
+# MaterialServer
+
+**Not built. This folder holds the decision, not an implementation.**
+
+NifServer builds a `StandardMaterial3D` per shape, inline, owned by nothing else.
+
+---
+
+## The case is stronger than MeshServer's
+
+A server earns its place when two callers need the same primitive and neither
+owns the format it comes from. That is why TextureServer exists — NifServer's
+material builder and terrain both want textures, and a texture path means
+something with no NIF in the picture.
+
+Materials pass that test. UI will want materials with no NIF involved. Meshes do
+not: a mesh's key is a NIF path plus a shape index, meaningless to anything not
+reading a NIF, which is why [`MeshServer`](../MeshServer/README.md) was declined.
+
+What is missing is the second caller *today*. When UI material loading lands,
+this is the point to build it rather than growing a second cache there.
+
+---
+
+## What it would be
+
+**It hands out shared materials keyed by structural identity, and per-instance
+variation is explicitly not its problem.** That is a sharper contract than "a
+cache with a copy path", and it means nobody mutates a MaterialServer material —
+callers vary the instance instead.
+
+That distinction matters more here than for textures. Nobody writes to a cached
+`ImageTexture`. People tint, fade and re-alpha a `StandardMaterial3D` constantly,
+and a UI element doing that to a shared instance changes every other user of it.
+Copying TextureServer's contract verbatim would inherit a hazard textures do not
+have.
+
+---
+
+## Why sharing is a rendering requirement
+
+Godot batches on **RID identity, not content**. Consecutive draw-list elements
+coalesce into one instanced draw only when their sort keys match exactly, and
+that key is built from the mesh RID's index and the material RID's index
+(`render_forward_clustered.cpp`). Two materials with identical parameters are two
+RIDs and do not batch.
+
+**A material is an instance of a shader, and the renderer models it that way.**
+`shader_id` and `material_id` are separate sort-key fields, ordered coarsest
+first — the source comment says the order exists "to reduce the amount of
+rebinding of shaders, materials, and geometry". So a unique material is one tier
+of cost, not a cliff:
+
+| case | cost |
+|---|---|
+| same shader, same material, same mesh | coalesces into one instanced draw |
+| same shader, different material | no coalesce; sorted adjacent, uniform-set rebind |
+| different shader | pipeline rebind, worst |
+
+Runtime material duplication therefore costs the instanced draw but keeps the
+pipeline bound. Negligible for a handful of UI panels, decisive for a few hundred
+world objects.
+
+---
+
+## Per-instance variation
+
+**Only instance uniforms vary a material per instance without breaking
+batching.** They live in the instance data rather than the material, so
+`material_id` is unchanged and the coalesce still fires. Two constraints:
+
+- `MAX_INSTANCE_UNIFORM_INDICES = 16` per shader
+  (`servers/rendering/shader_language.h`).
+- `BaseMaterial3D` declares **none** — `scene/resources/material.cpp` contains
+  zero `instance uniform` declarations. They require a `ShaderMaterial` with a
+  hand-written shader, so per-instance variation and staying on
+  `StandardMaterial3D` are mutually exclusive. Dispatching on the NIF's own
+  `shader_type` is the enabler.
+
+`material_override` does not help: it replaces the material for that instance, so
+a unique override is a unique `material_id` and is duplication by another name.
+It only pays when the override itself is shared by a group.
+
+Which suggests splitting by axis of variation rather than picking one mechanism:
+
+| varies | mechanism |
+|---|---|
+| per instance, cheap and numeric (tint, fade, glow, damage blend) | instance uniform, within the 16-slot budget |
+| per group (faction colour, weather state) | one shared material per group, batches within it |
+| structurally (different textures, different blend mode) | genuinely a different material |
+
+---
+
+Related: [`MeshServer`](../MeshServer/README.md) for the mesh side of the same
+question, and
+[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md)
+#11 for NifServer's missing cache.
