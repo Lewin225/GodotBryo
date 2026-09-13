@@ -28,13 +28,24 @@ A passing headless test prints a series of `  OK   ...` lines, ends with
 `ALL CHECKS PASSED`, and exits with code `0`. A failing one prints `  FAIL  ...` for
 each failed check, `FAILURES: N` at the end, and exits with code `1`.
 
+Tests may live in a subdirectory (`tests/servers/`, for example) to keep this directory
+navigable. Run one the same way, with its full path:
+
+```
+../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/servers/test_bsa_concurrent.tscn
+```
+
+A subfolder test's `.tscn` must point at its own script path (`res://tests/<sub>/test_x.gd`), and
+any `DATA_DIR`-style relative path stays relative to the **project directory** — the process CWD —
+not to the script.
+
 **Run every headless test in one go** (skips the one interactive viewer,
 `test_exterior_cell.tscn` — see below):
 
 ```
 cd project
 GODOT="../tools/Godot_v4.7.1-stable_linux.x86_64"
-for t in tests/test_*.tscn; do
+for t in $(find tests -name 'test_*.tscn' | sort); do
   [ "$t" = "tests/test_exterior_cell.tscn" ] && continue
   echo "### $t ###"
   timeout 150 "$GODOT" --headless --path . "$t" 2>&1 | grep -E "FAIL|ALL CHECKS|FAILURES"
@@ -83,6 +94,10 @@ written to `/tmp/nv_test_screenshots/`.)
 
 ## Interactive / visual tests
 
+`servers/test_texture_corpus_sweep.tscn` runs either way: headless it reports throughput only,
+windowed it also shows each texture as it goes. It is a measurement, not a pass/fail gate, and exits
+0 unless the sweep could not start.
+
 `test_exterior_cell.tscn` is a free-fly-camera viewer (WASD + mouse look), not a
 self-checking pass/fail test — it loads Goodsprings' exterior cell and terrain and
 waits for a human to look at it and close the window. It has no `get_tree().quit()` of
@@ -105,6 +120,10 @@ anything.
 | `test_collision` | 1.2: NIF `bhk*` collision extraction → `Shape3D` | headless (see caveat above) |
 | `test_object_registry` | 1.1: base-type → factory dispatch (`GamebryoObjectRegistry`) | headless |
 | `test_exterior_cell` | 1.4: exterior cell terrain + placed objects | **interactive viewer** |
+| `servers/test_bsa_concurrent` | Stage A: positional `pread`/`ReadFile` reads; concurrent extraction byte-identical to serial | headless |
+| `servers/test_archive_server` | Stage B: catalog, BSA priority (full 181k-entry census), path contract, the four result kinds | headless |
+| `servers/test_texture_server` | Stage C: decode/upload/cache, DXT1 alpha-variant guard, dedup, budget, parity with the old resolver | headless |
+| `servers/test_texture_corpus_sweep` | Stage C: walks all 26,840 textures through TextureServer, displays each, reports throughput | headless **or** windowed |
 | `test_terrain_collision` | 1.4: terrain `HeightMapShape3D` collision (ball-drop settle check) | headless |
 | `test_terrain` | 1.4: exterior terrain + objects, screenshot | headless |
 | `test_phase1_integration` | 1.5: full Phase 1 pipeline, both default cells (see caveat above) | headless |
