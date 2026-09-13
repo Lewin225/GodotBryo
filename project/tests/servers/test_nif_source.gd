@@ -16,6 +16,16 @@ const UPPERBODY := "meshes/characters/_male/upperbody.nif"
 const BOTTLE := "meshes/clutter/junk/milkbottle01.nif"
 const SKYDOME := "meshes/nvdlc04/dungeons/utemple/nvdlc04uskydome.nif"
 const EATIDLE := "meshes/characters/_male/idleanims/eatidle.kf"
+
+# Every file in the corpus whose ControllerLinks address their targets through
+# a NiStringPalette instead of inline strings.
+const PALETTE_IDLES: Array[String] = [
+	"meshes/characters/_male/idleanims/eatidle.kf",
+	"meshes/characters/_male/idleanims/pistolvariant01.kf",
+	"meshes/characters/_male/idleanims/talk_handsatside_moving.kf",
+	"meshes/characters/_male/idleanims/talk_handsatside_moving2.kf",
+	"meshes/characters/_male/idleanims/talk_handsatside_still2.kf",
+]
 const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
 const TRANSFORM_SHAPE := "meshes/architecture/freeside/ramshacklebusdoor02.nif"
@@ -211,29 +221,31 @@ func test_d6_controller_links() -> void:
 	check(blocks.size() == 60, "60 controlled blocks (got %d)" % blocks.size())
 	check(blank == 0, "every inline-addressed target resolves (%d blank)" % blank)
 
-	# Known gap: nifly truncates NiStringPalette, so the five 20.0.0.4 idles
-	# cannot resolve. Asserted as a KNOWN state so the gate flips when the
-	# upstream fix or a local patch lands.
-	var idle := _load(EATIDLE)
-	if idle == null:
-		return
-	var idle_blank := 0
-	var idle_total := 0
-	var via_palette := 0
-	for s in idle.get_sequences():
-		for b in s["controlled_blocks"]:
-			idle_total += 1
-			if String(b["node_name"]) == "":
-				idle_blank += 1
-			if bool(b["from_string_palette"]):
-				via_palette += 1
-	check(via_palette == idle_total and idle_total > 0,
-		"eatidle.kf: all %d links use NiStringPalette addressing" % idle_total)
-	if idle_blank == 0:
-		print("  NOTE  eatidle.kf fully resolves -- the nifly palette fix is in effect")
-	else:
-		print("  KNOWN %d of %d eatidle.kf targets unresolved (nifly NiStringPalette truncation; see Implementation/outstanding_issues.md #1)"
-			% [idle_blank, idle_total])
+	# The five 20.0.0.4 idles address their targets through a NiStringPalette
+	# rather than inline. Resolving them depends on nifly reading a string by
+	# length instead of as a C string -- see native/nifly_patches/. This gate
+	# fails if that patch is ever dropped from the build.
+	for path in PALETTE_IDLES:
+		var idle := _load(path)
+		if idle == null:
+			continue
+		var file_name := path.get_file()
+		var idle_blank := 0
+		var idle_total := 0
+		var via_palette := 0
+		for s in idle.get_sequences():
+			for b in s["controlled_blocks"]:
+				idle_total += 1
+				if String(b["node_name"]) == "":
+					idle_blank += 1
+				if bool(b["from_string_palette"]):
+					via_palette += 1
+		check(idle_total > 0, "%s: has controlled blocks (got %d)" % [file_name, idle_total])
+		check(via_palette == idle_total,
+			"%s: all %d links use NiStringPalette addressing (got %d)" % [file_name, idle_total, via_palette])
+		check(idle_blank == 0,
+			"%s: every palette-addressed target resolves (%d blank -- is the nifly NiString patch in the build?)"
+				% [file_name, idle_blank])
 
 
 func test_d9_interpolators() -> void:

@@ -53,10 +53,18 @@ listed there).
   against the system library (`zlib.h`/`libz.so` — confirmed present via
   `pkg-config zlib`). No vendoring needed.
 - **nifly** — used by the NIF mesh parser (task 0.3), vendored as a git submodule at
-  `native/nifly/` (see [phases/0/03-nif-parser.md](../phases/0/03-nif-parser.md)).
-  Built directly into the extension (its `src/*.cpp` globbed alongside ours) rather
-  than as a separate static library — it has no dependencies beyond its own bundled
-  headers. Requires C++17, already the default in godot-cpp's build flags.
+  `native/nifly/`. Built directly into the extension (its `src/*.cpp` globbed
+  alongside ours) rather than as a separate static library — it has no dependencies
+  beyond its own bundled headers. Requires C++17, already the default in godot-cpp's
+  build flags.
+
+  **It is patched at build time.** The submodule is pinned to upstream, so local
+  fixes cannot be committed into the checkout; they live in `native/nifly_patches/`
+  and `SConstruct` applies them before the glob. `git status` therefore reports
+  `native/nifly (modified content)` on any built tree — that is expected, and is the
+  patch being present. Do not check it out or force-update it away; the next build
+  re-applies it either way. See
+  [`nifly_patches/README.md`](nifly_patches/README.md).
 - **Terrain3D** — third-party terrain GDExtension addon (see
   [phases/2/13-terrain3d-integration.md](../phases/2/13-terrain3d-integration.md)),
   vendored as a git submodule at `native/terrain3d/`, pinned to the `v1.0.2-stable`
@@ -119,6 +127,8 @@ matters for verification.
 native/
   godot-cpp/    — vendored as a git submodule (master branch, includes 4.7 API json)
   nifly/        — vendored as a git submodule, NIF mesh library used by task 0.3
+                  (patched at build time from nifly_patches/ — see Dependencies)
+  nifly_patches/— local fixes applied to the nifly submodule by SConstruct
   terrain3d/    — vendored as a git submodule (v1.0.2-stable), separate GDExtension
                   addon — own nested godot-cpp submodule, own SConstruct, see above
   src/
