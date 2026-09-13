@@ -10,7 +10,7 @@ Each is either a known gap in what was built or a decision not yet made.
 
 | # | Issue | Severity |
 |---|---|---|
-| [1](#1-nifly-nistringpalette-truncation) | nifly `NiStringPalette` truncation | `BLOCKER` |
+| [1](#1-nifly-nistringpalette-truncation) | nifly `NiStringPalette` truncation | `FIXED` |
 | [2](#2-morph-controller-traversal-incomplete) | Morph controller traversal incomplete | `FIXED` |
 | [3](#3-collision-transform-shapes-extracted-not-applied) | Collision transform shapes extracted, not applied | `DECISION` |
 | [4](#4-text-keys-reachable-from-only-one-link) | Text keys reachable from only one link | `FIXED` |
@@ -27,21 +27,49 @@ Each is either a known gap in what was built or a decision not yet made.
 
 ## 1. nifly `NiStringPalette` truncation
 
-`BLOCKER` — nif_server_v2.md §7.4 cannot be met while nifly is unpatched.
+`FIXED` — carried as a local patch against the nifly submodule.
 
-`NiString::Read()` ends with `str = buf.get()`, a `char*` assignment that stops at the first embedded
-NUL. A string palette is NUL-*separated*, so a 1,107-byte palette loads as 5 bytes.
-
-**Effect:** 360 controlled blocks across 5 files resolve to nothing. All five are player idles in
+`NiString::Read()` ended with `str = buf.get()`, a `char*` assignment that stops at the first
+embedded NUL. A string palette is NUL-*separated*, so a 1,107-byte palette loaded as 5 bytes and
+360 controlled blocks across 5 files resolved to nothing. All five are player idles in
 `Fallout - Meshes.bsa`: `eatidle.kf`, `pistolvariant01.kf`, `talk_handsatside_moving.kf`,
 `talk_handsatside_moving2.kf`, `talk_handsatside_still2.kf`.
 
-**Status:** reported upstream. Repro and issue text in `tools/nifly_bug_repro/` (local only — `tools/` is gitignored).
+`native/nifly_patches/0001-nistring-read-preserve-embedded-nuls.patch` tracks the byte count each
+size branch read and assigns `str.assign(buf.get(), sizeRead)`. nifly is a submodule pinned to
+upstream, so the fix cannot be committed into the checkout; `native/SConstruct` applies the patch
+before globbing nifly's sources, so a fresh clone or a `git submodule update` still builds patched.
+Application is idempotent, and a patch that neither applies nor reverse-applies stops the build
+rather than silently producing a library that reads NIFs wrong. See
+[`native/nifly_patches/README.md`](../../../native/nifly_patches/README.md).
 
-**Local patch is verified but NOT applied.** `str.assign(buf.get(), size_read)` takes those 360 links
-to 0 and is provably inert elsewhere — SHA-256 over all 140,475 node names is byte-identical with and
-without it. Carrying it locally is an open decision: it creates a merge burden against upstream, and
-without it §7.4 stays unmet regardless of upstream turnaround.
+All 365 palette-addressed links across the five files now resolve. `test_nif_source` D6 asserts
+this per file and fails if the patch is ever dropped from the build.
+
+The resolved names are verified correct rather than merely non-empty: 50 of the 73 targets in each
+file match a node in `meshes/characters/_male/skeleton.nif` exactly, which misaligned offsets could
+not produce.
+
+**The remaining 23 targets per file name bones the New Vegas male skeleton does not have** —
+`Bip01 L Finger0`/`01`/`02`, `Bip01 L ForearmTwist`, `Bip01 L UpperArmTwist`, `Torch`. Those are
+Fallout 3-era names; New Vegas uses `Bip01 L Thumb1`, `Bip01 L ForeTwist`, `Bip01 LUpArmTwistBone`.
+Of 2,109 `meshes/characters/_male/*.kf` files, exactly these five carry them, so they are FO3 assets
+shipped unused. Roughly a third of their tracks will bind to nothing whatever the caller does. That
+is the asset, not the reader — do not chase it as a defect.
+
+Unmatched targets are ordinary in any case: 647 of those 2,109 files address `##Cover`, `##Trigger`,
+`##Shells` and similar weapon-part bones carried by the weapon's own NIF, which is the composed-rig
+case [#6](#6-sequences-addressing-an-external-rig-stay-unbound) covers.
+
+All five are single `SpecialIdle*` sequences carrying only `NiTransformController`. Binding stays
+caller-side per #6; nothing consumes them yet.
+
+Inert elsewhere: every other NIF string is read at its exact length with no embedded NUL, so
+assigning by length yields the same bytes. SHA-256 over all 140,475 node names in the corpus is
+identical with and without it.
+
+Reported upstream as [ousnius/nifly#66](https://github.com/ousnius/nifly/issues/66). Drop the patch
+and this entry once that lands and the submodule is advanced.
 
 ## 2. Morph controller traversal incomplete
 

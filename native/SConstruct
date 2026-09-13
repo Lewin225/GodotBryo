@@ -1,5 +1,52 @@
 #!/usr/bin/env python
+import glob
 import os
+import subprocess
+
+
+def apply_nifly_patches():
+	"""Apply nifly_patches/*.patch to the native/nifly submodule checkout.
+
+	Idempotent: a patch that already reverse-applies cleanly is left alone.
+	Anything else — a patch that will not apply, a missing git, a missing
+	checkout — stops the build. A silently unpatched nifly produces a library
+	that reads NIFs subtly wrong rather than one that fails to link, so this
+	must be loud.
+	"""
+	patch_dir = "nifly_patches"
+	patches = sorted(glob.glob(os.path.join(patch_dir, "*.patch")))
+	if not patches:
+		return
+	if not os.path.isdir(os.path.join("nifly", ".git")) and not os.path.isfile(
+		os.path.join("nifly", ".git")
+	):
+		print("ERROR: native/nifly is not checked out. Run: git submodule update --init")
+		Exit(1)
+
+	def git_apply(args):
+		return subprocess.call(
+			["git", "-C", "nifly", "apply"] + args,
+			stdout=subprocess.DEVNULL,
+			stderr=subprocess.DEVNULL,
+		)
+
+	for patch in patches:
+		abs_patch = os.path.abspath(patch)
+		try:
+			if git_apply(["--reverse", "--check", abs_patch]) == 0:
+				continue  # already applied
+			if git_apply(["--check", abs_patch]) == 0:
+				if git_apply([abs_patch]) == 0:
+					print("Applied nifly patch: " + os.path.basename(patch))
+					continue
+		except OSError:
+			print("ERROR: git not found; cannot apply " + patch)
+			Exit(1)
+		print("ERROR: nifly patch does not apply and is not already applied: " + patch)
+		print("       nifly has probably moved upstream. Rebase the patch, or drop it")
+		print("       if the fix landed. Do not build without it.")
+		Exit(1)
+
 
 env = SConscript("godot-cpp/SConstruct")
 
@@ -21,6 +68,12 @@ sources += Glob("src/gamebryo/*.cpp")
 # mesh library, used as-is rather than reimplementing the format. Its own
 # headers are added as a "system" include path so its warnings don't get
 # mixed into our -Werror-adjacent build output.
+#
+# nifly is a submodule pinned to upstream, so local fixes cannot be committed
+# into it. They live as patches in nifly_patches/ and are applied to the
+# checkout here, before the glob, so a fresh clone or a `git submodule update`
+# still builds a patched nifly. See nifly_patches/README.md.
+apply_nifly_patches()
 env.Append(CPPPATH=["nifly/include", "nifly/external"])
 sources += Glob("nifly/src/*.cpp")
 
