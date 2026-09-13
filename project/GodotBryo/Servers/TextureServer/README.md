@@ -2,7 +2,7 @@
 
 The project's one DDS decode / upload / cache primitive. Autoloaded singleton.
 
-Design: [`Plans/texture_server.md`](../../../../Plans/texture_server.md).
+Design: [`Plans/TextureServer/texture_server.md`](../../../../Plans/TextureServer/texture_server.md).
 
 Two callers need textures and neither owns a NIF — NifServer's material builder, and terrain.
 Folding texture ownership into either would relocate the wrong-owner problem rather than fix it,
