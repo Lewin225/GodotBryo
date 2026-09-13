@@ -24,8 +24,8 @@ const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 
 ## Every (path, alpha_safe) pair this file's materials will ask for, deduped.
-## Shared by warm_textures() and _resolve_textures() so the warmed key and the
-## looked-up key cannot drift apart.
+## Used by _resolve_textures() so the warmed key and the looked-up key cannot
+## drift apart.
 static func _texture_refs(src: NifSource) -> Array:
 	var refs: Array = []
 	if src == null:
@@ -54,21 +54,6 @@ static func _texture_refs(src: NifSource) -> Array:
 			seen[key] = true
 			refs.append(ref)
 	return refs
-
-
-## Queues every texture this file references and returns, without waiting.
-## Worker-safe: TextureServer.warm() marshals its own enqueue through
-## call_deferred, and NifSource is read-only here.
-##
-## build() does this itself. It is public for a caller running its own resolve
-## pass over many files, which wants every warm in flight before the first
-## build starts rather than one file's worth at a time.
-static func warm_textures(src: NifSource) -> void:
-	var server := _texture_server()
-	if server == null:
-		return
-	for ref in _texture_refs(src):
-		server.warm(ref["path"], ref["alpha_safe"])
 
 
 ## Warms every texture, then awaits them all. Returns cache key -> ImageTexture.

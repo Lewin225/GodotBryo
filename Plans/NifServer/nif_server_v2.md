@@ -117,13 +117,45 @@ Warnings are emitted once per canonical path; detailed diagnostics are available
 
 | stage | thread | does | never touches |
 |---|---|---|---|
-| `_resolve()` | worker | BSA/NIF parse, block-table classification, `TextureServer.warm()` per slot, skin/controller/collision extraction | `ArrayMesh`, `ImageTexture`, `Material`, `Shape3D`, decoded `Image`, any `Node` |
-| texture gate | main | wait until every `TextureServer.is_finished(path, alpha_safe)` key is finished | — |
-| `_build()` | main | `ArrayMesh`/`Shape3D`/`Material`/`Node` construction from already-uploaded textures | — |
+| `_resolve()` | worker | `ArchiveServer.read()`, `NifSource.load()`, `TextureServer.warm()` per slot | any cache, any `Node`, any RID-backed resource |
+| texture gate | main | wait until every warmed key reports `TextureServer.is_finished()` | — |
+| `_build()` | main | `NifTreeBuilder.build()` — nodes, meshes, materials, shapes, animations | — |
 
-The split exists because `RID_Owner<T>` locking is compiled out off the main thread with the
-Separate Rendering Thread model off — the documented cause of this project's "Attempting to
-initialize the wrong RID" crash.
+### 4.1 Why the split falls here
+
+**Not because of `RID_Owner`.** An earlier version of this section claimed `RID_Owner<T>` locking is
+compiled out off the main thread. That is not true of this engine version: `THREAD_SAFE` is a
+per-owner template argument, and `mesh_owner`, `texture_owner`, `material_owner`, `shader_owner` and
+`skeleton_owner` all request it. The owners that do not are the renderer's own per-instance
+bookkeeping, which script never addresses. Nor does Godot forbid building nodes off the main thread —
+its own documentation states that creating scene chunks outside the active tree is fine.
+
+Two things actually constrain it:
+
+**The shared caches are main-thread-owned by design.** TextureServer holds `_textures`, `_jobs`,
+`_admission` and `_uploads` with no atomics and no mutexes, on the stated basis that only the main
+thread mutates them. `_build()` reads that cache for every texture slot. Moving `_build()` to a
+worker means making those structures thread-safe for every caller, not just this one. Godot's own
+guidance points the same way: one thread loading data is the sanctioned pattern, and the risk it
+names for several is precisely shared resources being written by more than one.
+
+**The measurements say the worker half is where the time is.** Over a 60-model burst, with textures
+resident:
+
+| stage | time | share |
+|---|---:|---:|
+| `ArchiveServer.read()` — BSA + inflate | 33.1 ms | 48% |
+| `NifSource.load()` — nifly parse | 14.7 ms | 21% |
+| `NifTreeBuilder.build()` | 21.4 ms | 31% |
+
+`_resolve()` is already the larger half and is worker-safe by construction — positional `pread` means
+concurrent `read_at()` takes no lock, and a parse writes only its own `Document`. `_build()` is
+0.36 ms per model, which a frame budget absorbs. Moving it off-main would buy a third of the time in
+exchange for making two servers' caches thread-safe.
+
+So the split stands; only its justification changed. Revisit if `_build()` ever dominates.
+
+### 4.2 Budgets
 
 | budget | default | meaning |
 |---|---|---|
@@ -134,9 +166,9 @@ initialize the wrong RID" crash.
 the pool both servers share, and `_build()` cannot proceed without a real uploaded texture, so
 starving TextureServer is a hang, not a stall.
 
-**Native prerequisite:** `BsaArchive` must use positional reads (`pread()` / `ReadFile()` +
-`OVERLAPPED`) instead of shared-cursor `fseek()`+`fread()`, making concurrent `read_at()` safe by
-construction.
+**Ordering is not FIFO.** A plain queue builds the far side of a cell before what is in front of the
+player; `world_streamer.gd` already learned this and orders by real circular distance. A NifServer
+queue inherits the same requirement.
 
 ---
 

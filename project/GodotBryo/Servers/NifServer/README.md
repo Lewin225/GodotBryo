@@ -34,7 +34,6 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 ## Contract
 
 ```gdscript
-NifTreeBuilder.warm_textures(src: NifSource) -> void              # prefetch, worker-safe
 await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
 ```
 
@@ -60,9 +59,6 @@ Godot's. No consumer applies an axis correction, a unit scale or a winding flip 
 awaits `TextureServer.request()` for each, and then builds the tree in a single synchronous pass from
 an already-resident set. That is the whole of TextureServer's external surface: `warm()` and
 `request()`. Node construction itself never awaits.
-
-`warm_textures()` is the same prefetch without the wait, for a caller resolving many files at once
-that wants every warm in flight before the first `build()` starts.
 
 **Names are reversible.** Authored NIF names survive Godot's node-name restrictions through
 `nif_names.gd`, and the authored form is always on the node as `nif_name` metadata.
