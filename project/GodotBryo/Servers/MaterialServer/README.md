@@ -30,10 +30,20 @@ cache with a copy path", and it means nobody mutates a MaterialServer material �
 callers vary the instance instead.
 
 That distinction matters more here than for textures. Nobody writes to a cached
-`ImageTexture`. People tint, fade and re-alpha a `StandardMaterial3D` constantly,
-and a UI element doing that to a shared instance changes every other user of it.
-Copying TextureServer's contract verbatim would inherit a hazard textures do not
-have.
+`ImageTexture`. A `StandardMaterial3D` gets tinted, faded and re-alpha'd, and
+anything doing that to a shared instance changes every other user of it. Copying
+TextureServer's contract verbatim would inherit a hazard textures do not have.
+
+**It cannot be enforced.** `core/io/resource.h` has no read-only, freeze or const
+mechanism, so a server cannot stop a caller mutating what it handed out. The rule
+is a convention, which argues for making ownership obvious at the call site —
+`shared(key)` is harder to misuse carelessly than `get(key)`.
+
+The project's existing per-instance variation already avoids the hazard without
+anyone deciding to: `esm_npc_actor.gd` builds a *new* material and assigns it
+through `material_override`, leaving the shared one untouched. That pattern is
+correct but costs the instanced draw for that instance — fine for a handful of
+NPCs, not for a few hundred objects.
 
 ---
 
@@ -60,6 +70,64 @@ of cost, not a cliff:
 Runtime material duplication therefore costs the instanced draw but keeps the
 pipeline bound. Negligible for a handful of UI panels, decisive for a few hundred
 world objects.
+
+---
+
+## Animated materials are the constraint
+
+NIF controller sequences target material properties, not only node transforms.
+Measured across the shipped `.nif` corpus:
+
+| | |
+|---|---:|
+| files with sequences | 1,153 |
+| …with at least one property-targeted link | **582** |
+| …**property-only** — no transform track at all | **271** |
+| links: transform / property | 25,717 / 5,295 |
+
+Exactly **11** distinct `(propType, ctrlType, ctrlID)` triples exist corpus-wide,
+a closed and hand-writable mapping table:
+
+| triple | links | Godot |
+|---|---:|---|
+| `NiMaterialProperty / NiMaterialColorController / SELF_ILLUM` | 1218 | `emission` |
+| `NiMaterialProperty / NiAlphaController` | 1182 | `albedo_color.a` |
+| `NiMaterialProperty / BSMaterialEmittanceMultController` | 879 | `emission_energy_multiplier` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_TRANSLATE_U` | 704 | `uv1_offset.x` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_TRANSLATE_V` | 672 | `uv1_offset.y` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_SCALE_U` | 177 | `uv1_scale.x` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_SCALE_V` | 153 | `uv1_scale.y` |
+| `BSShaderPPLightingProperty / BSRefractionStrengthController` | 106 | ~`refraction` |
+| `NiTexturingProperty / NiTextureTransformController / 0-0-TT_ROTATE` | 105 | **none** |
+| `BSShaderPPLightingProperty / BSRefractionFirePeriodController` | 57 | **none** |
+| `NiMaterialProperty / NiMaterialColorController / SPEC` | 42 | specular |
+
+`meshes/nvdlc04/dungeons/utemple/nvdlc04uskydome.nif` is the shape of it: a
+266-second looping `Idle` whose three controlled blocks are two scrolling UV
+transforms and a `SELF_ILLUM` colour curve, and not one transform track.
+
+**An AnimationPlayer track pointed at a material is in-place mutation, running
+every frame.** That is the hazard above, arriving through animation rather than
+through a caller writing to a property. It does not exist yet only because
+property tracks are unimplemented — see
+[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md)
+#5. Implementing them creates it across 582 files.
+
+So sharing is decided per tier, not per server:
+
+| tier | sharing |
+|---|---|
+| static material (the majority) | shared, batches, no custom shader |
+| animated, few instances (one sky) | per-instance material; it costs an instanced draw that was never going to happen |
+| animated, many instances | must be instance uniforms, therefore `ShaderMaterial` |
+
+Two of the eleven — `TT_ROTATE` and `BSRefractionFirePeriodController` — have no
+`StandardMaterial3D` equivalent at all, so they force a custom shader regardless
+of what sharing decides.
+
+**Unmeasured, and it decides tier two versus tier three:** how many instances of
+each animated model a cell actually places. That is REFR placement data, not NIF
+content.
 
 ---
 
