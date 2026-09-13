@@ -189,11 +189,14 @@ constexpr uint32_t kLightFlagSpot = 0x00000200; // unset = point/omni light
 constexpr uint32_t kLightFlagOffByDefault = 0x00000020;
 
 struct LightData {
+	int32_t time = 0;
 	float radius = 0.0f; // Gamebryo units -> meters already applied (units.h)
 	uint8_t color[4] = { 255, 255, 255, 255 }; // r, g, b, a (a usually unused)
 	uint32_t flags = 0;
 	float falloff = 1.0f;
 	float fov_degrees = 90.0f;
+	uint32_t value = 0;
+	float weight = 0.0f;
 
 	bool is_spot() const { return (flags & kLightFlagSpot) != 0; }
 	bool off_by_default() const { return (flags & kLightFlagOffByDefault) != 0; }

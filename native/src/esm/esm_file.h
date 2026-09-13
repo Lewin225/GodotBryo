@@ -4,7 +4,7 @@
 #include "esm_types.h"
 
 #include <array>
-#include <cstdio>
+#include <fstream>
 #include <functional>
 #include <optional>
 #include <string>
@@ -15,7 +15,8 @@ namespace esm {
 
 // Read-only structural reader for Bethesda TES4-family plugin/master files
 // (.esm/.esp) — Oblivion/FO3/FNV/Skyrim all share the same 24-byte
-// GRUP/record header layout. Not thread-safe (single FILE* with seek+read).
+// GRUP/record header layout. After open() completes, read-only queries are
+// safe to call concurrently; open/destruction must not race with queries.
 //
 // This does NOT decode subrecord semantics for most record types — see
 // phases/0/02-esm-parser.md. It walks the GRUP/record tree, exposes each
@@ -25,7 +26,7 @@ namespace esm {
 class EsmFile {
 public:
 	EsmFile() = default;
-	~EsmFile();
+	~EsmFile() = default;
 
 	EsmFile(const EsmFile &) = delete;
 	EsmFile &operator=(const EsmFile &) = delete;
@@ -305,8 +306,9 @@ private:
 	// RNAM isn't read for CREA (means something unrelated there).
 	void fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const;
 
-	std::FILE *file_ = nullptr;
+	std::string path_;
 	long file_size_ = 0;
+	std::vector<uint8_t> file_data_;
 	FileHeader header_;
 	RecordInfo tes4_record_; // the first record in the file
 

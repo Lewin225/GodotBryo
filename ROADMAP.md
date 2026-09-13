@@ -27,8 +27,7 @@ a placeholder path.
 
 ## Phase 0 — Groundwork (foundational, no gameplay) — done
 
-Goal: prove the toolchain and pipeline before committing to engine work. See
-[phases/0/results.md](phases/0/results.md) for the full write-up.
+Goal: prove the toolchain and pipeline before committing to engine work.
 
 - Stand up GDExtension build scaffolding (SCons/CMake) for native modules.
 - Vendor or reimplement a BSA reader (archive listing + decompression).
@@ -44,9 +43,8 @@ Goal: prove the toolchain and pipeline before committing to engine work. See
 ## Phase 1 — Static World Rendering — done
 
 Goal: walk a single exterior cell with correct geometry, textures, and collision. No
-NPCs, no AI, no scripting, no combat. Broken down in [phases/1/](phases/1/README.md)
-(interior cells sequenced before exterior/terrain — see that doc's sequencing
-rationale).
+NPCs, no AI, no scripting, no combat. Interior cells were sequenced before
+exterior/terrain.
 
 - Extend the ESM parser to read `CELL`, `WRLD`, `LAND` (landscape/heightmap + texture
   splatting), and `REFR` (object placement/reference) records.
@@ -70,8 +68,8 @@ Goal: move continuously through the game's actual worldspace, not one cell at a 
   data — no discovery heuristics needed).
 - Interior↔exterior transitions via door `REFR`/`DOOR` teleport links. Exterior grid
   cells also load their owning worldspace's "persistent" cell (the CS's always-loaded
-  bucket, holding e.g. every exterior-facing entrance door in the base game) — see
-  [phases/2/07-runtime-cell-loader.md](phases/2/07-runtime-cell-loader.md#known-gap--a-worldspaces-persistent-cell-isnt-loaded-at-all--fixed).
+  bucket, holding e.g. every exterior-facing entrance door in the base game). Not
+  loading that cell at all was a known gap, since fixed.
 - Distant terrain / object LOD (FNV ships pre-baked LOD meshes and distant land data —
   reuse them rather than generating LOD at runtime, at least initially).
 - Memory budget and streaming radius tuning against the real Mojave worldspace size.
@@ -93,10 +91,9 @@ combat, no dialogue yet).
   teleporting door at the same base type) carrying real `NiControllerManager`/
   `NiControllerSequence`/`NiTransformInterpolator`/`NiTransformData` keyframe blocks —
   rigid single-node transform animation, no `NiSkinInstance`/bone hierarchy, so it
-  doesn't need skeleton/skinning support to land first. **Done** — see
-  [phases/3/00-door-completion.md](phases/3/00-door-completion.md): `DoorNode.activate()`
-  now plays real animation, sounds, and flags for non-teleporting doors, with a
-  mid-swing reactivation debounce.
+  doesn't need skeleton/skinning support to land first. **Done** —
+  `DoorNode.activate()` now plays real animation, sounds, and flags for
+  non-teleporting doors, with a mid-swing reactivation debounce.
 - Equipment/armor mesh swapping on the skeleton (the "nif per body part + biped slot"
   model FNV uses).
 - NPC appearance foundation: typed `NPC_`/`RACE`/`HAIR`/`EYES` resources, real race-selected

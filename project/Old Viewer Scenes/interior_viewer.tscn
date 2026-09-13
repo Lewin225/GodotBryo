@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://p0qx5lyy4twg"]
+
+[ext_resource type="Script" uid="uid://dwj187nph802r" path="res://Old Viewer Scenes/interior_viewer.gd" id="1"]
+
+[sub_resource type="Environment" id="Environment_porur"]
+ambient_light_source = 2
+ambient_light_color = Color(0.5689727, 0.56897277, 0.5689727, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 1
+ssr_enabled = true
+ssao_enabled = true
+ssil_enabled = true
+glow_enabled = true
+glow_normalized = true
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0121
+adjustment_enabled = true
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_ujtwi"]
+
+[node name="InteriorViewer" type="Node3D" unique_id=472185801]
+script = ExtResource("1")
+cell_editor_id = "GSGeneralStore"
+
+[node name="EditorPreviewLight" type="DirectionalLight3D" parent="." unique_id=782666319]
+transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
+visible = false
+light_energy = 1.3
+
+[node name="EditorPreviewEnv" type="WorldEnvironment" parent="." unique_id=1219030416]
+environment = SubResource("Environment_porur")
+camera_attributes = SubResource("CameraAttributesPractical_ujtwi")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1849535856]
+transform = Transform3D(0.99882424, -0.010926802, 0.047231637, 0.002440047, 0.9843644, 0.17612721, -0.04841765, -0.17580488, 0.98323363, 14.246089, 106.3862, -15.106682)
+fov = 88.57219

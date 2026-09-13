@@ -80,6 +80,10 @@ public:
 	// Vector3), "radius" (sphere), "point_a"/"point_b"/"capsule_radius"
 	// (capsule). All distances already in meters.
 	Array get_collision_shapes() const;
+	// Authored bhkRigidBody descriptors, including their association to the
+	// extracted collision shapes. Mass is NIF-authored physics data and is not
+	// the ESM item's gameplay weight.
+	Array get_physics_bodies() const;
 	// True if any NiAVObject in the NIF has Havok collision authored at all
 	// (a non-empty collisionRef), independent of whether get_collision_shapes()
 	// could actually extract it — see nif_types.h's Mesh::has_collision_data.
@@ -112,6 +116,12 @@ public:
 	//     "property_type": String, "controller_type": String,
 	//     "keys": Array of float_key } — non-transform ControllerLinks,
 	//     preserved so facial/morph animation can be resolved from real data.
+	//   "bool_tracks": Array of { "target_node_name": String,
+	//     "property_type": String, "controller_type": String,
+	//     "keys": Array of { "time": float, "value": bool } } —
+	//     NiBoolInterpolator ControllerLinks, consumed as visibility tracks
+	//     by the shared Godot animation resolver. This preserves the raw bool
+	//     key values; the Godot layer maps resolved targets to `:visible`.
 	Array get_animation_sequences() const;
 	Array get_direct_animation_controllers() const;
 
