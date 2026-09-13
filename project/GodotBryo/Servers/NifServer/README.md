@@ -67,6 +67,8 @@ work, and NifServer offers no entry point for it.
 | sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
 | collision | one body per owning node, parented under that node |
+| `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
+| `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
 
 **Already converted.** Positions are metres, the tree is Y-up and Godot-forward, triangle winding is
