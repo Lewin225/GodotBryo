@@ -5,3 +5,5 @@ They should offer a defined contract, thread and coroutine as much of their work
 They should not call into *non* server scripts, so checking GodotBryoSettings for the esm path is okay.
 
 # NOTE - GodotBryoSettings will be moved into this folder soon as GodotBryoSettingsServer
+
+# NOTE - MeshServer exists only as concept notes. NifServer is the only mesh consumer so it's not needed

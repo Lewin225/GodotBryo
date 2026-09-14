@@ -547,6 +547,7 @@ actor = NodePath("NPCActor")
 shape = SubResource("CapsuleShape3D_player")
 
 [node name="NPCActor" parent="." unique_id=27428201 instance=ExtResource("5_npc_actor")]
+visible = false
 npc_record = SubResource("Resource_8rogd")
 equipment_state = SubResource("Resource_x7c3f")
 
@@ -570,6 +571,7 @@ parameters/UpperLocomotionSpace/blend_position = Vector2(0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
+top_level = true
 current = true
 far = 1000.0
 
