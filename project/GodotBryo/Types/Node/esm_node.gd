@@ -2,65 +2,91 @@
 class_name EsmNode
 extends Node3D
 
-## Runtime representation of one ESM reference.
-## The reference is the only ESM data entry point; its Base is reached through
-## reference.base and is never duplicated on the node.
+## Runtime representation of one ESM reference. The reference is the only ESM
+## data entry point; visual content is generated asynchronously by NifServer
+## after this node enters either an editor or runtime scene tree.
 
-# The reference identity/placement is scene data. Its derived `base` resource
-# remains non-persistent on EsmReference and is rehydrated from EsmServer.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var reference: EsmReference:
 	set(value):
 		reference = value
-		_visual_built = false
+		_request_generation += 1
+		_startup_complete = false
+		_waiting_for_esm = false
+		_clear_generated_children()
 		_reference_changed()
 
-var _visual_built := false
 var _waiting_for_esm := false
+var _startup_complete := false
+var _request_generation := 0
+var _generated_children: Array[Node] = []
+## Retained for EsmNpcActor's separate legacy actor/equipment assembly path.
+var _visual_built := false
 
 ## Default activation hook for all physicalized ESM nodes.
 ## Type-specific nodes override this for their native default behavior.
 func activate(_actor: Node = null) -> Dictionary:
 	return {}
 
+func _ready() -> void:
+	call_deferred("_rehydrate_and_start")
+
 func configure(esm_reference: EsmReference) -> void:
 	reference = esm_reference
 
+## Compatibility hook for specialized nodes such as EsmNpcActor. Normal nodes
+## start the shared NifServer lifecycle; specialized nodes may replace it.
+func _reference_changed() -> void:
+	if is_inside_tree():
+		call_deferred("_rehydrate_and_start")
+
 ## Returns the live world transform used by gameplay. Static ESM nodes use
-## their own transform; physical nodes override this to query their body.
+## their own transform; physical nodes can override this when they acquire a
+## future dedicated physical representation.
 func get_runtime_global_transform() -> Transform3D:
 	return global_transform if is_inside_tree() else transform
 
 func get_runtime_global_position() -> Vector3:
 	return get_runtime_global_transform().origin
 
-## Builds the visual children for this reference. Unknown/base nodes remain a
-## valid empty Node3D until their typed construction path exists.
-func build_visual(_resolver: GamebryoMeshResolver) -> void:
+## Typed nodes use this to add editor/runtime-generated children. These
+## children are owned recursively in the editor so they appear in the Scene
+## dock and can be inspected. Runtime-generated children remain unowned.
+func add_generated_child(child: Node) -> void:
+	if child == null:
+		return
+	child.set_meta("esm_generated", true)
+	add_child(child)
+	_generated_children.append(child)
+	if Engine.is_editor_hint() and owner != null:
+		_set_owner_recursive(child, owner)
+
+## Returns the first animation player supplied by the generated NIF tree.
+func get_nif_animation_player() -> AnimationPlayer:
+	var visual := get_node_or_null("NifVisual")
+	if visual == null:
+		return null
+	return visual.find_child("AnimationPlayer", true, false) as AnimationPlayer
+
+## Hook for typed semantic setup once reference.base is available. It runs
+## before the NIF request, so semantic state exists while visual delivery is
+## paced by NifServer.
+func _on_reference_ready() -> void:
 	pass
 
-## Shared dynamic-object assembly used by typed nodes whose NIF hierarchy and
-## animation tracks must remain intact.
-func build_dynamic_visual(resolver: GamebryoMeshResolver, model_path: String) -> bool:
-	if resolver == null or model_path.is_empty():
-		return false
-	var nif := resolver.load_nif(model_path)
-	if nif == null or nif.get_submesh_count() == 0:
-		return false
-	var geometry := resolver.build_geometry_entries(resolver.resolve_raw_geometry(nif, model_path))
-	var built := resolver.populate_dynamic_children(self, nif, model_path, geometry)
-	resolver.populate_animation_player(self, nif, built)
-	resolver.populate_direct_controller_player(self, nif, built)
-	_visual_built = true
+## SCOL and non-world preview nodes override this to suppress the generic
+## model request and create their own generated children instead.
+func _should_request_nif() -> bool:
 	return true
 
-func _reference_changed() -> void:
-	call_deferred("_rehydrate_and_build")
+func _model_path() -> String:
+	if reference == null or reference.base == null or not ("model_path" in reference.base):
+		return ""
+	return String(reference.base.model_path)
 
-func _rehydrate_and_build() -> void:
-	if reference == null or _visual_built:
+func _rehydrate_and_start() -> void:
+	if not is_inside_tree() or reference == null or _startup_complete:
 		return
-	var root := get_tree().root if is_inside_tree() else null
-	var server = root.get_node_or_null("EsmServer") if root != null else null
+	var server := get_tree().root.get_node_or_null("EsmServer")
 	if reference.base == null and server != null:
 		if not server.is_ready():
 			if not _waiting_for_esm:
@@ -77,15 +103,59 @@ func _rehydrate_and_build() -> void:
 			return
 	if reference.base == null:
 		return
-	# A packed editor preview already contains the generated hierarchy. The
-	# reference may still need rehydration, but rebuilding here would append a
-	# second copy of the visible mesh and animation tree on top of it.
-	if get_child_count() > 0:
-		_visual_built = true
+
+	_startup_complete = true
+	_on_reference_ready()
+	if _should_request_nif():
+		_request_nif()
+
+func _request_nif() -> void:
+	# An editor-saved scene may already contain the generated visual tree.
+	# Reuse it rather than appending a second copy after reopening the scene.
+	if get_node_or_null("NifVisual") != null:
 		return
-	var resolver := GamebryoMeshResolver.new()
-	build_visual(resolver)
+	var model_path := _model_path()
+	if model_path.is_empty():
+		return
+	var nif_server := get_tree().root.get_node_or_null("NifServer")
+	if nif_server == null:
+		push_warning("EsmNode: NifServer autoload is unavailable for %s" % model_path)
+		return
+	var generation := _request_generation
+	nif_server.request(model_path, self, _on_nif_ready.bind(generation))
+
+func _on_nif_ready(tree: Node3D, generation: int) -> void:
+	if generation != _request_generation or not is_inside_tree():
+		if tree != null:
+			tree.queue_free()
+		return
+	if tree == null:
+		return
+	tree.name = "NifVisual"
+	add_generated_child(tree)
+	_on_nif_visual_ready(tree)
+
+## Typed nodes can inspect NifServer's collision/animation hierarchy here.
+func _on_nif_visual_ready(_tree: Node3D) -> void:
+	pass
+
+func _clear_generated_children() -> void:
+	var children_to_clear: Array[Node] = _generated_children.duplicate()
+	for child in get_children():
+		if child.has_meta("esm_generated") and not children_to_clear.has(child):
+			children_to_clear.append(child)
+	for child in children_to_clear:
+		if is_instance_valid(child):
+			if child.get_parent() == self:
+				remove_child(child)
+			child.queue_free()
+	_generated_children.clear()
+
+func _set_owner_recursive(node: Node, scene_owner: Node) -> void:
+	node.owner = scene_owner
+	for child in node.get_children():
+		_set_owner_recursive(child, scene_owner)
 
 func _on_esm_ready() -> void:
 	_waiting_for_esm = false
-	_rehydrate_and_build()
+	_reference_changed()
