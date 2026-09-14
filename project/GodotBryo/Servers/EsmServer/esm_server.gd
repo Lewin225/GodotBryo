@@ -39,6 +39,26 @@ func _ready() -> void:
 	_load_thread = Thread.new()
 	_load_thread.start(_open_reader_background)
 
+## The load thread must be joined before this node goes away.
+##
+## _process() only collects it once it has already finished, so a session that
+## quits while the ESM is still loading destroys a running Thread. That is not
+## a tidiness warning: Godot aborts the process, after every test in the scene
+## has passed. It is why short scenes exited 134 while long ones did not, and
+## why which scenes failed moved between runs.
+##
+## wait_to_finish() blocks, and there is nothing to cancel -- the worker is a
+## bounded read of FalloutNV.esm into memory -- so quitting mid-load waits for
+## that read rather than crashing. The result is dropped: nothing can consume
+## it at this point.
+func _exit_tree() -> void:
+	if _load_thread == null:
+		return
+	if _load_thread.is_started():
+		_load_thread.wait_to_finish()
+	_load_thread = null
+
+
 func _process(_delta: float) -> void:
 	if state != "loading" or _load_thread == null or _load_thread.is_alive():
 		return
