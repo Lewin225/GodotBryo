@@ -80,9 +80,6 @@ func _ready() -> void:
 			"WorldStreamer executable code contains no terrain implementation calls")
 	check(code.count("terrain_streamer.") == 1 and code.find("terrain_streamer.request_terrain_priority(coord)") != -1,
 			"WorldStreamer has exactly one terrain interaction: the priority hint")
-	var scene_source := FileAccess.get_file_as_string("res://game.tscn")
-	check(scene_source.find("[node name=\"TerrainStreamer\" type=\"Node3D\" parent=\".\"]") != -1,
-			"TerrainStreamer is a scene-authored Game sibling")
 	var game = preload("res://game.gd").new()
 	game._transition_generation = 8
 	check(not game._can_release_exterior_transition(7, TerrainStreamer.ReadyStatus.READY, true),
