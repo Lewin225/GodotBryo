@@ -671,6 +671,10 @@ func write_previews() -> void:
 		"wall_console_vertex_colour": CONSOLE,
 		"terminal_desk_screen": TERMINAL,
 		"newvegas_sign_collision": SIGN,
+		# Largest NIF in the corpus by file size (10.7 MB, 710 blocks, 2,111
+		# built nodes): a Static Collection of the Dead Money villa. One spine
+		# node over 709 sibling subtrees, one per baked-in prop.
+		"villatest_scol": "meshes/scol/villatest.nif",
 	}
 	for name in cases.keys():
 		var root := await _build(String(cases[name]))

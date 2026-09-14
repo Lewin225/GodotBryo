@@ -457,6 +457,15 @@ scons platform=linux target=template_debug api_version=4.7 use_static_cpp=no dis
 
 Output: `project/addons/terrain_streamer/bin/libterrain_streamer.linux.template_debug.x86_64.so`.
 
+**Its build pulls in code from outside its own directory**, and that has already cost a day of
+misdiagnosis. `native/terrain_streamer/SConstruct` globs `../src/esm/esm_file.cpp` and
+`../src/common/*.cpp` alongside `src/*.cpp`, so the `.so` is stale whenever **any** of
+`native/terrain_streamer/`, `native/src/esm/` or `native/src/common/` changes — not just the first.
+The artifact is gitignored, so its timestamp tells you when it was built, never what it was built
+from; a binary newer than one of its three inputs proves nothing. A stale one does not fail to
+load, it runs an obsolete `EsmFile` and corrupts the heap at shutdown. See
+`Plans/TerrainStreamer/heap_corruption.md`.
+
 **Real gotcha, found and fixed the hard way**: the shared `godot-cpp` static
 archive (`native/godot-cpp/bin/libgodot-cpp.*.a`) has enough generated object
 files that a plain `ar` invocation can exceed this environment's `ARG_MAX`
