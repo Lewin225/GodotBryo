@@ -76,6 +76,9 @@ var _tree_nodes := {}    # tree key -> node count, for the residency figure
 var _inflight := {}      # key -> { waiters: Array }
 var _pending := []       # keys awaiting a worker slot
 var _build_queue := []   # [{ key, waiter }]
+## Full-model canonical path -> canonical `_lod.nif` companion, or "" when
+## absent. This is an asset-discovery cache, distinct from parsed documents.
+var _lod_paths := {}
 var _active_resolves := 0
 var _warned := {}        # canonical path -> true; section 3.4 warns once
 var _orphan_watch := []  # [{ node, frame }] -- see _check_orphans()
@@ -84,6 +87,10 @@ var _shutting_down := false
 
 var _stats := {
 	"request_count": 0,
+	"lod_request_count": 0,
+	"lod_path_cache_hits": 0,
+	"lod_path_cache_misses": 0,
+	"lod_missing_count": 0,
 	"document_cache_hits": 0,
 	"document_cache_misses": 0,
 	"duplicate_waiter_count": 0,
@@ -126,6 +133,34 @@ static func canonical(nif_path: String) -> String:
 	return p
 
 
+## Returns `nif_path`'s real paired `_lod.nif` path, or "" when the model has
+## no companion. VWD's paired-file convention belongs here with the archive
+## lookup and negative cache, not in WorldStreamer or EsmNode.
+##
+## This is deliberately a path resolver, not an in-NIF LOD interpretation:
+## the paired NIFs contain no distance selector. `request()` still always
+## serves the exact path it receives.
+func lod_companion_path(nif_path: String) -> String:
+	var key := canonical(nif_path)
+	if key.is_empty():
+		return ""
+	if _lod_paths.has(key):
+		_stats["lod_path_cache_hits"] += 1
+		return String(_lod_paths[key])
+	if _archive_server == null or (_archive_server.has_method("is_ready") and not _archive_server.is_ready()):
+		# Archive startup is transient. Do not turn it into a permanent negative
+		# cache entry, unlike a completed archive lookup.
+		return ""
+	_stats["lod_path_cache_misses"] += 1
+	var result := ""
+	if key.ends_with(".nif"):
+		var candidate := key.trim_suffix(".nif") + "_lod.nif"
+		if _archive_server.contains("meshes/" + candidate):
+			result = candidate
+	_lod_paths[key] = result
+	return result
+
+
 ## Section 3.1. `on_complete` must be a method on `owner`, is invoked exactly
 ## once on the main thread, and receives the built Node3D or null.
 ##
@@ -166,6 +201,27 @@ func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static
 	_admit()
 
 
+## Requests a full model's paired `_lod.nif` companion. The callback contract
+## is identical to request(): it fires exactly once with an unparented tree or
+## null. A missing companion is normal and returns null; it never falls back
+## to the full path, which would make distant streaming parse full detail.
+func request_lod(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
+	_stats["lod_request_count"] += 1
+	var waiter := { "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
+	if not _valid_callback(owner, on_complete):
+		push_error("NifServer: on_complete must be a method on `owner`; LOD request for '%s' refused" % nif_path)
+		return
+	if _shutting_down or _archive_server == null:
+		_deliver(waiter, null)
+		return
+	var lod_path := lod_companion_path(nif_path)
+	if lod_path.is_empty():
+		_stats["lod_missing_count"] += 1
+		_deliver(waiter, null)
+		return
+	request(lod_path, owner, on_complete, prefer_static)
+
+
 func get_stats() -> Dictionary:
 	var out := _stats.duplicate()
 	out["active_resolve_count"] = _active_resolves
@@ -173,6 +229,7 @@ func get_stats() -> Dictionary:
 	out["pending_build_count"] = _build_queue.size()
 	out["resident_document_count"] = _documents.size()
 	out["resident_tree_count"] = _trees.size()
+	out["lod_path_cache_size"] = _lod_paths.size()
 	# Node count is the residency figure a template actually costs: its meshes,
 	# materials and textures are shared with every other tree that references
 	# them, so counting those would attribute the same bytes to several caches.

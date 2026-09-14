@@ -15,6 +15,8 @@ const CONSOLE := "meshes/dungeons/vault/accessories/nvvwallconsole01.nif"
 const TERMINAL := "meshes/terminals/terminaldesk01.nif"
 const SIGN := "meshes/architecture/strip/newvegassign.nif"
 const BILLBOARD := "meshes/effects/actorfirefx/fireball01.nif"
+const ROOT_TRANSFORM_FENCE := "meshes/clutter/fence/NV_FencePickBurntCorOut01.NIF"
+const DOC_MITCHELL_GATE := "meshes/clutter/fence/NV_FencePickBurntGate01.NIF"
 
 var failures := 0
 
@@ -118,7 +120,78 @@ func test_static_tree() -> void:
 
 	var cs := _find_first(root, "CollisionShape3D") as CollisionShape3D
 	check(cs.shape is ConcavePolygonShape3D, "collision is a ConcavePolygonShape3D")
+	check(cs.shape is ConcavePolygonShape3D and (cs.shape as ConcavePolygonShape3D).backface_collision,
+		"triangle collision accepts both authored face directions")
 	check(String(cs.get_meta("nif_body_type", "")) == "bhkRigidBodyT", "collision records its body type")
+
+
+## A real fence whose authored file root carries a 180-degree Z rotation.
+## The root stays visible for debugging, but the established NIF instancing
+## rule suppresses that transform so the REFR owns placement exactly once.
+func test_file_root_transform_policy() -> void:
+	print("--- file-root transform policy ---")
+	var archive: Dictionary = ArchiveServer.read(ROOT_TRANSFORM_FENCE)
+	var source := NifSource.new()
+	if not bool(archive.get("found", false)) or not source.load(PackedByteArray(archive.get("data", PackedByteArray()))):
+		check(false, "loaded NV_FencePickBurntCor02 fixture")
+		return
+	var raw_root: Dictionary = {}
+	for node in source.get_nodes():
+		if bool(node.get("is_file_root", false)):
+			raw_root = node
+			break
+	check(not raw_root.is_empty(), "NifSource marks the fence's file root explicitly")
+	if raw_root.is_empty():
+		return
+	var raw_transform: Transform3D = raw_root["transform"]
+	check(not raw_transform.basis.is_equal_approx(Basis.IDENTITY), "NifSource retains the raw non-identity root transform")
+	var tree: Node3D = await NifTreeBuilderScript.build(source, true)
+	var root_name := NifNamesScript.escape(String(raw_root["name"]))
+	var visible_root := tree.get_node_or_null(NodePath(root_name)) as Node3D
+	check(visible_root != null and bool(visible_root.get_meta("nif_file_root", false)), "built tree retains the authored file root")
+	check(visible_root != null and visible_root.transform.is_equal_approx(Transform3D.IDENTITY), "built tree suppresses the file-root placement transform")
+	check(visible_root != null and (visible_root.get_meta("nif_suppressed_file_root_transform") as Transform3D).is_equal_approx(raw_transform), "built tree records the suppressed raw root transform")
+	tree.queue_free()
+
+
+## This exact exterior gate exposed a Godot-specific trap: an
+## AnimatableBody3D below an animated Node3D looks like it moves in the editor,
+## but its PhysicsServer body remains at the closed pose. The NIF node that
+## owns the gate collision must therefore be the animated body itself.
+func test_doc_mitchell_gate_collision_animation() -> void:
+	print("--- Doc Mitchell gate animated collision ---")
+	var archive: Dictionary = ArchiveServer.read(DOC_MITCHELL_GATE)
+	var source := NifSource.new()
+	if not bool(archive.get("found", false)) or not source.load(PackedByteArray(archive.get("data", PackedByteArray()))):
+		check(false, "loaded NVFencePickBurntGate01 fixture")
+		return
+	var tree: Node3D = await NifTreeBuilderScript.build(source, true)
+	var player := tree.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var gate_body := tree.find_child("BGate", true, false) as PhysicsBody3D
+	check(player != null and player.has_animation("Open"), "gate exposes its authored Open sequence")
+	check(gate_body is AnimatableBody3D, "animated BGate is itself an AnimatableBody3D")
+	if player == null or gate_body == null:
+		tree.queue_free()
+		return
+	check(gate_body is AnimatableBody3D and not (gate_body as AnimatableBody3D).sync_to_physics,
+		"animation owns the dynamic body's pose")
+	get_tree().root.add_child(tree)
+	await get_tree().physics_frame
+	var before_node := gate_body.global_transform
+	var before_physics: Transform3D = PhysicsServer3D.body_get_state(gate_body.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM)
+	player.play("Open")
+	await get_tree().create_timer(player.get_animation("Open").length * 0.5).timeout
+	await get_tree().physics_frame
+	var after_node := gate_body.global_transform
+	var after_physics: Transform3D = PhysicsServer3D.body_get_state(gate_body.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM)
+	var visual_turn := before_node.basis.get_rotation_quaternion().angle_to(after_node.basis.get_rotation_quaternion())
+	var physics_turn := before_physics.basis.get_rotation_quaternion().angle_to(after_physics.basis.get_rotation_quaternion())
+	check(visual_turn > 0.5, "Open visibly rotates BGate (%.3f rad)" % visual_turn)
+	check(physics_turn > 0.5, "Open rotates BGate's physics body (%.3f rad)" % physics_turn)
+	check(absf(visual_turn - physics_turn) < 0.05,
+		"physics tracks the visual gate pose (%.3f vs %.3f rad)" % [physics_turn, visual_turn])
+	get_tree().root.remove_child(tree)
+	tree.queue_free()
 
 
 func test_node_map() -> void:
@@ -696,6 +769,8 @@ func write_previews() -> void:
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	await test_static_tree()
+	await test_file_root_transform_policy()
+	await test_doc_mitchell_gate_collision_animation()
 	await test_node_map()
 	await test_skinned_tree()
 	await test_skeleton_emission()

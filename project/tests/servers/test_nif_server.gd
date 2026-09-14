@@ -85,6 +85,40 @@ func test_delivery_and_cache() -> void:
 	_free_received()
 
 
+func test_lod_request() -> void:
+	print("--- paired _lod.nif request contract ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	_received.clear()
+	var lod_path := NifServer.lod_companion_path(BARRACKS)
+	check(lod_path == "architecture/barracks/barracks01_lod.nif",
+		"the full model resolves its canonical paired LOD path (%s)" % lod_path)
+	NifServer.request_lod(BARRACKS, self, _on_result)
+	await _drain(1)
+	check(_received.size() == 1 and _received[0] is Node3D,
+		"request_lod delivers the paired LOD tree")
+	var s: Dictionary = NifServer.get_stats()
+	check(int(s["lod_request_count"]) == 1, "one LOD request is counted")
+	check(int(s["lod_path_cache_misses"]) == 1, "first paired-path lookup is a cache miss")
+	check(int(s["document_cache_misses"]) == 1,
+		"only the LOD document was parsed, not the full model")
+	_free_received()
+
+	var repeated := NifServer.lod_companion_path("Architecture\\Barracks\\Barracks01.NIF")
+	check(repeated == lod_path, "alternate full-path spelling resolves the same companion")
+	check(int(NifServer.get_stats()["lod_path_cache_hits"]) == 2,
+		"paired-path lookup is cached by canonical full path")
+
+	_received.clear()
+	NifServer.request_lod("meshes/does/not/exist.nif", self, _on_result)
+	await _drain(1)
+	check(_received.size() == 1 and _received[0] == null,
+		"a missing companion calls back once with null, never the full model")
+	check(int(NifServer.get_stats()["lod_missing_count"]) == 1,
+		"missing companion is counted without a parse attempt")
+	_received.clear()
+
+
 func test_inflight_dedup() -> void:
 	print("--- in-flight requests share one resolve ---")
 	NifServer.reset_stats()
@@ -381,6 +415,7 @@ func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_canonical_paths()
 	await test_delivery_and_cache()
+	await test_lod_request()
 	await test_inflight_dedup()
 	await test_build_budget()
 	await test_missing_path()

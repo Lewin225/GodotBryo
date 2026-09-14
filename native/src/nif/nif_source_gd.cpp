@@ -64,6 +64,7 @@ Array NifSource::get_nodes() const {
 		d["block_type"] = String(n.block_type.c_str());
 		d["parent_index"] = n.parent_index;
 		d["block_index"] = static_cast<int>(n.block_index);
+		d["is_file_root"] = n.is_file_root;
 		d["is_declared_bone"] = n.is_declared_bone;
 		d["collision_type"] = String(n.collision_type.c_str());
 		d["collision_block_index"] = n.collision_block_index;

@@ -14,11 +14,19 @@ extends EsmNode
 func _editor_activate() -> void:
 	activate()
 
-## Default DOOR activation: toggle the authored open/closed animation. World
-## transitions and script dispatch remain outside this physical node.
+## Default DOOR activation returns the same destination receipt as the legacy
+## door path. Game owns the actual transition; a non-teleporting door toggles
+## its authored open/closed animation locally.
 func activate(_actor: Node = null) -> Dictionary:
-	if not reference is DoorReference:
+	var door_reference := reference as DoorReference
+	if door_reference == null:
 		return {}
+	if door_reference.has_teleport_destination and door_reference.teleport_destination_cell_form_id != 0:
+		return {
+			"dest_cell_form_id": door_reference.teleport_destination_cell_form_id,
+			"dest_position": door_reference.teleport_position,
+			"dest_rotation": door_reference.teleport_rotation,
+		}
 	_toggle_swing()
 	return {}
 
@@ -34,3 +42,23 @@ func _toggle_swing() -> void:
 	if player != null and player.has_animation(animation_name):
 		player.play(animation_name)
 	door_reference.is_open = opening
+
+
+## A paired LOD has no animated gate panel. When WorldStreamer promotes an
+## already-open DOOR to its full NIF, the new tree starts at its authored
+## closed pose unless the typed REFR state is applied here. Seek rather than
+## play: streaming must reveal the live state immediately, not replay an open
+## animation from closed after the full model happens to arrive.
+func _on_nif_visual_ready(tree: Node3D) -> void:
+	super._on_nif_visual_ready(tree)
+	var door_reference := reference as DoorReference
+	if door_reference == null or not door_reference.is_open:
+		return
+	var player := tree.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null or not player.has_animation("Open"):
+		return
+	player.play("Open")
+	player.seek(player.get_animation("Open").length, true)
+	# Preserve the final authored pose without a subsequent idle-frame advance.
+	# A later activate() sees `is_open` and plays `Close` from this pose.
+	player.pause()

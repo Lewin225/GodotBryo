@@ -403,6 +403,11 @@ func _ensure_weapon_animation_player(body: Node3D) -> void:
 	_weapon_animation_player.name = "LocomotionAnimationPlayer"
 	body.add_child(_weapon_animation_player)
 	_weapon_animation_player.root_node = NodePath("..")
+	# refresh_equipment() immediately adds locomotion/weapon clips to this
+	# player. AnimationPlayer has no implicit default library, so create it at
+	# the ownership boundary rather than asking MeshResolver to recover from a
+	# half-initialised actor player.
+	_weapon_animation_player.add_animation_library("", AnimationLibrary.new())
 
 func _print_equipment_timing(stage: String, start_usec: int) -> void:
 	var elapsed_ms := float(Time.get_ticks_usec() - start_usec) / 1000.0
