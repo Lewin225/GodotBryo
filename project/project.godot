@@ -35,7 +35,7 @@ enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/sc
 
 [godotbryo]
 
-use_nif_server=false
+use_nif_server=true
 
 [input]
 
