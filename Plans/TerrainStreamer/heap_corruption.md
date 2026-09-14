@@ -37,10 +37,21 @@ The other three fail for three unrelated reasons, none of them memory corruption
 | `test_terrain_streamer_phase3_completion` | passes |
 | `test_terrain_streamer_phase4_retention` | passes |
 | `test_terrain_region_stager` | `ALL CHECKS PASSED`, then aborts on the `EsmServer` thread race below |
-| `test_terrain_streamer_phase1` | real assertion failure: `TerrainStreamer is a scene-authored Game sibling` |
+| `test_terrain_streamer_phase1` | `ALL CHECKS PASSED`, then aborts on the `EsmServer` thread race below |
 | `test_terrain_streamer_phase3_object_budget` | perf assertions: construction p95 and max outside 10% of the Phase 1 baseline |
 
-The last two are genuine open failures and are nothing to do with this incident.
+`phase3_object_budget` is a genuine open failure and nothing to do with this incident: construction
+p95 is 3.239 ms against a 2.402 ms budget, and max is 242.497 ms against 14.95 ms — 16x over, which
+points at one pathological construction rather than a uniform slowdown. It is not the NifServer tree
+cache: with `use_nif_server=false` it still fails at 2.868 ms / 186.423 ms.
+
+`phase1` previously also failed an assertion that matched `game.tscn` for the exact string
+`[node name="TerrainStreamer" type="Node3D" parent="."]`. The editor has since written that line as
+`parent="." unique_id=842013845`, so the literal match failed while the node itself was correct and
+correctly parented. The assertion was dropped rather than repaired: TerrainStreamer, WorldStreamer
+and CellStreamer are the remaining v2 work and the scene layout it pinned is about to change. The
+rest of the scene's checks — readiness supersession, the WorldStreamer/terrain decoupling rules, and
+the transition-release logic — still run.
 
 ## Standing hazard
 
