@@ -82,6 +82,36 @@ of whether the base model has LOD geometry available at all. Two placements of t
 same base object could in principle disagree (not observed in this sample, but nothing
 in the data model prevents it — VWD is stored per-`REFR`, not per base record).
 
+### Full runtime-population census (WastelandNV)
+
+`native/tools/object_lod_census.cpp` exhaustively scanned the exact population the
+current runtime can stream: `FalloutNV.esm`'s `WastelandNV` exterior grid records,
+with BSA lookup priority supplied by the same `BsaArchiveCatalog` used by
+`ArchiveServer`. This replaces the small placement sample above for coverage claims.
+
+| Population | REFR placements | VWD placements | VWD placements with a NIF model | Matching `_lod.nif` present |
+|---|---:|---:|---:|---:|
+| Exterior grid (16,396 cells) | 141,208 | 15,382 (10.89%) | 15,382 | 15,382 (100%) |
+| WastelandNV persistent cell | 4,468 | 20 (0.45%) | 20 | 20 (100%) |
+
+There are 356 distinct exterior and 7 distinct persistent VWD source models (358
+distinct models combined); every companion resolved through archive priority and every
+one successfully parsed through `nifsrc::load`, NifServer's source-document parser.
+The VWD types are `STAT` (15,289 exterior placements), `SCOL` (101), and `ACTI` (12).
+There were no VWD placements with a missing, non-NIF, or companion-less model.
+
+The same census inspected every companion's raw NIF block table: all 358 have a plain
+`BSFadeNode` root and **zero** contain a block type with `LOD` in its name (including
+`NiLODNode`, range-LOD data, or LOD-triangle shapes). The paired mesh is selected by
+the external VWD + filename convention; it contains no authored distance threshold or
+in-NIF switch for a consumer to activate.
+
+This establishes a strong, scoped contract for the current runtime: for base-game
+`WastelandNV`, a VWD REFR can request its `_lod.nif` directly without a full-mesh
+fallback. It does **not** establish the same guarantee for DLC worldspaces, mods, or a
+future multi-master runtime; re-run the tool against those populations before extending
+the rule.
+
 ## Bethesda's own artist-only visualization submeshes ("EditorMarker")
 
 Not LOD-specific, but found while investigating LOD-adjacent effect meshes, and belongs

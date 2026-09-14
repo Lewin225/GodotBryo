@@ -220,9 +220,12 @@ NIF Server plan.
   enclosing node/data block. Do not invent crossover distances.
 - [ ] **`NiScreenLODData`:** Decide whether it is unsupported, approximated with an explicitly chosen
   camera/FOV policy, or implemented with a custom visibility mechanism.
-- [ ] **Companion `_lod.nif`:** Keep the separate VWD/companion-file policy outside NifServer unless
-  an explicit caller API is needed. Confirm that the new returned root does not double-apply placement
-  or LOD transforms.
+- [x] **Companion `_lod.nif`:** `NifServer.request_lod()` explicitly resolves a canonical
+  `foo.nif` to archive-backed `foo_lod.nif`, then delegates to the ordinary exact-path request.
+  The helper caches both hits and misses and returns `null` rather than silently falling back to the
+  full model. VWD policy, distance bands and full/LOD handover stay with the caller. The WastelandNV
+  census found all 358 distinct companions rooted at `BSFadeNode`, with no in-file LOD selector;
+  NifServer's normal root conversion is therefore the only model-space conversion involved.
 
 ## Caching, persistence, and migration
 

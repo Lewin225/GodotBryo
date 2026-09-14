@@ -72,8 +72,11 @@ func _ready() -> void:
 	_check_inventory_contract(server)
 	_check_armor_slot_conflicts()
 	await _check_door_resources(server, index)
+	await _check_open_door_full_visual_state(server)
 	await _check_item_resources(server, index)
 	await _check_static_resource(server, index)
+	await _check_lod_visual_handover(server)
+	_check_persistent_imposter_policy(server)
 	await _check_interactive_resources(server, index)
 	await _check_collection_and_movable_resources(server, index)
 	await _check_talking_activator_and_terminal_resources(server, index)
@@ -186,14 +189,74 @@ func _check_door_resources(server, index: Array) -> void:
 			_check(reference.teleport_destination_refr_form_id == 0 or reference.has_teleport_destination, "DoorReference XTEL state is consistent")
 			var node: EsmNode = _physicalise_in_tree(reference)
 			_check(node is EsmDoorNode, "Door physicalizer returns its semantic node immediately")
-			_check(node.position.is_equal_approx(reference.position), "Physicalizer preserves authored placement translation for NifServer")
+			_check_interact_ray_resolves_esm_node(node)
+			var converted_position := Basis(Vector3.RIGHT, -PI / 2.0) * reference.position
+			_check(node.position.is_equal_approx(converted_position), "Physicalizer converts placement translation into NifServer's Godot space")
+			_check(node.get_authored_transform().origin.is_equal_approx(reference.position), "Physicalizer retains authored placement for save/dirty comparisons")
 			var visual := await _await_nif_visual(node)
 			_check(visual != null, "Door EsmNode receives its NifServer visual asynchronously")
 			_check(node.get_nif_animation_player() != null, "Door visual exposes its AnimationPlayer through NifVisual")
 			node.queue_free()
 			break
 	_check(found_door_reference, "a real DOOR placement resolves as DoorReference")
+	_check_typed_door_activation_receipt()
 	_check_misc_physicaliser(server)
+
+## NifServer returns ordinary Node3D/StaticBody3D descendants. Interaction
+## must recover the owning placement, not expose implementation children to
+## the player controller or Game.
+func _check_interact_ray_resolves_esm_node(door: EsmNode) -> void:
+	var nif_child := Node3D.new()
+	var collision_body := StaticBody3D.new()
+	door.add_child(nif_child)
+	nif_child.add_child(collision_body)
+	_check(InteractRay.semantic_target(collision_body) == door, "InteractRay resolves a NIF collision child to its EsmNode")
+	_check(InteractRay.new().get_interaction_type(door) == &"door", "InteractRay identifies semantic EsmDoorNode interaction type")
+	_check(InteractRay.new().get_interaction_action(door).contains("Open") or InteractRay.new().get_interaction_action(door).contains("Close"), "InteractRay supplies EsmDoorNode action text")
+	nif_child.queue_free()
+
+## This does not depend on a particular authored test door having XTEL: it
+## asserts the exact receipt Game consumes to select the destination loader.
+func _check_typed_door_activation_receipt() -> void:
+	var reference := DoorReference.new()
+	reference.has_teleport_destination = true
+	reference.teleport_destination_cell_form_id = 0x00123456
+	reference.teleport_position = Vector3(1.0, 2.0, 3.0)
+	reference.teleport_rotation = Vector3(0.1, 0.2, 0.3)
+	var door := EsmDoorNode.new()
+	door.configure(reference)
+	var outcome := door.activate()
+	_check(int(outcome.get("dest_cell_form_id", 0)) == reference.teleport_destination_cell_form_id, "EsmDoorNode activation returns its XTEL destination cell")
+	_check(outcome.get("dest_position", Vector3.ZERO) == reference.teleport_position and outcome.get("dest_rotation", Vector3.ZERO) == reference.teleport_rotation, "EsmDoorNode activation preserves XTEL spawn transform")
+	door.free()
+
+
+## REFR 0010757E is the open-by-default gate outside Doc Mitchell's house.
+## It starts as a distant LOD in WorldStreamer, so the full NIF can arrive
+## after the semantic DoorReference already knows that it is open.
+func _check_open_door_full_visual_state(server) -> void:
+	var reference := server.get_reference("authored:0010757E") as DoorReference
+	_check(reference != null, "Doc Mitchell exterior gate resolves as a DoorReference")
+	if reference == null:
+		return
+	_check(reference.is_open_by_default and reference.is_open,
+		"Doc Mitchell exterior gate retains its authored open state")
+	var host := Node3D.new()
+	add_child(host)
+	var node := EsmReferencePhysicaliser.new().physicalise(reference, host) as EsmDoorNode
+	var visual := await _await_nif_visual(node)
+	var player := node.get_nif_animation_player() if node != null else null
+	_check(visual != null and player != null and player.has_animation("Open"),
+		"open gate's full NIF arrives with its Open sequence")
+	if player != null and player.has_animation("Open"):
+		var gate := visual.find_child("BGate", true, false) as Node3D
+		var open_turn := Quaternion.IDENTITY.angle_to(gate.quaternion) if gate != null else 0.0
+		_check(open_turn > 1.0, "full NIF is immediately posed open (%.3f rad)" % open_turn)
+		_check(not player.is_playing(), "open-state pose is held rather than replaying after stream-in")
+		node.activate()
+		_check(not reference.is_open and player.current_animation == "Close" and player.is_playing(),
+			"first activation of an authored-open gate plays Close")
+	host.queue_free()
 
 func _check_misc_physicaliser(server) -> void:
 	var cell: Dictionary = server.reader.find_cell_by_editor_id("GSDocMitchellHouse")
@@ -212,6 +275,9 @@ func _check_misc_physicaliser(server) -> void:
 	_check(reference.base is MiscBase, "MiscReference points to MiscBase")
 	var node := _physicalise_in_tree(reference)
 	_check(node is EsmItemNode, "MISC physicalises as EsmItemNode")
+	var debug_description := node.get_debug_description()
+	_check(debug_description.contains(reference.instance_id) and debug_description.contains("0x%08X" % reference.base.form_id),
+		"EsmNode exposes typed REFR/Base identity for the look-at HUD")
 	var visual := await _await_nif_visual(node)
 	_check(visual != null, "MISC receives its NifServer visual asynchronously")
 	_check(not visual.find_children("*", "CollisionShape3D", true, false).is_empty() if visual != null else false, "MISC NifServer visual includes authored collision")
@@ -314,6 +380,91 @@ func _check_static_resource(server, index: Array) -> void:
 		node.queue_free()
 		break
 	_check(found_reference, "a real STAT reference is available")
+
+
+## NifServer deliberately paces its callbacks, so EsmNode must hold the
+## currently rendered tree through both directions of a paired-model swap.
+func _check_lod_visual_handover(server) -> void:
+	var reference: EsmReference = null
+	var worldspace: Dictionary = server.reader.find_worldspace_by_editor_id("WastelandNV")
+	if not worldspace.is_empty():
+		var worldspace_form_id := int(worldspace.get("form_id", 0))
+		for gx in range(-40, 40):
+			if reference != null:
+				break
+			for gy in range(-40, 40):
+				var cell: Dictionary = server.reader.find_exterior_cell(worldspace_form_id, gx, gy)
+				if cell.is_empty():
+					continue
+				for placement in server.reader.get_cell_references(int(cell.get("form_id", 0))):
+					var model := String(placement.get("model", "")).replace("\\", "/").to_lower()
+					if not model.ends_with("architecture/barracks/barracks01.nif"):
+						continue
+					reference = server.get_reference("authored:%08X" % int(placement.get("refr_form_id", 0)))
+					break
+				if reference != null:
+					break
+	_check(reference != null, "a real Barracks01 REFR is available for paired LOD handover")
+	if reference == null:
+		return
+	_check(reference.visible_when_distant, "EsmServer retains the REFR Visible When Distant flag on its typed resource")
+	var host := Node3D.new()
+	add_child(host)
+	var node := EsmReferencePhysicaliser.new().physicalise(reference, host, EsmNode.VisualDetail.LOD) as EsmNode
+	_check(node != null and node.visual_detail == EsmNode.VisualDetail.LOD,
+		"Physicalizer assigns the requested initial visual tier before tree entry")
+	var lod := await _await_visual(node, "NifLodVisual")
+	_check(lod != null and node.get_node_or_null("NifVisual") == null,
+		"an initial LOD tier requests only the paired LOD tree")
+	if lod == null:
+		host.queue_free()
+		return
+	node.visual_detail = EsmNode.VisualDetail.FULL
+	_check(node.get_node_or_null("NifLodVisual") == lod,
+		"LOD stays visible while the full-detail request is pending")
+	var full := await _await_visual(node, "NifVisual")
+	_check(full != null and node.get_node_or_null("NifLodVisual") == null,
+		"full-detail delivery atomically replaces the paired LOD tree")
+	if full != null:
+		node.visual_detail = EsmNode.VisualDetail.LOD
+		_check(node.get_node_or_null("NifVisual") == full,
+			"full detail stays visible while a downgrade request is pending")
+		lod = await _await_visual(node, "NifLodVisual")
+		_check(lod != null and node.get_node_or_null("NifVisual") == null,
+			"LOD delivery atomically replaces the full-detail tree")
+	host.queue_free()
+
+
+func _check_persistent_imposter_policy(server) -> void:
+	var worldspace: Dictionary = server.reader.find_worldspace_by_editor_id("WastelandNV")
+	var imposter: EsmReference = null
+	if not worldspace.is_empty():
+		for reference: EsmReference in server.get_persistent_references_for_worldspace(int(worldspace.get("form_id", 0))):
+			if reference.base != null and reference.base.editor_id == "McCarranWallLongImposter":
+				imposter = reference
+				break
+	_check(imposter != null and imposter.has_xsrf_or_xsrd,
+		"EsmServer retains the XSRF/XSRD stand-in marker on a persistent imposter")
+	if imposter == null:
+		return
+	_check(not imposter.visible_when_distant, "persistent imposter is not misclassified as a paired VWD model")
+	var node := EsmNode.new()
+	node.configure(imposter)
+	var visual := Node3D.new()
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	visual.add_child(mesh)
+	var body := StaticBody3D.new()
+	var collision := CollisionShape3D.new()
+	collision.shape = BoxShape3D.new()
+	body.add_child(collision)
+	visual.add_child(body)
+	node._on_nif_visual_ready(visual)
+	_check(mesh.visibility_range_begin == 300.0 and mesh.visibility_range_end == 0.0,
+		"persistent imposter uses the standalone begin-only near visibility range")
+	_check(collision.disabled, "persistent imposter collision is disabled with its near-hidden visual")
+	visual.free()
+	node.free()
 
 func _check_interactive_resources(server, index: Array) -> void:
 	var expected_bases := {"ACTI": ActivatorBase, "CONT": ContainerBase, "FURN": FurnitureBase}
@@ -543,8 +694,12 @@ func _check_saved_base_rehydrates(server) -> void:
 ## NifServer deliberately paces callbacks over frames. This helper asserts the
 ## EsmNode contract without making physicalisation itself await asset work.
 func _await_nif_visual(node: EsmNode, max_frames := 180) -> Node3D:
+	return await _await_visual(node, "NifVisual", max_frames)
+
+
+func _await_visual(node: EsmNode, node_name: String, max_frames := 180) -> Node3D:
 	for _frame in max_frames:
-		var visual := node.get_node_or_null("NifVisual") as Node3D
+		var visual := node.get_node_or_null(node_name) as Node3D
 		if visual != null:
 			return visual
 		await get_tree().process_frame
