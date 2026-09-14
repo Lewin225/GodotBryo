@@ -14,16 +14,9 @@ func configure(record: Dictionary) -> void:
 	custom_minimum_size = Vector2(240, 68)
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.12, 0.13, 0.16, 1.0)
-	panel_style.border_color = Color(0.34, 0.38, 0.46, 1.0)
-	panel_style.set_border_width_all(1)
-	panel_style.set_corner_radius_all(3)
-	panel_style.content_margin_left = 8.0
-	panel_style.content_margin_right = 8.0
-	panel_style.content_margin_top = 6.0
-	panel_style.content_margin_bottom = 6.0
-	add_theme_stylebox_override("panel", panel_style)
+	# Deliberately inherit PanelContainer's active editor theme rather than
+	# freezing dark-theme colors into every card. This keeps both the panel and
+	# labels legible when the editor switches to a light theme.
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -35,11 +28,23 @@ func configure(record: Dictionary) -> void:
 	box.add_child(title)
 	var metadata := Label.new()
 	metadata.text = "%s  0x%08X" % [String(record.get("record_type", "")), int(record.get("form_id", 0))]
-	metadata.modulate = Color(0.65, 0.68, 0.73)
 	box.add_child(metadata)
 
 func set_resource(value: EsmBase) -> void:
 	resource = value
+
+func _draw() -> void:
+	draw_rect(Rect2(Vector2(0.5, 0.5), size - Vector2.ONE), _editor_accent_color(), false, 1.0, true)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED:
+		queue_redraw()
+
+func _editor_accent_color() -> Color:
+	var editor_theme := EditorInterface.get_editor_theme()
+	if editor_theme != null and editor_theme.has_color("accent_color", "Editor"):
+		return editor_theme.get_color("accent_color", "Editor")
+	return get_theme_color("font_hover_color", "Button")
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:

@@ -97,15 +97,15 @@ func _drop_base_into_scene(base: EsmBase, camera: Camera3D, screen_position: Vec
 	# callers are engine virtuals, and _forward_3d_gui_input must return
 	# AFTER_GUI_INPUT_STOP/PASS in the same call. The bool here answers "was
 	# this drop accepted", which is known now; building the node is not, since
-	# physicalise() suspends for texture residency when use_nif_server is on.
 	_complete_drop(reference, scene_root as Node3D, world_position)
 	return true
 
 
-## Finishes an accepted drop once the physicaliser has the node.
+## Adds the semantic node immediately. Its @tool lifecycle requests and
+## attaches NifServer content after UndoRedo inserts it into the edited scene.
 func _complete_drop(reference: EsmReference, scene_root: Node3D, world_position: Vector3) -> void:
 	var physicaliser := PhysicaliserScript.new()
-	var generated: Node3D = await physicaliser.physicalise(reference)
+	var generated: Node3D = physicaliser.physicalise(reference)
 	if generated == null:
 		return
 	if not is_instance_valid(scene_root) or scene_root != EditorInterface.get_edited_scene_root():
@@ -118,9 +118,9 @@ func _complete_drop(reference: EsmReference, scene_root: Node3D, world_position:
 	var undo := get_undo_redo()
 	undo.create_action("Add ESM reference")
 	undo.add_do_method(scene_root, "add_child", generated, true)
-	undo.add_do_method(self, "_set_owner_recursive", generated, scene_root)
+	undo.add_do_method(self, "_set_semantic_owner", generated, scene_root)
 	undo.add_undo_method(scene_root, "remove_child", generated)
-	undo.add_undo_method(self, "_clear_owner_recursive", generated)
+	undo.add_undo_method(self, "_clear_semantic_owner", generated)
 	undo.commit_action()
 
 func _drop_position(camera: Camera3D, screen_position: Vector2) -> Variant:
@@ -141,12 +141,10 @@ func _unique_node_name(scene_root: Node, requested_name: String) -> String:
 		suffix += 1
 	return candidate
 
-func _set_owner_recursive(node: Node, owner: Node) -> void:
+## The semantic node must be owned before its deferred @tool startup runs;
+## EsmNode then assigns ownership recursively to generated editor children.
+func _set_semantic_owner(node: Node, owner: Node) -> void:
 	node.owner = owner
-	for child in node.get_children():
-		_set_owner_recursive(child, owner)
 
-func _clear_owner_recursive(node: Node) -> void:
+func _clear_semantic_owner(node: Node) -> void:
 	node.owner = null
-	for child in node.get_children():
-		_clear_owner_recursive(child)

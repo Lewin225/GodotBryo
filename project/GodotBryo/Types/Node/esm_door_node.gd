@@ -14,19 +14,6 @@ extends EsmNode
 func _editor_activate() -> void:
 	activate()
 
-func configure(door_reference: EsmReference) -> void:
-	super.configure(door_reference)
-
-func _reference_changed() -> void:
-	super._reference_changed()
-
-func build_visual(resolver: GamebryoMeshResolver) -> void:
-	var door_reference := reference as DoorReference
-	if door_reference == null or not door_reference.base is DoorBase:
-		return
-	var door_base := door_reference.base as DoorBase
-	build_dynamic_visual(resolver, door_base.model_path)
-
 ## Default DOOR activation: toggle the authored open/closed animation. World
 ## transitions and script dispatch remain outside this physical node.
 func activate(_actor: Node = null) -> Dictionary:
@@ -39,7 +26,7 @@ func _toggle_swing() -> void:
 	var door_reference := reference as DoorReference
 	if door_reference == null:
 		return
-	var player := get_node_or_null("AnimationPlayer") as AnimationPlayer
+	var player := get_nif_animation_player()
 	if player != null and player.is_playing():
 		return
 	var opening := not door_reference.is_open
