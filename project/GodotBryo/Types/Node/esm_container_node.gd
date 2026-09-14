@@ -6,40 +6,20 @@ extends EsmNode
 @export_tool_button("Activate") var activate_button: Callable = activate
 var inventory: Inventory
 
-func build_visual(resolver: GamebryoMeshResolver) -> void:
+func _on_reference_ready() -> void:
 	var container_ref := reference as ContainerReference
 	if container_ref == null or not container_ref.base is ContainerBase:
 		return
-	var base := container_ref.base as ContainerBase
-	build_dynamic_visual(resolver, base.model_path)
 	if container_ref.contents == null:
 		container_ref.contents = Inventory.new()
 	inventory = container_ref.contents
-	_add_sound("OpenSound", resolver, base.open_sound_path)
-	_add_sound("CloseSound", resolver, base.close_sound_path)
-	_add_sound("RandomSound", resolver, base.random_sound_path)
-	_visual_built = true
 
 func activate(_actor: Node = null) -> Dictionary:
 	var container_ref := reference as ContainerReference
 	if container_ref == null: return {}
 	var opening := not container_ref.is_open
-	var player := get_node_or_null("AnimationPlayer") as AnimationPlayer
+	var player := get_nif_animation_player()
 	var animation_name := "Open" if opening else "Close"
 	if player != null and player.has_animation(animation_name): player.play(animation_name)
-	_play_sound("OpenSound" if opening else "CloseSound")
 	container_ref.is_open = opening
 	return {}
-
-func _add_sound(node_name: String, resolver: GamebryoMeshResolver, path: String) -> void:
-	if path.is_empty(): return
-	var stream := resolver.load_sound(path)
-	if stream == null: return
-	var player := AudioStreamPlayer3D.new()
-	player.name = node_name
-	player.stream = stream.duplicate()
-	add_child(player)
-
-func _play_sound(node_name: String) -> void:
-	var player := get_node_or_null(node_name) as AudioStreamPlayer3D
-	if player != null: player.play()
