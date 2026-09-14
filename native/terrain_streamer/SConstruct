@@ -20,6 +20,20 @@ env = SConscript("../godot-cpp/SConstruct")
 # scoped to this extension's own build only (not touching the shared
 # godot-cpp submodule, so nv_engine/Terrain3D's own builds are unaffected).
 import os
+import subprocess
+
+
+def _strip_quotes(arg):
+	"""Undo SCons' own argument escaping.
+
+	SCons hands SPAWN the escaped argv it would pass to a shell, so paths can
+	arrive wrapped in quotes. The chunked `ar` calls below run without a shell
+	and must therefore see the raw path, or `ar` looks for a file whose name
+	literally begins with a quote.
+	"""
+	if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in ("\"", "'"):
+		return arg[1:-1]
+	return arg
 
 
 def _posix_ar_spawn(sh, escape, cmd, args, env):
