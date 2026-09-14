@@ -1,7 +1,8 @@
 # NifServer
 
-Turns one NIF file into one Godot node tree. Single path, no per-caller flags, no special cases for
-actors, doors or terrain.
+Turns one requested NIF file into one Godot node tree. `request()` serves its exact path; the
+separate `request_lod()` helper resolves the verified external companion-file convention before
+using that same exact-path request path. There are no special cases for actors, doors or terrain.
 
 Design: [`Plans/NifServer/nif_server_v2.md`](../../../../Plans/NifServer/nif_server_v2.md).
 Corpus research behind it: [`Plans/NifServer/Research/`](../../../../Plans/NifServer/Research/).
@@ -35,6 +36,8 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 
 ```gdscript
 NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
+NifServer.request_lod(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
+NifServer.lod_companion_path(nif_path) -> String
 NifServer.get_stats() -> Dictionary  ·  reset_stats()
 NifServer.purge(nif_path, prefer_static := false)  ·  purge_all()
 NifServer.canonical(nif_path) -> String   # static
@@ -45,6 +48,15 @@ await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
 `NifServer` is the autoloaded entry point: it owns the archive read, the parse, the resolve queue,
 the admission cap and the per-frame build budget. `NifTreeBuilder` is the construction half and is
 called directly only by code that already holds a `NifSource`.
+
+**Companion LOD is an external asset rule, not an in-NIF mode.** `request_lod("foo.nif", ...)`
+canonicalizes `foo.nif`, looks for the archive-backed `foo_lod.nif`, then delegates to
+`request("foo_lod.nif", ...)`. It caches both hits and misses by the full canonical path. A missing
+or non-`.nif` companion calls back exactly once with `null`; it never falls back to the full model.
+The caller owns VWD policy, distance bands and handover timing. This split is intentional: the
+WastelandNV corpus census found 358 distinct paired companion files, all rooted at `BSFadeNode` and
+none carrying an authored in-file LOD selector. On success, therefore, the returned tree is the
+literal companion file and has its own normal NifServer cache identity.
 
 **Delivery is a callback, not an await, and that is the leak guarantee.** `on_complete` must be a
 method on `owner` — not a closure capturing it, which the server rejects — so the server can tell

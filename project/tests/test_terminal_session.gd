@@ -47,6 +47,18 @@ func _ready() -> void:
 	check(session._view == TerminalSession.View.WELCOME and session._terminal_stack.size() == 2, "TNAM opens the authored submenu by FormID")
 	session.close_session()
 
+	var typed_base := TerminalBase.new()
+	typed_base.form_id = 0x166B56 # VHDStealthSuitTerminal
+	var typed_reference := TerminalReference.new()
+	typed_reference.base = typed_base
+	typed_reference.base_form_id = typed_base.form_id
+	var typed_terminal := EsmTerminalNode.new()
+	typed_terminal.configure(typed_reference)
+	session.open_session(typed_terminal, esm, player)
+	check(session.visible and session._choices.item_count == 3, "typed EsmTerminalNode opens the same terminal session")
+	session.close_session()
+	typed_terminal.free()
+
 	session.queue_free()
 	player.queue_free()
 	_finish()

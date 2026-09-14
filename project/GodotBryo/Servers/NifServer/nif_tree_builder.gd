@@ -120,6 +120,12 @@ static func build(src: NifSource, apply_root_basis: bool = true,
 
 	var built: Array[Node3D] = []
 	built.resize(nodes.size())
+	# A PhysicsBody must itself receive the animation transform. Godot updates
+	# an AnimatableBody3D's physics RID when its own transform changes, but not
+	# when only an ancestor is animated. Promote animated collision owners
+	# before tracks are bound so both the visual subtree and its body move from
+	# the same transform track.
+	var animated_collision_owners := _animated_collision_owners(src, nodes)
 	# Separate from `built`: a bone is "placed" but has no Node3D, so a null
 	# entry in `built` cannot be used to mean "not yet processed".
 	var placed := {}
@@ -156,14 +162,40 @@ static func build(src: NifSource, apply_root_basis: bool = true,
 				placed[i] = true
 				progressed = true
 				continue
-			var node := _make_node(nd, textures)
+			var node: Node3D = _make_node(nd, textures)
+			if animated_collision_owners.has(i):
+				node = AnimatableBody3D.new()
+				# AnimationPlayer owns this body's pose. Physics must receive that
+				# authored transform, not feed its previous physics pose back over it.
+				(node as AnimatableBody3D).sync_to_physics = false
 			var authored := String(nd["name"])
 			node.name = NifNamesScript.escape(authored) if not authored.is_empty() else "%s%d" % [String(nd["block_type"]), i]
 			node.set_meta(NifNamesScript.META_NIF_NAME, authored)
 			node.set_meta("nif_block_type", String(nd["block_type"]))
 			node.set_meta("nif_block_index", int(nd["block_index"]))
-			node.transform = nd["transform"]
+			# Keep an authored file root in the returned hierarchy so it remains
+			# inspectable, but do not apply its local transform. Bethesda's NIF
+			# instancing rule (and the legacy mesh resolver) treats REFR as the
+			# placement boundary; applying a stray root rotation on top flips a
+			# subset of real assets, including NVFencePickBurntCor02. The raw
+			# value stays visible for debugging rather than disappearing with the
+			# policy.
+			if bool(nd.get("is_file_root", false)):
+				node.set_meta("nif_file_root", true)
+				node.set_meta("nif_suppressed_file_root_transform", nd["transform"])
+				node.transform = Transform3D.IDENTITY
+			else:
+				node.transform = nd["transform"]
 			_apply_extra_data(node, nd)
+			# The physical body is the authored NIF node. Preserve any specialised
+			# visual node (mesh, light, billboard, etc.) as an identity child, so
+			# it inherits the body's animated transform rather than competing with
+			# it for the authored node slot.
+			if animated_collision_owners.has(i):
+				var visual := _make_node(nd, textures)
+				if visual.get_class() != "Node3D":
+					visual.name = "Visual"
+					node.add_child(visual)
 			if parent_index == -1:
 				root.add_child(node)
 			elif bone_of_node.has(parent_index):
@@ -197,6 +229,58 @@ static func build(src: NifSource, apply_root_basis: bool = true,
 		else:
 			root.set_meta("nif_not_flattened_because", blocker)
 	return root
+
+
+## Names in controller sequences are resolved exactly as animation binding
+## resolves them below: authored block names win, and the object palette fills
+## only gaps. This runs before the tree exists so animated collision owners can
+## become the physics body that receives the transform track.
+static func _animation_name_index(src: NifSource, nodes: Array) -> Dictionary:
+	var index_of_name := {}
+	var node_of_block := {}
+	for i in nodes.size():
+		var authored := String(nodes[i]["name"])
+		node_of_block[int(nodes[i]["block_index"])] = i
+		if not authored.is_empty() and not index_of_name.has(authored):
+			index_of_name[authored] = i
+	for palette in src.get_object_palettes():
+		for entry in palette["entries"]:
+			var alias := String(entry["name"])
+			var block := int(entry["object_block_index"])
+			if alias.is_empty() or block < 0 or index_of_name.has(alias):
+				continue
+			if node_of_block.has(block):
+				index_of_name[alias] = node_of_block[block]
+	return index_of_name
+
+
+## A node is promoted only when it both owns a shape and has an emitted
+## transform track. A transform controller with no keys is an authored static
+## pose and needs no dynamic body.
+static func _animated_collision_owners(src: NifSource, nodes: Array) -> Dictionary:
+	var collision_owners := {}
+	for shape in src.get_collision_shapes():
+		collision_owners[int(shape["owning_node_index"])] = true
+	if collision_owners.is_empty():
+		return {}
+	var index_of_name := _animation_name_index(src, nodes)
+	var out := {}
+	for sequence in src.get_sequences():
+		for controlled in sequence["controlled_blocks"]:
+			var interpolator: Dictionary = controlled["interpolator"]
+			if not bool(interpolator["present"]) or String(interpolator["kind"]) != "transform":
+				continue
+			var has_transform_keys := not (interpolator["translation_keys"] as Array).is_empty() \
+				or not (interpolator["rotation_keys"] as Array).is_empty() \
+				or not (interpolator["scale_keys"] as Array).is_empty()
+			if not has_transform_keys:
+				continue
+			var target := String(controlled["node_name"])
+			if index_of_name.has(target):
+				var node_index := int(index_of_name[target])
+				if collision_owners.has(node_index):
+					out[node_index] = true
+	return out
 
 
 ## What in this tree stops it being flattened, or "" if nothing does.
@@ -414,7 +498,14 @@ static func _build_skeleton(nodes: Array, bone_of_node: Dictionary) -> Skeleton3
 				continue
 			var authored := String(nodes[i]["name"])
 			var bone := skeleton.add_bone(NifNamesScript.escape(authored) if not authored.is_empty() else "Bone%d" % i)
-			skeleton.set_bone_rest(bone, nodes[i]["transform"])
+			# A declared file-root bone follows the same instancing policy as an
+			# ordinary file-root Node3D. Retain its raw rest transform as skeleton
+			# metadata because bones have no individual metadata channel.
+			var raw_rest: Transform3D = nodes[i]["transform"]
+			if bool(nodes[i].get("is_file_root", false)):
+				skeleton.set_meta("nif_suppressed_file_root_bone_rest_%d" % i, raw_rest)
+				raw_rest = Transform3D.IDENTITY
+			skeleton.set_bone_rest(bone, raw_rest)
 			if parent_index != -1 and bone_of_node.has(parent_index):
 				skeleton.set_bone_parent(bone, int(bone_of_node[parent_index]))
 			bone_of_node[i] = bone
@@ -678,25 +769,7 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 	if sequences.is_empty():
 		return animated
 
-	# Name -> node index. A block's own name wins; a NiDefaultAVObjectPalette
-	# alias fills in only for names no block carries, which is the resolution
-	# order section 8 established (280 of 26,022 entries disagree, and 97 of
-	# those are the only way a live sequence finds its target).
-	var index_of_name := {}
-	var node_of_block := {}
-	for i in nodes.size():
-		var authored := String(nodes[i]["name"])
-		node_of_block[int(nodes[i]["block_index"])] = i
-		if not authored.is_empty() and not index_of_name.has(authored):
-			index_of_name[authored] = i
-	for palette in src.get_object_palettes():
-		for entry in palette["entries"]:
-			var alias := String(entry["name"])
-			var block := int(entry["object_block_index"])
-			if alias.is_empty() or block < 0 or index_of_name.has(alias):
-				continue
-			if node_of_block.has(block):
-				index_of_name[alias] = node_of_block[block]
+	var index_of_name := _animation_name_index(src, nodes)
 
 	var library := AnimationLibrary.new()
 	var unbound := PackedStringArray()
@@ -877,10 +950,16 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		if parent == null:
 			continue
 		if not body_of_owner.has(owner_index):
-			var b: PhysicsBody3D = AnimatableBody3D.new() if animated.has(owner_index) else StaticBody3D.new()
-			b.name = "Collision"
-			parent.add_child(b)
-			body_of_owner[owner_index] = b
+			# Promoted owners are already the dynamic body receiving animation
+			# tracks directly. Do not nest another body beneath it: inherited
+			# transforms look right in the editor but leave its physics RID behind.
+			if parent is PhysicsBody3D:
+				body_of_owner[owner_index] = parent
+			else:
+				var b: PhysicsBody3D = AnimatableBody3D.new() if animated.has(owner_index) else StaticBody3D.new()
+				b.name = "Collision"
+				parent.add_child(b)
+				body_of_owner[owner_index] = b
 		var container: PhysicsBody3D = body_of_owner[owner_index]
 
 		var cs := CollisionShape3D.new()
@@ -949,5 +1028,10 @@ static func _make_shape(s: Dictionary) -> Shape3D:
 				faces[i] = verts[idx[i]]
 			var tri := ConcavePolygonShape3D.new()
 			tri.set_faces(faces)
+			# Havok accepts collision from either side of a triangle.  Shipped NIF
+			# collision is consequently not consistently wound: many meshes have
+			# alternating faces flipped.  Keep the authored topology intact and
+			# let Godot test both sides, rather than doubling every triangle.
+			tri.backface_collision = true
 			return tri
 	return null

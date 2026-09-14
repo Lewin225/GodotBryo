@@ -164,6 +164,12 @@ struct SceneNode {
 	std::string block_type; // e.g. "NiNode", "NiCamera", "BSFadeNode"
 	int32_t parent_index = -1; // index into nodes, or -1 for a root
 	uint32_t block_index = 0; // index into the NIF's own block table
+	// The unparented file root is retained for inspection. Its raw transform
+	// is real file data, but NIF instancing deliberately suppresses it (the
+	// established legacy rule; see NifTreeBuilder) rather than applying it on
+	// top of a REFR placement. This remains separate from parent_index so a
+	// consumer can make that policy visible instead of making the root vanish.
+	bool is_file_root = false;
 
 	// Collision object attached to this node, if any. The BLOCK TYPE is the
 	// discriminator nif_server_v2.md 5.3 turns on:

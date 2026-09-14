@@ -220,6 +220,35 @@ func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 			result.append(reference)
 	return result
 
+## Returns the real exterior CELL at `coord`, or zero where that worldspace
+## has no authored tile. World streaming never reaches into the native reader.
+func get_exterior_cell_form_id(worldspace_form_id: int, coord: Vector2i) -> int:
+	if reader == null:
+		return 0
+	var cell: Dictionary = reader.find_exterior_cell(worldspace_form_id, coord.x, coord.y)
+	return int(cell.get("form_id", 0))
+
+## Typed references for one exterior grid tile.
+func get_references_in_exterior_cell(worldspace_form_id: int, coord: Vector2i) -> Array[EsmReference]:
+	var cell_form_id := get_exterior_cell_form_id(worldspace_form_id, coord)
+	return get_references_in_cell(cell_form_id) if cell_form_id != 0 else []
+
+## Persistent exterior references belong to the worldspace rather than any
+## individual grid tile, but use the same typed resource construction path.
+func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[EsmReference]:
+	var result: Array[EsmReference] = []
+	if reader == null:
+		return result
+	for placement in reader.get_persistent_refs_for_worldspace(worldspace_form_id):
+		var reference := _reference_from_placement(
+			placement,
+			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			int(placement.get("cell_form_id", 0))
+		)
+		if reference != null:
+			result.append(reference)
+	return result
+
 func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) -> EsmReference:
 	var type_tag := String(placement.get("base_type", ""))
 	var name := String(TYPE_TO_REFERENCE.get(type_tag, "EsmReference"))
@@ -236,6 +265,8 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.position = placement.get("position", Vector3.ZERO)
 	result.rotation = placement.get("rotation", Vector3.ZERO)
 	result.scale = float(placement.get("scale", 1.0))
+	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
+	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
 	_populate_reference_inventory(result)
 	if result is DoorReference:
 		var door_ref: DoorReference = result

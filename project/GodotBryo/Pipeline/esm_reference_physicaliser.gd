@@ -19,20 +19,23 @@ const TalkingActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_talk
 const TerminalNodeScript := preload("res://GodotBryo/Types/Node/esm_terminal_node.gd")
 const LeveledItemPreviewNodeScript := preload("res://GodotBryo/Types/Node/esm_leveled_item_preview_node.gd")
 const NpcActorScene := preload("res://gamebryo/esm_npc_actor.tscn")
+const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 ## Creates and configures one semantic node synchronously. Once parented, the
-## node's own @tool/runtime startup requests NifServer as appropriate.
-func physicalise(reference: EsmReference, parent: Node3D = null) -> Node3D:
+## node's own @tool/runtime startup requests NifServer as appropriate. The
+## desired visual tier is assigned before tree entry, so a distant VWD tile
+## never first queues its full-detail model.
+func physicalise(reference: EsmReference, parent: Node3D = null, initial_visual_detail: int = EsmNode.VisualDetail.FULL) -> Node3D:
 	if reference == null:
 		return null
 	var root: EsmNode = _make_node(reference)
 	root.configure(reference)
+	root.visual_detail = initial_visual_detail
 	root.name = _node_name(reference)
-	# NifServer returns a Godot-facing tree, including the Gamebryo-to-Godot
-	# coordinate conversion. Placements therefore retain only their authored
-	# REFR/SCOL transform here; applying the old Z-up conversion again rotates
-	# both the mesh and its position twice.
+	# NifServer returns a Godot-facing NIF tree. Convert the placement into that
+	# same frame by conjugation, avoiding a second axis correction on the NIF.
 	root.transform = _placement_transform(reference.position, reference.rotation, reference.scale)
+	root.set_meta("gamebryo_placement_space", true)
 	if parent != null:
 		parent.add_child(root)
 	return root
@@ -121,7 +124,9 @@ func _parse_hex(value: String) -> int:
 
 func _placement_transform(position: Vector3, rotation: Vector3, scale: float) -> Transform3D:
 	var authored_basis := _authored_rotation_basis(rotation)
-	return Transform3D(authored_basis * Basis().scaled(Vector3.ONE * scale), position)
+	var authored := Transform3D(authored_basis * Basis().scaled(Vector3.ONE * scale), position)
+	var conversion := Transform3D(GAMEBRYO_TO_GODOT_BASIS, Vector3.ZERO)
+	return conversion * authored * conversion.affine_inverse()
 
 ## Gamebryo stores REFR Euler angles in radians. The established NV path uses
 ## the negated authored angles in X/Y/Z composition order.

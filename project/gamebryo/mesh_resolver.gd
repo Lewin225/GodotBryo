@@ -1956,7 +1956,12 @@ func populate_external_node_animations(parent: Node3D, built: Array, clips: Dict
 	for node in built:
 		if node != null and not name_to_node.has(String(node.name)):
 			name_to_node[String(node.name)] = node
-	var library := existing_player.get_animation_library("") if existing_player != null else AnimationLibrary.new()
+	var library := AnimationLibrary.new()
+	if existing_player != null:
+		if existing_player.has_animation_library(""):
+			library = existing_player.get_animation_library("")
+		else:
+			existing_player.add_animation_library("", library)
 	var resolve_target := func(target_name: String):
 		if not name_to_node.has(target_name):
 			return null
@@ -2058,7 +2063,10 @@ func populate_locomotion_animations(parent: Node3D, skeleton: Skeleton3D, clips:
 
 	var library := AnimationLibrary.new()
 	if existing_player != null:
-		library = existing_player.get_animation_library("")
+		if existing_player.has_animation_library(""):
+			library = existing_player.get_animation_library("")
+		else:
+			existing_player.add_animation_library("", library)
 	for clip_name in clips:
 		if library.has_animation(String(clip_name)):
 			continue

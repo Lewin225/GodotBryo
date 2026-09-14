@@ -1,9 +1,9 @@
 extends Control
 
 ## Debug Tools window (game.tscn) -> TabContainer -> "World Streaming" tab.
-## Read-only + a couple of live-tunable knobs onto the real WorldStreamer
-## instance. Structured stat cards replace continuous text dumps to avoid
-## scroll jumping.
+## Read-only + a couple of live-tunable knobs onto the real WorldStreamerV2
+## instance. The legacy full/distant and RID-batch metrics intentionally read
+## as unavailable: NifServer now owns visual LOD selection.
 
 const REFRESH_INTERVAL_SEC := 0.25
 
@@ -28,12 +28,8 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _objects_per_frame_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/ObjectsPerFrameSpin"
 @onready var _freeze_trace_check: CheckBox = $"Margin/SubTabs/Streaming State/VBox/TuneRow/FreezeTraceCheck"
 
-## Issue #56 follow-up: live-tunable GodotBryoSettings LOD knobs, same
-## pattern as tiles_per_frame/objects_per_frame above -- applied to
-## newly-streamed/newly-built content going forward, NOT retroactively
-## re-applied to already-resident objects (visibility_range is set once
-## at construction, on a MeshInstance3D or via
-## instance_geometry_set_visibility_range() on a DirectGeometryBatch RID).
+## Retained temporarily for the terrain/legacy settings panel. WorldStreamerV2
+## does not consume these values: visual LOD selection belongs to NifServer.
 @onready var _lod0_dist_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod0DistSpin"
 @onready var _lod0_margin_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod0MarginSpin"
 @onready var _lod1_max_spin: SpinBox = $"Margin/SubTabs/Streaming State/VBox/LodTuneRow/Lod1MaxSpin"
@@ -44,14 +40,14 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _texture_tree: Tree = $"Margin/SubTabs/Ground Textures/VBox/TextureTree"
 @onready var _texture_summary_label: RichTextLabel = $"Margin/SubTabs/Ground Textures/VBox/TexHeader/TexSummaryLabel"
 
-var _world_streamer: WorldStreamer
+var _world_streamer: WorldStreamerV2
 var _terrain_streamer: TerrainStreamer
 var _refresh_timer := 0.0
 var _suppress_spin_signals := false
 
 
 func _ready() -> void:
-	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamer") as WorldStreamer
+	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamer") as WorldStreamerV2
 	_terrain_streamer = get_tree().root.get_node_or_null("Game/TerrainStreamer") as TerrainStreamer
 	_setup_texture_tree()
 	_tiles_per_frame_spin.value_changed.connect(_on_tiles_per_frame_changed)
@@ -159,31 +155,30 @@ func _refresh_state() -> void:
 	var cell_form_id := ws.get_current_cell_form_id()
 	var cell_label := "(none)"
 	if cell_form_id != 0:
-		var editor_id: String = ws.esm.get_cell_editor_id(cell_form_id) if ws.esm != null else ""
+		var editor_id := ""
+		if ws.esm_server != null and ws.esm_server.reader != null:
+			editor_id = ws.esm_server.reader.get_cell_editor_id(cell_form_id)
 		cell_label = "[b]%s[/b] [color=#61afef](0x%08X)[/color]" % [editor_id if editor_id != "" else "Cell", cell_form_id]
 	_cell_card.text = "Cell: %s" % cell_label
 
-	var full_count: int = ws._resident_full_detail.values().count(true)
 	var resident_total: int = ws._resident.size()
-	var distant_count: int = resident_total - full_count
 
-	_resident_card.text = "Resident: [b][color=#98c379]%d[/color][/b] objects / [b]%d[/b] terrain" % [resident_total, int(terrain_diag.get("resident_cells", 0))]
-	_full_detail_card.text = "Full Detail: [b][color=#61afef]%d[/color][/b]" % full_count
-	_distant_card.text = "Distant: [b][color=#e5c07b]%d[/color][/b]" % distant_count
-	_in_flight_card.text = "In-Flight: [b]%d[/b] [color=#7f848e](Pend: %d)[/color]" % [ws._in_flight_count, ws._pending.size()]
-	_queue_depth_card.text = "Queue Depth: [b]%d[/b] objects / [b]%d[/b] terrain" % [ws._load_queue.size(), int(terrain_diag.get("queued_cells", 0))]
+	_resident_card.text = "Resident: [b][color=#98c379]%d[/color][/b] semantic tiles / [b]%d[/b] terrain" % [resident_total, int(terrain_diag.get("resident_cells", 0))]
+	_full_detail_card.text = "Visual LOD: [color=#61afef][b]NifServer paired trees[/b][/color]"
+	_distant_card.text = "Near/Far activity: [color=#98c379][b]tile-level[/b][/color]"
+	_in_flight_card.text = "Populating: [b]%d[/b] tiles" % ws._pending.size()
+	_queue_depth_card.text = "Queue Depth: [b]%d[/b] object tiles / [b]%d[/b] terrain" % [ws._load_queue.size(), int(terrain_diag.get("queued_cells", 0))]
 	_no_cell_cache_card.text = "Empty Cache: [b]%d[/b]" % ws._no_cell_cache.size()
 
 
 func _refresh_radius_config() -> void:
-	_rad_load_full.text = "Load Full: [color=#98c379][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_LOAD_FULL
-	_rad_unload_full.text = "Unload Full: [color=#e5c07b][b]%.2f[/b][/color]" % WorldStreamer.RADIUS_UNLOAD_FULL
-	_rad_load_distant.text = "Load Distant: [color=#61afef][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_LOAD_DISTANT
-	_rad_unload.text = "Unload: [color=#e06c75][b]%.1f[/b][/color]" % WorldStreamer.RADIUS_UNLOAD
-	_check_interval.text = "Check: [b]%.2fs[/b]" % WorldStreamer.CHECK_INTERVAL_SEC
-	var lod1_max_text := "∞" if GodotBryoSettings.lod1_max_range_m <= 0.0 else "%.0fm" % GodotBryoSettings.lod1_max_range_m
-	_lod_crossover.text = "LOD0→LOD1: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color] → [b]%s[/b]" % [GodotBryoSettings.lod0_crossover_distance_m, GodotBryoSettings.lod0_crossover_margin_m, lod1_max_text]
-	_distant_lod.text = "Distant Fade: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color]" % [GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m]
+	_rad_load_full.text = "Full: [color=#98c379][b]%.1f[/b][/color] cells" % _world_streamer.load_radius
+	_rad_unload_full.text = "Near/Far: [color=#98c379][b]tile-level[/b][/color]"
+	_rad_load_distant.text = "LOD: [color=#61afef][b]%.1f[/b][/color] cells (VWD only)" % _world_streamer._lod_radius()
+	_rad_unload.text = "Unload: [color=#e06c75][b]%.1f[/b][/color] cells" % _world_streamer._unload_radius()
+	_check_interval.text = "Check: [b]%.2fs[/b]" % WorldStreamerV2.CHECK_INTERVAL_SEC
+	_lod_crossover.text = "NIF response: [b]server-owned[/b]"
+	_distant_lod.text = "Persistent imposters: [b]%.0fm[/b] [color=#7f848e](±%.0fm)[/color]" % [GodotBryoSettings.distant_lod_near_cutoff_m, GodotBryoSettings.distant_lod_near_margin_m]
 
 
 func _refresh_tuning_spinboxes() -> void:

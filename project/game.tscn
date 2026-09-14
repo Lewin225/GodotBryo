@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://c6j2kx3d8yq1m" path="res://player/player.tscn" id="2_e8heu"]
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="3_cellloader"]
 [ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_terrainstreamer"]
-[ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="4_worldstreamer"]
+[ext_resource type="Script" uid="uid://dmgauqkyihhpn" path="res://world_streamer_v2.gd" id="4_worldstreamer"]
 [ext_resource type="Script" uid="uid://cio1g7pp5m0b1" path="res://terrain_streaming_debug_tab.gd" id="5_terrainstreamingdebug"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
@@ -104,6 +104,7 @@ item_2/id = 2
 oversampling_override = 1.0
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
+process_priority = 99
 
 [node name="CellLoader" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellloader")
@@ -111,6 +112,8 @@ cell_editor_id = "GSDocMitchellHouse"
 
 [node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
+lod_load_radius = 20.0
+spawn_reference_types = 1
 
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_terrainstreamer")
@@ -862,7 +865,7 @@ vertical_alignment = 1
 
 [node name="TilesPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1196531616]
 layout_mode = 2
-tooltip_text = "WorldStreamer.tiles_per_frame -- how many new tile loads may START per frame. Applied live, no re-activate() needed."
+tooltip_text = "WorldStreamerV2.tiles_per_frame -- how many semantic tile roots may start per frame. Applied live."
 min_value = 1.0
 max_value = 64.0
 value = 1.0
@@ -874,7 +877,7 @@ vertical_alignment = 1
 
 [node name="ObjectsPerFrameSpin" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Streaming State/VBox/TuneRow" unique_id=1368787344]
 layout_mode = 2
-tooltip_text = "WorldStreamer.objects_per_frame -- how many resolved REFRs get built per frame before yielding. Applied live, no re-activate() needed."
+tooltip_text = "WorldStreamerV2.objects_per_frame -- how many typed EsmNodes are created per frame. NifServer builds their visuals asynchronously."
 min_value = 1.0
 max_value = 2000.0
 value = 1.0
