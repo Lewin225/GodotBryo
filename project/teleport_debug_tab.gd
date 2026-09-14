@@ -261,15 +261,15 @@ func _on_current_cell_pressed() -> void:
 	if game == null:
 		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
 		return
-	var esm: EsmReader = game.cell_loader.esm if ("cell_loader" in game and game.cell_loader != null) else null
+	var esm: EsmReader = game._typed_esm_reader() if game.has_method("_typed_esm_reader") else null
 	if esm == null and _engine != null:
 		esm = _engine.esm
 	if esm == null:
 		_status_label.text = "[color=#e06c75]ESM reader not available[/color]"
 		return
 	var current_id := 0
-	if "cell_loader" in game and game.cell_loader != null and game.cell_loader._current != null:
-		current_id = int(game.cell_loader._current.get_meta("cell_form_id", 0))
+	if "cell_streamer" in game and game.cell_streamer != null:
+		current_id = game.cell_streamer.get_current_cell_form_id()
 	if current_id == 0 and "world_streamer" in game and game.world_streamer != null:
 		current_id = game.world_streamer.get_current_cell_form_id()
 	if current_id != 0:

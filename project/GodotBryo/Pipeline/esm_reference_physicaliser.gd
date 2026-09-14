@@ -34,7 +34,7 @@ func physicalise(reference: EsmReference, parent: Node3D = null, initial_visual_
 	root.name = _node_name(reference)
 	# NifServer returns a Godot-facing NIF tree. Convert the placement into that
 	# same frame by conjugation, avoiding a second axis correction on the NIF.
-	root.transform = _placement_transform(reference.position, reference.rotation, reference.scale)
+	root.transform = placement_transform(reference.position, reference.rotation, reference.scale)
 	root.set_meta("gamebryo_placement_space", true)
 	if parent != null:
 		parent.add_child(root)
@@ -122,15 +122,15 @@ func _parse_hex(value: String) -> int:
 		result = result * 16 + digit
 	return result
 
-func _placement_transform(position: Vector3, rotation: Vector3, scale: float) -> Transform3D:
-	var authored_basis := _authored_rotation_basis(rotation)
+static func placement_transform(position: Vector3, rotation: Vector3, scale: float = 1.0) -> Transform3D:
+	var authored_basis := authored_rotation_basis(rotation)
 	var authored := Transform3D(authored_basis * Basis().scaled(Vector3.ONE * scale), position)
 	var conversion := Transform3D(GAMEBRYO_TO_GODOT_BASIS, Vector3.ZERO)
 	return conversion * authored * conversion.affine_inverse()
 
 ## Gamebryo stores REFR Euler angles in radians. The established NV path uses
 ## the negated authored angles in X/Y/Z composition order.
-func _authored_rotation_basis(rotation: Vector3) -> Basis:
+static func authored_rotation_basis(rotation: Vector3) -> Basis:
 	var bx := Basis(Vector3.RIGHT, -rotation.x)
 	var by := Basis(Vector3.UP, -rotation.y)
 	var bz := Basis(Vector3.BACK, -rotation.z)
