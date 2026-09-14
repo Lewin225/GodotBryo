@@ -9,6 +9,15 @@ extends Node
 ## construct a NifSource themselves.
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+
+## All editor-object classification and visibility belongs here. Keeping the
+## policy at NIF delivery means it covers every consumer (typed cells, world
+## streaming, viewers, and future callers) without changing ESM semantics.
+const META_EDITOR_OBJECT := "nif_editor_object"
+const EDITOR_OBJECT_GROUP := "nif_editor_objects"
+
+signal editor_object_visibility_changed(visible: bool)
 
 ## Section 4.2: _build() calls started per frame.
 @export var builds_per_frame_budget: int = 12
@@ -84,6 +93,10 @@ var _warned := {}        # canonical path -> true; section 3.4 warns once
 var _orphan_watch := []  # [{ node, frame }] -- see _check_orphans()
 var _archive_server: Node = null
 var _shutting_down := false
+## Runtime policy for CK/GECK authoring gizmos embedded in NIF trees. This is
+## intentionally visual-only: typed EsmNodes and any authored collision remain
+## available to gameplay and diagnostics.
+var editor_objects_visible := true
 
 var _stats := {
 	"request_count": 0,
@@ -131,6 +144,21 @@ static func canonical(nif_path: String) -> String:
 	if p.begins_with("meshes/"):
 		p = p.substr(7)
 	return p
+
+
+## Prefix match is based on authored NIF node identity, not Godot's escaped
+## display name. `VisibilityEditorMarker` is OpenMW's second documented
+## Gamebryo marker primitive spelling.
+static func is_editor_object_name(authored_name: String) -> bool:
+	var name := authored_name.to_lower()
+	return name.begins_with("editormarker") or name.begins_with("visibilityeditormarker")
+
+
+## OpenMW's ESM4 renderer treats a standalone model whose basename starts with
+## `marker` as an editor primitive. This is model identity, not an ESM editor
+## ID, and deliberately lives in this NIF-delivery policy only.
+static func is_standalone_marker_model(nif_path: String) -> bool:
+	return canonical(nif_path).get_file().begins_with("marker")
 
 
 ## Returns `nif_path`'s real paired `_lod.nif` path, or "" when the model has
@@ -243,6 +271,57 @@ func get_stats() -> Dictionary:
 func reset_stats() -> void:
 	for k in _stats.keys():
 		_stats[k] = 0
+
+
+func set_editor_objects_visible(visible: bool) -> void:
+	if editor_objects_visible == visible:
+		return
+	editor_objects_visible = visible
+	var tree := get_tree()
+	if tree != null:
+		for node in tree.get_nodes_in_group(EDITOR_OBJECT_GROUP):
+			if node is Node3D:
+				(node as Node3D).visible = visible
+	editor_object_visibility_changed.emit(visible)
+
+
+func _apply_editor_object_visibility(root: Node) -> void:
+	if root is Node3D and bool(root.get_meta(META_EDITOR_OBJECT, false)):
+		(root as Node3D).visible = editor_objects_visible
+	for child in root.get_children():
+		_apply_editor_object_visibility(child)
+
+
+## Called once on a freshly-built tree before it becomes a template. All
+## supported marker representations converge on META_EDITOR_OBJECT: a
+## standalone `marker*` model marks its complete tree, while embedded marker
+## primitives mark only their matching render node. Consumers only need this
+## one identifier/group; they never need to know which NIF convention matched.
+func _tag_editor_objects(root: Node, nif_path: String) -> void:
+	_tag_editor_objects_recursive(root, is_standalone_marker_model(nif_path), false)
+
+
+func _tag_editor_objects_recursive(node: Node, whole_model_is_editor_object: bool,
+		inherited_nif_marker_flag: bool) -> void:
+	var nif_marker_flag := inherited_nif_marker_flag or _has_nif_marker_flag(node)
+	var is_editor_object := whole_model_is_editor_object
+	if node is Node3D:
+		var authored_name := String(node.get_meta(NifNamesScript.META_NIF_NAME, ""))
+		# `MRK`/BSX identifies this NIF subtree as marker-bearing; the authored
+		# primitive name identifies which render node is the editor gizmo.
+		# This mirrors OpenMW's Gamebryo loader rather than hiding an unrelated
+		# gameplay mesh that happens to share an EditorMarker-like name.
+		is_editor_object = is_editor_object or (nif_marker_flag and is_editor_object_name(authored_name))
+		if is_editor_object:
+			node.set_meta(META_EDITOR_OBJECT, true)
+			node.add_to_group(EDITOR_OBJECT_GROUP)
+	for child in node.get_children():
+		_tag_editor_objects_recursive(child, whole_model_is_editor_object, nif_marker_flag)
+
+
+func _has_nif_marker_flag(node: Node) -> bool:
+	return String(node.get_meta("nif_extra_NiStringExtraData", "")) == "MRK" \
+		or (int(node.get_meta("nif_extra_BSXFlags", 0)) & 32) != 0
 
 
 ## Drops one cached template. Manual eviction, not a policy -- V1 is
@@ -416,6 +495,7 @@ func _build(entry: Dictionary) -> void:
 		_stats["build_failure_count"] += 1
 		_deliver(waiter, null)
 		return
+	_tag_editor_objects(root, String(entry["key"]))
 	_stats["build_count"] += 1
 	# Re-checked after the await: the build spans frames.
 	if not _owner_alive(waiter):
@@ -465,6 +545,10 @@ func _deliver(waiter: Dictionary, root: Node3D) -> void:
 			_stats["owner_gone_count"] += 1
 			root.queue_free()
 		return
+	if root != null:
+		# Applies to template duplicates and builds that completed after a menu
+		# toggle but before their requesting EsmNode entered the scene tree.
+		_apply_editor_object_visibility(root)
 	cb.call(root)
 	if root != null:
 		_orphan_watch.append({ "node": root, "frame": Engine.get_process_frames() })
