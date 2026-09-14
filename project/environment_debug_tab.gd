@@ -46,10 +46,10 @@ func _process(delta: float) -> void:
 
 
 func _refresh() -> void:
-	if _game == null or _game.cell_loader == null or _game.cell_loader.esm == null:
-		_cell_label.text = "[color=#e06c75](Game/CellLoader not found)[/color]"
+	if _game == null or _game.cell_streamer == null or _game._typed_esm_reader() == null:
+		_cell_label.text = "[color=#e06c75](Game/CellStreamerV2/EsmServer not found)[/color]"
 		return
-	var esm: EsmReader = _game.cell_loader.esm
+	var esm: EsmReader = _game._typed_esm_reader()
 	var cell_form_id: int = _game._hud_cell_form_id
 	if cell_form_id == 0:
 		_cell_label.text = "[color=#7f848e](no cell loaded yet)[/color]"

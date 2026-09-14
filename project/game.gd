@@ -3,17 +3,17 @@ extends Node3D
 ## The real runtime entry point — not a @tool inspection scene
 ## (interior_viewer.gd/exterior_viewer.gd) and not a headless test. Loads
 ## the game's actual default starting cell (GSDocMitchellHouse, the same
-## default used throughout Phase 1/2) via CellLoader on startup.
+## default used throughout Phase 1/2) via CellStreamerV2 on startup.
 ##
 ## The player controller ("Character", the FPC addon) is a sibling of
-## CellLoader/WorldStreamer in this scene. Neither of those has any idea a
+## CellStreamerV2/WorldStreamer in this scene. Neither of those has any idea a
 ## player exists (phases/2/07-runtime-cell-loader.md,
 ## phases/2/08-world-cell-streaming.md) — _process() below owns the interact
 ## raycast instead: on a hit against anything exposing
 ## activate() -> Dictionary (DoorNode today; any future interactable type
 ## needs only that same contract, not a change here), it checks whether the
 ## destination is interior or exterior (EsmReader.get_cell_worldspace()) and
-## routes to whichever of CellLoader.load_cell() or
+## routes to whichever of CellStreamerV2.load_cell() or
 ## WorldStreamer.activate() applies — only one of the two is ever "where
 ## the player is" at a time, so the other is torn down first. See
 ## _try_interact()/_on_load_completed()/_do_exterior_transition() below.
@@ -22,12 +22,12 @@ extends Node3D
 ## CharacterBody3D — the FPC addon's root type) is found and moved directly
 ## in _on_load_completed() below. For the *initial* spawn (this scene's own
 ## startup load, not a door transition) there's no XTEL landing transform
-## to use — CellLoader has no concept of "spawn point" either, deliberately
+## to use — CellStreamerV2 has no concept of "spawn point" either, deliberately
 ## (phases/2/07-runtime-cell-loader.md). Instead this looks up the cell's
 ## own "COCMarkerHeading" REFR (Bethesda's own "Center On Cell" reference
 ## point — the same marker the `coc` console command centers on, confirmed
 ## present with a real, sensible position in GSDocMitchellHouse, not a
-## guess) via CellLoader's xref cache, and falls back to a crude
+## guess) via CellStreamerV2's typed-reference cache, and falls back to a crude
 ## drop-from-above-the-AABB heuristic only if a cell genuinely has none.
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
@@ -39,8 +39,11 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 # outside its collision, not tuned further.
 const INTERACT_REACH_METERS := 2.5
 const ITEM_DRAG_HOLD_SECONDS := 0.28
+const DEBUG_MENU_SHOW_EDITOR_OBJECTS := 100
 
-var cell_loader: CellLoader
+const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_physicaliser.gd")
+
+var cell_streamer: CellStreamerV2
 var world_streamer: WorldStreamerV2
 var terrain_streamer: TerrainStreamer
 var script_engine: ScriptEngine
@@ -61,7 +64,7 @@ var _item_press_time_msec := 0
 
 # The player is a scene-authored direct child (game.tscn: Character), not a
 # dynamically discovered gameplay object.  Keep a validated cache instead of
-# recursively walking every streamed CellLoader child before reaching it.
+# recursively walking every streamed CellStreamerV2 child before reaching it.
 var _character_body: CharacterBody3D = null
 
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
@@ -73,6 +76,7 @@ var _character_body: CharacterBody3D = null
 # child back to the ancestor EsmNode and reports its EsmReference/EsmBase;
 # legacy GamebryoReference content keeps its editor_description fallback.
 var _look_at_label: Label
+var _debug_menu: PopupMenu
 
 # Standalone .tres files (not inline .tscn sub-resources) so each is
 # independently editable/previewable in the editor -- WorldEnvironment
@@ -109,14 +113,13 @@ func _enter_tree() -> void:
 		push_error("Game: could not open FalloutNV.esm")
 		return
 	_shared_resolver = GamebryoMeshResolver.new(data_dir)
-	cell_loader = get_node("CellLoader") as CellLoader
+	cell_streamer = get_node("CellStreamerV2") as CellStreamerV2
 	world_streamer = get_node("WorldStreamer") as WorldStreamerV2
 	terrain_streamer = get_node("TerrainStreamer") as TerrainStreamer
-	cell_loader.configure(_shared_esm, _shared_resolver)
 	terrain_streamer.configure(_shared_esm, _shared_resolver)
 
 func _ready() -> void:
-	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
+	cell_streamer = $CellStreamerV2 # scene-authored typed interior double buffer
 	world_streamer = $WorldStreamer
 	terrain_streamer = $TerrainStreamer
 	script_engine = $ScriptEngine
@@ -130,6 +133,9 @@ func _ready() -> void:
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
+	_debug_menu = $MenuBar/Debug
+	_debug_menu.id_pressed.connect(_on_debug_menu_id_pressed)
+	_sync_editor_object_menu()
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.
@@ -139,15 +145,16 @@ func _ready() -> void:
 	_interior_directional_light.visible = false
 	add_child(_interior_directional_light)
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
-	cell_loader.load_started.connect(_on_load_started)
-	cell_loader.load_completed.connect(_on_load_completed)
-	# Reuse Game's shared EsmReader.
-	# one -- same convention _apply_cell_lighting() below already uses.
-	# CellLoader still uses the legacy object registry for interiors. Exterior
-	# WorldStreamerV2 creates typed EsmNodes directly, so script dispatch for
-	# those nodes is intentionally a later pipeline integration step.
-	script_engine.esm = cell_loader.esm
-	cell_loader.registry.script_engine = script_engine
+	cell_streamer.load_started.connect(_on_load_started)
+	cell_streamer.load_completed.connect(_on_load_completed)
+	var typed_esm := await _await_typed_esm()
+	if typed_esm == null:
+		push_error("Game: EsmServer did not become ready")
+		return
+	# Runtime interiors and exteriors share EsmServer's typed reference graph.
+	# Terrain keeps its private native reader because that independent pipeline
+	# still consumes raw LAND data rather than typed EsmReference resources.
+	script_engine.esm = typed_esm
 	script_engine.player_node = _get_character_body() # real GECK "player" keyword -- see ScriptEngine's own doc comment
 	script_engine.function_registry.place_at_me_handler = debug_place_at_me
 	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
@@ -155,18 +162,49 @@ func _ready() -> void:
 
 	# day-night: configure time manager, weather + celestial, but don't activate
 	# exterior rendering until the WorldStreamer first goes exterior.
-	game_time_manager.configure(cell_loader.esm)
-	weather_manager.configure(cell_loader.esm)
+	game_time_manager.configure(typed_esm)
+	weather_manager.configure(typed_esm)
 	celestial_controller.configure(_sun, _world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
-	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
+	var cell: Dictionary = typed_esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
 		push_error("game.gd: default cell not found: " + DEFAULT_CELL_EDITOR_ID)
 		return
-	cell_loader.load_cell(int(cell["form_id"]))
+	cell_streamer.load_cell(int(cell["form_id"]))
 
 func _on_load_started(cell_form_id: int) -> void:
 	print("game.gd: loading cell 0x%X..." % cell_form_id)
+
+func _on_debug_menu_id_pressed(id: int) -> void:
+	if id != DEBUG_MENU_SHOW_EDITOR_OBJECTS:
+		return
+	var nif_server := get_tree().root.get_node_or_null("NifServer")
+	if nif_server == null or not nif_server.has_method("set_editor_objects_visible"):
+		push_warning("Game: NifServer editor-object policy is unavailable")
+		return
+	nif_server.set_editor_objects_visible(not bool(nif_server.editor_objects_visible))
+	_sync_editor_object_menu()
+
+func _sync_editor_object_menu() -> void:
+	if _debug_menu == null:
+		return
+	var index := _debug_menu.get_item_index(DEBUG_MENU_SHOW_EDITOR_OBJECTS)
+	if index < 0:
+		return
+	var nif_server := get_tree().root.get_node_or_null("NifServer") if get_tree() != null else null
+	_debug_menu.set_item_checked(index, true if nif_server == null else bool(nif_server.editor_objects_visible))
+
+func _await_typed_esm() -> EsmReader:
+	var server := get_tree().root.get_node_or_null("EsmServer")
+	if server == null:
+		return null
+	if not server.is_ready():
+		await server.esm_ready
+	return server.reader as EsmReader if server.is_ready() else null
+
+func _typed_esm_reader() -> EsmReader:
+	var server := get_tree().root.get_node_or_null("EsmServer") if get_tree() != null else null
+	return server.reader as EsmReader if server != null and server.is_ready() else null
 
 func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	print("game.gd: cell 0x%X load complete, success=%s" % [cell_form_id, success])
@@ -175,7 +213,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 		_transition_in_progress = false
 		return
 
-	# CellLoader is only ever used for interior destinations from this scene
+	# CellStreamerV2 is only ever used for interior destinations from this scene
 	# (see the class doc comment -- an exterior destination routes through
 	# WorldStreamer/_do_exterior_transition() instead), so every successful
 	# load_completed here means "the player is now indoors."
@@ -187,7 +225,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 
 	var spawn := {}
 	if not _pending_door_spawn.is_empty():
-		spawn = _convert_dest_spawn_transform(_pending_door_spawn["position"], _pending_door_spawn["rotation"])
+		spawn = _convert_authored_spawn_transform(_pending_door_spawn["position"], _pending_door_spawn["rotation"])
 		_pending_door_spawn = {}
 	if spawn.is_empty():
 		spawn = _find_coc_spawn_transform()
@@ -213,8 +251,8 @@ func _process(_delta: float) -> void:
 	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_paused():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
-			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellLoader's single-load case
-	if cell_loader == null or cell_loader._loading:
+			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellStreamerV2's single-load case
+	if cell_streamer == null or cell_streamer.is_loading():
 		return # a load is already in flight -- don't stack another
 	_update_item_interaction()
 	# day-night: advance clock-driven environment every frame.
@@ -266,7 +304,7 @@ func _interact_raycast() -> Dictionary:
 ## F3-toggled (see _process()). Reuses _interact_raycast() unconditionally
 ## every frame while visible. Typed NIF collision lands on a nested physics
 ## body, so recover the ancestor EsmNode; retain the legacy editor-description
-## path for CellLoader content until that pipeline is replaced.
+## path for legacy content in inspection scenes; runtime interiors are typed.
 func _update_look_at_label() -> void:
 	var hit := _interact_raycast()
 	if hit.is_empty():
@@ -339,20 +377,8 @@ func debug_add_inventory_item(base_form_id: int) -> bool:
 	return false
 
 func debug_drop_inventory_item(base_form_id: int) -> bool:
-	var entry := {}
-	for candidate in inventory.get_entries():
-		if int(candidate.get("base_form_id", 0)) == base_form_id:
-			entry = candidate
-			break
-	if entry.is_empty() or not inventory.remove_item(base_form_id): return false
-	var player := _get_character_body()
-	if player == null or not ("CAMERA" in player): return false
-	var camera: Camera3D = player.CAMERA
-	var placement := { "base_form_id": base_form_id, "base_type": entry.get("base_type", "MISC"), "model": entry.get("model_path", ""), "position": camera.global_position - camera.global_transform.basis.z * 1.2, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0, "editor_id": entry.get("full_name", "DroppedItem") }
-	var node := cell_loader.registry.build(placement)
-	if node == null: return false
-	add_child(node)
-	return true
+	push_warning("Drop inventory item is unavailable while the legacy registry is detached from CellStreamerV2")
+	return false
 
 ## PlaceAtMe's runtime owner.  The function registry delegates here so it
 ## never needs to know about active cell roots, mesh construction, or the
@@ -362,39 +388,8 @@ func debug_drop_inventory_item(base_form_id: int) -> bool:
 func debug_place_at_me(args: Array, caller: Node) -> Variant:
 	if caller == null or args.is_empty():
 		return 0
-	var base: Dictionary = cell_loader.esm.find_placeable_by_id(str(args[0]))
-	if base.is_empty():
-		push_warning("PlaceAtMe: no base form found for '%s'" % str(args[0]))
-		return 0
-	if String(base.get("base_type", "")) == "LVLI":
-		push_warning("PlaceAtMe: LVLI '%s' is unsupported (real engine shows Marker_Error.NIF)" % str(args[0]))
-		return 0
-	if String(base.get("model", "")) == "":
-		push_warning("PlaceAtMe: '%s' (%s) has no constructible model" % [str(args[0]), base.get("base_type", "")])
-		return 0
-	var count: int = max(int(args[1]) if args.size() > 1 else 1, 1)
-	var first: Node3D = null
-	var caller_3d := caller as Node3D
-	if caller_3d == null:
-		return 0
-	for i in range(count):
-		var angle := TAU * float(i) / float(count)
-		var nearby := Vector3(cos(angle), 0.35, sin(angle)) * (0.8 if count == 1 else 0.8 + 0.25 * float(i / 6))
-		var placement := {
-			"base_form_id": int(base["form_id"]), "base_type": base["base_type"], "model": base["model"],
-			"position": Vector3.ZERO, "rotation": Vector3.ZERO, "scale": 1.0, "refr_form_id": 0,
-			"editor_id": base.get("editor_id", "Spawned_%X" % int(base["form_id"])), "script_form_id": int(base.get("script_form_id", 0)),
-		}
-		var node := cell_loader.registry.build(placement)
-		if node == null:
-			push_warning("PlaceAtMe: registry could not construct '%s'" % str(args[0]))
-			continue
-		add_child(node)
-		node.global_position = caller_3d.global_position + nearby
-		node.global_rotation = caller_3d.global_rotation
-		if first == null:
-			first = node
-	return first if first != null else 0
+	push_warning("PlaceAtMe is unavailable while the legacy registry is detached from CellStreamerV2")
+	return 0
 
 ## Console-only CenterOnCell/COC.  The real command's destination is the
 ## cell's authored COCMarkerHeading; `_on_load_completed()` already owns
@@ -404,17 +399,20 @@ func debug_place_at_me(args: Array, caller: Node) -> Variant:
 func debug_center_on_cell(args: Array) -> Variant:
 	if args.is_empty():
 		return { "error": "CenterOnCell requires a cell EditorID." }
-	var cell: Dictionary = cell_loader.esm.find_cell_by_editor_id(str(args[0]))
+	var esm := _typed_esm_reader()
+	if esm == null:
+		return { "error": "EsmServer is not ready." }
+	var cell: Dictionary = esm.find_cell_by_editor_id(str(args[0]))
 	if cell.is_empty():
 		return { "error": "No CELL with EditorID '%s' in the loaded ESM." % str(args[0]) }
 	var cell_form_id := int(cell["form_id"])
-	if cell_loader.esm.get_cell_worldspace(cell_form_id) != -1:
+	if esm.get_cell_worldspace(cell_form_id) != -1:
 		return { "error": "'%s' is exterior; CenterOnWorld is not implemented yet." % str(args[0]) }
 	terrain_streamer.set_paused(true)
 	world_streamer.set_paused(true)
 	_transition_generation += 1
 	_pending_door_spawn = {}
-	cell_loader.load_cell(cell_form_id)
+	cell_streamer.load_cell(cell_form_id)
 	return cell_form_id
 
 ## Dynamic types split into two real interact shapes right now: DoorNode
@@ -454,7 +452,7 @@ func _try_interact() -> void:
 		# a script side effect. Locking, conditions and menu scripts remain
 		# explicitly outside this first pass; TerminalSession displays those
 		# unavailable choices rather than silently executing or hiding them.
-		terminal_session.open_session(target, cell_loader.esm, _get_character_body())
+		terminal_session.open_session(target, _typed_esm_reader(), _get_character_body())
 		return
 	if not target.has_method("activate"):
 		if script_engine != null and script_engine.is_scripted(target):
@@ -462,7 +460,7 @@ func _try_interact() -> void:
 		return
 	var outcome: Dictionary = target.activate(_get_character_body()) if target is EsmNode else target.activate()
 	if outcome.has("terminal"):
-		terminal_session.open_session(outcome["terminal"], cell_loader.esm, _get_character_body())
+		terminal_session.open_session(outcome["terminal"], _typed_esm_reader(), _get_character_body())
 		return
 	if outcome.is_empty():
 		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
@@ -471,10 +469,13 @@ func _try_interact() -> void:
 		return
 
 	var dest_cell_form_id := int(outcome["dest_cell_form_id"])
-	var dest_wrld_form_id: int = cell_loader.esm.get_cell_worldspace(dest_cell_form_id)
+	var esm := _typed_esm_reader()
+	if esm == null:
+		return
+	var dest_wrld_form_id: int = esm.get_cell_worldspace(dest_cell_form_id)
 	if dest_wrld_form_id == -1:
-		# Interior destination -- CellLoader's existing single-active-cell
-		# path. Only one of CellLoader/WorldStreamer is ever "where the
+		# Interior destination -- CellStreamerV2's typed single-active-cell
+		# path. Only one of CellStreamerV2/WorldStreamer is ever "where the
 		# player is" at a time, but PAUSE the exterior streaming rather than
 		# deactivate() it -- this game's RAM budget has no reason to pay
 		# activate()'s full re-stream/re-texture cost on every single door
@@ -487,7 +488,7 @@ func _try_interact() -> void:
 		terrain_streamer.set_paused(true)
 		world_streamer.set_paused(true)
 		_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
-		cell_loader.load_cell(dest_cell_form_id)
+		cell_streamer.load_cell(dest_cell_form_id)
 	else:
 		_do_exterior_transition(dest_wrld_form_id, outcome["dest_position"], outcome["dest_rotation"])
 
@@ -511,7 +512,7 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 		# TerrainStreamer retains entries within the active ESM's cache family
 		# itself. Its following activate() suspends the outgoing terrain before
 		# selecting or creating the destination entry; do not final-teardown it here.
-	cell_loader.unload_current() # only one of CellLoader/WorldStreamer is ever "live" at a time
+	cell_streamer.unload_current() # only one of CellStreamerV2/WorldStreamer is ever live
 	_set_exterior_environment(true)
 	# day-night: load CLMT for this worldspace and tell celestial to drive the sky.
 	weather_manager.activate_worldspace(wrld_form_id)
@@ -614,12 +615,13 @@ static func _xcll_directional_basis(rotation_xy_degrees: int, rotation_z_degrees
 ## cells, or an interior cell whose designer never touched the lighting tab)
 ## -- get_cell_lighting_data() returns {} for those, and this just leaves
 ## INTERIOR_ENVIRONMENT itself assigned, same as before this feature existed.
-## Only called for interior (CellLoader) loads -- WorldStreamer's exterior
+## Only called for interior (CellStreamerV2) loads -- WorldStreamer's exterior
 ## cells use EXTERIOR_ENVIRONMENT's own flat sky-driven lighting instead.
 func _apply_cell_lighting(cell_form_id: int) -> void:
-	if _world_environment == null or cell_loader == null:
+	var esm := _typed_esm_reader()
+	if _world_environment == null or esm == null:
 		return
-	var lighting: Dictionary = cell_loader.esm.get_cell_lighting_data(cell_form_id)
+	var lighting: Dictionary = esm.get_cell_lighting_data(cell_form_id)
 	if lighting.is_empty():
 		return
 	var env: Environment = INTERIOR_ENVIRONMENT.duplicate()
@@ -672,64 +674,47 @@ func _update_cell_hud(cell_form_id: int) -> void:
 	if _cell_label == null:
 		return
 	_hud_cell_form_id = cell_form_id
-	var editor_id: String = cell_loader.esm.get_cell_editor_id(cell_form_id)
+	var esm := _typed_esm_reader()
+	if esm == null:
+		return
+	var editor_id: String = esm.get_cell_editor_id(cell_form_id)
 	var label: String = editor_id if editor_id != "" else "0x%X" % cell_form_id
-	var grid: Dictionary = cell_loader.esm.get_exterior_cell_grid(cell_form_id)
+	var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
 	if not grid.is_empty():
 		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
 	_cell_label.text = "cell: " + label
 
 ## Converts a raw XTEL destination into Godot world space for an EXTERIOR
-## landing cell -- unlike _convert_dest_spawn_transform() below, there's no
-## single tile RefrRoot to convert through here (WorldStreamer may have
-## several, or none yet, resident). Exterior REFR positions are already
-## absolute world coordinates (confirmed: cell_loader.gd's own terrain
-## placement never applies a per-tile offset to REFR positions, only to the
-## LAND heightmap), so this only needs the same fixed Z-up -> Y-up axis
-## conversion every RefrRoot/tile root already applies at position zero --
-## identical math to what `refr_root.global_transform * local_pos` would
-## produce for a root at the origin, just without needing an actual node.
+## landing cell -- unlike _convert_authored_spawn_transform() below, there's no
+## per-tile root to convert through here (WorldStreamer may have several, or
+## none yet, resident). Exterior REFR positions are absolute world coordinates;
+## the shared physicaliser applies the one authored Z-up -> Godot Y-up
+## conversion, with no additional tile offset.
 func _convert_dest_spawn_transform_exterior(local_pos: Vector3, local_rot: Vector3) -> Dictionary:
-	var axis_basis := Basis(Vector3.RIGHT, deg_to_rad(-90))
-	var world_pos: Vector3 = axis_basis * local_pos
-	var world_basis: Basis = axis_basis * GamebryoMeshResolver.refr_basis(local_rot)
-	var world_rot := Vector3(0, world_basis.get_euler().y, 0)
-	return { "position": world_pos, "rotation": world_rot }
+	return _convert_authored_spawn_transform(local_pos, local_rot)
 
 ## Converts a raw XTEL destination (same ESM-local convention as any REFR's
-## DATA position/rotation) into Godot world space via the newly-loaded
-## cell's own real RefrRoot transform -- identical math to
+## DATA position/rotation) into Godot world space through the same public
+## transform used by EsmReferencePhysicaliser -- identical math to
 ## _find_coc_spawn_transform() below, just fed a door's destination instead
 ## of a marker's.
-func _convert_dest_spawn_transform(local_pos: Vector3, local_rot: Vector3) -> Dictionary:
-	if cell_loader == null or cell_loader._current == null:
-		return {}
-	var refr_root: Node3D = cell_loader._current.get_node("RefrRoot")
-	var world_pos: Vector3 = refr_root.global_transform * local_pos
-	var world_basis: Basis = refr_root.global_transform.basis * GamebryoMeshResolver.refr_basis(local_rot)
-	var world_rot := Vector3(0, world_basis.get_euler().y, 0)
-	return { "position": world_pos, "rotation": world_rot }
+func _convert_authored_spawn_transform(local_pos: Vector3, local_rot: Vector3) -> Dictionary:
+	var transform := PhysicaliserScript.placement_transform(local_pos, local_rot)
+	return { "position": transform.origin, "rotation": Vector3(0, transform.basis.get_euler().y, 0) }
 
 ## Bethesda's own "Center On Cell" reference marker — a real, per-cell REFR
 ## (base_editor_id "COCMarkerHeading", model MarkerCOCHeading.nif),
 ## confirmed present in GSDocMitchellHouse with a sensible in-room position.
 ## Its position/rotation are in the same local Bethesda Z-up space as every
-## other REFR — converted to actual Godot world space via RefrRoot's own
-## real transform (the same one every placed object in the cell already
-## goes through), not by re-deriving the Z-up -> Y-up rotation math by hand.
+## other REFR — converted by EsmReferencePhysicaliser's same shared transform,
+## not by duplicating Z-up -> Y-up rotation math in Game.
 func _find_coc_spawn_transform() -> Dictionary:
-	if cell_loader == null or cell_loader._current == null:
+	if cell_streamer == null or cell_streamer._current == null:
 		return {}
-	var marker: Dictionary = cell_loader.find_ref_by_editor_id("COCMarkerHeading")
-	if marker.is_empty():
+	var marker := cell_streamer.find_ref_by_editor_id("COCMarkerHeading")
+	if marker == null:
 		return {}
-	var refr_root: Node3D = cell_loader._current.get_node("RefrRoot")
-	var local_pos: Vector3 = marker.get("position", Vector3.ZERO)
-	var local_rot: Vector3 = marker.get("rotation", Vector3.ZERO)
-	var world_pos: Vector3 = refr_root.global_transform * local_pos
-	var world_basis: Basis = refr_root.global_transform.basis * GamebryoMeshResolver.refr_basis(local_rot)
-	var world_rot := Vector3(0, world_basis.get_euler().y, 0) # yaw only -- matches a first-person controller's own convention
-	return { "position": world_pos, "rotation": world_rot }
+	return _convert_authored_spawn_transform(marker.position, marker.rotation)
 
 ## Last-resort fallback for a cell with no COCMarkerHeading (should be rare
 ## — every cell the `coc` console command can target has one — but not
@@ -782,7 +767,7 @@ func reposition_player(pos: Vector3, rot: Vector3) -> void:
 		player.velocity = Vector3.ZERO
 
 ## This used to recurse from Game through its entire subtree. Character is
-## after CellLoader in game.tscn, so every lookup first traversed streamed
+## after CellStreamerV2 in game.tscn, so every lookup first traversed streamed
 ## cell content; that is why one logical interaction lookup became hundreds
 ## of profiler calls. Re-resolve only the authored direct child if the cache
 ## was invalidated by a future character replacement.
@@ -796,11 +781,11 @@ func _get_character_body() -> CharacterBody3D:
 ## MeshInstance3D descendants), or null if nothing is loaded / has no
 ## geometry.
 func _current_cell_aabb() -> Variant:
-	if cell_loader == null or cell_loader._current == null:
+	if cell_streamer == null or cell_streamer._current == null:
 		return null
 	var combined := AABB()
 	var have := false
-	for mi in _mesh_instances(cell_loader._current):
+	for mi in _mesh_instances(cell_streamer._current):
 		var wa: AABB = mi.global_transform * mi.mesh.get_aabb()
 		combined = wa if not have else combined.merge(wa)
 		have = true

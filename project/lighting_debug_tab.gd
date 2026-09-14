@@ -28,9 +28,11 @@ func _ready() -> void:
 	_show_lights_check.toggled.connect(_on_show_lights_toggled)
 	_solo_light_check.toggled.connect(_on_solo_light_toggled)
 	_ligh_linear_color_check.toggled.connect(_on_ligh_linear_color_toggled)
-	if _game != null and _game.cell_loader != null and _game.cell_loader.registry != null:
-		_ligh_linear_color_check.button_pressed = _game.cell_loader.registry.ligh_bytes_are_linear
-		_xemi_emission_spin.value = _game.cell_loader.registry.xemi_no_lighting_emission_energy
+	# These controls mutated legacy GamebryoObjectRegistry material/light
+	# construction. CellStreamerV2 builds typed EsmLightNodes through NifServer,
+	# so make their absence explicit rather than silently changing no runtime.
+	_ligh_linear_color_check.disabled = true
+	_xemi_emission_spin.editable = false
 	_xemi_emission_spin.value_changed.connect(_on_xemi_emission_changed)
 	_auto_exposure_check.toggled.connect(_on_auto_exposure_toggled)
 	if _game != null and _game._world_environment != null:
@@ -54,8 +56,8 @@ func _process(delta: float) -> void:
 		_refresh()
 
 func _refresh() -> void:
-	if _game == null or _game.cell_loader == null or _game.cell_loader.esm == null:
-		_summary_label.text = "(Game/CellLoader not found)"
+	if _game == null or _game.cell_streamer == null or _game._typed_esm_reader() == null:
+		_summary_label.text = "(Game/CellStreamerV2/EsmServer not found)"
 		return
 	var cell_form_id: int = _game._hud_cell_form_id
 	if cell_form_id == 0:
@@ -70,38 +72,36 @@ func _rebuild_entries() -> void:
 	_entries.clear()
 	_light_list.clear()
 	_details_label.text = "Select a LIGH source for authored and applied values."
-	var esm: EsmReader = _game.cell_loader.esm
-	for placement_variant in _game.cell_loader.get_current_refs():
-		var placement: Dictionary = placement_variant
-		if String(placement.get("base_type", "")) != "LIGH":
+	var esm: EsmReader = _game._typed_esm_reader()
+	for reference: EsmReference in _game.cell_streamer.get_current_refs():
+		if reference == null or not reference is LightReference:
 			continue
-		var data: Dictionary = esm.get_light_data(int(placement.get("base_form_id", 0)))
+		var data: Dictionary = esm.get_light_data(reference.base_form_id)
 		if data.is_empty():
 			continue
-		_entries.append({ "placement": placement, "data": data, "light": null })
+		_entries.append({ "reference": reference, "data": data, "light": null })
 	_entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return String(a["placement"].get("editor_id", "")) < String(b["placement"].get("editor_id", "")))
+		return _reference_name(a["reference"]) < _reference_name(b["reference"]))
 	for entry in _entries:
-		var placement: Dictionary = entry["placement"]
+		var reference: EsmReference = entry["reference"]
 		var data: Dictionary = entry["data"]
 		var type_label := "spot" if bool(data.get("is_spot", false)) else "omni"
-		_light_list.add_item("%s  [%s]" % [_placement_name(placement), type_label])
-	_summary_label.text = "%d placed LIGH sources in current CellLoader cell" % _entries.size()
+		_light_list.add_item("%s  [%s]" % [_reference_name(reference), type_label])
+	_summary_label.text = "%d typed LIGH sources in current CellStreamerV2 cell" % _entries.size()
 	_apply_light_visibility()
 
 func _refresh_runtime_values() -> void:
-	var root: Node = _game.cell_loader._current
+	var root: Node = _game.cell_streamer._current
 	var live_count := 0
 	for entry in _entries:
-		var placement: Dictionary = entry["placement"]
-		var node := _find_light_node(root, int(placement.get("refr_form_id", 0)))
+		var reference: EsmReference = entry["reference"]
+		var node := _find_light_node(root, reference.instance_id)
 		var light: Light3D = _direct_light_child(node)
 		entry["light"] = light
 		if light != null:
 			live_count += 1
-	var xemi_readback := _xemi_emission_readback(_game.cell_loader._current)
-	_summary_label.text = "%d placed LIGH sources; %d live Light3D nodes\nXEMI HDR: %d live backing layer(s), peak emission %.2f" % [
-		_entries.size(), live_count, xemi_readback["count"], xemi_readback["peak"]]
+	_summary_label.text = "%d typed LIGH sources; %d live Light3D nodes\nLegacy XEMI and registry colour toggles: unavailable on CellStreamerV2" % [
+		_entries.size(), live_count]
 	_apply_light_visibility()
 
 func _on_light_selected(index: int) -> void:
@@ -118,25 +118,10 @@ func _on_solo_light_toggled(_enabled: bool) -> void:
 	_apply_light_visibility()
 
 func _on_ligh_linear_color_toggled(_enabled: bool) -> void:
-	# This is intentionally a live diagnostic control. It changes only the
-	# Light3D API encoding, never the real LIGH.DATA value shown in the list.
-	if _game != null and _game.cell_loader != null and _game.cell_loader.registry != null:
-		_game.cell_loader.registry.ligh_bytes_are_linear = _ligh_linear_color_check.button_pressed
-	for entry in _entries:
-		var light: Light3D = entry.get("light")
-		if light == null:
-			continue
-		var authored: Color = entry["data"].get("color", Color.WHITE)
-		light.light_color = authored.linear_to_srgb() if _ligh_linear_color_check.button_pressed else authored
-	var selected := _light_list.get_selected_items()
-	if not selected.is_empty():
-		_show_entry(int(selected[0]))
+	push_warning("LIGH colour encoding is controlled by EsmLightNode; legacy registry toggle is unavailable")
 
 func _on_xemi_emission_changed(value: float) -> void:
-	if _game == null or _game.cell_loader == null or _game.cell_loader.registry == null:
-		return
-	_game.cell_loader.registry.xemi_no_lighting_emission_energy = value
-	_apply_xemi_emission_energy(_game.cell_loader._current, value)
+	push_warning("XEMI emission override is unavailable on CellStreamerV2")
 
 func _apply_xemi_emission_energy(node: Node, value: float) -> void:
 	_apply_xemi_emission_energy_recursive(node, value)
@@ -208,12 +193,12 @@ func _show_entry(index: int) -> void:
 	if index < 0 or index >= _entries.size():
 		return
 	var entry: Dictionary = _entries[index]
-	var placement: Dictionary = entry["placement"]
+	var reference: EsmReference = entry["reference"]
 	var data: Dictionary = entry["data"]
 	var authored_color: Color = data.get("color", Color.BLACK)
 	var lines := PackedStringArray([
-		"%s" % _placement_name(placement),
-		"REFR 0x%X   base 0x%X" % [placement.get("refr_form_id", 0), placement.get("base_form_id", 0)],
+		"%s" % _reference_name(reference),
+		"REFR %s   base 0x%X" % [reference.instance_id, reference.base_form_id],
 		"authored: %s   radius %.2fm   falloff %.3f" % [_color_str(authored_color, int(data.get("color_alpha", 0))), data.get("radius", 0.0), data.get("falloff", 0.0)],
 		"flags: 0x%X   spot=%s   off by default=%s   FOV %.1f" % [data.get("flags", 0), data.get("is_spot", false), data.get("off_by_default", false), data.get("fov_degrees", 0.0)],
 	])
@@ -228,18 +213,18 @@ func _show_entry(index: int) -> void:
 			lines.append("applied spot: range %.2fm   attenuation %.3f   angle %.1f" % [light.spot_range, light.spot_attenuation, light.spot_angle])
 	_details_label.text = "\n".join(lines)
 
-func _find_light_node(node: Node, refr_form_id: int) -> LightNode:
+func _find_light_node(node: Node, instance_id: String) -> EsmLightNode:
 	if node == null:
 		return null
-	if node is LightNode and node.form_id == refr_form_id:
+	if node is EsmLightNode and node.reference != null and node.reference.instance_id == instance_id:
 		return node
 	for child in node.get_children():
-		var found := _find_light_node(child, refr_form_id)
+		var found := _find_light_node(child, instance_id)
 		if found != null:
 			return found
 	return null
 
-func _direct_light_child(node: LightNode) -> Light3D:
+func _direct_light_child(node: EsmLightNode) -> Light3D:
 	if node == null:
 		return null
 	for child in node.get_children():
@@ -247,9 +232,10 @@ func _direct_light_child(node: LightNode) -> Light3D:
 			return child
 	return null
 
-func _placement_name(placement: Dictionary) -> String:
-	var editor_id := String(placement.get("editor_id", ""))
-	return editor_id if editor_id != "" else "LIGH_0x%X" % int(placement.get("refr_form_id", 0))
+func _reference_name(reference: EsmReference) -> String:
+	if reference != null and reference.base != null and not reference.base.editor_id.is_empty():
+		return reference.base.editor_id
+	return "LIGH_%s" % (reference.instance_id if reference != null else "unknown")
 
 func _color_str(color: Color, alpha: int = -1) -> String:
 	var alpha_suffix := "" if alpha < 0 else " a=%d" % alpha
