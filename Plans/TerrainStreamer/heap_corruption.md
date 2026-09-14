@@ -37,7 +37,7 @@ The other three fail for three unrelated reasons, none of them memory corruption
 | `test_terrain_streamer_phase3_completion` | passes |
 | `test_terrain_streamer_phase4_retention` | passes |
 | `test_terrain_region_stager` | `ALL CHECKS PASSED`, then aborts on the `EsmServer` thread race below |
-| `test_terrain_streamer_phase1` | `ALL CHECKS PASSED`, then aborts on the `EsmServer` thread race below |
+| `test_terrain_streamer_phase1` | `ALL CHECKS PASSED`, then aborts: `SIGSEGV` in `__pthread_mutex_lock`, its own bug |
 | `test_terrain_streamer_phase3_object_budget` | perf assertions: construction p95 and max outside 10% of the Phase 1 baseline |
 
 `phase3_object_budget` is a genuine open failure and nothing to do with this incident: construction
@@ -74,4 +74,11 @@ early destroys a running `Thread` and aborts. Verified directly: a scene that aw
 quits aborts on `master`. This is what `test_terrain_region_stager` now hits, and it accounts for
 the `134` exits that move between scenes run to run (`test_tri`, `test_editor_marker_filter`).
 
-`EsmServer/` is only ever changed as its own task, so it is not fixed here.
+This has since been fixed: `EsmServer._exit_tree()` now joins the load thread, taking the suite from
+17 failing scenes to 8 and clearing `test_terrain_region_stager` among ten others.
+
+**`test_terrain_streamer_phase1` was not this bug**, and still aborts after passing every assertion.
+It was attributed to the `EsmServer` race on the strength of a shared `134` exit status, without
+reading its stack. Its crash is a `SIGSEGV` inside `__pthread_mutex_lock` — a use-after-free of a
+mutex, the same signature class as the rejected NifServer threaded duplication, and unrelated to
+`Thread` destruction. Still open.
