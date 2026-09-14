@@ -39,7 +39,7 @@ func _ready() -> void:
 			found_actor = true
 			var actor_host := Node3D.new()
 			add_child(actor_host)
-			var actor_node := await EsmReferencePhysicaliser.new().physicalise(reference, actor_host)
+			var actor_node := EsmReferencePhysicaliser.new().physicalise(reference, actor_host)
 			_check(actor_node is EsmNpcActor, "NPC ActorReference physicalises as EsmNpcActor")
 			for _frame in 60:
 				if actor_node != null and actor_node.get_node_or_null("Body") != null: break
@@ -184,10 +184,13 @@ func _check_door_resources(server, index: Array) -> void:
 			_check(reference.base is DoorBase, "DoorReference points to DoorBase")
 			_check(reference.lock_key_form_id == 0 or reference.lock_key != null, "DoorReference resolves its lock key Base")
 			_check(reference.teleport_destination_refr_form_id == 0 or reference.has_teleport_destination, "DoorReference XTEL state is consistent")
-			var physicaliser := EsmReferencePhysicaliser.new()
-			var node: EsmNode = await physicaliser.physicalise(reference)
-			_check(node.get_child_count() > 0, "Door physicalizer builds visual children")
-			_check(node.get_node_or_null("AnimationPlayer") != null, "Door physicalizer builds AnimationPlayer")
+			var node: EsmNode = _physicalise_in_tree(reference)
+			_check(node is EsmDoorNode, "Door physicalizer returns its semantic node immediately")
+			_check(node.position.is_equal_approx(reference.position), "Physicalizer preserves authored placement translation for NifServer")
+			var visual := await _await_nif_visual(node)
+			_check(visual != null, "Door EsmNode receives its NifServer visual asynchronously")
+			_check(node.get_nif_animation_player() != null, "Door visual exposes its AnimationPlayer through NifVisual")
+			node.queue_free()
 			break
 	_check(found_door_reference, "a real DOOR placement resolves as DoorReference")
 	_check_misc_physicaliser(server)
@@ -207,17 +210,12 @@ func _check_misc_physicaliser(server) -> void:
 	if not reference is MiscReference:
 		return
 	_check(reference.base is MiscBase, "MiscReference points to MiscBase")
-	var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+	var node := _physicalise_in_tree(reference)
 	_check(node is EsmItemNode, "MISC physicalises as EsmItemNode")
-	var body := node.get_node_or_null("RigidBody3D")
-	_check(body is GamebryoRigidBody, "MISC uses authored rigid-body construction")
-	var has_collision := false
-	for child in body.get_children() if body is Node else []:
-		if child is CollisionShape3D:
-			has_collision = true
-			break
-	_check(has_collision, "MISC rigid body receives collision shapes")
-	_check(not node is ItemNode, "MISC resource path does not construct legacy ItemNode")
+	var visual := await _await_nif_visual(node)
+	_check(visual != null, "MISC receives its NifServer visual asynchronously")
+	_check(not visual.find_children("*", "CollisionShape3D", true, false).is_empty() if visual != null else false, "MISC NifServer visual includes authored collision")
+	_check(node is EsmItemNode, "MISC resource path does not construct legacy ItemNode")
 	node.free()
 
 func _check_packed_base_reference(server, source_reference: EsmReference) -> void:
@@ -234,6 +232,9 @@ func _check_packed_base_reference(server, source_reference: EsmReference) -> voi
 	var loaded_item := instance.get_child(0) as EsmItemNode
 	_check(loaded_item != null and loaded_item.reference != null, "packed EsmItemNode restores its reference slot")
 	_check(loaded_item != null and loaded_item.reference.base == server.get_base(source_reference.base_form_id), "packed Base reference rehydrates its shared Base")
+	var visual := await _await_nif_visual(loaded_item)
+	_check(visual != null, "packed EsmItemNode rebuilds its NifServer visual after tree entry")
+	_check(visual != null and visual.owner == null, "generated NifVisual remains unowned for editor/runtime regeneration")
 	instance.queue_free()
 	scene_root.free()
 
@@ -273,10 +274,10 @@ func _check_item_resources(server, index: Array) -> void:
 			if reference == null:
 				continue
 			found_reference = true
-			var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node is EsmItemNode, "%s physicalises as EsmItemNode" % type_tag)
 			_check(node is EsmItemNode and (node as EsmItemNode).reference == reference, "%s EsmItemNode retains its typed reference" % type_tag)
-			_check(node.get_node_or_null("RigidBody3D") is GamebryoRigidBody or node.get_child_count() == 0, "%s uses the shared item construction path" % type_tag)
+			_check(node.get_child_count() == 0, "%s physicalises without synchronously constructing legacy children" % type_tag)
 			node.free()
 			break
 		_check(found_reference, "a real %s reference is available" % type_tag)
@@ -307,10 +308,10 @@ func _check_static_resource(server, index: Array) -> void:
 		if reference == null:
 			continue
 		found_reference = true
-		var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+		var node := _physicalise_in_tree(reference)
 		_check(node is EsmStaticNode, "STAT physicalises as EsmStaticNode")
-		_check(node.get_node_or_null("CollisionBody") is GamebryoCollisionBody or node.get_child_count() > 0, "STAT uses individual static construction")
-		node.free()
+		_check(await _await_nif_visual(node) != null, "STAT receives an individual NifServer visual")
+		node.queue_free()
 		break
 	_check(found_reference, "a real STAT reference is available")
 
@@ -341,7 +342,7 @@ func _check_interactive_resources(server, index: Array) -> void:
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected_refs[tag], "%s resolves as typed Reference" % tag)
-			var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node.get_script() == expected_nodes[tag], "%s physicalises as typed EsmNode" % tag)
 			if tag == "CONT":
 				_check(reference is ContainerReference and (reference as ContainerReference).contents is Inventory, "CONT reference owns typed Inventory")
@@ -377,14 +378,15 @@ func _check_collection_and_movable_resources(server, index: Array) -> void:
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
-			var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+			var node := _physicalise_in_tree(reference)
 			_check(node.get_script() == expected[tag]["node"], "%s physicalises as typed Node" % tag)
 			if tag == "SCOL":
+				await get_tree().process_frame
 				_check((node as EsmStaticCollectionNode).is_batch_candidate, "SCOL exposes future batch-candidate metadata")
-				_check(node.get_child_count() > 0, "SCOL expands into part nodes")
+				_check(node.get_child_count() > 0, "SCOL synchronously expands into semantic part nodes")
 			else:
 				_check((reference as MovableStaticReference).emittance_form_id >= 0, "MSTT preserves emittance identity")
-			node.free()
+			node.queue_free()
 			break
 		_check(found_reference, "a real %s reference is available" % tag)
 
@@ -423,7 +425,7 @@ func _check_talking_activator_and_terminal_resources(server, index: Array) -> vo
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
-			var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node.get_script() == load(expected[tag]["node_script"]), "%s physicalises as dedicated EsmNode" % tag)
 			node.free()
 			break
@@ -458,7 +460,7 @@ func _check_dropped_item_resources(server, index: Array) -> void:
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed dropped-item Reference" % tag)
-			var node := await EsmReferencePhysicaliser.new().physicalise(reference)
+			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node is EsmItemNode, "%s physicalises as EsmItemNode" % tag)
 			node.free()
 			break
@@ -506,7 +508,7 @@ func _check_leveled_item_resources(server, index: Array) -> void:
 	var preview_reference := LeveledItemReference.new()
 	preview_reference.base_form_id = synthetic.form_id
 	preview_reference.base = synthetic
-	var preview_node := await EsmReferencePhysicaliser.new().physicalise(preview_reference)
+	var preview_node := EsmReferencePhysicaliser.new().physicalise(preview_reference)
 	_check(preview_node is EsmLeveledItemPreviewNode, "LVLI physicalises as a non-world preview node")
 	preview_node.free()
 
@@ -537,6 +539,24 @@ func _check_saved_base_rehydrates(server) -> void:
 	_check(loaded != null and loaded.editor_id == source.editor_id, "reloaded NpcBase rehydrates EditorID")
 	_check(loaded != null and loaded.race != null, "reloaded NpcBase rehydrates typed Race Base")
 	_check(loaded != null and loaded.race == server.get_base(loaded.race_form_id), "reloaded links use canonical cached Race Base")
+
+## NifServer deliberately paces callbacks over frames. This helper asserts the
+## EsmNode contract without making physicalisation itself await asset work.
+func _await_nif_visual(node: EsmNode, max_frames := 180) -> Node3D:
+	for _frame in max_frames:
+		var visual := node.get_node_or_null("NifVisual") as Node3D
+		if visual != null:
+			return visual
+		await get_tree().process_frame
+	return null
+
+func _physicalise_in_tree(reference: EsmReference) -> EsmNode:
+	var host := Node3D.new()
+	add_child(host)
+	var node := EsmReferencePhysicaliser.new().physicalise(reference, host) as EsmNode
+	if node != null:
+		node.tree_exiting.connect(host.queue_free, CONNECT_ONE_SHOT)
+	return node
 
 func _check(condition: bool, message: String) -> void:
 	if condition: print("  OK   ", message)

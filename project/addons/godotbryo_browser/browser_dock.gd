@@ -303,7 +303,11 @@ func _open_selected_reference_scene() -> void:
 	scene_root.name = _preview_scene_name(reference, selected_card.row if selected_card != null else {})
 	scene_root.set_script(PreviewScript)
 	var physicaliser := PhysicaliserScript.new()
-	await physicaliser.physicalise(reference, scene_root)
+	var generated := physicaliser.physicalise(reference, scene_root)
+	if generated != null:
+		# The semantic node is enough for the initial preview scene. Once opened,
+		# its @tool startup owns generated children so they appear in Scene dock.
+		generated.owner = scene_root
 	var packed_scene := PackedScene.new()
 	if packed_scene.pack(scene_root) != OK:
 		return
