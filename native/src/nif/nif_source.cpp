@@ -788,6 +788,10 @@ Document load(const uint8_t *data, size_t size) {
 		out.name = av->name.get();
 		out.block_type = header.GetBlockTypeStringById(block);
 		out.block_index = block;
+		// Match the legacy loader's definition precisely: any NiAVObject with
+		// no NIF parent is a file root. Preserve it in NifSource as raw,
+		// inspectable data; NifTreeBuilder owns the later instancing policy.
+		out.is_file_root = nif.GetParentNode(av) == nullptr;
 
 		const auto parent = parent_of.find(block);
 		if (parent != parent_of.end()) {

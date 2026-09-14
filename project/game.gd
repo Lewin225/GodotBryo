@@ -41,7 +41,7 @@ const INTERACT_REACH_METERS := 2.5
 const ITEM_DRAG_HOLD_SECONDS := 0.28
 
 var cell_loader: CellLoader
-var world_streamer: WorldStreamer
+var world_streamer: WorldStreamerV2
 var terrain_streamer: TerrainStreamer
 var script_engine: ScriptEngine
 var game_time_manager: GameTimeManager
@@ -68,13 +68,10 @@ var _character_body: CharacterBody3D = null
 # (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
 # duplicated.
 #
-# F3 (freed up above) now toggles this instead: what the interact raycast
-# is currently looking at, by node name + GamebryoReference's own
-# editor_description (base_type/editor_id/form_ids/model, already built
-# in _finalize() for every real placement) -- built to make it fast to
-# identify which real DOOR/asset a given piece of world geometry actually
-# is while walking around in Play, instead of hunting for it blind
-# through ESM data (e.g. tracking down a specific bugged door instance).
+# F3 (freed up above) now toggles this instead: what the interact raycast is
+# currently looking at. Typed pipeline content resolves its hit NIF physics
+# child back to the ancestor EsmNode and reports its EsmReference/EsmBase;
+# legacy GamebryoReference content keeps its editor_description fallback.
 var _look_at_label: Label
 
 # Standalone .tres files (not inline .tscn sub-resources) so each is
@@ -113,12 +110,10 @@ func _enter_tree() -> void:
 		return
 	_shared_resolver = GamebryoMeshResolver.new(data_dir)
 	cell_loader = get_node("CellLoader") as CellLoader
-	world_streamer = get_node("WorldStreamer") as WorldStreamer
+	world_streamer = get_node("WorldStreamer") as WorldStreamerV2
 	terrain_streamer = get_node("TerrainStreamer") as TerrainStreamer
 	cell_loader.configure(_shared_esm, _shared_resolver)
-	world_streamer.configure(_shared_esm, _shared_resolver)
 	terrain_streamer.configure(_shared_esm, _shared_resolver)
-	world_streamer.set_terrain_streamer(terrain_streamer)
 
 func _ready() -> void:
 	cell_loader = $CellLoader # a real scene-tree node now (see game.tscn), not code-instantiated
@@ -148,13 +143,11 @@ func _ready() -> void:
 	cell_loader.load_completed.connect(_on_load_completed)
 	# Reuse Game's shared EsmReader.
 	# one -- same convention _apply_cell_lighting() below already uses.
-	# Wired into both real object_registry.gd instances (interior + exterior)
-	# here, once, rather than each loader reaching for it itself -- neither
-	# CellLoader nor WorldStreamer has any reason to know a ScriptEngine
-	# exists at all otherwise (phases/5/00-script-interpreter-foundation.md).
+	# CellLoader still uses the legacy object registry for interiors. Exterior
+	# WorldStreamerV2 creates typed EsmNodes directly, so script dispatch for
+	# those nodes is intentionally a later pipeline integration step.
 	script_engine.esm = cell_loader.esm
 	cell_loader.registry.script_engine = script_engine
-	world_streamer.registry.script_engine = script_engine
 	script_engine.player_node = _get_character_body() # real GECK "player" keyword -- see ScriptEngine's own doc comment
 	script_engine.function_registry.place_at_me_handler = debug_place_at_me
 	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
@@ -261,18 +254,19 @@ func _interact_raycast() -> Dictionary:
 	var target: Object = collider
 	if collider is GamebryoCollisionBody or collider is GamebryoRigidBody:
 		target = collider.owner_ref
+	var esm_node := _find_esm_node_ancestor(target)
+	if esm_node == null:
+		esm_node = _find_esm_node_ancestor(collider)
+	if esm_node != null:
+		target = esm_node
 	if target == player or (target is Node and player.is_ancestor_of(target)):
 		return {}
 	return { "collider": collider, "target": target }
 
 ## F3-toggled (see _process()). Reuses _interact_raycast() unconditionally
-## every frame while visible -- one raycast is cheap, and this is a
-## debug-only feature. `target.editor_description` (built once in
-## GamebryoObjectRegistry._finalize() for every real placement -- base_type,
-## editor_id, base/refr form_id, and model path when there is one) is
-## already exactly the information needed to identify a specific real
-## asset by eye instead of guessing which ESM record it is; this just
-## displays it, no new data plumbing.
+## every frame while visible. Typed NIF collision lands on a nested physics
+## body, so recover the ancestor EsmNode; retain the legacy editor-description
+## path for CellLoader content until that pipeline is replaced.
 func _update_look_at_label() -> void:
 	var hit := _interact_raycast()
 	if hit.is_empty():
@@ -283,9 +277,26 @@ func _update_look_at_label() -> void:
 	var text := "hit: %s" % String(collider.name)
 	if target != collider and target != null:
 		text += "\nowner: %s" % String(target.name)
-	if target != null and "editor_description" in target:
+	var esm_node := _find_esm_node_ancestor(target)
+	if esm_node == null:
+		esm_node = _find_esm_node_ancestor(collider)
+	if esm_node != null:
+		text += "\nEsmNode: %s\n%s" % [esm_node.name, esm_node.get_debug_description()]
+	elif target != null and "editor_description" in target:
 		text += "\n" + String(target.editor_description)
 	_look_at_label.text = text
+
+## NifServer's StaticBody3D/CollisionShape3D tree has no legacy owner_ref.
+## The semantic EsmNode is its ancestor and is the durable ESM identity.
+func _find_esm_node_ancestor(object: Object) -> EsmNode:
+	if not object is Node:
+		return null
+	var node := object as Node
+	while node != null:
+		if node is EsmNode:
+			return node
+		node = node.get_parent()
+	return null
 
 ## Tap E picks up an ItemNode; holding E for a short deliberate threshold
 ## drags it instead. This preserves the existing one-key interact UX while
@@ -449,9 +460,15 @@ func _try_interact() -> void:
 		if script_engine != null and script_engine.is_scripted(target):
 			script_engine.dispatch_event(target, "OnActivate", _get_character_body())
 		return
-	var outcome: Dictionary = target.activate()
+	var outcome: Dictionary = target.activate(_get_character_body()) if target is EsmNode else target.activate()
+	if outcome.has("terminal"):
+		terminal_session.open_session(outcome["terminal"], cell_loader.esm, _get_character_body())
+		return
 	if outcome.is_empty():
 		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
+	if not outcome.has("dest_cell_form_id"):
+		push_warning("Game: activate() returned an unsupported outcome from %s" % target.name)
+		return
 
 	var dest_cell_form_id := int(outcome["dest_cell_form_id"])
 	var dest_wrld_form_id: int = cell_loader.esm.get_cell_worldspace(dest_cell_form_id)
@@ -463,9 +480,8 @@ func _try_interact() -> void:
 		# activate()'s full re-stream/re-texture cost on every single door
 		# back outside (a real, measured multi-second stall per door) the
 		# way the original Xbox 360 port's 512MB constraint would have
-		# forced. See WorldStreamer.set_paused()'s own doc comment for what
-		# "paused" actually has to cover (RenderingServer AND PhysicsServer,
-		# not just Node visibility).
+		# forced. WorldStreamerV2 retains semantic roots, hides them, and
+		# disables their Node-based collision while the interior is active.
 		_transition_in_progress = true
 		_transition_generation += 1
 		terrain_streamer.set_paused(true)

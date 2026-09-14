@@ -1,9 +1,9 @@
 class_name TerminalSession
 extends CanvasLayer
 
-## Player-facing TERM session owned by Game.  A placed TerminalNode supplies
-## immutable base-record data; this node alone owns navigation, UI and the
-## temporary player-input suspension.
+## Player-facing TERM session owned by Game. A legacy TerminalNode or typed
+## EsmTerminalNode supplies immutable base-record data; this node alone owns
+## navigation, UI and the temporary player-input suspension.
 
 enum View { WELCOME, MENU, RESULT, NOTE }
 
@@ -30,16 +30,23 @@ func _ready() -> void:
 	_back.pressed.connect(_go_back)
 	_exit.pressed.connect(close_session)
 
-func open_session(terminal: TerminalNode, esm: EsmReader, player: Node) -> void:
-	if terminal.terminal_data.is_empty():
+func open_session(terminal: Node, esm: EsmReader, player: Node) -> void:
+	var terminal_data: Dictionary = {}
+	if terminal is TerminalNode:
+		terminal_data = (terminal as TerminalNode).terminal_data
+	elif terminal is EsmTerminalNode:
+		var reference := (terminal as EsmTerminalNode).reference
+		if reference != null and reference.base != null:
+			terminal_data = esm.get_terminal_data(reference.base.form_id)
+	if terminal_data.is_empty():
 		push_warning("TerminalSession: activated TERM has no parsed terminal data")
 		return
 	_esm = esm
-	_terminal_stack = [terminal.terminal_data]
+	_terminal_stack = [terminal_data]
 	_player = player
 	_suspend_player_input()
 	visible = true
-	var welcome: String = String(terminal.terminal_data.get("welcome_text", ""))
+	var welcome: String = String(terminal_data.get("welcome_text", ""))
 	if welcome.is_empty():
 		_show_menu()
 	else:
