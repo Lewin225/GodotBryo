@@ -96,7 +96,7 @@ var _shutting_down := false
 ## Runtime policy for CK/GECK authoring gizmos embedded in NIF trees. This is
 ## intentionally visual-only: typed EsmNodes and any authored collision remain
 ## available to gameplay and diagnostics.
-var editor_objects_visible := true
+var editor_objects_visible := false
 
 var _stats := {
 	"request_count": 0,

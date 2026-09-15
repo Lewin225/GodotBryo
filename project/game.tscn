@@ -21,6 +21,7 @@
 [ext_resource type="Script" uid="uid://cvpr8mlgqt8kh" path="res://gamebryo/weather_manager.gd" id="14_weathermanager"]
 [ext_resource type="Script" uid="uid://cpmim1j54oxtd" path="res://gamebryo/celestial_controller.gd" id="15_celestialcontroller"]
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
+[ext_resource type="Script" path="res://editing_debug_tab.gd" id="17_editingdebug"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x5p1p"]
 
@@ -93,11 +94,6 @@ oversampling_override = 1.0
 
 [node name="Debug" type="PopupMenu" parent="MenuBar" unique_id=1513384365]
 oversampling_override = 1.0
-item_count = 1
-item_0/text = "Show Editor Objects"
-item_0/checkable = 1
-item_0/checked = true
-item_0/id = 100
 
 [node name="Teleport" type="PopupMenu" parent="MenuBar" unique_id=1222662457]
 oversampling_override = 1.0
@@ -1432,6 +1428,43 @@ visible = false
 layout_mode = 2
 script = ExtResource("16_timeweatherdebug")
 metadata/_tab_index = 8
+
+[node name="Editing" type="Control" parent="Debug Tools/TabContainer" unique_id=2147483010]
+visible = false
+layout_mode = 2
+script = ExtResource("17_editingdebug")
+metadata/_tab_index = 9
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Editing" unique_id=2147483011]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Editing/Margin" unique_id=2147483012]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=2147483013]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Editing"
+
+[node name="ShowEditorMarkers" type="CheckBox" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=2147483014]
+layout_mode = 2
+tooltip_text = "Show CK/GECK editor marker meshes. This is visual-only; their authored collision remains active."
+text = "Show Editor Markers"
+
+[node name="Hint" type="Label" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=2147483015]
+layout_mode = 2
+autowrap_mode = 2
+text = "Editor markers are hidden by default. NifServer identifies them once for every runtime consumer."
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 
