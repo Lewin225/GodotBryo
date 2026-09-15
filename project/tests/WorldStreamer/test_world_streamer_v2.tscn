@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://tests/test_world_streamer_v2.gd" id="1"]
+[ext_resource type="Script" path="res://tests/WorldStreamer/test_world_streamer_v2.gd" id="1"]
 
 [node name="WorldStreamerV2Test" type="Node3D"]
 script = ExtResource("1")
