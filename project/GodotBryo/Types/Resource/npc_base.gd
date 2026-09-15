@@ -4,6 +4,12 @@ extends EsmBase
 
 
 const DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID := 0x0000001D
+# The shipped third-person humanoid animation library is conventionally named
+# `_male`; it is a shared asset root, not a branch on this record's sex flag.
+# No official NPC_ record supplies KFFZ (4,222-record master census), so the
+# default belongs here. A future KFFZ override can prepend its exact clips
+# without teaching NifServer how actors select animations.
+const DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH := "meshes/characters/_male/"
 
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_path: String = ""
 var race_form_id: int = 0
@@ -24,3 +30,7 @@ var class_form_id: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_child: bool = false
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_flags: int = 0
 var face_gen: FaceGenData
+
+
+func animation_search_paths() -> PackedStringArray:
+	return PackedStringArray([DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH])
