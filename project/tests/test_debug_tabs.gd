@@ -117,7 +117,7 @@ func _ready() -> void:
 	script_tab._line.free()
 	script_tab.free()
 
-	# 4. Test Scripting suggestions panel and World Streaming sub-tabs structure in game.tscn
+	# 4. Test Scripting suggestions panel and the V2 streaming profiler layout.
 	var game_scene: PackedScene = load("res://game.tscn")
 	var game_node: Node = game_scene.instantiate()
 	var script_tab_node: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Scripting")
@@ -129,16 +129,23 @@ func _ready() -> void:
 
 	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
 	check(ws_tab != null, "World Streaming tab exists in game.tscn")
-	var status_card: Node = ws_tab.get_node_or_null("Margin/SubTabs/Streaming State/VBox/StateGrid/StatusCard")
-	check(status_card != null, "StatusCard resolved in Streaming State subtab")
-	var tex_tree: Node = ws_tab.get_node_or_null("Margin/SubTabs/Ground Textures/VBox/TextureTree")
-	check(tex_tree != null, "TextureTree resolved in Ground Textures subtab")
+	var v2_status: Node = ws_tab.get_node_or_null("Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid/Status")
+	check(v2_status != null, "WorldStreamerV2 profiler has a scene-authored state dashboard")
+	var v2_budget: Node = ws_tab.get_node_or_null("Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid/ObjectsPerFrame")
+	check(v2_budget is SpinBox, "WorldStreamerV2 profiler exposes the reference-per-frame budget")
+	var streaming_mode: Node = ws_tab.get_node_or_null("Margin/SubTabs/V2 Profiler/Margin/VBox/Actions/StreamingMode")
+	check(streaming_mode is OptionButton and (streaming_mode as OptionButton).item_count == 3,
+		"WorldStreamerV2 profiler exposes Run, Pause, and Pause & Hide modes")
+	check(ws_tab.get_node_or_null("Margin/SubTabs/Ground Textures") == null,
+		"terrain texture cache no longer appears in World Streaming")
 	var terrain_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Terrain Streaming")
 	check(terrain_tab != null, "Terrain Streaming tab exists in game.tscn")
 	var terrain_queue_card: Node = terrain_tab.get_node_or_null("Margin/VBox/StateGrid/QueueCard") if terrain_tab != null else null
 	check(terrain_queue_card != null, "Terrain Streaming queue card is scene-authored")
 	var retained_worldspaces: Node = terrain_tab.get_node_or_null("Margin/VBox/RetainedWorldspaces") if terrain_tab != null else null
 	check(retained_worldspaces != null, "Terrain Streaming retained-worldspace tree is scene-authored")
+	var terrain_texture_tree: Node = terrain_tab.get_node_or_null("Margin/VBox/TextureTree") if terrain_tab != null else null
+	check(terrain_texture_tree is Tree, "Terrain Streaming owns the Terrain3D texture-cache tree")
 
 	# 5. Test Teleport tab in game.tscn
 	var teleport_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Teleport")

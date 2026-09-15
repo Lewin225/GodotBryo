@@ -20,6 +20,7 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export_group("Mouse & Look")
 @export var mouse_sensitivity: float = 0.003
 @export_range(10.0, 89.0) var pitch_limit_degrees: float = 89.0
+@export var handle_mouse_capture:bool = false
 @export var capture_mouse_on_start: bool = true
 
 # --- Movement Parameters ---
@@ -173,7 +174,7 @@ func _ready() -> void:
 	slide_on_ceiling = false
 	floor_max_angle = deg_to_rad(max_floor_angle)
 
-	if capture_mouse_on_start:
+	if capture_mouse_on_start and handle_mouse_capture:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	if not collision_shape:
@@ -228,9 +229,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if debug_click_shake and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		return
 		# Incedibly annoying
-		var shake_val := CLICK_SHAKE_PATTERN[_click_shake_index]
-		apply_camera_shake(shake_val)
-		_click_shake_index = (_click_shake_index + 1) % CLICK_SHAKE_PATTERN.size()
+		#var shake_val := CLICK_SHAKE_PATTERN[_click_shake_index]
+		#apply_camera_shake(shake_val)
+		#_click_shake_index = (_click_shake_index + 1) % CLICK_SHAKE_PATTERN.size()
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotation.y -= event.relative.x * mouse_sensitivity

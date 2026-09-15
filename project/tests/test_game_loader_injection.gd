@@ -30,14 +30,20 @@ func _ready() -> void:
 	var cell: CellStreamerV2 = game.get_node("CellStreamerV2")
 	var objects: WorldStreamerV2 = game.get_node("WorldStreamer")
 	var terrain: TerrainStreamer = game.get_node("TerrainStreamer")
-	check(cell != null and cell.spawn_reference_types == CellStreamerV2.SPAWN_REFR,
-			"Game scenes author the REFR-only typed interior streamer")
+	check(cell != null
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_REFR) != 0
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_ACHR) != 0
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_CREA) == 0,
+			"Game scene authors the typed interior streamer with REFR and ACHR enabled")
 	check(terrain.esm != null and terrain.resolver != null,
 			"Game._enter_tree still injects LAND's separate raw ESM/resolver pair")
 	check(objects != null, "Game retains the typed WorldStreamerV2 exterior path")
-	var debug_menu := game.get_node("MenuBar/Debug") as PopupMenu
-	check(debug_menu != null and debug_menu.get_item_index(100) >= 0 and debug_menu.is_item_checkable(debug_menu.get_item_index(100)),
-			"top bar exposes a checkable Debug > Show Editor Objects command")
+	var editor_markers_check := game.get_node("Debug Tools/TabContainer/Editing/Margin/VBox/ShowEditorMarkers") as CheckBox
+	check(editor_markers_check != null and not editor_markers_check.button_pressed,
+			"Editing tab exposes Show Editor Markers off by default")
+	var debug_menu := game.get_node_or_null("MenuBar/Debug") as PopupMenu
+	check(debug_menu == null or debug_menu.get_item_index(100) < 0,
+		"no top-bar menu owns the editor marker toggle")
 	check(NifServerScript.is_editor_object_name("EditorMarker:0")
 			and NifServerScript.is_editor_object_name("VisibilityEditorMarker:0")
 			and not NifServerScript.is_editor_object_name("DustBillBoard01:0"),
@@ -49,12 +55,13 @@ func _ready() -> void:
 			and not NifServerScript.is_standalone_marker_model("Effects/Ambient/Industrial/IndFXLightRays01.NIF"),
 			"NifServer identifies standalone marker models from their NIF model identity")
 	var nif_server = get_node("/root/NifServer")
-	game.call("_on_debug_menu_id_pressed", 100)
-	check(not nif_server.editor_objects_visible and not debug_menu.is_item_checked(debug_menu.get_item_index(100)),
-			"Debug menu command changes the NifServer policy and its checked state")
-	game.call("_on_debug_menu_id_pressed", 100)
-	check(nif_server.editor_objects_visible and debug_menu.is_item_checked(debug_menu.get_item_index(100)),
-			"Debug menu command restores the NifServer policy and its checked state")
+	check(not nif_server.editor_objects_visible, "NifServer hides editor objects by default")
+	editor_markers_check.button_pressed = true
+	check(nif_server.editor_objects_visible and editor_markers_check.button_pressed,
+			"Editing tab enables NifServer's shared editor-object policy")
+	editor_markers_check.button_pressed = false
+	check(not nif_server.editor_objects_visible and not editor_markers_check.button_pressed,
+			"Editing tab disables NifServer's shared editor-object policy")
 	var delivered_marker := MeshInstance3D.new()
 	delivered_marker.set_meta(NifServerScript.META_EDITOR_OBJECT, true)
 	delivered_marker.add_to_group(NifServerScript.EDITOR_OBJECT_GROUP)
