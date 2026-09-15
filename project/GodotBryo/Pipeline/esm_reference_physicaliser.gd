@@ -18,7 +18,7 @@ const MovableStaticNodeScript := preload("res://GodotBryo/Types/Node/esm_movable
 const TalkingActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_talking_activator_node.gd")
 const TerminalNodeScript := preload("res://GodotBryo/Types/Node/esm_terminal_node.gd")
 const LeveledItemPreviewNodeScript := preload("res://GodotBryo/Types/Node/esm_leveled_item_preview_node.gd")
-const NpcActorScene := preload("res://gamebryo/esm_npc_actor.tscn")
+const HumanoidActorScene := preload("res://GodotBryo/Types/Node/esm_humanoid_actor.tscn")
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 ## Creates and configures one semantic node synchronously. Once parented, the
@@ -64,7 +64,7 @@ func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:
 
 func _make_node(reference: EsmReference) -> EsmNode:
 	if reference is ActorReference and reference.base is NpcBase:
-		return NpcActorScene.instantiate()
+		return HumanoidActorScene.instantiate()
 	if reference is DoorReference:
 		return DoorNodeScript.new()
 	if reference is LeveledItemReference:

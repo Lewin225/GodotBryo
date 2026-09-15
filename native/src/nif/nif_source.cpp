@@ -978,6 +978,28 @@ Document load(const uint8_t *data, size_t size) {
 						filled[vertex]++;
 					}
 				}
+
+				// The actual exported association is per triangle, not per source
+				// shape: BSDismemberSkinInstance supplies partition IDs/flags while
+				// NiSkinPartition supplies the matching triangle partition indices.
+				// Do not call GetShapePartitions for an ordinary NiSkinInstance: Nifly
+				// deliberately synthesises a default partition for that editor API.
+				if (dynamic_cast<nifly::BSDismemberSkinInstance *>(
+							header.GetBlock<nifly::NiBoneContainer>(shape->SkinInstanceRef())) != nullptr) {
+					nifly::NiVector<nifly::BSDismemberSkinInstance::PartitionInfo> partitions;
+					std::vector<int> triangle_partitions;
+					if (nif.GetShapePartitions(shape, partitions, triangle_partitions)) {
+						out.geometry.skin.dismember_partitions.reserve(partitions.size());
+						for (const auto &partition : partitions) {
+							out.geometry.skin.dismember_partitions.push_back(
+									{partition.partID, partition.flags});
+						}
+						out.geometry.skin.dismember_triangle_partitions.reserve(triangle_partitions.size());
+						for (const int partition_index : triangle_partitions) {
+							out.geometry.skin.dismember_triangle_partitions.push_back(partition_index);
+						}
+					}
+				}
 			}
 
 			// Only populate when the shape really has a texture set, so an

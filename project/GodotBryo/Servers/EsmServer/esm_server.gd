@@ -14,7 +14,7 @@ const TYPE_TO_BASE := {
 	"KEYM": "KeyBase", "MISC": "MiscBase", "DOOR": "DoorBase", "SCOL": "StaticCollectionBase",
 	"LIGH": "LightBase", "CONT": "ContainerBase", "ACTI": "ActivatorBase", "FURN": "FurnitureBase",
 	"TACT": "TalkingActivatorBase", "MSTT": "MovableStaticBase", "TERM": "TerminalBase",
-	"STAT": "StaticBase", "CREA": "CreatureBase"
+	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -439,12 +439,15 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
 		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
 		npc.class_form_id = _u32(_subrecord(raw, "CNAM")); npc.actor_class = get_base(npc.class_form_id) as ClassBase
+		npc.body_part_data = get_base(NpcBase.DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID) as BodyPartDataBase
 		npc.packages.clear()
 		for package_data in _all_subrecords(raw, "PKID"):
 			var package_base := get_base(_u32(package_data)) as PackageBase
 			if package_base != null: npc.packages.append(package_base)
 	elif result is CreatureBase:
 		_populate_creature(result as CreatureBase, raw)
+	elif result is BodyPartDataBase:
+		_populate_body_part_data(result as BodyPartDataBase, raw)
 	elif result is RaceBase:
 		_populate_race(result as RaceBase, raw)
 	elif result is ArmorBase:
@@ -741,6 +744,71 @@ func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 		if data.size() >= 4:
 			result.pnam_values.append(_u32(data))
 
+func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void:
+	result.skeleton_model_path = _string(_subrecord(raw, "MODL"))
+	result.ragdoll_form_id = _u32(_subrecord(raw, "RAGA"))
+	result.parts.clear()
+	var current: BodyPartDataPart = null
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
+		if tag == "BPTN":
+			if current != null:
+				result.parts.append(current)
+			current = BodyPartDataPart.new()
+			current.part_name = _string(data)
+		elif tag == "BPNN":
+			# BPTD permits an unnamed collection, which begins at BPNN. A second
+			# BPNN therefore begins the next collection if the current one is full.
+			if current == null or not current.part_node.is_empty():
+				if current != null:
+					result.parts.append(current)
+				current = BodyPartDataPart.new()
+			current.part_node = _string(data)
+		elif current != null and tag == "BPNT":
+			current.vats_target = _string(data)
+		elif current != null and tag == "BPNI":
+			current.ik_start_node = _string(data)
+		elif current != null and tag == "BPND":
+			_populate_body_part_numeric_data(current, data, result)
+		elif current != null and tag == "NAM1":
+			current.limb_replacement_model = _string(data)
+		elif current != null and tag == "NAM4":
+			current.gore_target_bone = _string(data)
+		elif current != null and tag == "NAM5":
+			current.texture_file_hashes = data.duplicate()
+	if current != null:
+		result.parts.append(current)
+
+func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, owner: BodyPartDataBase) -> void:
+	part.raw_bpnd = data.duplicate()
+	if data.size() != 84:
+		owner.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [owner.form_id, data.size()])
+		return
+	part.damage_multiplier = _f32(data)
+	part.flags = _u8(data, 4)
+	part.part_type = _u8(data, 5)
+	part.health_percent = _u8(data, 6)
+	part.actor_value = _i8(data, 7)
+	part.hit_chance = _u8(data, 8)
+	part.explosion_chance = _u8(data, 9)
+	part.explosion_debris_count = _u16(data, 10)
+	part.explosion_debris_form_id = _u32(data, 12)
+	part.explosion_form_id = _u32(data, 16)
+	part.tracking_max_angle = _f32(data, 20)
+	part.explosion_debris_scale = _f32(data, 24)
+	part.severable_debris_count = _i32(data, 28)
+	part.severable_debris_form_id = _u32(data, 32)
+	part.severable_explosion_form_id = _u32(data, 36)
+	part.severable_debris_scale = _f32(data, 40)
+	part.gore_translation = Vector3(_f32(data, 44), _f32(data, 48), _f32(data, 52))
+	part.gore_rotation = Vector3(_f32(data, 56), _f32(data, 60), _f32(data, 64))
+	part.severable_impact_dataset_form_id = _u32(data, 68)
+	part.explosion_impact_dataset_form_id = _u32(data, 72)
+	part.severable_decal_count = _u8(data, 76)
+	part.explosion_decal_count = _u8(data, 77)
+	part.limb_replacement_scale = _f32(data, 80)
+
 func _join_creature_asset_path(directory: String, filename: String) -> String:
 	var clean_filename := filename.replace("/", "\\")
 	if directory.is_empty():
@@ -774,6 +842,9 @@ func _u16(data: PackedByteArray, offset := 0) -> int:
 	return int(data.decode_u16(offset)) if data.size() >= offset + 2 else 0
 func _u8(data: PackedByteArray, offset := 0) -> int:
 	return int(data[offset]) if data.size() > offset else 0
+func _i8(data: PackedByteArray, offset := 0) -> int:
+	var value := _u8(data, offset)
+	return value - 256 if value >= 128 else value
 func _i32(data: PackedByteArray, offset := 0) -> int:
 	return int(data.decode_s32(offset)) if data.size() >= offset + 4 else 0
 func _f32(data: PackedByteArray, offset := 0) -> float:

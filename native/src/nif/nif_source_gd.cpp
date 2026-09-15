@@ -192,6 +192,21 @@ Array NifSource::get_nodes() const {
 				}
 				skin["bone_weights"] = bone_weights;
 
+				Array dismember_partitions;
+				for (const auto &partition : geo.skin.dismember_partitions) {
+					Dictionary value;
+					value["part_id"] = partition.part_id;
+					value["flags"] = partition.flags;
+					dismember_partitions.push_back(value);
+				}
+				skin["dismember_partitions"] = dismember_partitions;
+
+				PackedInt32Array dismember_triangle_partitions;
+				for (int32_t partition_index : geo.skin.dismember_triangle_partitions) {
+					dismember_triangle_partitions.push_back(partition_index);
+				}
+				skin["dismember_triangle_partitions"] = dismember_triangle_partitions;
+
 				d["skin"] = skin;
 			}
 		}
