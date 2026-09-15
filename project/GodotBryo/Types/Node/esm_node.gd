@@ -44,8 +44,6 @@ var _request_generation := 0
 ## The tier actually represented by a live NIF child, or -1 while absent.
 var _active_visual_detail := -1
 var _generated_children: Array[Node] = []
-## Retained for EsmNpcActor's separate legacy actor/equipment assembly path.
-var _visual_built := false
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 ## Default activation hook for all physicalized ESM nodes.
@@ -59,7 +57,7 @@ func _ready() -> void:
 func configure(esm_reference: EsmReference) -> void:
 	reference = esm_reference
 
-## Compatibility hook for specialized nodes such as EsmNpcActor. Normal nodes
+## Compatibility hook for specialized nodes such as EsmHumanoidActor. Normal nodes
 ## start the shared NifServer lifecycle; specialized nodes may replace it.
 func _reference_changed() -> void:
 	if is_inside_tree():

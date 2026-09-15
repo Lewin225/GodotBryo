@@ -41,6 +41,15 @@ struct ExtraData {
 	std::vector<TextKey> text_keys; // NiTextKeyExtraData
 };
 
+// One BSDismemberSkinInstance partition record. Its index is the value used by
+// SkinData::dismember_triangle_partitions, so the pair preserves the authored
+// triangle-to-body-part association rather than flattening it to shape-wide
+// metadata.
+struct DismemberPartition {
+	uint16_t part_id = 0;
+	uint16_t flags = 0;
+};
+
 // Per-vertex skin influence. Bone indices are into SkinData::bone_names, not
 // into any skeleton: 86% of skinned NIFs carry a flat bone LIST rather than a
 // hierarchy, so the rig belongs to whatever the caller binds this to
@@ -50,6 +59,13 @@ struct SkinData {
 	std::vector<float> bind_transforms; // 16 floats per bone, row-major, meters
 	std::vector<int32_t> bone_indices; // 4 per vertex
 	std::vector<float> bone_weights; // 4 per vertex, parallel to the above
+
+	// Empty for an ordinary NiSkinInstance. For BSDismemberSkinInstance, these
+	// ordered records and the parallel per-shape-triangle index preserve the
+	// exact exported runtime partitioning. A triangle index of -1 is authored
+	// as unassigned and is retained for the caller to handle explicitly.
+	std::vector<DismemberPartition> dismember_partitions;
+	std::vector<int32_t> dismember_triangle_partitions;
 };
 
 // Triangle geometry for one shape. Positions are METERS: the conversion is
