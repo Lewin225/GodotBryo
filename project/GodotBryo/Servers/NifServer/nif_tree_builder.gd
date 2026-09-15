@@ -23,6 +23,31 @@ const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/text
 ## no consumer applies an axis correction afterwards.
 const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
+# BSDismemberBodyPartType names are format labels, not actor policy. They make
+# the split tree inspectable while the raw integer remains the programmatic
+# identity (including unknown values such as 65533 and 65535).
+const DISMEMBER_PART_NAMES := {
+	0: "BP_TORSO", 1: "BP_HEAD", 2: "BP_HEAD2", 3: "BP_LEFTARM", 4: "BP_LEFTARM2",
+	5: "BP_RIGHTARM", 6: "BP_RIGHTARM2", 7: "BP_LEFTLEG", 8: "BP_LEFTLEG2",
+	9: "BP_LEFTLEG3", 10: "BP_RIGHTLEG", 11: "BP_RIGHTLEG2", 12: "BP_RIGHTLEG3",
+	13: "BP_BRAIN", 14: "BP_WEAPON",
+	101: "BP_SECTIONCAP_HEAD", 102: "BP_SECTIONCAP_HEAD2", 103: "BP_SECTIONCAP_LEFTARM",
+	104: "BP_SECTIONCAP_LEFTARM2", 105: "BP_SECTIONCAP_RIGHTARM", 106: "BP_SECTIONCAP_RIGHTARM2",
+	107: "BP_SECTIONCAP_LEFTLEG", 108: "BP_SECTIONCAP_LEFTLEG2", 109: "BP_SECTIONCAP_LEFTLEG3",
+	110: "BP_SECTIONCAP_RIGHTLEG", 111: "BP_SECTIONCAP_RIGHTLEG2", 112: "BP_SECTIONCAP_RIGHTLEG3",
+	113: "BP_SECTIONCAP_BRAIN",
+	201: "BP_TORSOCAP_HEAD", 202: "BP_TORSOCAP_HEAD2", 203: "BP_TORSOCAP_LEFTARM",
+	204: "BP_TORSOCAP_LEFTARM2", 205: "BP_TORSOCAP_RIGHTARM", 206: "BP_TORSOCAP_RIGHTARM2",
+	207: "BP_TORSOCAP_LEFTLEG", 208: "BP_TORSOCAP_LEFTLEG2", 209: "BP_TORSOCAP_LEFTLEG3",
+	210: "BP_TORSOCAP_RIGHTLEG", 211: "BP_TORSOCAP_RIGHTLEG2", 212: "BP_TORSOCAP_RIGHTLEG3",
+	213: "BP_TORSOCAP_BRAIN",
+	1000: "BP_TORSOSECTION_HEAD", 2000: "BP_TORSOSECTION_HEAD2", 3000: "BP_TORSOSECTION_LEFTARM",
+	4000: "BP_TORSOSECTION_LEFTARM2", 5000: "BP_TORSOSECTION_RIGHTARM", 6000: "BP_TORSOSECTION_RIGHTARM2",
+	7000: "BP_TORSOSECTION_LEFTLEG", 8000: "BP_TORSOSECTION_LEFTLEG2", 9000: "BP_TORSOSECTION_LEFTLEG3",
+	10000: "BP_TORSOSECTION_RIGHTLEG", 11000: "BP_TORSOSECTION_RIGHTLEG2", 12000: "BP_TORSOSECTION_RIGHTLEG3",
+	13000: "BP_TORSOSECTION_BRAIN",
+}
+
 
 ## Every (path, alpha_safe) pair this file's materials will ask for, deduped.
 ## Used by _resolve_textures() so the warmed key and the looked-up key cannot
@@ -193,7 +218,10 @@ static func build(src: NifSource, apply_root_basis: bool = true,
 			# it for the authored node slot.
 			if animated_collision_owners.has(i):
 				var visual := _make_node(nd, textures)
-				if visual.get_class() != "Node3D":
+				# A partitioned NiTriShape is a Node3D container whose children are
+				# still visual geometry, so `get_class() != Node3D` alone is no
+				# longer enough to distinguish an inert authored node from a visual.
+				if visual.get_class() != "Node3D" or nd.has("positions"):
 					visual.name = "Visual"
 					node.add_child(visual)
 			if parent_index == -1:
@@ -570,14 +598,72 @@ static func _make_node(nd: Dictionary, textures: Dictionary) -> Node3D:
 			particles.emitting = false
 			return particles
 	if nd.has("positions"):
+		if _has_dismember_partitions(nd):
+			return _make_dismember_partition_node(nd, textures)
 		return _make_mesh_instance(nd, textures)
 	return Node3D.new()
 
 
-static func _make_mesh_instance(nd: Dictionary, textures: Dictionary) -> MeshInstance3D:
+static func _has_dismember_partitions(nd: Dictionary) -> bool:
+	if not nd.has("skin"):
+		return false
+	var skin: Dictionary = nd["skin"]
+	return not (skin.get("dismember_partitions", []) as Array).is_empty()
+
+
+static func _dismember_partition_name(part_id: int) -> String:
+	return String(DISMEMBER_PART_NAMES.get(part_id, "Partition_%d" % part_id))
+
+
+## A BSDismemberSkinInstance is attached to one NiTriShape, but its semantic
+## partitions divide the shape's triangles. Retain the authored shape as this
+## container and make each partition independently visible beneath it.
+static func _make_dismember_partition_node(nd: Dictionary, textures: Dictionary) -> Node3D:
+	var skin: Dictionary = nd["skin"]
+	var partitions: Array = skin.get("dismember_partitions", [])
+	var triangle_partitions: PackedInt32Array = skin.get("dismember_triangle_partitions", PackedInt32Array())
+	var indices: PackedInt32Array = nd["indices"]
+	var triangle_count := indices.size() / 3
+	if indices.size() % 3 != 0 or triangle_partitions.size() != triangle_count:
+		push_warning("NifTreeBuilder: BSDismember partition map does not cover the source triangle list; keeping '%s' unsplit" % String(nd.get("name", "")))
+		return _make_mesh_instance(nd, textures)
+	for partition_index in triangle_partitions:
+		if partition_index < 0 or partition_index >= partitions.size():
+			push_warning("NifTreeBuilder: BSDismember partition map has an unassigned/invalid triangle; keeping '%s' unsplit" % String(nd.get("name", "")))
+			return _make_mesh_instance(nd, textures)
+
+	var grouped_indices: Array[PackedInt32Array] = []
+	grouped_indices.resize(partitions.size())
+	for partition_index in partitions.size():
+		grouped_indices[partition_index] = PackedInt32Array()
+	for triangle_index in triangle_count:
+		var partition_index := triangle_partitions[triangle_index]
+		var offset := triangle_index * 3
+		grouped_indices[partition_index].append(indices[offset])
+		grouped_indices[partition_index].append(indices[offset + 1])
+		grouped_indices[partition_index].append(indices[offset + 2])
+
+	var container := Node3D.new()
+	var source_shape := String(nd.get("name", ""))
+	for partition_index in partitions.size():
+		var partition: Dictionary = partitions[partition_index]
+		var part_id := int(partition.get("part_id", 0))
+		var flags := int(partition.get("flags", 0))
+		var mesh := _make_mesh_instance(nd, textures, grouped_indices[partition_index], true)
+		mesh.name = _dismember_partition_name(part_id)
+		mesh.set_meta("nif_dismember_part_id", part_id)
+		mesh.set_meta("nif_dismember_partition_flags", flags)
+		mesh.set_meta("nif_dismember_partition_index", partition_index)
+		mesh.set_meta("nif_dismember_source_shape", source_shape)
+		container.add_child(mesh)
+	return container
+
+
+static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
+		indices_override: PackedInt32Array = PackedInt32Array(), has_indices_override := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var positions: PackedVector3Array = nd["positions"]
-	var indices: PackedInt32Array = nd["indices"]
+	var indices: PackedInt32Array = indices_override if has_indices_override else nd["indices"]
 	if positions.is_empty() or indices.is_empty():
 		return mi
 
