@@ -39,8 +39,6 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 # outside its collision, not tuned further.
 const INTERACT_REACH_METERS := 2.5
 const ITEM_DRAG_HOLD_SECONDS := 0.28
-const DEBUG_MENU_SHOW_EDITOR_OBJECTS := 100
-
 const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_physicaliser.gd")
 
 var cell_streamer: CellStreamerV2
@@ -76,8 +74,6 @@ var _character_body: CharacterBody3D = null
 # child back to the ancestor EsmNode and reports its EsmReference/EsmBase;
 # legacy GamebryoReference content keeps its editor_description fallback.
 var _look_at_label: Label
-var _debug_menu: PopupMenu
-
 # Standalone .tres files (not inline .tscn sub-resources) so each is
 # independently editable/previewable in the editor -- WorldEnvironment
 # nodes can't be individually enabled/disabled (tried; Godot has no such
@@ -133,9 +129,6 @@ func _ready() -> void:
 	_look_at_label = $DebugHud/LookAtLabel
 	_sun = $Sun
 	_world_environment = $WorldEnvironment
-	_debug_menu = $MenuBar/Debug
-	_debug_menu.id_pressed.connect(_on_debug_menu_id_pressed)
-	_sync_editor_object_menu()
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.
@@ -174,25 +167,6 @@ func _ready() -> void:
 
 func _on_load_started(cell_form_id: int) -> void:
 	print("game.gd: loading cell 0x%X..." % cell_form_id)
-
-func _on_debug_menu_id_pressed(id: int) -> void:
-	if id != DEBUG_MENU_SHOW_EDITOR_OBJECTS:
-		return
-	var nif_server := get_tree().root.get_node_or_null("NifServer")
-	if nif_server == null or not nif_server.has_method("set_editor_objects_visible"):
-		push_warning("Game: NifServer editor-object policy is unavailable")
-		return
-	nif_server.set_editor_objects_visible(not bool(nif_server.editor_objects_visible))
-	_sync_editor_object_menu()
-
-func _sync_editor_object_menu() -> void:
-	if _debug_menu == null:
-		return
-	var index := _debug_menu.get_item_index(DEBUG_MENU_SHOW_EDITOR_OBJECTS)
-	if index < 0:
-		return
-	var nif_server := get_tree().root.get_node_or_null("NifServer") if get_tree() != null else null
-	_debug_menu.set_item_checked(index, true if nif_server == null else bool(nif_server.editor_objects_visible))
 
 func _await_typed_esm() -> EsmReader:
 	var server := get_tree().root.get_node_or_null("EsmServer")
