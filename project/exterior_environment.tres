@@ -10,11 +10,9 @@ gradient = SubResource("Gradient_yryqu")
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_4h0r7"]
 sky_top_color = Color(0.73333335, 0.7666667, 0.8666667, 1)
 sky_horizon_color = Color(1, 0.99607843, 0.78039217, 1)
-sky_curve = 0.054902855
+sky_curve = 0.13518687
 sky_energy_multiplier = 0.8
-ground_curve = 0.18820283
-sun_angle_max = 213.05
-sun_curve = 0.13995609
+sun_curve = 0.08919051
 
 [sub_resource type="Sky" id="Sky_p6biy"]
 sky_material = SubResource("ProceduralSkyMaterial_4h0r7")
@@ -40,16 +38,19 @@ fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
 fog_sun_scatter = 1.0
-fog_density = 1.0
-fog_sky_affect = 0.0
-fog_depth_begin = 500.0
-fog_depth_end = 4000.0
+fog_density = 0.5
+fog_aerial_perspective = 0.2
+fog_sky_affect = 0.6
+fog_depth_curve = 0.35
+fog_depth_begin = 0.0
+fog_depth_end = 1000.0
 volumetric_fog_enabled = true
 volumetric_fog_density = 0.01
 volumetric_fog_albedo = Color(0.84422976, 0.8154721, 0.6885916, 1)
 volumetric_fog_gi_inject = 0.0
 volumetric_fog_length = 50.0
 volumetric_fog_detail_spread = 0.93303317
+volumetric_fog_ambient_inject = 1.0
 adjustment_enabled = true
 adjustment_saturation = 1.37
 adjustment_color_correction = SubResource("GradientTexture1D_gnu06")

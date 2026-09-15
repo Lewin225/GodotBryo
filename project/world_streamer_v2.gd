@@ -39,6 +39,9 @@ var esm_server: Node = null
 var _physicaliser := PhysicaliserScript.new()
 var _active_wrld_form_id := -1
 var _paused := false
+## Game transitions pause and hide by default; the profiler can instead pause
+## scheduling while retaining visible, collidable exterior state.
+var _pause_hides := true
 var _generation := 0
 var _check_timer := 0.0
 var _current_cell_form_id_cache := 0
@@ -61,11 +64,13 @@ var _persistent_references_by_tile: Dictionary = {}
 var _persistent_pending: Dictionary = {}
 var _persistent_queued: Dictionary = {}
 var _persistent_load_queue: Array[Vector2i] = []
+## Worldspace-wide XSRF/XSRD stand-ins.  These must eventually exist beyond
+## ordinary tile residency, but never get to occupy NifServer ahead of cells
+## around the camera.
+var _persistent_imposter_queue: Array[EsmReference] = []
 
 var _tile_population_jobs: Array[Dictionary] = []
 var _persistent_population_jobs: Array[Dictionary] = []
-var _next_tile_start_is_persistent := false
-var _next_population_is_persistent := false
 
 
 func _ready() -> void:
@@ -91,6 +96,7 @@ func deactivate() -> void:
 	_active_wrld_form_id = -1
 	_generation += 1
 	_paused = false
+	_pause_hides = true
 	visible = true
 	_current_cell_form_id_cache = 0
 	_initial_center = null
@@ -106,9 +112,8 @@ func deactivate() -> void:
 	_persistent_pending.clear()
 	_persistent_queued.clear()
 	_persistent_load_queue.clear()
+	_persistent_imposter_queue.clear()
 	_persistent_population_jobs.clear()
-	_next_tile_start_is_persistent = false
-	_next_population_is_persistent = false
 	for root: Node3D in _resident.values():
 		root.free()
 	_resident.clear()
@@ -126,13 +131,22 @@ func is_paused() -> bool:
 	return _paused
 
 
+
+func is_pause_hiding() -> bool:
+	return _paused and _pause_hides
+
+
 ## Pausing retains exterior state for an interior return, while suppressing
 ## visibility and collision. EsmNode reapplies this state to late NIF trees.
-func set_paused(paused: bool) -> void:
-	if not is_active() or paused == _paused:
+func set_paused(paused: bool, hide_when_paused := true) -> void:
+	if not is_active():
+		return
+	var next_pause_hides := hide_when_paused if paused else false
+	if paused == _paused and next_pause_hides == _pause_hides:
 		return
 	_paused = paused
-	visible = not paused
+	_pause_hides = next_pause_hides
+	visible = not (_paused and _pause_hides)
 	for root: Node3D in _resident.values():
 		apply_streaming_state_to_subtree(root)
 	if _persistent_root != null:
@@ -145,12 +159,10 @@ func set_paused(paused: bool) -> void:
 		_check_streaming()
 		call_deferred("_maybe_emit_initial_settled")
 
-
 ## Called by EsmNode when NifServer delivers a tree after a stream-state
 ## change.
 func apply_streaming_state_to_subtree(node: Node) -> void:
-	CellStreamBuilder.set_collision_disabled(node, _paused)
-
+	CellStreamBuilder.set_collision_disabled(node, _paused and _pause_hides)
 
 func _process(delta: float) -> void:
 	if not is_active() or _paused or not _esm_is_ready():
@@ -249,6 +261,7 @@ func _check_streaming() -> void:
 		else:
 			_set_tile_visual_detail(_resident[coord], _detail_for_offset(distance_x, distance_y))
 	_check_persistent_tiles(center)
+	_prioritize_persistent_imposters(center)
 	_process_tile_starts()
 
 
@@ -268,25 +281,35 @@ func _detail_for_offset(dx: int, dy: int) -> EsmNode.VisualDetail:
 
 func _process_tile_starts() -> void:
 	var budget := maxi(1, tiles_per_frame)
+	var center_value: Variant = _current_grid_coord()
+	if center_value == null:
+		return
+	var center: Vector2i = center_value
+	_sort_tile_start_queues(center)
 	while budget > 0 and (not _load_queue.is_empty() or not _persistent_load_queue.is_empty()):
-		var start_persistent := not _persistent_load_queue.is_empty() \
-			and (_load_queue.is_empty() or _next_tile_start_is_persistent)
-		_next_tile_start_is_persistent = not _next_tile_start_is_persistent
+		var regular_distance: float = INF if _load_queue.is_empty() else _load_queue[0].distance_squared_to(center)
+		var persistent_distance: float = INF if _persistent_load_queue.is_empty() else _persistent_load_queue[0].distance_squared_to(center)
+		var start_persistent := persistent_distance < regular_distance
 		if not start_persistent:
 			var coord: Vector2i = _load_queue.pop_front()
 			_queued.erase(coord)
 			if not is_active() or _paused or _resident.has(coord) or _pending.has(coord) or _no_cell_cache.has(coord):
 				continue
-			var center_value: Variant = _current_grid_coord()
-			if center_value == null:
-				continue
-			var center: Vector2i = center_value
 			if not _within_radius(coord.x - center.x, coord.y - center.y, _lod_radius()):
 				continue
 			_start_tile(coord, _detail_for_offset(coord.x - center.x, coord.y - center.y))
 		else:
 			_start_persistent_tile(_persistent_load_queue.pop_front())
 		budget -= 1
+
+
+func _sort_tile_start_queues(center: Vector2i) -> void:
+	_load_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.distance_squared_to(center) < b.distance_squared_to(center)
+	)
+	_persistent_load_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.distance_squared_to(center) < b.distance_squared_to(center)
+	)
 
 
 func _start_tile(coord: Vector2i, detail: EsmNode.VisualDetail) -> void:
@@ -323,10 +346,10 @@ func _begin_persistent_root() -> void:
 			continue
 		if reference.has_xsrf_or_xsrd:
 			# These stand-ins have no paired NIF and must remain available beyond
-			# the ordinary resident radius. Godot applies their near cutoff per
-			# mesh after NifServer's paced full-tree delivery.
+			# the ordinary resident radius. Queue them for idle time instead of
+			# submitting the whole worldspace before nearby cell models.
 			if _should_spawn(reference):
-				_physicaliser.physicalise(reference, imposter_root, EsmNode.VisualDetail.FULL)
+				_persistent_imposter_queue.append(reference)
 			continue
 		var coord := _authored_grid_coord(reference.position)
 		if not _persistent_references_by_tile.has(coord):
@@ -365,6 +388,12 @@ func _check_persistent_tiles(center: Vector2i) -> void:
 	for coord in candidates:
 		_persistent_queued[coord] = true
 		_persistent_load_queue.append(coord)
+
+
+func _prioritize_persistent_imposters(center: Vector2i) -> void:
+	_persistent_imposter_queue.sort_custom(func(a: EsmReference, b: EsmReference) -> bool:
+		return _authored_grid_coord(a.position).distance_squared_to(center) < _authored_grid_coord(b.position).distance_squared_to(center)
+	)
 
 
 func _start_persistent_tile(coord: Vector2i) -> void:
@@ -410,38 +439,67 @@ func _process_population() -> void:
 		var is_tile_job := not _tile_population_jobs.is_empty()
 		var is_persistent_job := not _persistent_population_jobs.is_empty()
 		if not is_tile_job and not is_persistent_job:
+			if _load_queue.is_empty() and _persistent_load_queue.is_empty() and not _persistent_imposter_queue.is_empty():
+				var center_value: Variant = _current_grid_coord()
+				if center_value != null:
+					_prioritize_persistent_imposters(center_value)
+				var imposter: EsmReference = _persistent_imposter_queue.pop_front()
+				if _persistent_imposter_root != null and is_instance_valid(_persistent_imposter_root):
+					_physicaliser.physicalise(imposter, _persistent_imposter_root, EsmNode.VisualDetail.FULL)
+				budget -= 1
+				continue
 			return
-		var use_persistent := is_persistent_job and (not is_tile_job or _next_population_is_persistent)
-		_next_population_is_persistent = not _next_population_is_persistent
-		var job: Dictionary = _persistent_population_jobs[0] if use_persistent else _tile_population_jobs[0]
+		var center_value: Variant = _current_grid_coord()
+		if center_value == null:
+			return
+		var center: Vector2i = center_value
+		var tile_index := _closest_population_job_index(_tile_population_jobs, center)
+		var persistent_index := _closest_population_job_index(_persistent_population_jobs, center)
+		var tile_distance: float = INF if tile_index == -1 else Vector2i(_tile_population_jobs[tile_index].get("coord", Vector2i.ZERO)).distance_squared_to(center)
+		var persistent_distance: float = INF if persistent_index == -1 else Vector2i(_persistent_population_jobs[persistent_index].get("coord", Vector2i.ZERO)).distance_squared_to(center)
+		var use_persistent := persistent_distance < tile_distance
+		var job_index := persistent_index if use_persistent else tile_index
+		var job: Dictionary = _persistent_population_jobs[job_index] if use_persistent else _tile_population_jobs[job_index]
 		if int(job.get("generation", -1)) != _generation or not is_instance_valid(job.get("root")):
 			if not use_persistent:
 				_pending.erase(job.get("coord", Vector2i.ZERO))
-				_tile_population_jobs.pop_front()
+				_tile_population_jobs.remove_at(job_index)
 			else:
 				_persistent_pending.erase(job.get("coord", Vector2i.ZERO))
-				_persistent_population_jobs.pop_front()
+				_persistent_population_jobs.remove_at(job_index)
 			continue
 		var references: Array = job.get("references", [])
 		var next_index := int(job.get("next_index", 0))
 		if next_index >= references.size():
 			if not use_persistent:
 				_pending.erase(job.get("coord", Vector2i.ZERO))
-				_tile_population_jobs.pop_front()
+				_tile_population_jobs.remove_at(job_index)
 			else:
 				_persistent_pending.erase(job.get("coord", Vector2i.ZERO))
-				_persistent_population_jobs.pop_front()
+				_persistent_population_jobs.remove_at(job_index)
 			continue
 		var reference: EsmReference = references[next_index]
 		job["next_index"] = next_index + 1
 		if not use_persistent:
-			_tile_population_jobs[0] = job
+			_tile_population_jobs[job_index] = job
 		else:
-			_persistent_population_jobs[0] = job
+			_persistent_population_jobs[job_index] = job
 		var detail: EsmNode.VisualDetail = int(job["root"].get_meta("visual_detail", EsmNode.VisualDetail.FULL))
 		if reference != null and _should_physicalise(reference, detail) and not _has_physicalised_reference(job["root"], reference):
 			_physicaliser.physicalise(reference, job["root"], detail)
 		budget -= 1
+
+
+func _closest_population_job_index(jobs: Array[Dictionary], center: Vector2i) -> int:
+	var closest_index := -1
+	var closest_distance := INF
+	for index in jobs.size():
+		var coord: Vector2i = jobs[index].get("coord", Vector2i.ZERO)
+		var distance := coord.distance_squared_to(center)
+		if distance < closest_distance:
+			closest_distance = distance
+			closest_index = index
+	return closest_index
 
 
 func _should_spawn(reference: EsmReference) -> bool:
