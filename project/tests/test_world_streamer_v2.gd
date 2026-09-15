@@ -83,14 +83,41 @@ func _ready() -> void:
 	membership_tile.free()
 	streamer.spawn_reference_types = WorldStreamerV2.SPAWN_REFR | WorldStreamerV2.SPAWN_ACHR | WorldStreamerV2.SPAWN_CREA
 	check(streamer._current_grid_coord() == Vector2i(-17, 0), "active camera maps to the known exterior grid tile")
+	streamer._load_queue.append_array([Vector2i(-23, 0), Vector2i(-18, 0), Vector2i(-20, 0)])
+	streamer._persistent_load_queue.append_array([Vector2i(-21, 0), Vector2i(-19, 0)])
+	streamer._sort_tile_start_queues(Vector2i(-17, 0))
+	check(streamer._load_queue[0] == Vector2i(-18, 0) and streamer._persistent_load_queue[0] == Vector2i(-19, 0),
+		"queued tile starts are reordered by current camera distance")
+	var population_jobs: Array[Dictionary] = [
+		{"coord": Vector2i(-24, 0)},
+		{"coord": Vector2i(-18, 0)},
+		{"coord": Vector2i(-20, 0)},
+	]
+	check(streamer._closest_population_job_index(population_jobs, Vector2i(-17, 0)) == 1,
+		"incremental population chooses the nearest queued tile")
+	streamer._load_queue.clear()
+	streamer._persistent_load_queue.clear()
+	var persistent_only_root := Node3D.new()
+	streamer._persistent_population_jobs.append({
+		"coord": Vector2i(-19, 0),
+		"root": persistent_only_root,
+		"references": [],
+		"next_index": 0,
+		"generation": streamer._generation,
+	})
+	streamer._process_population()
+	check(streamer._persistent_population_jobs.is_empty(),
+		"a persistent-only population queue never selects an invalid regular-job index")
+	persistent_only_root.free()
 
 	streamer.activate(int(world.form_id))
 	check(streamer.is_active(), "active immediately after activate()")
 	check(await _await_settled(streamer), "initial semantic residency settles without awaiting NIF callbacks")
 	check(streamer._resident.has(Vector2i(-17, 0)), "camera tile has a resident semantic root")
 	check(streamer._persistent_root != null, "persistent references have a dedicated semantic root")
-	check(streamer._persistent_imposter_root != null and streamer._persistent_imposter_root.get_child_count() > 0,
-		"persistent XSRF/XSRD imposters have their own non-tile root")
+	check(streamer._persistent_imposter_root != null and streamer._persistent_imposter_root.get_child_count() == 0 \
+		and not streamer._persistent_imposter_queue.is_empty(),
+		"persistent XSRF/XSRD imposters wait behind nearby semantic tile work")
 	await get_tree().process_frame
 	var tile_root: Node3D = streamer._resident.get(Vector2i(-17, 0))
 	var physicalised: EsmNode = tile_root.get_child(0) as EsmNode if tile_root != null and tile_root.get_child_count() > 0 else null
