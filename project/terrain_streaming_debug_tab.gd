@@ -15,6 +15,9 @@ const REFRESH_INTERVAL_SEC := 0.25
 @onready var _regions_per_frame: SpinBox = $"Margin/VBox/TuningRow/RegionsPerFrameSpin"
 @onready var _radius: SpinBox = $"Margin/VBox/TuningRow/RadiusSpin"
 @onready var _retained_tree: Tree = $"Margin/VBox/RetainedWorldspaces"
+@onready var _texture_summary: RichTextLabel = $"Margin/VBox/TextureHeader/Summary"
+@onready var _texture_filter: LineEdit = $"Margin/VBox/TextureFilter"
+@onready var _texture_tree: Tree = $"Margin/VBox/TextureTree"
 
 var _terrain_streamer: TerrainStreamer
 var _refresh_timer := 0.0
@@ -26,6 +29,8 @@ func _ready() -> void:
 	_regions_per_frame.value_changed.connect(_on_regions_per_frame_changed)
 	_radius.value_changed.connect(_on_radius_changed)
 	_setup_retained_tree()
+	_setup_texture_tree()
+	_texture_filter.text_changed.connect(func(_text: String) -> void: _refresh_texture_cache())
 	_refresh()
 
 
@@ -64,6 +69,18 @@ func _setup_retained_tree() -> void:
 	_retained_tree.set_column_title(4, "Runtime state")
 
 
+func _setup_texture_tree() -> void:
+	_texture_tree.columns = 2
+	_texture_tree.column_titles_visible = true
+	_texture_tree.hide_root = true
+	_texture_tree.select_mode = Tree.SELECT_ROW
+	_texture_tree.set_column_title(0, "Slot")
+	_texture_tree.set_column_expand(0, false)
+	_texture_tree.set_column_custom_minimum_width(0, 64)
+	_texture_tree.set_column_title(1, "Texture path")
+	_texture_tree.set_column_expand(1, true)
+
+
 func _refresh() -> void:
 	if _terrain_streamer == null:
 		_status_card.text = "[color=#e06c75][b]TerrainStreamer not found[/b][/color]"
@@ -73,6 +90,7 @@ func _refresh() -> void:
 	_refresh_timing(diagnostics)
 	_refresh_tuning()
 	_refresh_retained_worldspaces(diagnostics.get("retained_worldspaces", {}))
+	_refresh_texture_cache(diagnostics)
 
 
 func _refresh_state(diagnostics: Dictionary) -> void:
@@ -123,6 +141,30 @@ func _refresh_retained_worldspaces(entries: Dictionary) -> void:
 		item.set_text(3, "%d" % int(entry.get("texture_slots_used", 0)))
 		item.set_text(4, _entry_runtime_state(entry))
 		item.set_custom_color(1, Color("#98c379") if active else Color("#7f848e"))
+
+
+func _refresh_texture_cache(diagnostics: Dictionary = {}) -> void:
+	_texture_tree.clear()
+	if _terrain_streamer == null:
+		_texture_summary.text = "[color=#7f848e]TerrainStreamer unavailable[/color]"
+		return
+	if diagnostics.is_empty():
+		diagnostics = _terrain_streamer.get_diagnostics()
+	var entries: Array = diagnostics.get("texture_entries", [])
+	_texture_summary.text = "[color=#61afef][b]%d[/b][/color] / [color=#7f848e]%d[/color] slots used" % [int(diagnostics.get("texture_slots_used", 0)), Terrain3DTexturePool.USABLE_SLOTS]
+	var filter_text := _texture_filter.text.to_lower().strip_edges()
+	var root := _texture_tree.create_item()
+	for entry in entries:
+		var name := String(entry.get("name", ""))
+		var slot := int(entry.get("slot", -1))
+		if not filter_text.is_empty() and name.to_lower().find(filter_text) == -1 and str(slot).find(filter_text) == -1:
+			continue
+		var item := _texture_tree.create_item(root)
+		item.set_text(0, str(slot))
+		item.set_text_alignment(0, HORIZONTAL_ALIGNMENT_CENTER)
+		item.set_custom_color(0, Color("#61afef"))
+		item.set_text(1, name)
+		item.set_custom_color(1, Color("#e5c07b"))
 
 
 func _entry_runtime_state(entry: Dictionary) -> String:

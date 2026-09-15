@@ -28,6 +28,7 @@ EsmServer="*res://GodotBryo/Servers/EsmServer/esm_server.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/subwindows/embed_subwindows=false
+window/vsync/vsync_mode=3
 
 [editor_plugins]
 
@@ -44,6 +45,11 @@ ui_home={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194317,"physical_keycode":0,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 , Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194335,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+ui_menu={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":4194306,"physical_keycode":0,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
 left={
@@ -113,9 +119,11 @@ common/physics_interpolation=true
 
 [rendering]
 
-lights_and_shadows/directional_shadow/soft_shadow_filter_quality=5
-anti_aliasing/quality/msaa_2d=2
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+global_illumination/gi/use_half_resolution=true
+anti_aliasing/quality/msaa_2d=1
 anti_aliasing/quality/msaa_3d=2
+scaling_3d/mode=1
 scaling_3d/mode.macos=3
+scaling_3d/scale=0.75
 scaling_3d/fsr_sharpness=2.0
-anti_aliasing/quality/screen_space_aa=1

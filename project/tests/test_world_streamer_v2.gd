@@ -127,8 +127,12 @@ func _ready() -> void:
 		check(physicalised.transform.origin.is_equal_approx(converted_position), "EsmNode converts its authored placement into Godot space")
 		check(physicalised.get_authored_transform().origin.is_equal_approx(physicalised.reference.position), "authored transform inverts placement conversion for future dirty checks")
 
+	streamer.set_paused(true, false)
+	check(streamer.is_paused() and streamer.visible and not streamer.is_pause_hiding(),
+		"plain pause retains visible exterior geometry and collision state")
 	streamer.set_paused(true)
-	check(streamer.is_paused() and not streamer.visible, "pause retains roots while hiding the exterior")
+	check(streamer.is_paused() and not streamer.visible and streamer.is_pause_hiding(),
+		"Pause & Hide retains roots while suppressing the exterior")
 	streamer.activate(int(world.form_id))
 	check(await _await_settled(streamer), "same-worldspace resume emits settlement again for Game's player-release handshake")
 	check(not streamer.is_paused(), "activate() resumes the retained worldspace")

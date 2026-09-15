@@ -11,7 +11,7 @@
 [ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
-[ext_resource type="PackedScene" path="res://terminal_session.tscn" id="10_terminalsession"]
+[ext_resource type="PackedScene" uid="uid://cwo34unl5x2h5" path="res://terminal_session.tscn" id="10_terminalsession"]
 [ext_resource type="Script" uid="uid://covubnj8iytnr" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="11_messagebox"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
@@ -21,36 +21,40 @@
 [ext_resource type="Script" uid="uid://cvpr8mlgqt8kh" path="res://gamebryo/weather_manager.gd" id="14_weathermanager"]
 [ext_resource type="Script" uid="uid://cpmim1j54oxtd" path="res://gamebryo/celestial_controller.gd" id="15_celestialcontroller"]
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
-[ext_resource type="Script" path="res://editing_debug_tab.gd" id="17_editingdebug"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x5p1p"]
-
-[sub_resource type="Theme" id="Theme_hb5m1"]
-Panel/styles/panel = SubResource("StyleBoxFlat_x5p1p")
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb5m1"]
-bg_color = Color(0.34117648, 0.627451, 1, 1)
+[ext_resource type="Script" uid="uid://co1xkw48mmlyi" path="res://editing_debug_tab.gd" id="17_editingdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 auto_exposure_enabled = true
 auto_exposure_scale = 0.2
-auto_exposure_speed = 2.0
-dof_blur_far_distance = 271.22
-dof_blur_far_transition = 2830.17
-auto_exposure_min_sensitivity = 250.0
+auto_exposure_speed = 20.47
+dof_blur_far_enabled = true
+dof_blur_far_distance = 26.43
+dof_blur_far_transition = 2000.0
+dof_blur_amount = 0.02
+auto_exposure_min_sensitivity = 200.0
+auto_exposure_max_sensitivity = 400.0
 
 [sub_resource type="GDScript" id="GDScript_yryqu"]
-script/source = "extends Window
+script/source = "extends Control
 
 func _ready() -> void:
 	visible = false
-	close_requested.connect(func() -> void: visible = false)
 
 func _process(_delta: float) -> void:
-	if Input.is_action_just_pressed(\"ui_home\"):
+	if Input.is_action_just_pressed(\"ui_menu\") or Input.is_action_just_pressed(\"ui_cancel\"):
 		visible = !visible
 		if visible:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+"
+
+[sub_resource type="GDScript" id="GDScript_x5p1p"]
+script/source = "extends ColorRect
+
+
+func _on_tab_container_tab_changed(tab: int) -> void:
+	visible = (tab >= 0)
 "
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
@@ -61,58 +65,13 @@ TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 [node name="Game" type="Node3D" unique_id=215906396]
 script = ExtResource("1")
 
-[node name="MenuBar" type="MenuBar" parent="." unique_id=1427948660]
-z_index = 999
-anchors_preset = 10
-anchor_right = 1.0
-offset_bottom = 34.0
-grow_horizontal = 2
-theme = SubResource("Theme_hb5m1")
-flat = true
-
-[node name="Panel" type="Panel" parent="MenuBar" unique_id=773837650]
-z_index = -1
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_hb5m1")
-
-[node name="File" type="PopupMenu" parent="MenuBar" unique_id=1573701634]
-oversampling_override = 1.0
-item_count = 1
-item_0/id = 0
-
-[node name="Edit" type="PopupMenu" parent="MenuBar" unique_id=938225931]
-oversampling_override = 1.0
-
-[node name="AI" type="PopupMenu" parent="MenuBar" unique_id=303480344]
-oversampling_override = 1.0
-
-[node name="Debug" type="PopupMenu" parent="MenuBar" unique_id=1513384365]
-oversampling_override = 1.0
-
-[node name="Teleport" type="PopupMenu" parent="MenuBar" unique_id=1222662457]
-oversampling_override = 1.0
-item_count = 3
-item_0/text = "The Strip"
-item_0/id = 0
-item_1/text = "Goodsprings"
-item_1/id = 1
-item_2/text = "Primm"
-item_2/id = 2
-
-[node name="Inventory" type="PopupMenu" parent="MenuBar" unique_id=1880985613]
-oversampling_override = 1.0
-
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
+handle_mouse_capture = true
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")
+spawn_reference_types = 3
 
 [node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
@@ -136,58 +95,85 @@ script = ExtResource("14_weathermanager")
 script = ExtResource("15_celestialcontroller")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
+visible = false
 
 [node name="MessageBox" parent="." unique_id=782194631 instance=ExtResource("11_messagebox")]
+visible = false
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
 shadow_enabled = true
+directional_shadow_split_1 = 0.03
+directional_shadow_split_2 = 0.085
+directional_shadow_split_3 = 0.3
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 256.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
 
-[node name="Debug Tools" type="Window" parent="." unique_id=65829105]
-scaling_3d_scale = 0.3161
-oversampling_override = 1.0
-initial_position = 5
-size = Vector2i(784, 466)
+[node name="Debug Tools" type="Control" parent="." unique_id=1820856525]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 19.0
+offset_top = 21.0
+offset_right = -27.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 2
 script = SubResource("GDScript_yryqu")
 
-[node name="ColorRect" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
+[node name="Background" type="ColorRect" parent="Debug Tools" unique_id=1498132861]
 visible = false
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+color = Color(0, 0, 0, 0.4392157)
+script = SubResource("GDScript_x5p1p")
 
 [node name="TabContainer" type="TabContainer" parent="Debug Tools" unique_id=645294600]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 1
+current_tab = 4
 drag_to_rearrange_enabled = true
+deselect_enabled = true
+tab_0/title = "Script Engine"
+tab_1/title = "Player Controller"
+tab_2/title = "Inventory Manager"
+tab_3/title = "Teleporter"
+tab_8/title = "Time and Date"
+tab_9/title = "Editing Tools"
+metadata/_edit_use_anchors_ = true
 
 [node name="Scripting" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1382890352]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 script = ExtResource("9_scriptingdebug")
 metadata/_tab_index = 0
+metadata/_tab_name = "Script Engine"
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=411638944]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin" unique_id=847699033]
 layout_mode = 2
@@ -262,10 +248,10 @@ mouse_filter = 2
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel" unique_id=194857300]
 layout_mode = 2
-theme_override_constants/margin_left = 10
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="SuggestionsList" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel/Margin" unique_id=194857301]
 layout_mode = 2
@@ -274,20 +260,23 @@ fit_content = true
 scroll_active = false
 
 [node name="Player" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
+visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 script = ExtResource("12_playerdebug")
 metadata/_tab_index = 1
+metadata/_tab_name = "Player Controller"
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Player" unique_id=184729103]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Player/Margin" unique_id=194857291]
 layout_mode = 2
@@ -483,20 +472,22 @@ text = "Snap to Ground"
 
 [node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 script = ExtResource("8_inventorydebug")
 metadata/_tab_index = 2
+metadata/_tab_name = "Inventory Manager"
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory" unique_id=139347742]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin" unique_id=1680692534]
 layout_mode = 2
@@ -550,20 +541,22 @@ scroll_active = false
 
 [node name="Teleport" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 script = ExtResource("11_teleportdebug")
 metadata/_tab_index = 3
+metadata/_tab_name = "Teleporter"
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Teleport" unique_id=982341201]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Teleport/Margin" unique_id=143290123]
 layout_mode = 2
@@ -653,7 +646,7 @@ fit_content = true
 scroll_active = false
 
 [node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
-visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -664,18 +657,19 @@ metadata/_tab_index = 4
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="SubTabs" type="TabContainer" parent="Debug Tools/TabContainer/World Streaming/Margin" unique_id=1564045092]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-current_tab = 0
+current_tab = 1
 
 [node name="Streaming State" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1347269149]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -949,8 +943,7 @@ tooltip_text = "GodotBryoSettings.distant_lod_near_margin_m -- fade-band width f
 max_value = 500.0
 value = 20.0
 
-[node name="Ground Textures" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=1706202073]
-visible = false
+[node name="V2 Profiler" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs" unique_id=2070000001]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -960,44 +953,243 @@ theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 metadata/_tab_index = 1
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures" unique_id=800481568]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler" unique_id=2070000002]
 layout_mode = 2
-theme_override_constants/separation = 8
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
 
-[node name="TexHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=448109901]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin" unique_id=2070000003]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
-[node name="TexTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=1030283830]
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000004]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]WorldStreamerV2 profiler[/b]  [color=#7f848e]typed semantic tiles + NIF delivery[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="StateGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000005]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 6
+columns = 3
+
+[node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000006]
 layout_mode = 2
 size_flags_horizontal = 3
 bbcode_enabled = true
-text = "[b]🎨 World Ground Textures (Terrain3D Pool)[/b]"
+text = "INACTIVE"
 fit_content = true
 scroll_active = false
 
-[node name="TexSummaryLabel" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox/TexHeader" unique_id=2101835264]
-custom_minimum_size = Vector2(200, 0)
+[node name="Camera" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000007]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Camera grid: —"
+fit_content = true
+scroll_active = false
+
+[node name="Cell" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000008]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Current cell: —"
+fit_content = true
+scroll_active = false
+
+[node name="Resident" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000009]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Resident tiles: 0"
+fit_content = true
+scroll_active = false
+
+[node name="Persistent" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000010]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Persistent tiles: 0"
+fit_content = true
+scroll_active = false
+
+[node name="TileQueue" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000011]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Tile starts: 0"
+fit_content = true
+scroll_active = false
+
+[node name="Population" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000012]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Population jobs: 0"
+fit_content = true
+scroll_active = false
+
+[node name="Imposters" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid" unique_id=2070000013]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Deferred imposters: 0"
+fit_content = true
+scroll_active = false
+
+[node name="NifTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000014]
 layout_mode = 2
 bbcode_enabled = true
+text = "[b]NifServer pressure[/b]"
 fit_content = true
 scroll_active = false
 
-[node name="TexFilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1044071171]
+[node name="NifGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000015]
 layout_mode = 2
-placeholder_text = "Filter ground textures by name or slot..."
-clear_button_enabled = true
+theme_override_constants/h_separation = 16
+columns = 3
 
-[node name="TextureTree" type="Tree" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/Ground Textures/VBox" unique_id=1805287992]
-custom_minimum_size = Vector2(0, 200)
+[node name="Resolves" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/NifGrid" unique_id=2070000016]
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Resolves: 0"
+fit_content = true
+scroll_active = false
+
+[node name="Builds" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/NifGrid" unique_id=2070000017]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Build queue: 0"
+fit_content = true
+scroll_active = false
+
+[node name="Cache" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/NifGrid" unique_id=2070000018]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "Templates: 0"
+fit_content = true
+scroll_active = false
+
+[node name="QueuePreview" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000019]
+layout_mode = 2
+bbcode_enabled = true
+text = "Nearest pending tiles: —"
+fit_content = true
+scroll_active = false
+
+[node name="Sep" type="HSeparator" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000020]
+layout_mode = 2
+
+[node name="ConfigTitle" type="RichTextLabel" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000021]
+layout_mode = 2
+bbcode_enabled = true
+text = "[b]Live configuration[/b] [color=#7f848e]applied to future scheduling work[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="ConfigGrid" type="GridContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000022]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 6
 columns = 2
-column_titles_visible = true
-hide_root = true
+
+[node name="LoadRadiusLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000023]
+layout_mode = 2
+text = "full-detail radius (cells):"
+
+[node name="LoadRadius" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000024]
+layout_mode = 2
+min_value = 1.0
+max_value = 16.0
+step = 0.5
+value = 4.0
+
+[node name="LodRadiusLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000025]
+layout_mode = 2
+text = "VWD radius (cells):"
+
+[node name="LodRadius" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000026]
+layout_mode = 2
+min_value = 1.0
+max_value = 32.0
+step = 0.5
+value = 8.0
+
+[node name="TilesPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000027]
+layout_mode = 2
+text = "tile starts / frame:"
+
+[node name="TilesPerFrame" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000028]
+layout_mode = 2
+min_value = 1.0
+max_value = 64.0
+value = 1.0
+
+[node name="ObjectsPerFrameLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000029]
+layout_mode = 2
+text = "references / frame:"
+
+[node name="ObjectsPerFrame" type="SpinBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/ConfigGrid" unique_id=2070000030]
+layout_mode = 2
+min_value = 1.0
+max_value = 2000.0
+value = 40.0
+
+[node name="SpawnTypes" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000031]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SpawnLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/SpawnTypes" unique_id=2070000032]
+layout_mode = 2
+text = "spawn types:"
+
+[node name="REFR" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/SpawnTypes" unique_id=2070000033]
+layout_mode = 2
+button_pressed = true
+text = "REFR"
+
+[node name="ACHR" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/SpawnTypes" unique_id=2070000034]
+layout_mode = 2
+text = "ACHR"
+
+[node name="CREA" type="CheckBox" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/SpawnTypes" unique_id=2070000035]
+layout_mode = 2
+text = "CREA"
+
+[node name="Actions" type="HBoxContainer" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox" unique_id=2070000036]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ModeLabel" type="Label" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/Actions" unique_id=2070000037]
+layout_mode = 2
+text = "streaming:"
+
+[node name="StreamingMode" type="OptionButton" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/Actions" unique_id=2070000039]
+custom_minimum_size = Vector2(129.565, 0)
+layout_mode = 2
+tooltip_text = "Pause keeps existing streamed geometry and collision. Pause & Hide also suppresses visible geometry and collision."
+selected = 0
+item_count = 3
+popup/item_0/id = 0
+popup/item_1/id = 1
+popup/item_2/id = 2
+
+[node name="RefreshNow" type="Button" parent="Debug Tools/TabContainer/World Streaming/Margin/SubTabs/V2 Profiler/Margin/VBox/Actions" unique_id=2070000038]
+layout_mode = 2
+text = "Refresh now"
 
 [node name="Terrain Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=417666227]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -1008,10 +1200,10 @@ metadata/_tab_index = 5
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin" unique_id=1734639912]
 layout_mode = 2
@@ -1140,8 +1332,44 @@ columns = 5
 column_titles_visible = true
 hide_root = true
 
+[node name="TextureSep" type="HSeparator" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2070000040]
+layout_mode = 2
+
+[node name="TextureHeader" type="HBoxContainer" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2070000041]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TextureHeader" unique_id=2070000042]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]Terrain texture cache[/b]"
+fit_content = true
+scroll_active = false
+
+[node name="Summary" type="RichTextLabel" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox/TextureHeader" unique_id=2070000043]
+layout_mode = 2
+bbcode_enabled = true
+text = "0 / 0 slots used"
+fit_content = true
+scroll_active = false
+
+[node name="TextureFilter" type="LineEdit" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2070000044]
+layout_mode = 2
+placeholder_text = "Filter terrain textures by path or slot..."
+clear_button_enabled = true
+
+[node name="TextureTree" type="Tree" parent="Debug Tools/TabContainer/Terrain Streaming/Margin/VBox" unique_id=2070000045]
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 2
+size_flags_vertical = 3
+columns = 2
+column_titles_visible = true
+hide_root = true
+
 [node name="Envrioment" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=124391377]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
@@ -1152,10 +1380,10 @@ metadata/_tab_index = 6
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Envrioment/Margin" unique_id=915081589]
 layout_mode = 2
@@ -1308,6 +1536,7 @@ scroll_active = false
 
 [node name="Lighting" type="Control" parent="Debug Tools/TabContainer" unique_id=1279989459]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("11_lightingdebug")
 metadata/_tab_index = 7
@@ -1319,10 +1548,10 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Lighting/Margin" unique_id=1329995649]
 layout_mode = 2
@@ -1425,15 +1654,19 @@ wrap_mode = 1
 
 [node name="TimeWeather" type="Control" parent="Debug Tools/TabContainer" unique_id=664159387]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("16_timeweatherdebug")
 metadata/_tab_index = 8
+metadata/_tab_name = "Time and Date"
 
 [node name="Editing" type="Control" parent="Debug Tools/TabContainer" unique_id=2147483010]
 visible = false
+custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("17_editingdebug")
 metadata/_tab_index = 9
+metadata/_tab_name = "Editing Tools"
 
 [node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Editing" unique_id=2147483011]
 layout_mode = 1
@@ -1442,10 +1675,10 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
 
 [node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Editing/Margin" unique_id=2147483012]
 layout_mode = 2
@@ -1463,19 +1696,22 @@ text = "Show Editor Markers"
 
 [node name="Hint" type="Label" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=2147483015]
 layout_mode = 2
-autowrap_mode = 2
 text = "Editor markers are hidden by default. NifServer identifies them once for every runtime consumer."
+autowrap_mode = 2
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 
 [node name="CellLabel" type="Label" parent="DebugHud" unique_id=1378421775]
-anchors_preset = 1
+anchors_preset = 3
 anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
-offset_left = -402.0
-offset_right = -9.0
-offset_bottom = 34.0
+anchor_bottom = 1.0
+offset_left = -404.0
+offset_top = -34.0
+offset_right = -11.0
 grow_horizontal = 0
+grow_vertical = 0
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
@@ -1499,3 +1735,5 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
+
+[connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]

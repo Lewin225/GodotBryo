@@ -30,17 +30,20 @@ func _ready() -> void:
 	var cell: CellStreamerV2 = game.get_node("CellStreamerV2")
 	var objects: WorldStreamerV2 = game.get_node("WorldStreamer")
 	var terrain: TerrainStreamer = game.get_node("TerrainStreamer")
-	check(cell != null and cell.spawn_reference_types == CellStreamerV2.SPAWN_REFR,
-			"Game scenes author the REFR-only typed interior streamer")
+	check(cell != null
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_REFR) != 0
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_ACHR) != 0
+			and (cell.spawn_reference_types & CellStreamerV2.SPAWN_CREA) == 0,
+			"Game scene authors the typed interior streamer with REFR and ACHR enabled")
 	check(terrain.esm != null and terrain.resolver != null,
 			"Game._enter_tree still injects LAND's separate raw ESM/resolver pair")
 	check(objects != null, "Game retains the typed WorldStreamerV2 exterior path")
 	var editor_markers_check := game.get_node("Debug Tools/TabContainer/Editing/Margin/VBox/ShowEditorMarkers") as CheckBox
 	check(editor_markers_check != null and not editor_markers_check.button_pressed,
 			"Editing tab exposes Show Editor Markers off by default")
-	var debug_menu := game.get_node("MenuBar/Debug") as PopupMenu
-	check(debug_menu != null and debug_menu.item_count == 0,
-		"top-bar Debug menu no longer owns the editor marker toggle")
+	var debug_menu := game.get_node_or_null("MenuBar/Debug") as PopupMenu
+	check(debug_menu == null or debug_menu.get_item_index(100) < 0,
+		"no top-bar menu owns the editor marker toggle")
 	check(NifServerScript.is_editor_object_name("EditorMarker:0")
 			and NifServerScript.is_editor_object_name("VisibilityEditorMarker:0")
 			and not NifServerScript.is_editor_object_name("DustBillBoard01:0"),
