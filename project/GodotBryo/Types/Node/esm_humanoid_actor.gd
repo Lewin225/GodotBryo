@@ -29,6 +29,14 @@ signal visual_load_failed(reason: String)
 		show_gore = value
 		_apply_gore_visibility()
 
+## Ragdolls are authored in the skeleton NIF, but an inert humanoid should not
+## expose their debug bodies or activate their simulator. This remains an
+## explicit inspector opt-in until an NPC controller owns ragdoll state.
+@export var ragdoll_simulator_enabled: bool = false:
+	set(value):
+		ragdoll_simulator_enabled = value
+		_apply_ragdoll_simulator_state()
+
 @export var possessed_first_person: bool = false:
 	set(value):
 		possessed_first_person = value
@@ -547,6 +555,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_clear_staging()
 	_track_hair_meshes(body)
 	_rebuild_dismember_partition_index(body)
+	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
 	_equipment_applied_signature = ""
 	refresh_equipment()
@@ -928,6 +937,13 @@ func _apply_gore_visibility() -> void:
 		for mesh in _dismember_meshes_by_part_id[part_id]:
 			if is_instance_valid(mesh):
 				mesh.visible = show_gore
+
+
+func _apply_ragdoll_simulator_state() -> void:
+	for child in find_children("*", "PhysicalBoneSimulator3D", true, false):
+		var simulator := child as PhysicalBoneSimulator3D
+		simulator.active = ragdoll_simulator_enabled
+		simulator.visible = ragdoll_simulator_enabled
 
 
 func _apply_possessed_first_person_render_mode() -> void:
