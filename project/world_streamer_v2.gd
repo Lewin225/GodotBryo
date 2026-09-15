@@ -39,6 +39,9 @@ var esm_server: Node = null
 var _physicaliser := PhysicaliserScript.new()
 var _active_wrld_form_id := -1
 var _paused := false
+## Game transitions pause and hide by default; the profiler can instead pause
+## scheduling while retaining visible, collidable exterior state.
+var _pause_hides := true
 var _generation := 0
 var _check_timer := 0.0
 var _current_cell_form_id_cache := 0
@@ -93,6 +96,7 @@ func deactivate() -> void:
 	_active_wrld_form_id = -1
 	_generation += 1
 	_paused = false
+	_pause_hides = true
 	visible = true
 	_current_cell_form_id_cache = 0
 	_initial_center = null
@@ -127,13 +131,22 @@ func is_paused() -> bool:
 	return _paused
 
 
+
+func is_pause_hiding() -> bool:
+	return _paused and _pause_hides
+
+
 ## Pausing retains exterior state for an interior return, while suppressing
 ## visibility and collision. EsmNode reapplies this state to late NIF trees.
-func set_paused(paused: bool) -> void:
-	if not is_active() or paused == _paused:
+func set_paused(paused: bool, hide_when_paused := true) -> void:
+	if not is_active():
+		return
+	var next_pause_hides := hide_when_paused if paused else false
+	if paused == _paused and next_pause_hides == _pause_hides:
 		return
 	_paused = paused
-	visible = not paused
+	_pause_hides = next_pause_hides
+	visible = not (_paused and _pause_hides)
 	for root: Node3D in _resident.values():
 		apply_streaming_state_to_subtree(root)
 	if _persistent_root != null:
@@ -146,12 +159,10 @@ func set_paused(paused: bool) -> void:
 		_check_streaming()
 		call_deferred("_maybe_emit_initial_settled")
 
-
 ## Called by EsmNode when NifServer delivers a tree after a stream-state
 ## change.
 func apply_streaming_state_to_subtree(node: Node) -> void:
-	CellStreamBuilder.set_collision_disabled(node, _paused)
-
+	CellStreamBuilder.set_collision_disabled(node, _paused and _pause_hides)
 
 func _process(delta: float) -> void:
 	if not is_active() or _paused or not _esm_is_ready():

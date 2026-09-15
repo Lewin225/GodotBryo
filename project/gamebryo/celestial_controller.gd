@@ -271,7 +271,11 @@ func _apply_fog(hour: float, rb: float, re: float, sb: float, se: float) -> void
 	var fog_far_m: float = float(fog.get("far", 250000.0)) * GU_TO_M
 	_exterior_env.fog_depth_begin = fog_near_m
 	_exterior_env.fog_depth_end = maxf(fog_far_m, fog_near_m + 1.0)
+	if hour < rb and hour > sb:
+		_exterior_env.fog_sky_affect = 0
+	else:
+		_exterior_env.fog_sky_affect = 0.2 + (1-day_frac)
 	var fog_strength := lerpf(NIGHT_FOG_LIGHT, 1.0, day_frac)
 	_exterior_env.fog_light_color = _base_fog_light_color * fog_strength
-	_exterior_env.volumetric_fog_enabled = true
-	_exterior_env.volumetric_fog_density = lerpf(0.0005, 0.0002, day_frac)
+	#_exterior_env.volumetric_fog_enabled = true
+	_exterior_env.volumetric_fog_density = lerpf(0.01, 0.0002, day_frac)

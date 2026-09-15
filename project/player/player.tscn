@@ -1,586 +1,45 @@
-[gd_scene format=4 uid="uid://c6j2kx3d8yq1m"]
+[gd_scene format=3 uid="uid://c6j2kx3d8yq1m"]
 
 [ext_resource type="Script" uid="uid://b3dympkwwkwah" path="res://player/player_controller.gd" id="1_controller"]
-[ext_resource type="Script" uid="uid://dkvdeivkcqjok" path="res://player/mouse_manager.gd" id="2_mouse"]
-[ext_resource type="Script" uid="uid://b47xb2ftwxkn4" path="res://gamebryo/class_record.gd" id="3_32hag"]
 [ext_resource type="Script" uid="uid://bqx2mbelqbts1" path="res://player/crosshair.gd" id="3_crosshair"]
-[ext_resource type="Script" uid="uid://cg44hdbv7j4xf" path="res://gamebryo/armor_record.gd" id="4_hg6s5"]
 [ext_resource type="Script" uid="uid://c1a8lyyotsrcs" path="res://player/interact_ray.gd" id="4_interactray"]
-[ext_resource type="Script" uid="uid://b8ikcg6kbovdh" path="res://gamebryo/face_gen_data.gd" id="4_tqiix"]
-[ext_resource type="Script" uid="uid://b3bf3hhh0rb40" path="res://gamebryo/eyes_record.gd" id="4_x7c3f"]
-[ext_resource type="Script" uid="uid://b6n8fo5xmrrgw" path="res://gamebryo/equipment_state.gd" id="5_8t03j"]
-[ext_resource type="Script" uid="uid://ck1x8qri0v76h" path="res://gamebryo/inventory_entry_resource.gd" id="5_e7oew"]
 [ext_resource type="PackedScene" uid="uid://u8y1jbcex0yg" path="res://gamebryo/npc_actor.tscn" id="5_npc_actor"]
-[ext_resource type="Script" uid="uid://cwgwnkd83pmlv" path="res://gamebryo/hair_record.gd" id="6_bjvpn"]
-[ext_resource type="Script" uid="uid://b3swfykkanmgu" path="res://gamebryo/leveled_item_record.gd" id="7_65viv"]
-[ext_resource type="Script" uid="uid://dtw4b0f06m7i2" path="res://gamebryo/armor_addon_record.gd" id="8_s7qer"]
-[ext_resource type="Script" uid="uid://dxk2f7ridmh34" path="res://gamebryo/package_record.gd" id="8_x7c3f"]
-[ext_resource type="Script" uid="uid://bf1r2p0bsoh5" path="res://gamebryo/race_part_resource.gd" id="9_bjvpn"]
-[ext_resource type="Script" uid="uid://jvjmpouw147u" path="res://gamebryo/biped_model_list_resource.gd" id="9_g4c7l"]
-[ext_resource type="Script" uid="uid://c1dngurrdfd1x" path="res://gamebryo/race_record.gd" id="10_s7qer"]
-[ext_resource type="Script" uid="uid://8e2rll1x3mbf" path="res://gamebryo/npc_record.gd" id="11_g4c7l"]
-[ext_resource type="Script" uid="uid://bvend3dvp1bof" path="res://gamebryo/inventory_component.gd" id="17_knn7v"]
-[ext_resource type="Script" uid="uid://bvbi5hvneosu0" path="res://gamebryo/actor_animation_component.gd" id="18_7pqkx"]
+[ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 margin = 0.06
 radius = 0.4
 height = 1.8
 
-[sub_resource type="Resource" id="Resource_uw77l"]
-script = ExtResource("3_32hag")
-full_name = "Wasteland Adventurer"
-form_id = 100157
-editor_id = "WastelandAdventurer"
-record_type = "CLAS"
-source_uri = "esm://FalloutNV.esm/CLAS/0001873D"
-
-[sub_resource type="Resource" id="Resource_rptt4"]
-script = ExtResource("4_x7c3f")
-full_name = "Dark Brown"
-icon_path = "Characters\\Eyes\\EyeDarkBrown.dds"
-form_id = 16982
-editor_id = "EyeDarkBrown"
-record_type = "EYES"
-source_uri = "esm://FalloutNV.esm/EYES/00004256"
-
-[sub_resource type="Resource" id="Resource_r7pn3"]
-script = ExtResource("4_tqiix")
-fggs = PackedByteArray("6DvPPaI2uz7o/xs+wLgmvQdJqL9cib6/cJqdPRi5db6YVqM+Tf5oP6E+kb+ulDs/PaWrP0B4m71KZwm/SkkGQBJtvT+c3ps/zH3AvlgWxb0wwXo/kHHfPoRlKj/QgbY+qQpmwNhDkD8JKgnATIQrP9mG+b89os+/dIexPkTSxj+yT6Y/jazrv+9hAMDVtG1ATPg5P8NDLkAhdJNAGKblQGXOSEAyung/SMsPPgCcXT94cz4+ig3XwL7eu0D3UBRA/ZzYQPgATD8=")
-fgga = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-fgts = PackedByteArray("uWCCv66XSb+O1km++L+ePQqvqb92g/0/s6+svwvpO76WEpU/s0PhP1i+zT3OG+u//qSjP4K7cb8/ALc/yOyZPbCAWD1u/WA/FNxmvp+Z+b8ElC4+IFscv9irTL9gBCo8YbzLv7wBVr5C7CW+mAQLPqw1LT9YXD+/cG+PP/q13T4Ug7m+gCksQFcObj9aP/4+fPKCPs0EfD/NSmE/gkXTPxWThb+wmBw/JA5kPnqaWL+GiVM/ppItv8aXH7+bSBy//ZEcQC3AxD8=")
-fggs_values = PackedFloat32Array(0.10118848, 0.3656512, 0.15234339, -0.040703535, -1.3147286, -1.4885669, 0.07695472, -0.23996389, 0.31902003, 0.9101303, -1.1347238, 0.7327374, 1.3409802, -0.07591295, -0.5367323, 2.0982232, 1.4798911, 1.217731, -0.37595975, -0.09623402, 0.9795103, 0.4364133, 0.6656115, 0.35645914, -3.5944006, 1.1270704, -2.1431906, 0.66998744, -1.9494277, -1.6221386, 0.34673655, 1.5532918, 1.2993071, -1.8412033, -2.0059774, 3.714162, 0.72644496, 2.7228858, 4.607926, 7.176525, 3.1375973, 0.9715911, 0.1404239, 0.8656616, 0.18598735, -6.7204027, 5.87094, 2.3174417, 6.7691636, 0.7968898)
-fgga_values = PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-fgts_values = PackedFloat32Array(-1.0185767, -0.7874707, -0.19710752, 0.07751459, -1.3256543, 1.9805744, -1.3491119, -0.18350618, 1.1646297, 1.7598785, 0.10046071, -1.836786, 1.2784727, -0.9442674, 1.429695, 0.075158656, 0.0528571, 0.87886703, -0.2254489, -1.9500006, 0.17048651, -0.61076546, -0.7994971, 0.01037702, -1.5916864, -0.20899099, -0.16203406, 0.13575971, 0.6766002, -0.7475028, 1.1205883, 0.433029, -0.36232817, 2.690033, 0.9299063, 0.49657708, 0.25575626, 0.98444825, 0.8800476, 1.6505587, -1.0435511, 0.6117048, 0.22271019, -0.8461071, 0.8263172, -0.6780189, -0.6234096, -0.6104829, 2.4464104, 1.5371147)
-fggs_decoded = true
-fgga_decoded = true
-fgts_decoded = true
-diagnostics = PackedStringArray()
-
-[sub_resource type="Resource" id="Resource_b8hi5"]
-script = ExtResource("6_bjvpn")
-full_name = "Wendy the Welder"
-model_path = "Characters\\Hair\\HairBun.NIF"
-icon_path = "Characters\\Hair\\HairBun.dds"
-form_id = 208183
-editor_id = "HairBun"
-record_type = "HAIR"
-source_uri = "esm://FalloutNV.esm/HAIR/00032D37"
-
-[sub_resource type="Resource" id="Resource_2uvqg"]
-script = ExtResource("8_s7qer")
-full_name = "LeatherArmorGloveRight"
-biped_flags = 16
-equipment_type = 9
-male_biped_model = "Armor\\LeatherArmor\\M\\GloveR.NIF"
-female_biped_model = "Armor\\LeatherArmor\\F\\glover.NIF"
-form_id = 168840
-editor_id = "LeatherArmorGloveR"
-record_type = "ARMA"
-source_uri = "esm://FalloutNV.esm/ARMA/00029388"
-
-[sub_resource type="Resource" id="Resource_1s1yo"]
-script = ExtResource("8_s7qer")
-full_name = "LeatherArmorGloveLeft"
-biped_flags = 8
-equipment_type = 9
-male_biped_model = "Armor\\LeatherArmor\\M\\GloveL.NIF"
-female_biped_model = "Armor\\LeatherArmor\\F\\glovel.NIF"
-form_id = 168839
-editor_id = "LeatherArmorGloveL"
-record_type = "ARMA"
-source_uri = "esm://FalloutNV.esm/ARMA/00029387"
-
-[sub_resource type="Resource" id="Resource_5ejfk"]
-script = ExtResource("9_g4c7l")
-entries = Array[ExtResource("8_s7qer")]([SubResource("Resource_2uvqg"), SubResource("Resource_1s1yo")])
-form_id = 132136
-editor_id = "ArmorLeatherList"
-record_type = "FLST"
-source_uri = "esm://FalloutNV.esm/FLST/00020428"
-
-[sub_resource type="Resource" id="Resource_jd2rm"]
-script = ExtResource("4_hg6s5")
-full_name = "Leather Armor"
-value = 160
-weight = 2.099999999999999e-43
-biped_flags = 4
-equipment_type = 7
-male_biped_model = "Armor\\LeatherArmor\\M\\OutfitM.NIF"
-male_world_model = "Armor\\LeatherArmor\\M\\GO.NIF"
-female_biped_model = "Armor\\LeatherArmor\\F\\OutfitF.NIF"
-biped_model_list = SubResource("Resource_5ejfk")
-form_id = 132131
-editor_id = "ArmorLeather"
-record_type = "ARMO"
-source_uri = "esm://FalloutNV.esm/ARMO/00020423"
-
-[sub_resource type="Resource" id="Resource_q28gw"]
-script = ExtResource("5_e7oew")
-item_form_id = 132131
-count = 1
-item_record = SubResource("Resource_jd2rm")
-instance_id = "authored:00020423:0"
-source_form_id = 132131
-source_index = 0
-
-[sub_resource type="Resource" id="Resource_ge24q"]
-script = ExtResource("7_65viv")
-entries = Array[Dictionary]([{
-"flags": 1597,
-"form_id": 16960,
-"level": 1,
-"raw": PackedByteArray("AQA9BkBCAAABAD0G")
-}, {
-"flags": 1597,
-"form_id": 168800,
-"level": 1,
-"raw": PackedByteArray("AQA9BmCTAgAKAD0G")
-}, {
-"flags": 1597,
-"form_id": 617478,
-"level": 1,
-"raw": PackedByteArray("AQA9BgZsCQABAD0G")
-}, {
-"flags": 1597,
-"form_id": 1313542,
-"level": 1,
-"raw": PackedByteArray("AQA9BgYLFAAIAD0G")
-}])
-form_id = 932179
-editor_id = "WithAmmoNVVarmintRifleLoot"
-record_type = "LVLI"
-source_uri = "esm://FalloutNV.esm/LVLI/000E3953"
-
-[sub_resource type="Resource" id="Resource_pnw6m"]
-script = ExtResource("5_e7oew")
-item_form_id = 932179
-count = 1
-item_record = SubResource("Resource_ge24q")
-instance_id = "authored:000E3953:1"
-source_form_id = 932179
-source_index = 1
-
-[sub_resource type="Resource" id="Resource_1so5t"]
-script = ExtResource("8_x7c3f")
-form_id = 1072327
-editor_id = "SunnyMeetPlayerDialoguePackage"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/00105CC7"
-
-[sub_resource type="Resource" id="Resource_55jnj"]
-script = ExtResource("8_x7c3f")
-form_id = 1090074
-editor_id = "VCG02SunnySmilesDialogueStart"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A21A"
-
-[sub_resource type="Resource" id="Resource_dx5ib"]
-script = ExtResource("8_x7c3f")
-form_id = 1090076
-editor_id = "SunnySmilesStayAtCurrentLocation"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A21C"
-
-[sub_resource type="Resource" id="Resource_a2xo5"]
-script = ExtResource("8_x7c3f")
-form_id = 1090073
-editor_id = "VCG02SunnySmilesDialogueSneakEnd"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A219"
-
-[sub_resource type="Resource" id="Resource_art4l"]
-script = ExtResource("8_x7c3f")
-form_id = 1090071
-editor_id = "VCG02SunnySneakCloserToWell"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A217"
-
-[sub_resource type="Resource" id="Resource_fjxoa"]
-script = ExtResource("8_x7c3f")
-form_id = 1090072
-editor_id = "VCG02SunnySmilesDialogueSneakStart"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A218"
-
-[sub_resource type="Resource" id="Resource_gswnw"]
-script = ExtResource("8_x7c3f")
-form_id = 1090070
-editor_id = "VCG02SunnyTravelOutside"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A216"
-
-[sub_resource type="Resource" id="Resource_xcnuv"]
-script = ExtResource("8_x7c3f")
-form_id = 1090075
-editor_id = "VCG02SunnyTravelToWell1"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A21B"
-
-[sub_resource type="Resource" id="Resource_j55il"]
-script = ExtResource("8_x7c3f")
-form_id = 1090069
-editor_id = "VCG02SunnyTravelToWell2"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A215"
-
-[sub_resource type="Resource" id="Resource_hjies"]
-script = ExtResource("8_x7c3f")
-form_id = 1090077
-editor_id = "VCG02SunnyTravelToWell3"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0010A21D"
-
-[sub_resource type="Resource" id="Resource_mmwog"]
-script = ExtResource("8_x7c3f")
-form_id = 1432053
-editor_id = "VCG03SunnyTravelToCampfire"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0015D9F5"
-
-[sub_resource type="Resource" id="Resource_8pxes"]
-script = ExtResource("8_x7c3f")
-form_id = 1437026
-editor_id = "GoodspringsMilitiaTravelPackage"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/0015ED62"
-
-[sub_resource type="Resource" id="Resource_fmu53"]
-script = ExtResource("8_x7c3f")
-form_id = 1534675
-editor_id = "GSSunnySleepPackage0x8"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/00176AD3"
-
-[sub_resource type="Resource" id="Resource_w7j2h"]
-script = ExtResource("8_x7c3f")
-form_id = 131285
-editor_id = "DefaultStayAtEditorLocation"
-record_type = "PACK"
-source_uri = "esm://FalloutNV.esm/PACK/000200D5"
-
-[sub_resource type="Resource" id="Resource_n0b8q"]
-script = ExtResource("9_bjvpn")
-model_path = "Characters\\_Male\\FemaleUpperBody.NIF"
-icon_path = "Characters\\Female\\UpperBodyFemale.dds"
-
-[sub_resource type="Resource" id="Resource_jfgyi"]
-script = ExtResource("9_bjvpn")
-index = 1
-model_path = "Characters\\_Male\\FemaleLeftHand.NIF"
-icon_path = "Characters\\Female\\HandFemale.dds"
-
-[sub_resource type="Resource" id="Resource_237xx"]
-script = ExtResource("9_bjvpn")
-index = 2
-model_path = "Characters\\_Male\\FemaleRightHand.NIF"
-icon_path = "Characters\\Female\\HandFemale.dds"
-
-[sub_resource type="Resource" id="Resource_wpyo2"]
-script = ExtResource("9_bjvpn")
-part_type = "head"
-model_path = "Characters\\Head\\HeadFemale.NIF"
-icon_path = "Characters\\Female\\HeadHuman.dds"
-
-[sub_resource type="Resource" id="Resource_7crtr"]
-script = ExtResource("9_bjvpn")
-index = 1
-part_type = "ears"
-icon_path = "Characters\\Head\\EarsHuman.dds"
-
-[sub_resource type="Resource" id="Resource_vgvch"]
-script = ExtResource("9_bjvpn")
-index = 2
-part_type = "mouth"
-model_path = "Characters\\Head\\MouthHuman.NIF"
-icon_path = "Characters\\Mouth\\MouthHuman.dds"
-
-[sub_resource type="Resource" id="Resource_a1u5o"]
-script = ExtResource("9_bjvpn")
-index = 3
-part_type = "teeth_lower"
-model_path = "Characters\\Head\\TeethLowerHuman.NIF"
-icon_path = "Characters\\Mouth\\TeethLowerHuman.dds"
-
-[sub_resource type="Resource" id="Resource_3dxkp"]
-script = ExtResource("9_bjvpn")
-index = 4
-part_type = "teeth_upper"
-model_path = "Characters\\Head\\TeethUpperHuman.NIF"
-icon_path = "Characters\\Mouth\\TeethUpperHuman.dds"
-
-[sub_resource type="Resource" id="Resource_6wior"]
-script = ExtResource("9_bjvpn")
-index = 5
-part_type = "tongue"
-model_path = "Characters\\Head\\TongueHuman.NIF"
-icon_path = "Characters\\Mouth\\TongueHuman.dds"
-
-[sub_resource type="Resource" id="Resource_p5tca"]
-script = ExtResource("9_bjvpn")
-index = 6
-part_type = "eye_left"
-model_path = "Characters\\Head\\EyeLeftHumanFemale.NIF"
-
-[sub_resource type="Resource" id="Resource_jbx34"]
-script = ExtResource("9_bjvpn")
-index = 7
-part_type = "eye_right"
-model_path = "Characters\\Head\\EyeRightHumanFemale.NIF"
-
-[sub_resource type="Resource" id="Resource_s3g0c"]
-script = ExtResource("9_bjvpn")
-model_path = "characters\\_Male\\UpperBody.nif"
-icon_path = "Characters\\Male\\UpperBodyMale.dds"
-
-[sub_resource type="Resource" id="Resource_35wys"]
-script = ExtResource("9_bjvpn")
-index = 1
-model_path = "characters\\_Male\\LeftHand.nif"
-icon_path = "Characters\\Male\\HandMale.dds"
-
-[sub_resource type="Resource" id="Resource_pjwc4"]
-script = ExtResource("9_bjvpn")
-index = 2
-model_path = "characters\\_Male\\RightHand.nif"
-icon_path = "Characters\\Male\\HandMale.dds"
-
-[sub_resource type="Resource" id="Resource_or4qq"]
-script = ExtResource("9_bjvpn")
-part_type = "head"
-model_path = "Characters\\Head\\HeadHuman.NIF"
-icon_path = "Characters\\Male\\HeadHuman.dds"
-
-[sub_resource type="Resource" id="Resource_hggc2"]
-script = ExtResource("9_bjvpn")
-index = 1
-part_type = "ears"
-icon_path = "Characters\\Head\\EarsHuman.dds"
-
-[sub_resource type="Resource" id="Resource_b2j0d"]
-script = ExtResource("9_bjvpn")
-index = 2
-part_type = "mouth"
-model_path = "Characters\\Head\\MouthHuman.NIF"
-icon_path = "Characters\\Mouth\\MouthHuman.dds"
-
-[sub_resource type="Resource" id="Resource_7l6ig"]
-script = ExtResource("9_bjvpn")
-index = 3
-part_type = "teeth_lower"
-model_path = "Characters\\Head\\TeethLowerHuman.NIF"
-icon_path = "Characters\\Mouth\\TeethLowerHuman.dds"
-
-[sub_resource type="Resource" id="Resource_j3r50"]
-script = ExtResource("9_bjvpn")
-index = 4
-part_type = "teeth_upper"
-model_path = "Characters\\Head\\TeethUpperHuman.NIF"
-icon_path = "Characters\\Mouth\\TeethUpperHuman.dds"
-
-[sub_resource type="Resource" id="Resource_utr5e"]
-script = ExtResource("9_bjvpn")
-index = 5
-part_type = "tongue"
-model_path = "Characters\\Head\\TongueHuman.NIF"
-icon_path = "Characters\\Mouth\\TongueHuman.dds"
-
-[sub_resource type="Resource" id="Resource_kewli"]
-script = ExtResource("9_bjvpn")
-index = 6
-part_type = "eye_left"
-model_path = "Characters\\Head\\EyeLeftHuman.NIF"
-
-[sub_resource type="Resource" id="Resource_do7qw"]
-script = ExtResource("9_bjvpn")
-index = 7
-part_type = "eye_right"
-model_path = "Characters\\Head\\EyeRightHuman.NIF"
-
-[sub_resource type="Resource" id="Resource_2h6tc"]
-script = ExtResource("10_s7qer")
-male_head_parts = Array[ExtResource("9_bjvpn")]([SubResource("Resource_or4qq"), SubResource("Resource_hggc2"), SubResource("Resource_b2j0d"), SubResource("Resource_7l6ig"), SubResource("Resource_j3r50"), SubResource("Resource_utr5e"), SubResource("Resource_kewli"), SubResource("Resource_do7qw")])
-female_head_parts = Array[ExtResource("9_bjvpn")]([SubResource("Resource_wpyo2"), SubResource("Resource_7crtr"), SubResource("Resource_vgvch"), SubResource("Resource_a1u5o"), SubResource("Resource_3dxkp"), SubResource("Resource_6wior"), SubResource("Resource_p5tca"), SubResource("Resource_jbx34")])
-male_body_parts = Array[ExtResource("9_bjvpn")]([SubResource("Resource_s3g0c"), SubResource("Resource_35wys"), SubResource("Resource_pjwc4")])
-female_body_parts = Array[ExtResource("9_bjvpn")]([SubResource("Resource_n0b8q"), SubResource("Resource_jfgyi"), SubResource("Resource_237xx")])
-form_id = 14565
-editor_id = "Hispanic"
-record_type = "RACE"
-source_uri = "esm://FalloutNV.esm/RACE/000038E5"
-
-[sub_resource type="Resource" id="Resource_8rogd"]
-script = ExtResource("11_g4c7l")
-full_name = "Sunny Smiles"
-model_path = "Characters\\_Male\\Skeleton.NIF"
-race = SubResource("Resource_2h6tc")
-hair = SubResource("Resource_b8hi5")
-eyes = SubResource("Resource_rptt4")
-actor_class = SubResource("Resource_uw77l")
-is_female = true
-acbs_flags = 17
-inventory = Array[ExtResource("5_e7oew")]([SubResource("Resource_q28gw"), SubResource("Resource_pnw6m")])
-packages = Array[ExtResource("8_x7c3f")]([SubResource("Resource_1so5t"), SubResource("Resource_55jnj"), SubResource("Resource_dx5ib"), SubResource("Resource_a2xo5"), SubResource("Resource_art4l"), SubResource("Resource_fjxoa"), SubResource("Resource_gswnw"), SubResource("Resource_xcnuv"), SubResource("Resource_j55il"), SubResource("Resource_hjies"), SubResource("Resource_mmwog"), SubResource("Resource_8pxes"), SubResource("Resource_fmu53"), SubResource("Resource_w7j2h")])
-face_gen = SubResource("Resource_r7pn3")
-form_id = 1068676
-editor_id = "GSSunnySmiles"
-record_type = "NPC_"
-source_uri = "esm://FalloutNV.esm/NPC_/00104E84"
-
-[sub_resource type="Resource" id="Resource_x7c3f"]
-script = ExtResource("5_8t03j")
-diagnostics = PackedStringArray()
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_5pvkm"]
-animation = &"weapon_reload"
-
-[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_el4o5"]
-filter_enabled = true
-filters = ["Skeleton3D:Bip01 L Clavicle", "Skeleton3D:Bip01 L Finger1", "Skeleton3D:Bip01 L Finger11", "Skeleton3D:Bip01 L Finger12", "Skeleton3D:Bip01 L Finger2", "Skeleton3D:Bip01 L Finger21", "Skeleton3D:Bip01 L Finger22", "Skeleton3D:Bip01 L Finger3", "Skeleton3D:Bip01 L Finger31", "Skeleton3D:Bip01 L Finger32", "Skeleton3D:Bip01 L Finger4", "Skeleton3D:Bip01 L Finger41", "Skeleton3D:Bip01 L Finger42", "Skeleton3D:Bip01 L ForeTwist", "Skeleton3D:Bip01 L Forearm", "Skeleton3D:Bip01 L Hand", "Skeleton3D:Bip01 L Thumb1", "Skeleton3D:Bip01 L Thumb11", "Skeleton3D:Bip01 L Thumb12", "Skeleton3D:Bip01 L UpperArm", "Skeleton3D:Bip01 LPauldron", "Skeleton3D:Bip01 LUpArmTwistBone", "Skeleton3D:Bip01 Neck", "Skeleton3D:Bip01 R Clavicle", "Skeleton3D:Bip01 R Finger1", "Skeleton3D:Bip01 R Finger11", "Skeleton3D:Bip01 R Finger12", "Skeleton3D:Bip01 R Finger2", "Skeleton3D:Bip01 R Finger21", "Skeleton3D:Bip01 R Finger22", "Skeleton3D:Bip01 R Finger3", "Skeleton3D:Bip01 R Finger31", "Skeleton3D:Bip01 R Finger32", "Skeleton3D:Bip01 R Finger4", "Skeleton3D:Bip01 R Finger41", "Skeleton3D:Bip01 R Finger42", "Skeleton3D:Bip01 R ForeTwist", "Skeleton3D:Bip01 R Forearm", "Skeleton3D:Bip01 R Hand", "Skeleton3D:Bip01 R Thumb1", "Skeleton3D:Bip01 R Thumb11", "Skeleton3D:Bip01 R Thumb12", "Skeleton3D:Bip01 R UpperArm", "Skeleton3D:Bip01 RPauldron", "Skeleton3D:Bip01 RUpArmTwistBone", "Skeleton3D:Bip01 Spine", "Skeleton3D:Bip01 Spine1", "Skeleton3D:Bip01 Spine2", "Skeleton3D:Weapon"]
-
-[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_ps0t2"]
-filter_enabled = true
-filters = ["Skeleton3D:Bip01 L Calf", "Skeleton3D:Bip01 L Foot", "Skeleton3D:Bip01 L Thigh", "Skeleton3D:Bip01 L Toe0", "Skeleton3D:Bip01 Pelvis", "Skeleton3D:Bip01 R Calf", "Skeleton3D:Bip01 R Foot", "Skeleton3D:Bip01 R Thigh", "Skeleton3D:Bip01 R Toe0"]
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_qpm88"]
-animation = &"locomotion_walk_forward"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_kbjpk"]
-animation = &"locomotion_walk_backward"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_5rcvm"]
-animation = &"locomotion_walk_left"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_s0ciq"]
-animation = &"locomotion_walk_right"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_sflvf"]
-animation = &"locomotion_idle"
-
-[sub_resource type="AnimationNodeBlendSpace2D" id="AnimationNodeBlendSpace2D_brd68"]
-blend_point_0/node = SubResource("AnimationNodeAnimation_qpm88")
-blend_point_0/pos = Vector2(0, 1)
-blend_point_0/name = &"locomotion_walk_forward"
-blend_point_1/node = SubResource("AnimationNodeAnimation_kbjpk")
-blend_point_1/pos = Vector2(0, -1)
-blend_point_1/name = &"locomotion_walk_backward"
-blend_point_2/node = SubResource("AnimationNodeAnimation_5rcvm")
-blend_point_2/pos = Vector2(-1, 0)
-blend_point_2/name = &"locomotion_walk_left"
-blend_point_3/node = SubResource("AnimationNodeAnimation_s0ciq")
-blend_point_3/pos = Vector2(1, 0)
-blend_point_3/name = &"locomotion_walk_right"
-blend_point_4/node = SubResource("AnimationNodeAnimation_sflvf")
-blend_point_4/pos = Vector2(0, 0)
-blend_point_4/name = &"locomotion_idle"
-
-[sub_resource type="AnimationNodeOneShot" id="AnimationNodeOneShot_depis"]
-filter_enabled = true
-filters = ["Skeleton3D:Bip01 Head", "Skeleton3D:Bip01 L Clavicle", "Skeleton3D:Bip01 L Finger1", "Skeleton3D:Bip01 L Finger11", "Skeleton3D:Bip01 L Finger12", "Skeleton3D:Bip01 L Finger2", "Skeleton3D:Bip01 L Finger21", "Skeleton3D:Bip01 L Finger22", "Skeleton3D:Bip01 L Finger3", "Skeleton3D:Bip01 L Finger31", "Skeleton3D:Bip01 L Finger32", "Skeleton3D:Bip01 L Finger4", "Skeleton3D:Bip01 L Finger41", "Skeleton3D:Bip01 L Finger42", "Skeleton3D:Bip01 L ForeTwist", "Skeleton3D:Bip01 L Forearm", "Skeleton3D:Bip01 L Hand", "Skeleton3D:Bip01 L Thumb1", "Skeleton3D:Bip01 L Thumb11", "Skeleton3D:Bip01 L Thumb12", "Skeleton3D:Bip01 L UpperArm", "Skeleton3D:Bip01 LPauldron", "Skeleton3D:Bip01 LUpArmTwistBone", "Skeleton3D:Bip01 Neck", "Skeleton3D:Bip01 Neck1", "Skeleton3D:Bip01 R Clavicle", "Skeleton3D:Bip01 R Finger1", "Skeleton3D:Bip01 R Finger11", "Skeleton3D:Bip01 R Finger12", "Skeleton3D:Bip01 R Finger2", "Skeleton3D:Bip01 R Finger21", "Skeleton3D:Bip01 R Finger22", "Skeleton3D:Bip01 R Finger3", "Skeleton3D:Bip01 R Finger31", "Skeleton3D:Bip01 R Finger32", "Skeleton3D:Bip01 R Finger4", "Skeleton3D:Bip01 R Finger41", "Skeleton3D:Bip01 R Finger42", "Skeleton3D:Bip01 R ForeTwist", "Skeleton3D:Bip01 R Forearm", "Skeleton3D:Bip01 R Hand", "Skeleton3D:Bip01 R Thumb1", "Skeleton3D:Bip01 R Thumb11", "Skeleton3D:Bip01 R Thumb12", "Skeleton3D:Bip01 R UpperArm", "Skeleton3D:Bip01 RPauldron", "Skeleton3D:Bip01 RUpArmTwistBone", "Skeleton3D:Bip01 Spine2", "Skeleton3D:Weapon"]
-fadein_time = 0.5
-fadeout_time = 0.5
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_3fqrr"]
-animation = &"weapon_forward"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_j17ci"]
-animation = &"weapon_backward"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_0stx0"]
-animation = &"weapon_left"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_k8moq"]
-animation = &"weapon_right"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_rbyni"]
-animation = &"locomotion_idle"
-
-[sub_resource type="AnimationNodeBlendSpace2D" id="AnimationNodeBlendSpace2D_4tmmo"]
-blend_point_0/node = SubResource("AnimationNodeAnimation_3fqrr")
-blend_point_0/pos = Vector2(0, 1)
-blend_point_0/name = &"weapon_forward"
-blend_point_1/node = SubResource("AnimationNodeAnimation_j17ci")
-blend_point_1/pos = Vector2(0, -1)
-blend_point_1/name = &"weapon_backward"
-blend_point_2/node = SubResource("AnimationNodeAnimation_0stx0")
-blend_point_2/pos = Vector2(-1, 0)
-blend_point_2/name = &"weapon_left"
-blend_point_3/node = SubResource("AnimationNodeAnimation_k8moq")
-blend_point_3/pos = Vector2(1, 0)
-blend_point_3/name = &"weapon_right"
-blend_point_4/node = SubResource("AnimationNodeAnimation_rbyni")
-blend_point_4/pos = Vector2(0, 0)
-blend_point_4/name = &"locomotion_idle"
-
-[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_jquul"]
-animation = &"animation_noop"
-
-[sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_ggi80"]
-graph_offset = Vector2(-634.37195, -169.37189)
-nodes/output/position = Vector2(1340, -140)
-nodes/LowerLegLocomotionSpace/node = SubResource("AnimationNodeBlendSpace2D_brd68")
-nodes/LowerLegLocomotionSpace/position = Vector2(-300, 0)
-nodes/LegFilter/node = SubResource("AnimationNodeBlend2_ps0t2")
-nodes/LegFilter/position = Vector2(20, -120)
-nodes/noop/node = SubResource("AnimationNodeAnimation_jquul")
-nodes/noop/position = Vector2(-300, -180)
-nodes/OneShot/node = SubResource("AnimationNodeOneShot_depis")
-nodes/OneShot/position = Vector2(1040, -160)
-nodes/Animation/node = SubResource("AnimationNodeAnimation_5pvkm")
-nodes/Animation/position = Vector2(800, 60)
-nodes/Blend2/node = SubResource("AnimationNodeBlend2_el4o5")
-nodes/Blend2/position = Vector2(440, -80)
-nodes/UpperLocomotionSpace/node = SubResource("AnimationNodeBlendSpace2D_4tmmo")
-nodes/UpperLocomotionSpace/position = Vector2(-300, 220)
-node_connections = [&"output", 0, &"OneShot", &"LegFilter", 0, &"noop", &"LegFilter", 1, &"LowerLegLocomotionSpace", &"OneShot", 0, &"Blend2", &"OneShot", 1, &"Animation", &"Blend2", 0, &"LegFilter", &"Blend2", 1, &"UpperLocomotionSpace"]
-
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
 [node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray")]
 script = ExtResource("1_controller")
+mouse_sensitivity = 0.002
 collision_shape = NodePath("CollisionShape3D")
 camera = NodePath("Camera3D")
 interact_ray = NodePath("Camera3D/InteractRay")
-actor = NodePath("NPCActor")
+
+[node name="Isometric_Cam_Psuh" type="RemoteTransform3D" parent="." unique_id=1162310370]
+remote_path = NodePath("../Isometric_Cam_Root")
+update_rotation = false
+update_scale = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=67078899]
 shape = SubResource("CapsuleShape3D_player")
 
 [node name="NPCActor" parent="." unique_id=27428201 instance=ExtResource("5_npc_actor")]
-visible = false
-npc_record = SubResource("Resource_8rogd")
-equipment_state = SubResource("Resource_x7c3f")
-
-[node name="InventoryComponent2" type="Node" parent="NPCActor" unique_id=921720935]
-script = ExtResource("17_knn7v")
-entries = Array[ExtResource("5_e7oew")]([SubResource("Resource_q28gw"), SubResource("Resource_pnw6m")])
-
-[node name="ActorAnimationComponent2" type="Node" parent="NPCActor" unique_id=544222202]
-script = ExtResource("18_7pqkx")
-
-[node name="AnimationTree2" type="AnimationTree" parent="NPCActor" unique_id=727612342]
-active = false
-tree_root = SubResource("AnimationNodeBlendTree_ggi80")
-parameters/LowerLegLocomotionSpace/blend_position = Vector2(0, 0)
-parameters/LegFilter/blend_amount = 1.0
-parameters/OneShot/active = false
-parameters/OneShot/internal_active = false
-parameters/OneShot/request = 0
-parameters/Blend2/blend_amount = 1.0
-parameters/UpperLocomotionSpace/blend_position = Vector2(0, 0)
+preset = "Doc Mitchell (Goodsprings)"
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
 top_level = true
-current = true
-far = 1000.0
+far = 6000.0
 
 [node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
 target_position = Vector3(0, 0, -2.5)
 script = ExtResource("4_interactray")
-
-[node name="MouseCaptureManager" type="Node" parent="." unique_id=1257446344]
-script = ExtResource("2_mouse")
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=98712345]
 
@@ -619,3 +78,15 @@ text = "Label Text"
 label_settings = SubResource("LabelSettings_yw30f")
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="Isometric_Cam_Root" type="Node3D" parent="." unique_id=1747492222]
+top_level = true
+
+[node name="Camera3D" type="Camera3D" parent="Isometric_Cam_Root" unique_id=733539594]
+transform = Transform3D(0.7071068, 0.5, -0.5, 0, 0.70710677, 0.70710677, 0.7071068, -0.5, 0.5, -25.33264, 36.446133, 25.33264)
+projection = 1
+current = true
+size = 15.0
+near = 0.01
+far = 200.0
+script = ExtResource("61_p5tca")

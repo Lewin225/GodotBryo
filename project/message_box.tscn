@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c6bxk8o7kam1q"]
 
-[ext_resource type="Script" path="res://message_box.gd" id="1_msgbox"]
+[ext_resource type="Script" uid="uid://cet8nk2ixgyh7" path="res://message_box.gd" id="1_msgbox"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.08, 0.07, 0.05, 0.92)
@@ -21,11 +21,10 @@ border_color = Color(1, 0.72, 0.28, 0.9)
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 
-[node name="MessageBox" type="CanvasLayer"]
-layer = 11
+[node name="MessageBox" type="CanvasLayer" unique_id=543939457]
 script = ExtResource("1_msgbox")
 
-[node name="DialogRoot" type="Control" parent="."]
+[node name="DialogRoot" type="Control" parent="." unique_id=1008877321]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -33,7 +32,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Dim" type="ColorRect" parent="DialogRoot"]
+[node name="Dim" type="ColorRect" parent="DialogRoot" unique_id=1540803547]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -42,7 +41,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.65)
 
-[node name="Panel" type="PanelContainer" parent="DialogRoot"]
+[node name="Panel" type="PanelContainer" parent="DialogRoot" unique_id=209173152]
 custom_minimum_size = Vector2(720, 360)
 layout_mode = 1
 anchors_preset = 8
@@ -58,24 +57,24 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
-[node name="Margin" type="MarginContainer" parent="DialogRoot/Panel"]
+[node name="Margin" type="MarginContainer" parent="DialogRoot/Panel" unique_id=97090784]
 layout_mode = 2
 theme_override_constants/margin_left = 26
 theme_override_constants/margin_top = 22
 theme_override_constants/margin_right = 26
 theme_override_constants/margin_bottom = 22
 
-[node name="VBox" type="VBoxContainer" parent="DialogRoot/Panel/Margin"]
+[node name="VBox" type="VBoxContainer" parent="DialogRoot/Panel/Margin" unique_id=15395467]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Title" type="Label" parent="DialogRoot/Panel/Margin/VBox"]
+[node name="Title" type="Label" parent="DialogRoot/Panel/Margin/VBox" unique_id=512570112]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.72, 0.28, 1)
 theme_override_font_sizes/font_size = 22
 text = "Message"
 
-[node name="Body" type="RichTextLabel" parent="DialogRoot/Panel/Margin/VBox"]
+[node name="Body" type="RichTextLabel" parent="DialogRoot/Panel/Margin/VBox" unique_id=778676699]
 custom_minimum_size = Vector2(0, 90)
 layout_mode = 2
 size_flags_vertical = 3
@@ -84,17 +83,17 @@ theme_override_font_sizes/normal_font_size = 17
 text = "Message body text goes here."
 fit_content = true
 
-[node name="ButtonsScroll" type="ScrollContainer" parent="DialogRoot/Panel/Margin/VBox"]
+[node name="ButtonsScroll" type="ScrollContainer" parent="DialogRoot/Panel/Margin/VBox" unique_id=1845318685]
 custom_minimum_size = Vector2(0, 130)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Buttons" type="VBoxContainer" parent="DialogRoot/Panel/Margin/VBox/ButtonsScroll"]
+[node name="Buttons" type="VBoxContainer" parent="DialogRoot/Panel/Margin/VBox/ButtonsScroll" unique_id=1826805956]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="ToastRoot" type="Control" parent="."]
+[node name="ToastRoot" type="Control" parent="." unique_id=1577202563]
 layout_mode = 3
 anchors_preset = 0
 offset_left = 24.0
@@ -103,7 +102,7 @@ offset_right = 450.0
 offset_bottom = 100.0
 mouse_filter = 2
 
-[node name="ToastPanel" type="PanelContainer" parent="ToastRoot"]
+[node name="ToastPanel" type="PanelContainer" parent="ToastRoot" unique_id=714309345]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -113,7 +112,7 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_toast")
 
-[node name="Margin" type="MarginContainer" parent="ToastRoot/ToastPanel"]
+[node name="Margin" type="MarginContainer" parent="ToastRoot/ToastPanel" unique_id=917639816]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 14
@@ -121,7 +120,7 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 14
 theme_override_constants/margin_bottom = 10
 
-[node name="ToastLabel" type="Label" parent="ToastRoot/ToastPanel/Margin"]
+[node name="ToastLabel" type="Label" parent="ToastRoot/ToastPanel/Margin" unique_id=1047837419]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.72, 0.28, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
