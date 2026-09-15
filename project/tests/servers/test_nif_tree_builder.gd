@@ -17,6 +17,9 @@ const SIGN := "meshes/architecture/strip/newvegassign.nif"
 const BILLBOARD := "meshes/effects/actorfirefx/fireball01.nif"
 const ROOT_TRANSFORM_FENCE := "meshes/clutter/fence/NV_FencePickBurntCorOut01.NIF"
 const DOC_MITCHELL_GATE := "meshes/clutter/fence/NV_FencePickBurntGate01.NIF"
+const UPPERBODY := "meshes/characters/_male/upperbody.nif"
+const DISMEMBER_MIXED := "meshes/armor/bigbattle/crangerbattlearmor.nif"
+const DISMEMBER_VISUAL := "meshes/armor/1950stylecasual01/m/outfit.nif"
 
 var failures := 0
 
@@ -56,6 +59,20 @@ func _find_first(root: Node, type_name: String) -> Node:
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		if n.is_class(type_name):
+			return n
+		for c in n.get_children():
+			stack.append(c)
+	return null
+
+
+## Authored NIF names live in metadata when Godot has escaped them for a node
+## path. This deliberately searches containers too: a BSDismember shape is no
+## longer itself a MeshInstance3D after partitioning.
+func _find_authored_node(root: Node, authored_name: String) -> Node:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if String(n.get_meta(NifNamesScript.META_NIF_NAME, "")) == authored_name:
 			return n
 		for c in n.get_children():
 			stack.append(c)
@@ -217,7 +234,7 @@ func test_node_map() -> void:
 
 func test_skinned_tree() -> void:
 	print("--- skinned tree: named binds, skeleton unset ---")
-	var root := await _build("meshes/characters/_male/upperbody.nif")
+	var root := await _build(UPPERBODY)
 	check(root != null, "upperbody.nif built a tree")
 	if root == null:
 		return
@@ -236,9 +253,72 @@ func test_skinned_tree() -> void:
 				named += 1
 		for c in n.get_children():
 			stack.append(c)
-	check(skinned == 6, "6 skinned MeshInstance3D (got %d)" % skinned)
+	check(skinned == 23, "23 partitioned skinned MeshInstance3D (got %d)" % skinned)
 	check(unset == skinned, "every skin leaves `skeleton` unset (%d of %d)" % [unset, skinned])
 	check(named == skinned, "every skin uses named binds (%d of %d)" % [named, skinned])
+
+
+## BSDismemberSkinInstance partitions are per triangle, even when several
+## partitions share source vertices. Verify both the raw source mapping and
+## the emitted, independently addressable meshes on real authored fixtures.
+func test_dismember_partitions() -> void:
+	print("--- BSDismemberSkinInstance partitions ---")
+	var archive: Dictionary = ArchiveServer.read(UPPERBODY)
+	var source := NifSource.new()
+	if not bool(archive.get("found", false)) or not source.load(PackedByteArray(archive.get("data", PackedByteArray()))):
+		check(false, "loaded upperbody.nif dismember fixture")
+		return
+	var source_skin: Dictionary = {}
+	for node in source.get_nodes():
+		if String(node.get("name", "")) == "limbcaps":
+			source_skin = node.get("skin", {})
+			break
+	check(not source_skin.is_empty(), "limbcaps has BSDismember source metadata")
+	if source_skin.is_empty():
+		return
+	var source_parts: Array = source_skin.get("dismember_partitions", [])
+	var source_ids: Array[int] = []
+	for part in source_parts:
+		source_ids.append(int((part as Dictionary).get("part_id", -1)))
+	check(source_ids == [105, 103, 107, 110], "limbcaps source IDs preserve authored order (%s)" % [source_ids])
+	var source_triangles: PackedInt32Array = source_skin.get("dismember_triangle_partitions", PackedInt32Array())
+	check(source_triangles.size() == 264, "limbcaps maps every one of 264 source triangles")
+
+	var root := await _build(UPPERBODY)
+	if root == null:
+		check(false, "upperbody.nif built partitioned tree")
+		return
+	var limbcaps := _find_authored_node(root, "limbcaps") as Node3D
+	check(limbcaps != null and not (limbcaps is MeshInstance3D), "limbcaps remains an authored Node3D container")
+	if limbcaps != null:
+		var expected_triangles := {105: 56, 103: 82, 107: 63, 110: 63}
+		check(limbcaps.get_child_count() == expected_triangles.size(), "limbcaps emits one mesh per authored partition")
+		var actual_triangles := {}
+		for child in limbcaps.get_children():
+			if not child is MeshInstance3D:
+				continue
+			var mesh := child as MeshInstance3D
+			var part_id := int(mesh.get_meta("nif_dismember_part_id", -1))
+			var index_count := (mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+			actual_triangles[part_id] = index_count / 3
+			check(String(mesh.get_meta("nif_dismember_source_shape", "")) == "limbcaps", "partition retains its source-shape identity")
+			check(int(mesh.get_meta("nif_dismember_partition_index", -1)) >= 0, "partition records its authored partition index")
+		check(actual_triangles == expected_triangles, "limbcaps partition triangle counts are exact (%s)" % [actual_triangles])
+	root.queue_free()
+
+	var mixed := await _build(DISMEMBER_MIXED)
+	check(mixed != null, "mixed base/cap BSDismember fixture built")
+	if mixed == null:
+		return
+	var gorecaps := _find_authored_node(mixed, "GorecapsBody:0") as Node3D
+	check(gorecaps != null and gorecaps.get_child_count() == 5, "GorecapsBody:0 splits its five mixed partitions")
+	if gorecaps != null:
+		var mixed_ids: Array[int] = []
+		for child in gorecaps.get_children():
+			mixed_ids.append(int(child.get_meta("nif_dismember_part_id", -1)))
+		mixed_ids.sort()
+		check(mixed_ids == [0, 203, 205, 207, 210], "mixed fixture keeps base and torso-cap IDs separate (%s)" % [mixed_ids])
+	mixed.queue_free()
 
 
 ## A file whose declared bones form a hierarchy inside it contains a skeleton,
@@ -738,6 +818,7 @@ func write_previews() -> void:
 	var cases := {
 		"barracks01": "meshes/architecture/barracks/barracks01.nif",
 		"upperbody_skinned": "meshes/characters/_male/upperbody.nif",
+		"dismember_1950style": DISMEMBER_VISUAL,
 		"skeleton_ragdoll": "meshes/characters/_male/skeleton.nif",
 		"milkbottle": "meshes/clutter/junk/milkbottle01.nif",
 		"sliding_door_animated": DOOR,
@@ -773,6 +854,7 @@ func _ready() -> void:
 	await test_doc_mitchell_gate_collision_animation()
 	await test_node_map()
 	await test_skinned_tree()
+	await test_dismember_partitions()
 	await test_skeleton_emission()
 	await test_metadata()
 	await test_animation()

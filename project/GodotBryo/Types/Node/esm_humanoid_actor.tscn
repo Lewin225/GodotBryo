@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cv8jrt6nbed3v"]
+
+[ext_resource type="Script" uid="uid://csqpmnbpusioc" path="res://GodotBryo/Types/Node/esm_humanoid_actor.gd" id="1"]
+
+[node name="EsmHumanoidActor" type="Node3D" unique_id=654429205]
+script = ExtResource("1")
+preset = "Custom"
+custom_base_form_id = "00104E84"

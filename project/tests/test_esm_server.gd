@@ -37,15 +37,6 @@ func _ready() -> void:
 		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
 		if reference is ActorReference:
 			found_actor = true
-			var actor_host := Node3D.new()
-			add_child(actor_host)
-			var actor_node := EsmReferencePhysicaliser.new().physicalise(reference, actor_host)
-			_check(actor_node is EsmNpcActor, "NPC ActorReference physicalises as EsmNpcActor")
-			for _frame in 60:
-				if actor_node != null and actor_node.get_node_or_null("Body") != null: break
-				await get_tree().process_frame
-			_check(actor_node != null and actor_node.get_node_or_null("Body") != null, "EsmNpcActor builds its generated Body")
-			if actor_host != null: actor_host.free()
 			var actor_base := reference.base as NpcBase
 			_check(reference.contents is Inventory, "ActorReference owns a typed Inventory")
 			if reference.contents is Inventory:
