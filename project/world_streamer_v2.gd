@@ -30,7 +30,7 @@ const SPAWN_CREA := 1 << 2
 @export var freeze_trace_enabled := false
 
 ## Placement categories WorldStreamerV2 is allowed to physicalise. `ACHR`
-## currently takes the retained legacy EsmNpcActor assembly path; leave it off
+## currently takes the retained legacy EsmHumanoidActor assembly path; leave it off
 ## when profiling only the new server pipeline. `CREA` is kept separately for
 ## the same reason as creature assembly arrives.
 @export_flags("REFR", "ACHR", "CREA") var spawn_reference_types := SPAWN_REFR | SPAWN_ACHR | SPAWN_CREA

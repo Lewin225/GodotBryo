@@ -116,7 +116,7 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export_group("Actor")
 ## Visual actor owned by this controller. The controller supplies movement
 ## state; the actor remains responsible for rendering and animation playback.
-@export var actor: NPCActor
+@export var actor: EsmHumanoidActor
 @export var drive_actor_animation: bool = true
 @export var motion_data: MotionData = MotionData.new()
 
@@ -182,11 +182,9 @@ func _ready() -> void:
 	if not camera:
 		camera = get_node_or_null("Camera3D")
 	if actor == null:
-		actor = get_node_or_null("NPCActor") as NPCActor
+		actor = get_node_or_null("EsmHumanoidActor") as EsmHumanoidActor
 	if actor != null:
-		_actor_animation = actor.get_node_or_null("ActorAnimationComponent") as ActorAnimationComponent
-		actor.apply_runtime_actor_data()
-	_publish_actor_motion()
+		actor.load_actor()
 
 	if collision_shape and collision_shape.shape is CapsuleShape3D:
 		var cap := collision_shape.shape as CapsuleShape3D
@@ -588,6 +586,8 @@ func _update_camera_transform(delta: float) -> void:
 	var zoom_active := InputMap.has_action(zoom_action) and Input.is_action_pressed(zoom_action)
 	var target_aim := Vector3(camera_pitch, rotation.y, 0.0)
 	aim_smooth = lerp(aim_smooth, target_aim, clampf(delta * camera_aim_smooth_speed, 0.0, 1.0)) if zoom_active else target_aim
+
+	camera.fov = lerpf(camera.fov, (75.0-(float(zoom_active)*50)), delta*5)
 
 	# 1. Base Positional Follow & Smoothing (with dynamic Bridge Dip)
 	var current_height := crouching_height if is_crouching else standing_height

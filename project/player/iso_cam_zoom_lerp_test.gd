@@ -16,4 +16,3 @@ func _input(event:InputEvent):
 	if event.is_action_released("toggle_stats"):
 			$".".current = !$".".current
 			$"../../Camera3D".current = !$".".current
-			$"../../NPCActor".possessed_first_person = $"../../Camera3D".current

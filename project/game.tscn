@@ -26,7 +26,6 @@
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 auto_exposure_enabled = true
 auto_exposure_scale = 0.2
-auto_exposure_speed = 20.47
 dof_blur_far_enabled = true
 dof_blur_far_distance = 26.43
 dof_blur_far_transition = 2000.0
@@ -76,7 +75,7 @@ spawn_reference_types = 3
 [node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
 lod_load_radius = 20.0
-spawn_reference_types = 1
+spawn_reference_types = 3
 
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_terrainstreamer")
