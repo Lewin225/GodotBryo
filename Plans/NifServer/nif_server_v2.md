@@ -76,7 +76,7 @@ Unchanged from v1.
 | function | params | delivery | thread |
 |---|---|---|---|
 | `request()` | `nif_path: String`<br>`owner: Node`<br>`on_complete: Callable`<br>`prefer_static := false` | callback with `Node3D` or `null` | callback on main thread |
-| `request_kf()` | `kf_path: String` | `AnimationLibrary` | worker-safe |
+| `request_kf()` | `kf_path: String`<br>`owner: Node`<br>`on_complete: Callable` | callback with `AnimationLibrary` or `null` | callback on main thread |
 | `get_stats()` / `reset_stats()` | — | `Dictionary` | main thread |
 
 `_resolve()` (worker) and `_build()` (main) stay internal.
@@ -301,12 +301,16 @@ round-trip.
 
 ### 7.1 Return shape
 
-`request_kf()` returns an `AnimationLibrary` keyed by sequence name. 4,981 of 5,014 KFs hold one
-sequence, but 33 hold 2–5, so a single-`Animation` return cannot represent the corpus.
+`request_kf()` delivers an immutable shared `AnimationLibrary`, keyed by sequence name, through
+the same owner-bound callback contract as `request()`. 4,981 of 5,014 KFs hold one sequence, but
+33 hold 2–5, so a single-`Animation` return cannot represent the corpus. The library is cached in
+memory and persistently under `user://nifserver_kf_cache`; its cache key includes the canonical
+path, winning archive and cache version, so a valid cross-run hit avoids BSA reading and parsing.
 
 Verified on Godot 4.7.1 (`tools/godot_anim_thread_check/`): `Animation`/`AnimationLibrary`
 construction, key insertion and `track_set_path()` mutation all run correctly on 8 concurrent
-`WorkerThreadPool` threads. `request_kf()` is therefore fully worker-side, retarget renames included.
+`WorkerThreadPool` threads. NifServer constructs and persists the library in a worker, then
+delivers it on the main thread. It does not retarget the clip.
 
 ### 7.2 Addressing
 

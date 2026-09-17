@@ -547,6 +547,10 @@ func test_corpus_parses() -> void:
 	var ok := 0
 	var av := 0
 	var types := {}
+	var kf_files := 0
+	var kf_single_sequence := 0
+	var kf_multi_sequence := 0
+	var multi_sequence_examples: PackedStringArray = []
 	for p in ArchiveServer.list_files_with_prefix("meshes/"):
 		var sp := String(p)
 		if not (sp.ends_with(".nif") or sp.ends_with(".kf")):
@@ -559,6 +563,15 @@ func test_corpus_parses() -> void:
 		if not src.load(PackedByteArray(r["data"])):
 			continue
 		ok += 1
+		if sp.ends_with(".kf"):
+			kf_files += 1
+			var sequence_count := src.get_sequences().size()
+			if sequence_count == 1:
+				kf_single_sequence += 1
+			elif sequence_count > 1:
+				kf_multi_sequence += 1
+				if multi_sequence_examples.size() < 4:
+					multi_sequence_examples.append(sp)
 		for n in src.get_nodes():
 			av += 1
 			types[String(n["block_type"])] = true
@@ -566,6 +579,11 @@ func test_corpus_parses() -> void:
 	check(ok == files, "all %d parsed, 0 failures (got %d)" % [files, ok])
 	check(av > 140000, "%d NiAVObject blocks" % av)
 	check(types.size() == 18, "exactly 18 NiAVObject block types corpus-wide (got %d)" % types.size())
+	check(kf_files == 5014, "5,014 shipped KFs in the catalog (got %d)" % kf_files)
+	check(kf_single_sequence == 4981, "4,981 KFs have one sequence (got %d)" % kf_single_sequence)
+	check(kf_multi_sequence == 33, "33 KFs have multiple sequences (got %d; e.g. %s)" % [
+		kf_multi_sequence, ", ".join(multi_sequence_examples),
+	])
 
 
 func _ready() -> void:

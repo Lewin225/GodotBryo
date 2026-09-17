@@ -28,7 +28,7 @@ EsmServer="*res://GodotBryo/Servers/EsmServer/esm_server.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/subwindows/embed_subwindows=false
-window/vsync/vsync_mode=3
+window/vsync/vsync_mode=2
 
 [editor_plugins]
 
@@ -109,7 +109,7 @@ player_speeddown={
 }
 zoom={
 "deadzone": 0.2,
-"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":90,"key_label":0,"unicode":122,"location":0,"echo":false,"script":null)
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":2,"position":Vector2(149, 24),"global_position":Vector2(158, 72),"factor":1.0,"button_index":2,"canceled":false,"pressed":true,"double_click":false,"script":null)
 ]
 }
 
@@ -127,3 +127,7 @@ scaling_3d/mode=1
 scaling_3d/mode.macos=3
 scaling_3d/scale=0.75
 scaling_3d/fsr_sharpness=2.0
+lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=3
+lights_and_shadows/positional_shadow/atlas_quadrant_1_subdiv=3
+lights_and_shadows/positional_shadow/atlas_quadrant_2_subdiv=4
+lights_and_shadows/positional_shadow/atlas_quadrant_3_subdiv=5

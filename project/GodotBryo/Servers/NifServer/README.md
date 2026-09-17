@@ -1,8 +1,9 @@
 # NifServer
 
-Turns one requested NIF file into one Godot node tree. `request()` serves its exact path; the
-separate `request_lod()` helper resolves the verified external companion-file convention before
-using that same exact-path request path. There are no special cases for actors, doors or terrain.
+Turns one requested NIF/KF file into its honest Godot return. `request()` serves a NIF as a node
+tree; `request_kf()` serves a standalone KF as an unbound `AnimationLibrary`; the separate
+`request_lod()` helper resolves the verified external companion-file convention before using the
+ordinary NIF request path. There are no special cases for actors, doors or terrain.
 
 Design: [`Plans/NifServer/nif_server_v2.md`](../../../../Plans/NifServer/nif_server_v2.md).
 Corpus research behind it: [`Plans/NifServer/Research/`](../../../../Plans/NifServer/Research/).
@@ -36,6 +37,7 @@ the legacy pre-digested reader still serving `mesh_resolver.gd`, and it stays un
 
 ```gdscript
 NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
+NifServer.request_kf(kf_path, owner, on_complete: Callable) -> void
 NifServer.request_lod(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
 NifServer.lod_companion_path(nif_path) -> String
 NifServer.get_stats() -> Dictionary  ·  reset_stats()
@@ -49,6 +51,15 @@ await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
 the admission cap and the per-frame build budget. `NifTreeBuilder` is the construction half and is
 called directly only by code that already holds a `NifSource`.
 
+**Standalone KFs return an unbound `AnimationLibrary`.** A KF has no model tree of its own: its
+authored targets belong to a composed rig (skeleton, weapon, and animobjects). `request_kf()`
+therefore preserves every supported transform track under its escaped, bare authored target name;
+it never guesses a human skeleton or rebinds a creature clip. Sequence names key the library --
+one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 sequences. Delivered
+libraries are shared immutable resources. NifServer caches them in memory and as compressed
+resources under `user://nifserver_kf_cache/`, keyed by conversion schema, canonical path and the
+winning archive; the persistent cache is checked on a worker before BSA extraction or parsing.
+
 **Companion LOD is an external asset rule, not an in-NIF mode.** `request_lod("foo.nif", ...)`
 canonicalizes `foo.nif`, looks for the archive-backed `foo_lod.nif`, then delegates to
 `request("foo_lod.nif", ...)`. It caches both hits and misses by the full canonical path. A missing
@@ -58,11 +69,12 @@ WastelandNV corpus census found 358 distinct paired companion files, all rooted 
 none carrying an authored in-file LOD selector. On success, therefore, the returned tree is the
 literal companion file and has its own normal NifServer cache identity.
 
-**Delivery is a callback, not an await, and that is the leak guarantee.** `on_complete` must be a
-method on `owner` — not a closure capturing it, which the server rejects — so the server can tell
-whether anyone is still there to receive the result. An owner that goes away before the build starts
-gets no tree built at all; one that goes away during the build has the result freed rather than
-orphaned.
+**Delivery is a callback, not an await, and that is the lifetime guarantee.** `on_complete` must be
+a method on `owner` — not a closure capturing it, which the server rejects — so the server can tell
+whether anyone is still there to receive the result. An owner that goes away before construction
+starts gets neither a tree nor a KF library built; a tree that loses its owner while it is being built
+is freed rather than orphaned. A KF worker already running is allowed to finish, but its library is
+discarded when no live owner remains.
 
 **Delivered trees share their resources, and callers must not mutate them.** A built tree is cached
 as a template keyed on §10's `(path, flatten)` identity and every delivery is a `duplicate()` of it.
