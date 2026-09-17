@@ -36,6 +36,11 @@ func physicalise(reference: EsmReference, parent: Node3D = null, initial_visual_
 	# same frame by conjugation, avoiding a second axis correction on the NIF.
 	root.transform = placement_transform(reference.position, reference.rotation, reference.scale)
 	root.set_meta("gamebryo_placement_space", true)
+	# Humanoids have a multi-NIF body assembly rather than EsmNode's one-model
+	# lifecycle. A physicalised actor is a near, previewable instance, so start
+	# that assembly as soon as its typed reference has been assigned.
+	if root is EsmHumanoidActor:
+		(root as EsmHumanoidActor).load_actor()
 	if parent != null:
 		parent.add_child(root)
 	return root

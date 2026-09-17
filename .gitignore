@@ -22,6 +22,7 @@ project/addons/terrain_streamer/bin/
 # always .cpp/.h/.hpp/.sh) -- ignore everything there except real source,
 # so a new one-off diagnostic tool's binary never needs its own line here.
 native/tools/*
+!native/tools/xedit_fnv_schema.py
 !native/tools/*.cpp
 !native/tools/*.h
 !native/tools/*.hpp
