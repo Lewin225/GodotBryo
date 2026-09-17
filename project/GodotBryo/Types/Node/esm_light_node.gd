@@ -10,7 +10,7 @@ func _on_reference_ready() -> void:
 		return
 	var light_base := reference.base as LightBase
 	var authored_color: Color = light_base.color
-	var light_color := authored_color.linear_to_srgb()
+	var light_color := authored_color.linear_to_srgb() # Godot expects srgb, gamebyro is linear
 	var light_range: float = max(light_base.radius, 0.1) * 2.0
 	var light_name := "SpotLight3D" if light_base.is_spot_light else "OmniLight3D"
 	if get_node_or_null(light_name) != null:
@@ -32,4 +32,14 @@ func _on_reference_ready() -> void:
 	light.light_energy = -1.0 if light_base.is_negative else 1.0
 	light.shadow_enabled = light_base.casts_spot_shadows or not light_base.is_spot_light
 	light.visible = not light_base.is_off_by_default
+
+
+	# Dispite being a forward rendering pipeline engine godot can draw a lot of lights with not much issue
+	# But some cells have over 100 lights, this is near free since gamebyro is a deffered pipeline
+	# Problem isn't performance so much as running out of space in the shadow map, so try to cull shadows a little
+	light.distance_fade_enabled = true
+	light.distance_fade_begin = 50
+	light.distance_fade_shadow = 20
+	light.distance_fade_length = 10
+
 	add_generated_child(light)
