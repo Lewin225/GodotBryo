@@ -9,12 +9,17 @@ extends Node
 const BARRACKS := "meshes/architecture/barracks/barracks01.nif"
 const BOTTLE := "meshes/clutter/junk/milkbottle01.nif"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
+const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
+## Corpus-census fixture: this standalone KF has two sequences, proving why
+## request_kf() returns AnimationLibrary rather than one Animation.
+const MULTI_SEQUENCE_KF := "meshes/characters/_male/idleanims/1stp_stooldynamicidle.kf"
 ## 710 blocks / 2,111 built nodes, 12.8 ms per duplicate -- and an SCOL, so it
 ## is on the World Streamer's own path rather than a pathological outlier.
 const HEAVY_SCOL := "meshes/scol/villatest.nif"
 
 var failures := 0
 var _received: Array = []
+var _received_kf: Array[AnimationLibrary] = []
 var _adopt: Node3D = null
 
 
@@ -46,6 +51,17 @@ func _free_received() -> void:
 		if n != null and is_instance_valid(n):
 			n.free()
 	_received.clear()
+
+
+func _on_kf_result(library: AnimationLibrary) -> void:
+	_received_kf.append(library)
+
+
+func _drain_kf(expected: int, max_frames: int = 600) -> void:
+	var frames := 0
+	while _received_kf.size() < expected and frames < max_frames:
+		await get_tree().process_frame
+		frames += 1
 
 
 func test_canonical_paths() -> void:
@@ -132,6 +148,90 @@ func test_inflight_dedup() -> void:
 	check(int(s["document_cache_misses"]) == 1, "one parse for 5 simultaneous requests (%d)" % s["document_cache_misses"])
 	check(int(s["duplicate_waiter_count"]) == 4, "4 attached as waiters (%d)" % s["duplicate_waiter_count"])
 	_free_received()
+
+
+func test_kf_delivery_and_cache() -> void:
+	print("--- standalone KF: callback, raw tracks, and persistent cache ---")
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	_received_kf.clear()
+	var key := NifServer.canonical(MTFORWARD)
+	var disk_path := NifServer._kf_cache_path(key)
+	if FileAccess.file_exists(disk_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(disk_path))
+	for i in 4:
+		NifServer.request_kf(MTFORWARD, self, _on_kf_result)
+	await _drain_kf(4)
+	check(_received_kf.size() == 4, "all 4 KF callbacks fired (got %d)" % _received_kf.size())
+	if _received_kf.size() == 4:
+		var library := _received_kf[0]
+		check(library != null, "KF callback delivered an AnimationLibrary")
+		check(library != null and library.has_animation("Forward"), "mtforward keeps its authored Forward sequence")
+		var animation := library.get_animation("Forward") if library != null else null
+		var has_bare_root_track := false
+		if animation != null:
+			for track_index in animation.get_track_count():
+				if String(animation.track_get_path(track_index)) == "Bip01":
+					has_bare_root_track = true
+					break
+		check(has_bare_root_track, "KF tracks retain bare authored targets, not an inferred skeleton path")
+		var shared := true
+		for delivered in _received_kf:
+			shared = shared and delivered == library
+		check(shared, "simultaneous KF waiters share one immutable library")
+	var stats: Dictionary = NifServer.get_stats()
+	check(int(stats["kf_build_count"]) == 1, "one KF library build for 4 simultaneous requests (%d)" % stats["kf_build_count"])
+	check(int(stats["kf_duplicate_waiter_count"]) == 3, "3 KF waiters coalesced (%d)" % stats["kf_duplicate_waiter_count"])
+	check(int(stats["document_cache_misses"]) == 1, "KF cache miss parsed one document (%d)" % stats["document_cache_misses"])
+	check(FileAccess.file_exists(disk_path), "converted KF library persisted under user://")
+
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	_received_kf.clear()
+	NifServer.request_kf("Characters\\_Male\\Locomotion\\Male\\MTForward.KF", self, _on_kf_result)
+	await _drain_kf(1)
+	stats = NifServer.get_stats()
+	check(_received_kf.size() == 1 and _received_kf[0] != null, "persistent KF cache delivers a library")
+	check(int(stats["kf_disk_cache_hits"]) == 1, "second run hit the disk cache (%d)" % stats["kf_disk_cache_hits"])
+	check(int(stats["document_cache_misses"]) == 0, "disk hit avoided reparsing the KF (%d misses)" % stats["document_cache_misses"])
+
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	_received_kf.clear()
+	var corrupt := FileAccess.open(disk_path, FileAccess.WRITE)
+	if corrupt != null:
+		corrupt.store_string("not a Godot resource")
+		corrupt.close()
+	NifServer.request_kf(MTFORWARD, self, _on_kf_result)
+	await _drain_kf(1)
+	stats = NifServer.get_stats()
+	check(_received_kf.size() == 1 and _received_kf[0] != null, "invalid KF cache rebuilds successfully")
+	check(int(stats["kf_disk_cache_misses"]) == 1 and int(stats["kf_build_count"]) == 1,
+		"invalid cache was ignored and rebuilt")
+	_received_kf.clear()
+
+	NifServer.purge_all()
+	_received_kf.clear()
+	NifServer.request_kf(MULTI_SEQUENCE_KF, self, _on_kf_result)
+	await _drain_kf(1)
+	check(_received_kf.size() == 1 and _received_kf[0] != null
+		and _received_kf[0].get_animation_list().size() == 2,
+		"multi-sequence KF returns both authored clips in one AnimationLibrary")
+	_received_kf.clear()
+
+	NifServer.purge_all()
+	NifServer.reset_stats()
+	if FileAccess.file_exists(disk_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(disk_path))
+	var dead_owner := Node.new()
+	add_child(dead_owner)
+	NifServer.request_kf(MTFORWARD, dead_owner, dead_owner.queue_free)
+	dead_owner.free() # gone before its cache probe/parse can lead to a build
+	for i in 60:
+		await get_tree().process_frame
+	stats = NifServer.get_stats()
+	check(int(stats["owner_gone_count"]) >= 1, "dead KF owner cancels its unclaimed build")
+	check(int(stats["kf_build_count"]) == 0, "no KF library is built for a dead owner")
 
 
 func test_build_budget() -> void:
@@ -417,6 +517,7 @@ func _ready() -> void:
 	await test_delivery_and_cache()
 	await test_lod_request()
 	await test_inflight_dedup()
+	await test_kf_delivery_and_cache()
 	await test_build_budget()
 	await test_missing_path()
 	await test_owner_gone()
