@@ -1,7 +1,7 @@
 @tool
 extends Node
 
-## NifServer -- one NIF file in, one Godot node tree out.
+## NifServer -- one NIF/KF file in, one honest Godot resource out.
 ## Implements Plans/NifServer/nif_server_v2.md sections 3 and 4.
 ##
 ## The queue, admission cap and per-frame build budget live here; the tree
@@ -9,7 +9,14 @@ extends Node
 ## construct a NifSource themselves.
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+const NifAnimationBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_builder.gd")
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+
+## The raw-target AnimationLibrary schema. Bump when NifAnimationBuilder's
+## Godot resource representation changes; old disk entries then cannot be
+## mistaken for a library compiled under a different binding contract.
+const KF_CACHE_VERSION := "nifserver-kf-v1"
+const KF_CACHE_DIR := "user://nifserver_kf_cache"
 
 ## All editor-object classification and visibility belongs here. Keeping the
 ## policy at NIF delivery means it covers every consumer (typed cells, world
@@ -41,6 +48,11 @@ signal editor_object_visibility_changed(visible: bool)
 ## duplicate costlier than the whole budget still makes progress rather than
 ## wedging the queue.
 @export var build_time_budget_usec: int = 8000
+## Temporary main-thread construction profiler. It reports only operations at
+## or above the threshold, because these are the operations capable of
+## preventing a rendered frame while a streamed actor is arriving.
+@export var construction_profiling_enabled: bool = true
+@export var construction_profile_threshold_usec: int = 1000
 ## Admission cap on concurrent _resolve() tasks -- NOT a thread count. -1 means
 ## max(2, cpus - 1). Never add_group_task() at tasks_needed = -1: it claims
 ## every thread in the pool this shares with TextureServer, and a build cannot
@@ -85,6 +97,17 @@ var _tree_nodes := {}    # tree key -> node count, for the residency figure
 var _inflight := {}      # key -> { waiters: Array }
 var _pending := []       # keys awaiting a worker slot
 var _build_queue := []   # [{ key, waiter }]
+## Texture-ready entries waiting for their synchronous Node/Resource pass.
+## This queue, not an await continuation, is the sole admission point for that
+## pass so a texture-completion burst cannot freeze one rendered frame.
+var _ready_build_queue := [] # [{ entry, textures }]
+## Standalone KFs never enter the Node build queue: Animation and
+## AnimationLibrary construction is worker-safe, so these are admitted as
+## worker jobs and callback-delivered as shared Resources.
+var _pending_kf_cache_checks := [] # canonical KF paths
+var _pending_kf_builds := [] # canonical KF paths with parsed documents ready
+var _kf_libraries := {} # canonical KF path -> immutable AnimationLibrary
+var _kf_inflight := {} # canonical KF path -> { waiters: Array }
 ## Full-model canonical path -> canonical `_lod.nif` companion, or "" when
 ## absent. This is an asset-discovery cache, distinct from parsed documents.
 var _lod_paths := {}
@@ -117,6 +140,15 @@ var _stats := {
 	"tree_cache_misses": 0,
 	"tree_purge_count": 0,
 	"template_discarded_count": 0,
+	"kf_request_count": 0,
+	"kf_duplicate_waiter_count": 0,
+	"kf_memory_cache_hits": 0,
+	"kf_memory_cache_misses": 0,
+	"kf_disk_cache_hits": 0,
+	"kf_disk_cache_misses": 0,
+	"kf_build_count": 0,
+	"kf_build_failure_count": 0,
+	"kf_purge_count": 0,
 }
 
 
@@ -133,6 +165,9 @@ func _exit_tree() -> void:
 	# Templates are orphans by construction, so nothing else will ever free
 	# them and Godot would report every one as a leaked instance at exit.
 	_free_all_templates()
+	# AnimationLibrary is ref-counted rather than an orphaned Node, but the
+	# resident cache must still release its final references at shutdown.
+	_kf_libraries.clear()
 
 
 ## Section 3.3: `\` -> `/`, lowercase, strip a leading `meshes/`. Both
@@ -201,7 +236,7 @@ func lod_companion_path(nif_path: String) -> String:
 ## animates, and should not have to.
 func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
 	_stats["request_count"] += 1
-	var waiter := { "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
+	var waiter := { "kind": "tree", "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
 	if not _valid_callback(owner, on_complete):
 		push_error("NifServer: on_complete must be a method on `owner` (nif_server_v2.md section 3.2); request for '%s' refused" % nif_path)
 		return
@@ -229,13 +264,52 @@ func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static
 	_admit()
 
 
+## Humanoids share human KFs; a creature requests creature KFs.
+## No human-to-cow rebinding should exist.
+##
+## A standalone KF is an animation-only NIF. The callback contract deliberately
+## mirrors request(): it is owner-bound, fires exactly once on the main thread,
+## and receives an immutable shared AnimationLibrary or null. Its tracks retain
+## bare escaped authored targets because the KF may address a composed rig
+## (skeleton, weapon, and animobjects), none of which NifServer may guess.
+func request_kf(kf_path: String, owner: Node, on_complete: Callable) -> void:
+	_stats["kf_request_count"] += 1
+	var waiter := { "kind": "kf", "owner": owner, "cb": on_complete }
+	if not _valid_callback(owner, on_complete):
+		push_error("NifServer: on_complete must be a method on `owner`; KF request for '%s' refused" % kf_path)
+		return
+	if _shutting_down or _archive_server == null:
+		_deliver_kf(waiter, null)
+		return
+	var key := canonical(kf_path)
+	if key.is_empty() or not key.ends_with(".kf"):
+		_warn_once(key, "NifServer: request_kf requires a non-empty .kf path ('%s')" % kf_path)
+		_deliver_kf(waiter, null)
+		return
+	var cached: AnimationLibrary = _kf_libraries.get(key)
+	if cached != null:
+		_stats["kf_memory_cache_hits"] += 1
+		_deliver_kf(waiter, cached)
+		return
+	_stats["kf_memory_cache_misses"] += 1
+	if _kf_inflight.has(key):
+		_stats["kf_duplicate_waiter_count"] += 1
+		(_kf_inflight[key]["waiters"] as Array).append(waiter)
+		return
+	_kf_inflight[key] = { "waiters": [waiter] }
+	_pending_kf_cache_checks.append(key)
+	_admit()
+
+
 ## Requests a full model's paired `_lod.nif` companion. The callback contract
 ## is identical to request(): it fires exactly once with an unparented tree or
 ## null. A missing companion is normal and returns null; it never falls back
 ## to the full path, which would make distant streaming parse full detail.
+
+## Exception to the honext return policy, this getting it's own functon
 func request_lod(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
 	_stats["lod_request_count"] += 1
-	var waiter := { "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
+	var waiter := { "kind": "tree", "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
 	if not _valid_callback(owner, on_complete):
 		push_error("NifServer: on_complete must be a method on `owner`; LOD request for '%s' refused" % nif_path)
 		return
@@ -249,14 +323,17 @@ func request_lod(nif_path: String, owner: Node, on_complete: Callable, prefer_st
 		return
 	request(lod_path, owner, on_complete, prefer_static)
 
-
+## Returns active data about the server state for profilling
 func get_stats() -> Dictionary:
 	var out := _stats.duplicate()
 	out["active_resolve_count"] = _active_resolves
 	out["pending_admission_count"] = _pending.size()
 	out["pending_build_count"] = _build_queue.size()
+	out["pending_kf_cache_check_count"] = _pending_kf_cache_checks.size()
+	out["pending_kf_build_count"] = _pending_kf_builds.size()
 	out["resident_document_count"] = _documents.size()
 	out["resident_tree_count"] = _trees.size()
+	out["resident_kf_library_count"] = _kf_libraries.size()
 	out["lod_path_cache_size"] = _lod_paths.size()
 	# Node count is the residency figure a template actually costs: its meshes,
 	# materials and textures are shared with every other tree that references
@@ -267,12 +344,15 @@ func get_stats() -> Dictionary:
 	out["resident_tree_node_count"] = nodes
 	return out
 
-
+## Resets the stat counts returned by get_staats
 func reset_stats() -> void:
 	for k in _stats.keys():
 		_stats[k] = 0
 
-
+## This SHOULD NOT be in here
+## NifServer can tag things as editor objects using groups
+## but it's not responsible for handling that tag
+## TODO Move me to settings or a future render manager or something
 func set_editor_objects_visible(visible: bool) -> void:
 	if editor_objects_visible == visible:
 		return
@@ -324,20 +404,18 @@ func _has_nif_marker_flag(node: Node) -> bool:
 		or (int(node.get_meta("nif_extra_BSXFlags", 0)) & 32) != 0
 
 
-## Drops one cached template. Manual eviction, not a policy -- V1 is
-## resident-until-purged, matching TextureServer.
-##
-## Delivered duplicates are unaffected: they hold their own references to the
-## shared resources, so purging a template frees the template's nodes and
-## nothing else until the last instance is gone.
+## Drops a cached template by it's (nif path + static flag) key.
 func purge(nif_path: String, prefer_static := false) -> void:
-	_drop_template(_tree_key(canonical(nif_path), prefer_static))
+	var key := canonical(nif_path)
+	_drop_template(_tree_key(key, prefer_static))
+	_drop_kf_library(key)
 
 
 ## Drops every cached document and template.
 func purge_all() -> void:
 	_documents.clear()
 	_free_all_templates()
+	_kf_libraries.clear()
 
 
 ## Copies a template. Synchronous, and therefore bounded by
@@ -375,6 +453,11 @@ func _free_all_templates() -> void:
 	_tree_nodes.clear()
 
 
+func _drop_kf_library(key: String) -> void:
+	if _kf_libraries.erase(key):
+		_stats["kf_purge_count"] += 1
+
+
 ## Section 10: a flattened tree and a hierarchical one are different artefacts
 ## from one document, so they are separate cache entries.
 static func _tree_key(key: String, prefer_static: bool) -> String:
@@ -402,15 +485,32 @@ func _worker_cap() -> int:
 
 
 func _admit() -> void:
-	while not _pending.is_empty() and _active_resolves < _worker_cap():
-		var key: String = _pending.pop_front()
-		if not _inflight.has(key):
+	while _active_resolves < _worker_cap():
+		if not _pending_kf_cache_checks.is_empty():
+			var kf_cache_key: String = _pending_kf_cache_checks.pop_front()
+			if not _kf_inflight.has(kf_cache_key):
+				continue
+			_active_resolves += 1
+			WorkerThreadPool.add_task(_load_kf_disk_cache_task.bind(kf_cache_key))
 			continue
-		_active_resolves += 1
-		WorkerThreadPool.add_task(_resolve_task.bind(key))
+		if not _pending.is_empty():
+			var key: String = _pending.pop_front()
+			if not _inflight.has(key):
+				continue
+			_active_resolves += 1
+			WorkerThreadPool.add_task(_resolve_task.bind(key))
+			continue
+		if not _pending_kf_builds.is_empty():
+			var kf_build_key: String = _pending_kf_builds.pop_front()
+			if not _kf_inflight.has(kf_build_key) or not _documents.has(kf_build_key):
+				continue
+			_active_resolves += 1
+			WorkerThreadPool.add_task(_build_kf_task.bind(kf_build_key, _documents[kf_build_key]))
+			continue
+		break
 
 
-## Worker thread body (section 4). Archive read and parse only: no cache, no
+## Worker thread body. Archive read and parse only: no cache, no
 ## Node, no RID-backed resource. Textures are not warmed here -- build() warms
 ## the whole slot set as one batch and then awaits it, so starting earlier would
 ## only move the same work, and reaching TextureServer from a worker needs a
@@ -439,12 +539,155 @@ func _on_resolved(key: String, src: NifSource, error: String) -> void:
 		_stats["resolve_failure_count"] += 1
 		_warn_once(key, "NifServer: %s failed to load (%s)" % [key, error])
 		for w in waiters:
-			_deliver(w, null)
+			if String((w as Dictionary).get("kind", "tree")) == "kf":
+				_finish_kf_library(key, null)
+			else:
+				_deliver(w, null)
 	else:
 		_documents[key] = src
 		for w in waiters:
-			_build_queue.append({ "key": key, "waiter": w })
+			_queue_document_waiter(key, w)
 	_admit()
+
+
+func _queue_document_waiter(key: String, waiter: Dictionary) -> void:
+	if String(waiter.get("kind", "tree")) == "kf":
+		_queue_kf_build(key)
+		return
+	_build_queue.append({ "key": key, "waiter": waiter })
+
+
+## The cache probe happens before even a document-cache lookup: a valid
+## cross-run AnimationLibrary avoids the BSA read and NifSource parse entirely.
+func _load_kf_disk_cache_task(key: String) -> void:
+	var library := _load_kf_disk_cache(key)
+	_on_kf_disk_cache_checked.bind(key, library).call_deferred()
+
+
+func _on_kf_disk_cache_checked(key: String, library: AnimationLibrary) -> void:
+	_active_resolves = maxi(0, _active_resolves - 1)
+	if not _kf_inflight.has(key):
+		_admit()
+		return
+	if _cancel_kf_if_unclaimed(key):
+		_admit()
+		return
+	if library != null:
+		_stats["kf_disk_cache_hits"] += 1
+		_finish_kf_library(key, library)
+		_admit()
+		return
+	_stats["kf_disk_cache_misses"] += 1
+	_ensure_kf_document(key)
+	_admit()
+
+
+func _ensure_kf_document(key: String) -> void:
+	if not _kf_inflight.has(key):
+		return
+	if _documents.has(key):
+		_stats["document_cache_hits"] += 1
+		_queue_kf_build(key)
+		return
+	if _inflight.has(key):
+		_stats["duplicate_waiter_count"] += 1
+		(_inflight[key]["waiters"] as Array).append({ "kind": "kf" })
+		return
+	_stats["document_cache_misses"] += 1
+	_inflight[key] = { "waiters": [{ "kind": "kf" }] }
+	_pending.append(key)
+
+
+func _queue_kf_build(key: String) -> void:
+	if _cancel_kf_if_unclaimed(key):
+		return
+	if _kf_inflight.has(key) and not _pending_kf_builds.has(key):
+		_pending_kf_builds.append(key)
+
+
+func _build_kf_task(key: String, src: NifSource) -> void:
+	var library := NifAnimationBuilderScript.build_library(src)
+	var saved := false
+	if library != null:
+		saved = _save_kf_disk_cache(key, library)
+	_on_kf_built.bind(key, library, saved).call_deferred()
+
+
+func _on_kf_built(key: String, library: AnimationLibrary, saved: bool) -> void:
+	_active_resolves = maxi(0, _active_resolves - 1)
+	if not _kf_inflight.has(key):
+		_admit()
+		return
+	if _cancel_kf_if_unclaimed(key):
+		_admit()
+		return
+	if library == null:
+		_stats["kf_build_failure_count"] += 1
+		_warn_once(key, "NifServer: %s contains no standalone KF sequences" % key)
+		_finish_kf_library(key, null)
+		_admit()
+		return
+	if not saved:
+		_warn_once(key + "#kf-cache", "NifServer: could not persist converted KF %s" % key)
+	_stats["kf_build_count"] += 1
+	_finish_kf_library(key, library)
+	_admit()
+
+
+func _finish_kf_library(key: String, library: AnimationLibrary) -> void:
+	var entry: Dictionary = _kf_inflight.get(key, {})
+	_kf_inflight.erase(key)
+	if library != null:
+		_kf_libraries[key] = library
+	for waiter in entry.get("waiters", []):
+		_deliver_kf(waiter, library)
+
+
+## A standalone KF needs no node-orphan cleanup, but it has the same lifetime
+## promise as request(): once every owner is gone, avoid parsing or building a
+## clip that nobody can consume. A cache probe already in flight is allowed to
+## finish; it is cheap and cannot be cancelled through WorkerThreadPool.
+func _cancel_kf_if_unclaimed(key: String) -> bool:
+	var entry: Dictionary = _kf_inflight.get(key, {})
+	var waiters: Array = entry.get("waiters", [])
+	for waiter in waiters:
+		if _owner_alive(waiter as Dictionary):
+			return false
+	if _kf_inflight.erase(key):
+		_stats["owner_gone_count"] += waiters.size()
+	return true
+
+
+func _kf_cache_identity(key: String) -> String:
+	var archive := String(_archive_server.winning_archive("meshes/" + key)).to_lower() \
+		if _archive_server != null else ""
+	return KF_CACHE_VERSION + "|" + key + "|" + archive
+
+
+func _kf_cache_path(key: String) -> String:
+	return KF_CACHE_DIR.path_join(_kf_cache_identity(key).sha256_text() + ".tres")
+
+
+func _load_kf_disk_cache(key: String) -> AnimationLibrary:
+	var path := _kf_cache_path(key)
+	if not FileAccess.file_exists(path):
+		return null
+	# ResourceLoader reports malformed text resources as engine errors. Reject
+	# obvious non-TRES cache corruption first so a stale partial write remains a
+	# quiet cache miss rather than a user-visible loading failure.
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null or not file.get_line().begins_with("[gd_resource"):
+		return null
+	var resource := ResourceLoader.load(path, "AnimationLibrary", ResourceLoader.CACHE_MODE_IGNORE)
+	return resource as AnimationLibrary
+
+
+func _save_kf_disk_cache(key: String, library: AnimationLibrary) -> bool:
+	if library == null:
+		return false
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(KF_CACHE_DIR)) != OK:
+		return false
+	return ResourceSaver.save(library, _kf_cache_path(key), ResourceSaver.FLAG_COMPRESS) == OK
 
 
 func _process(_delta: float) -> void:
@@ -452,6 +695,26 @@ func _process(_delta: float) -> void:
 	_stats["builds_this_frame"] = 0
 	var budget := maxi(1, builds_per_frame_budget)
 	var started := Time.get_ticks_usec()
+	# Finished texture resolves are deliberately built first. Their synchronous
+	# work is the frame-sensitive half, so it must stay inside this drain's two
+	# budgets rather than running in a group of await continuations.
+	while not _ready_build_queue.is_empty():
+		if _stats["builds_this_frame"] >= budget:
+			return
+		if build_time_budget_usec > 0 and _stats["builds_this_frame"] > 0 \
+				and Time.get_ticks_usec() - started >= build_time_budget_usec:
+			return
+		var ready: Dictionary = _ready_build_queue.pop_front()
+		_stats["builds_this_frame"] += 1
+		var build_started_usec := Time.get_ticks_usec()
+		var build_frame := Engine.get_process_frames()
+		_finish_build(ready)
+		var ready_entry: Dictionary = ready["entry"]
+		_profile_construction("ready build dispatch", String(ready_entry["key"]),
+			build_frame, Time.get_ticks_usec() - build_started_usec)
+
+	# Starting texture resolution is intentionally cheap and asynchronous. It
+	# shares the count cap with ready builds to avoid flooding TextureServer.
 	while not _build_queue.is_empty():
 		if _stats["builds_this_frame"] >= budget:
 			break
@@ -460,13 +723,24 @@ func _process(_delta: float) -> void:
 			break
 		var entry: Dictionary = _build_queue.pop_front()
 		_stats["builds_this_frame"] += 1
-		# Deliberately not awaited: _build() suspends until its textures are
-		# resident, and the budget counts builds STARTED this frame. Awaiting
-		# here would stall the drain behind one texture decode.
-		_build(entry)
+		var dispatch_started_usec := Time.get_ticks_usec()
+		var dispatch_frame := Engine.get_process_frames()
+		# Deliberately not awaited: this only warms/awaits textures, then enqueues
+		# the synchronous half above for a later budgeted drain.
+		_begin_build(entry)
+		_profile_construction("dispatch", String(entry["key"]), dispatch_frame,
+			Time.get_ticks_usec() - dispatch_started_usec)
 
 
-func _build(entry: Dictionary) -> void:
+func _profile_construction(stage: String, key: String, frame: int, elapsed_usec: int) -> void:
+	if not construction_profiling_enabled or elapsed_usec < construction_profile_threshold_usec:
+		return
+	print("NifServer construction [frame=%d elapsed=%.2fms] %s: %s" % [
+		frame, float(elapsed_usec) / 1000.0, stage, key,
+	])
+
+
+func _begin_build(entry: Dictionary) -> void:
 	var waiter: Dictionary = entry["waiter"]
 	# Section 3.2: an owner that went away before the build started means no
 	# tree is constructed at all, rather than one built and then orphaned.
@@ -486,18 +760,59 @@ func _build(entry: Dictionary) -> void:
 	var cached = _trees.get(tree_key)
 	if cached != null and is_instance_valid(cached):
 		_stats["tree_cache_hits"] += 1
-		_deliver(waiter, _duplicate(cached as Node3D))
+		_deliver_template(entry, cached as Node3D, "template duplicate")
 		return
-	_stats["tree_cache_misses"] += 1
+	call_deferred("_resolve_textures_for_build", entry, src)
 
-	var root: Node3D = await NifTreeBuilderScript.build(src, true, prefer_static)
+
+func _resolve_textures_for_build(entry: Dictionary, src: NifSource) -> void:
+	var textures: Dictionary = await NifTreeBuilderScript.resolve_textures(src)
+	var waiter: Dictionary = entry["waiter"]
+	if _shutting_down or not _owner_alive(waiter):
+		_stats["owner_gone_count"] += 1
+		return
+	_ready_build_queue.append({"entry": entry, "textures": textures})
+
+
+func _finish_build(ready: Dictionary) -> void:
+	var entry: Dictionary = ready["entry"]
+	var waiter: Dictionary = entry["waiter"]
+	if not _owner_alive(waiter):
+		_stats["owner_gone_count"] += 1
+		return
+	var src: NifSource = _documents.get(entry["key"])
+	if src == null:
+		_deliver(waiter, null)
+		return
+	var prefer_static := bool(waiter.get("prefer_static", false))
+	var tree_key := _tree_key(entry["key"], prefer_static)
+	# A previous ready entry may have made the template while this entry awaited
+	# its own textures. Reuse it rather than constructing duplicate node trees.
+	var cached = _trees.get(tree_key)
+	if cached != null and is_instance_valid(cached):
+		_stats["tree_cache_hits"] += 1
+		_deliver_template(entry, cached as Node3D, "ready template duplicate")
+		return
+
+	# A miss means a tree was actually constructed, not merely that this waiter
+	# reached the asynchronous texture phase before another waiter made one.
+	_stats["tree_cache_misses"] += 1
+	var textures: Dictionary = ready["textures"]
+	var root: Node3D = NifTreeBuilderScript.build_from_textures(src, textures,
+		true, prefer_static, construction_profiling_enabled)
 	if root == null:
 		_stats["build_failure_count"] += 1
 		_deliver(waiter, null)
 		return
+	if root.has_meta("nif_main_thread_build_usec"):
+		_profile_construction("tree build", String(entry["key"]),
+			int(root.get_meta("nif_main_thread_build_frame", -1)),
+			int(root.get_meta("nif_main_thread_build_usec", 0)))
+		root.remove_meta("nif_main_thread_build_usec")
+		root.remove_meta("nif_main_thread_build_frame")
 	_tag_editor_objects(root, String(entry["key"]))
 	_stats["build_count"] += 1
-	# Re-checked after the await: the build spans frames.
+	# Re-checked after asynchronous texture resolution: the request spans frames.
 	if not _owner_alive(waiter):
 		_stats["owner_gone_count"] += 1
 		root.queue_free()
@@ -506,11 +821,8 @@ func _build(entry: Dictionary) -> void:
 		_deliver(waiter, root)
 		return
 
-	# Two requests for one key can both miss, because the document cache
-	# deduplicates the parse but the build queue still holds an entry per
-	# waiter and each build spans frames. Whichever finishes first becomes the
-	# template; the rest deliver the tree they already built rather than
-	# discarding work or overwriting a template other instances now share.
+	# This is defensive against re-entrant delivery: normal ready-queue drains
+	# have already reused the template in the check above.
 	var winner = _trees.get(tree_key)
 	if winner != null and is_instance_valid(winner):
 		_stats["template_discarded_count"] += 1
@@ -521,7 +833,20 @@ func _build(entry: Dictionary) -> void:
 	_tree_nodes[tree_key] = _count_nodes(root)
 	# The template is never delivered and never parented, so the caller gets a
 	# copy even on the build that created it.
-	_deliver(waiter, _duplicate(root))
+	_deliver_template(entry, root, "new-template duplicate")
+
+
+func _deliver_template(entry: Dictionary, template: Node3D, stage: String) -> void:
+	var duplicate_started_usec := Time.get_ticks_usec()
+	var duplicate_frame := Engine.get_process_frames()
+	var duplicate := _duplicate(template)
+	_profile_construction(stage, String(entry["key"]), duplicate_frame,
+		Time.get_ticks_usec() - duplicate_started_usec)
+	var delivery_started_usec := Time.get_ticks_usec()
+	var delivery_frame := Engine.get_process_frames()
+	_deliver(entry["waiter"], duplicate)
+	_profile_construction("delivery callback", String(entry["key"]), delivery_frame,
+		Time.get_ticks_usec() - delivery_started_usec)
 
 
 ## The liveness check below only means anything if the callable is bound to the
@@ -552,6 +877,17 @@ func _deliver(waiter: Dictionary, root: Node3D) -> void:
 	cb.call(root)
 	if root != null:
 		_orphan_watch.append({ "node": root, "frame": Engine.get_process_frames() })
+
+
+## AnimationLibrary is a RefCounted resource, not an orphanable Node. The
+## caller receives the exact shared library and must treat it as immutable;
+## there is no Node ownership transfer or one-frame adoption watch.
+func _deliver_kf(waiter: Dictionary, library: AnimationLibrary) -> void:
+	var cb: Callable = waiter.get("cb", Callable())
+	if not (cb.is_valid() and _owner_alive(waiter)):
+		_stats["owner_gone_count"] += 1
+		return
+	cb.call(library)
 
 
 ## Section 3.2's safety net, and E7.

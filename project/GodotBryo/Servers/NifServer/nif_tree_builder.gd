@@ -130,13 +130,36 @@ static func _texture_slot_map(convention: String) -> Array:
 ## `nif_flattened`, and when the answer is false, `nif_not_flattened_because`
 ## names the content that prevented it.
 static func build(src: NifSource, apply_root_basis: bool = true,
-		prefer_static: bool = false) -> Node3D:
+		prefer_static: bool = false, profile_main_thread_construction: bool = false) -> Node3D:
 	if src == null:
 		return null
-	# The only await in the whole builder. Textures are resolved up front so
-	# every material below is built from an already-resident ImageTexture and
-	# the node construction stays a straight synchronous pass.
 	var textures: Dictionary = await _resolve_textures(src)
+	return build_from_textures(src, textures, apply_root_basis, prefer_static,
+		profile_main_thread_construction)
+
+
+## NifServer starts this asynchronous half freely, then sends its result back
+## through its own time-budgeted main-thread queue. Keeping the await separate
+## prevents a large group of texture completions from resuming synchronous tree
+## construction together in one idle frame.
+static func resolve_textures(src: NifSource) -> Dictionary:
+	if src == null:
+		return {}
+	return await _resolve_textures(src)
+
+
+## The synchronous half of build(). Call only from NifServer's controlled
+## drain, after resolve_textures() has completed.
+static func build_from_textures(src: NifSource, textures: Dictionary,
+		apply_root_basis: bool = true, prefer_static: bool = false,
+		profile_main_thread_construction: bool = false) -> Node3D:
+	if src == null:
+		return null
+	# Everything below is synchronous Node/Resource construction. Capture this
+	# exact post-texture section so NifServer can identify the work that holds a
+	# frame, rather than merely the time a request spent awaiting textures.
+	var construction_started_usec := Time.get_ticks_usec()
+	var construction_frame := Engine.get_process_frames()
 	var nodes: Array = src.get_nodes()
 	var root := Node3D.new()
 	root.name = "NifRoot"
@@ -256,6 +279,9 @@ static func build(src: NifSource, apply_root_basis: bool = true,
 			_flatten(root)
 		else:
 			root.set_meta("nif_not_flattened_because", blocker)
+	if profile_main_thread_construction:
+		root.set_meta("nif_main_thread_build_usec", Time.get_ticks_usec() - construction_started_usec)
+		root.set_meta("nif_main_thread_build_frame", construction_frame)
 	return root
 
 
