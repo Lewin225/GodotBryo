@@ -7,9 +7,6 @@ enum SimulationMode { LOW_LEVEL, PHYSICAL_LEASED }
 ## Immutable CELL which authored this ACHR placement. Save loading restores an
 ## overlay onto this shared Resource; it must never rewrite spawn provenance.
 @export var spawn_cell_form_id: int = 0
-## The simulation space currently containing this actor. Exterior CELLs use
-## their owning WRLD; interiors use their CELL FormID directly.
-@export var current_space_form_id: int = 0
 ## NSS hand-off state only. No controller or simulation behavior is attached
 ## to this prototype state transition.
 @export var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL

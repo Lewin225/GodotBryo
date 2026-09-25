@@ -43,10 +43,14 @@ EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]
 EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
+EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
+EsmServer.cell_at(space_form_id, position: Vector3) -> int
+EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
 EsmServer.rehydrate(resource: EsmBase) -> bool
 ```
 
-Signals `esm_ready` and `failed(message)`. `state` is `"loading"` until the
+Signals `esm_ready`, `failed(message)` and
+`reference_cell_changed(reference, old_cell_form_id, new_cell_form_id)`. `state` is `"loading"` until the
 background parse completes — the reader opens on its own `Thread` in `_ready()`,
 so nothing blocks startup.
 
@@ -55,6 +59,17 @@ so nothing blocks startup.
 tables map a record type to each — `TYPE_TO_BASE` and `TYPE_TO_REFERENCE`,
 resolved out of `GodotBryo/Types/Resource/`. A type present in one and absent
 from the other is deliberate: not every record type can be placed in a cell.
+
+**Where a reference is.** Every `EsmReference` has a space (its WRLD when
+exterior, its CELL when interior), a position (metres, Gamebryo Z-up axes) and
+a cell. Assigning `position` or `current_space_form_id`, or calling
+`set_location()`, recomputes the cell through `cell_at()` and emits
+`reference_cell_changed` when it changes. `cell_at()`,
+`get_exterior_cell_form_id()` and `get_space_form_id_for_cell()` read an
+in-memory index of every worldspace's grid and persistent CELLs, built once on
+the load thread, and never touch the ESM file. Exterior references, including
+those filed in a worldspace's persistent CELL, get the grid CELL under their
+position.
 
 **Resources, not dictionaries.** The return is a typed `Resource` with real
 properties, inspectable in the editor and serialisable. `rehydrate()` refills

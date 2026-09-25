@@ -60,6 +60,7 @@ func _ready() -> void:
 			break
 	_check(found_actor, "an ACHR resolves as ActorReference")
 	_check_authored_reference_cache(server, index)
+	_check_reference_location(server)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -100,6 +101,94 @@ func _check_authored_reference_cache(server, index: Array) -> void:
 ## Exhaustive shipped-master validation for the typed PACK path. The native
 ## package_census diagnostic establishes the complete byte-shape census; this
 ## test additionally checks EsmServer mapped every field it claims to expose.
+## Exterior grid index, cell_at(), space lookup and cell-change signalling.
+func _check_reference_location(server) -> void:
+	var wasteland := int(server.reader.find_worldspace_by_editor_id("WastelandNV").get("form_id", 0))
+	_check(wasteland != 0, "WastelandNV resolves")
+
+	# Every indexed grid CELL reports the same XCLC coordinate natively.
+	var total := 0
+	var mismatched := 0
+	for wrld: int in server._grid_cells:
+		var cells: Dictionary = server._grid_cells[wrld]
+		for coord: Vector2i in cells:
+			total += 1
+			var grid: Dictionary = server.reader.get_exterior_cell_grid(cells[coord])
+			if Vector2i(int(grid.get("x", 0x7fffffff)), int(grid.get("y", 0x7fffffff))) != coord:
+				mismatched += 1
+	_check(total == 30096, "grid index holds every FalloutNV.esm exterior grid CELL (%d)" % total)
+	_check(mismatched == 0, "every indexed grid CELL matches its own XCLC (%d mismatched)" % mismatched)
+	var persistent: int = server._persistent_cell_by_worldspace.get(wasteland, 0)
+	_check(persistent != 0, "WastelandNV has a persistent CELL")
+	_check(server.get_space_form_id_for_cell(persistent) == wasteland, "persistent CELL maps to its WRLD")
+
+	# Grid references: the CELL that files a REFR is the one under its position.
+	var checked := 0
+	var off_cell := 0
+	for x in range(-24, -10):
+		for y in range(-6, 8):
+			var cell: int = server.get_exterior_cell_form_id(wasteland, Vector2i(x, y))
+			if cell == 0:
+				continue
+			_check(server.get_space_form_id_for_cell(cell) == wasteland, "grid CELL (%d, %d) maps to WastelandNV" % [x, y])
+			for reference: EsmReference in server.get_references_in_cell(cell):
+				checked += 1
+				if reference.current_space_form_id != wasteland or reference.current_cell_form_id != server.cell_at(wasteland, reference.position):
+					_fail("reference %s has space %X cell %X, cell_at gives %X" % [reference.instance_id, reference.current_space_form_id, reference.current_cell_form_id, server.cell_at(wasteland, reference.position)])
+				elif reference.current_cell_form_id != cell:
+					off_cell += 1
+	_check(checked > 5000, "grid-reference sample is substantial (%d references)" % checked)
+	_check(off_cell * 100 < checked, "under 1%% of grid references sit outside their filing CELL (%d of %d)" % [off_cell, checked])
+
+	# Persistent references are placed in the grid CELL under them.
+	var on_grid := 0
+	var persistent_refs: Array[EsmReference] = server.get_persistent_references_for_worldspace(wasteland)
+	for reference in persistent_refs:
+		var expected: int = server.cell_at(wasteland, reference.position)
+		if reference.current_space_form_id != wasteland or reference.current_cell_form_id != expected:
+			_fail("persistent %s has space %X cell %X, expected %X" % [reference.instance_id, reference.current_space_form_id, reference.current_cell_form_id, expected])
+		elif expected != persistent:
+			on_grid += 1
+	_check(persistent_refs.size() == 4468, "WastelandNV has 4468 persistent references (%d)" % persistent_refs.size())
+	_check(on_grid == persistent_refs.size(), "every WastelandNV persistent reference lies on a grid CELL (%d of %d)" % [on_grid, persistent_refs.size()])
+
+	# Interiors: the space is the CELL.
+	var interior := int(server.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var interior_refs: Array[EsmReference] = server.get_references_in_cell(interior)
+	_check(not interior_refs.is_empty(), "GSDocMitchellHouse has references")
+	var interior_ok := true
+	for reference in interior_refs:
+		interior_ok = interior_ok and reference.current_space_form_id == interior and reference.current_cell_form_id == interior
+	_check(interior_ok, "interior references use the CELL as space and cell")
+	_check(server.get_space_form_id_for_cell(interior) == interior, "interior CELL is its own space")
+
+	# Signals fire once per cell change, never for movement inside a cell.
+	var probe: EsmReference = interior_refs[0]
+	var start_space := probe.current_space_form_id
+	var start_position := probe.position
+	var server_events: Array = []
+	var own_events: Array = []
+	var on_server := func(reference, old_cell, new_cell): if reference == probe: server_events.append([old_cell, new_cell])
+	var on_own := func(old_cell, new_cell): own_events.append([old_cell, new_cell])
+	server.reference_cell_changed.connect(on_server)
+	probe.cell_changed.connect(on_own)
+	probe.position = start_position + Vector3(1, 1, 0)
+	_check(server_events.is_empty(), "moving inside an interior emits nothing")
+	var size: float = server.EXTERIOR_CELL_SIZE_METERS
+	var cell_a: int = server.get_exterior_cell_form_id(wasteland, Vector2i(-18, 0))
+	var cell_b: int = server.get_exterior_cell_form_id(wasteland, Vector2i(-17, 0))
+	probe.set_location(wasteland, Vector3(-18 * size + 5.0, 5.0, 0))
+	_check(server_events == [[interior, cell_a]], "set_location into WastelandNV emits one change (%s)" % [server_events])
+	probe.position = Vector3(-18 * size + 20.0, 20.0, 0)
+	_check(server_events.size() == 1, "moving inside a grid CELL emits nothing")
+	probe.position = Vector3(-17 * size + 5.0, 20.0, 0)
+	_check(server_events.size() == 2 and server_events[1] == [cell_a, cell_b], "crossing a grid line emits old and new CELL")
+	probe.set_location(start_space, start_position)
+	_check(server_events.size() == 3 and server_events[2] == [cell_b, interior], "set_location back to the interior emits one change")
+	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
+	server.reference_cell_changed.disconnect(on_server)
+	probe.cell_changed.disconnect(on_own)
+
 func _check_package_bases(server, index: Array) -> void:
 	var package_count := 0
 	var errors: PackedStringArray = []

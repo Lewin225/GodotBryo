@@ -124,6 +124,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_worldspace_by_editor_id", "editor_id"), &EsmReader::find_worldspace_by_editor_id);
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
+	ClassDB::bind_method(D_METHOD("get_exterior_cell_index"), &EsmReader::get_exterior_cell_index);
 	ClassDB::bind_method(D_METHOD("get_cell_editor_id", "cell_form_id"), &EsmReader::get_cell_editor_id);
 	ClassDB::bind_method(D_METHOD("get_cell_worldspace", "cell_form_id"), &EsmReader::get_cell_worldspace);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
@@ -1001,6 +1002,33 @@ String EsmReader::get_cell_editor_id(int64_t cell_form_id) const {
 		last_error_ = String(e.what());
 		return "";
 	}
+}
+
+Array EsmReader::get_exterior_cell_index() const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		for (const auto &world : file_.get_exterior_cell_index()) {
+			PackedInt64Array grid;
+			grid.resize(static_cast<int64_t>(world.grid_cells.size() * 3));
+			int64_t i = 0;
+			for (const auto &cell : world.grid_cells) {
+				grid[i++] = cell.x;
+				grid[i++] = cell.y;
+				grid[i++] = static_cast<int64_t>(cell.cell_form_id);
+			}
+			Dictionary entry;
+			entry["wrld_form_id"] = static_cast<int64_t>(world.wrld_form_id);
+			entry["persistent_cell_form_id"] = static_cast<int64_t>(world.persistent_cell_form_id);
+			entry["grid"] = grid;
+			out.push_back(entry);
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
 }
 
 Dictionary EsmReader::get_exterior_cell_grid(int64_t cell_form_id) const {

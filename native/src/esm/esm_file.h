@@ -183,6 +183,11 @@ public:
 	// interior cell — a real, valid case, not an error).
 	std::optional<ExteriorCellGrid> get_exterior_cell_grid(uint32_t cell_form_id) const;
 
+	// Every WRLD's persistent CELL and grid CELLs, in one pass over each World
+	// Children group. Grid coordinates come from each CELL's XCLC. A grid CELL
+	// without XCLC is left out.
+	std::vector<WorldspaceCellIndex> get_exterior_cell_index() const;
+
 	// A CELL's own EDID — the human-readable identifier used throughout
 	// this codebase (find_cell_by_editor_id()'s own input, e.g.
 	// "GSDocMitchellHouse"), for display purposes (an on-screen "current

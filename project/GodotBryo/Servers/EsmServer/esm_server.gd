@@ -3,6 +3,13 @@ extends Node
 
 signal esm_ready
 signal failed(message: String)
+## A reference's current_cell_form_id changed because its space or position
+## changed. Not emitted while a reference is being constructed.
+signal reference_cell_changed(reference: EsmReference, old_cell_form_id: int, new_cell_form_id: int)
+
+## Width of one exterior grid CELL in the unit of EsmReference.position:
+## 4096 Gamebryo units at 70 units per metre (native/src/common/units.h).
+const EXTERIOR_CELL_SIZE_METERS := 4096.0 / 70.0
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const ResourceRoot := "res://GodotBryo/Types/Resource/"
@@ -39,6 +46,9 @@ var _xtel_door_instance_ids: PackedStringArray = PackedStringArray()
 var _placed_actor_ids_built := false
 var _xtel_door_ids_built := false
 var _record_index: Array = []
+var _grid_cells: Dictionary = {} # WRLD -> {Vector2i(x, y) -> grid CELL}
+var _persistent_cell_by_worldspace: Dictionary = {} # WRLD -> persistent CELL (0 if none)
+var _worldspace_by_cell: Dictionary = {} # grid or persistent CELL -> WRLD
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -80,6 +90,9 @@ func _process(_delta: float) -> void:
 		return
 	reader = _load_result.get("reader")
 	_record_index = _load_result.get("record_index", [])
+	_grid_cells = _load_result.get("grid_cells", {})
+	_persistent_cell_by_worldspace = _load_result.get("persistent_cell_by_worldspace", {})
+	_worldspace_by_cell = _load_result.get("worldspace_by_cell", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -94,7 +107,33 @@ func _open_reader_background() -> Dictionary:
 	var path := String(config.get("data_dir", "")) + GameDataConfigScript.ESM_FILE
 	if not background_reader.open(path):
 		return {"ok": false, "error": background_reader.get_last_error()}
-	return {"ok": true, "reader": background_reader, "record_index": background_reader.get_record_index()}
+	var result := {"ok": true, "reader": background_reader, "record_index": background_reader.get_record_index()}
+	result.merge(_build_cell_index(background_reader.get_exterior_cell_index()))
+	return result
+
+## Turns the native per-worldspace cell listing into the lookup tables behind
+## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
+static func _build_cell_index(worldspaces: Array) -> Dictionary:
+	var grid_cells := {}
+	var persistent_cell_by_worldspace := {}
+	var worldspace_by_cell := {}
+	for world: Dictionary in worldspaces:
+		var wrld := int(world.get("wrld_form_id", 0))
+		var persistent := int(world.get("persistent_cell_form_id", 0))
+		persistent_cell_by_worldspace[wrld] = persistent
+		if persistent != 0:
+			worldspace_by_cell[persistent] = wrld
+		var cells := {}
+		var grid: PackedInt64Array = world.get("grid", PackedInt64Array())
+		for i in range(0, grid.size(), 3):
+			cells[Vector2i(int(grid[i]), int(grid[i + 1]))] = int(grid[i + 2])
+			worldspace_by_cell[int(grid[i + 2])] = wrld
+		grid_cells[wrld] = cells
+	return {
+		"grid_cells": grid_cells,
+		"persistent_cell_by_worldspace": persistent_cell_by_worldspace,
+		"worldspace_by_cell": worldspace_by_cell,
+	}
 
 func is_ready() -> bool:
 	return state == "ready"
@@ -327,22 +366,29 @@ func _get_xtel_door_placements() -> Array:
 	_xtel_door_placements = reader.get_all_xtel_doors()
 	return _xtel_door_placements
 
-## A simulation space is a raw authored coordinate space: the owning WRLD for
-## exteriors, or the CELL itself for interiors. It intentionally has no
-## interior/exterior policy beyond this identity mapping.
+## The space a CELL belongs to: its WRLD for an exterior grid or persistent
+## CELL, the CELL itself for an interior.
 func get_space_form_id_for_cell(cell_form_id: int) -> int:
-	if cell_form_id == 0:
-		return 0
-	var worldspace_form_id := int(reader.get_cell_worldspace(cell_form_id)) if reader != null else -1
-	return worldspace_form_id if worldspace_form_id > 0 else cell_form_id
+	return int(_worldspace_by_cell.get(cell_form_id, cell_form_id))
 
-## Returns the real exterior CELL at `coord`, or zero where that worldspace
-## has no authored tile. World streaming never reaches into the native reader.
+## Returns the exterior grid CELL at `coord`, or 0 where that worldspace has
+## no CELL at that coordinate.
 func get_exterior_cell_form_id(worldspace_form_id: int, coord: Vector2i) -> int:
-	if reader == null:
-		return 0
-	var cell: Dictionary = reader.find_exterior_cell(worldspace_form_id, coord.x, coord.y)
-	return int(cell.get("form_id", 0))
+	return int((_grid_cells.get(worldspace_form_id, {}) as Dictionary).get(coord, 0))
+
+## Grid coordinate of an exterior position (metres, Gamebryo Z-up axes).
+static func exterior_grid_coord(position: Vector3) -> Vector2i:
+	return Vector2i(floori(position.x / EXTERIOR_CELL_SIZE_METERS), floori(position.y / EXTERIOR_CELL_SIZE_METERS))
+
+## The CELL containing `position` in `space_form_id`. An interior space is a
+## single CELL, returned as is. In a worldspace it is the grid CELL under the
+## position, or the worldspace's persistent CELL where no grid CELL exists.
+## In-memory lookups only; safe to call on every position write.
+func cell_at(space_form_id: int, position: Vector3) -> int:
+	if not _persistent_cell_by_worldspace.has(space_form_id):
+		return space_form_id
+	var cell := get_exterior_cell_form_id(space_form_id, exterior_grid_coord(position))
+	return cell if cell != 0 else int(_persistent_cell_by_worldspace[space_form_id])
 
 ## Typed references for one exterior grid tile.
 func get_references_in_exterior_cell(worldspace_form_id: int, coord: Vector2i) -> Array[EsmReference]:
@@ -355,11 +401,13 @@ func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[
 	var result: Array[EsmReference] = []
 	if reader == null:
 		return result
+	# These REFRs are filed in the worldspace's persistent CELL.
+	var persistent_cell := int(_persistent_cell_by_worldspace.get(worldspace_form_id, 0))
 	for placement in reader.get_persistent_refs_for_worldspace(worldspace_form_id):
 		var reference := _reference_from_placement(
 			placement,
 			"authored:%08X" % int(placement.get("refr_form_id", 0)),
-			int(placement.get("cell_form_id", 0))
+			persistent_cell
 		)
 		if reference != null:
 			result.append(reference)
@@ -379,8 +427,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	if result.base == null:
 		return null
 	result.instance_id = id
-	result.current_cell_form_id = cell_id
-	result.position = placement.get("position", Vector3.ZERO)
+	result.set_location(get_space_form_id_for_cell(cell_id), placement.get("position", Vector3.ZERO), false)
 	result.rotation = placement.get("rotation", Vector3.ZERO)
 	result.scale = float(placement.get("scale", 1.0))
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
@@ -389,7 +436,6 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	if result is ActorReference:
 		var actor: ActorReference = result
 		actor.spawn_cell_form_id = cell_id
-		actor.current_space_form_id = get_space_form_id_for_cell(cell_id)
 		actor.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	if result is DoorReference:
 		var door_ref: DoorReference = result

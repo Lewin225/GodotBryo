@@ -1267,6 +1267,106 @@ std::optional<RecordInfo> EsmFile::find_exterior_cell(uint32_t wrld_form_id, int
 	return std::nullopt; // no matching block at all -- a real worldspace-edge case
 }
 
+std::vector<WorldspaceCellIndex> EsmFile::get_exterior_cell_index() const {
+	std::vector<RecordInfo> worldspaces;
+	for_each_record([&](const RecordInfo &r) {
+		if (r.type == "WRLD") {
+			worldspaces.push_back(r);
+		}
+	});
+
+	std::vector<WorldspaceCellIndex> out;
+	out.reserve(worldspaces.size());
+	for (const RecordInfo &wrld : worldspaces) {
+		WorldspaceCellIndex index;
+		index.wrld_form_id = wrld.form_id;
+
+		// World Children group (type 1) immediately follows the WRLD record.
+		long wc_header_start = wrld.data_offset + static_cast<long>(wrld.data_size);
+		if (wc_header_start + static_cast<long>(kHeaderSize) > file_size_) {
+			out.push_back(index);
+			continue;
+		}
+		std::vector<uint8_t> wc_hdr = read_at(wc_header_start, kHeaderSize);
+		util::ByteReader wc_hr(wc_hdr.data(), wc_hdr.size());
+		std::string wc_tag(reinterpret_cast<const char *>(wc_hr.read_bytes(4).data()), 4);
+		uint32_t wc_size = wc_hr.read_u32();
+		wc_hr.read_u32(); // label: the WRLD FormID
+		uint32_t wc_type = wc_hr.read_u32();
+		if (wc_tag != "GRUP" || wc_type != 1) {
+			out.push_back(index); // worldspace with no children
+			continue;
+		}
+		long wc_end = wc_header_start + static_cast<long>(wc_size);
+
+		// Walks a group's direct children: records go to on_record, groups of
+		// type `descend_type` are entered through on_group, all else skipped.
+		auto walk = [&](long start, long end, uint32_t descend_type,
+				const std::function<void(const RecordInfo &)> &on_record,
+				const std::function<void(long, long)> &on_group) {
+			long pos = start;
+			while (pos < end) {
+				std::vector<uint8_t> h = read_at(pos, kHeaderSize);
+				util::ByteReader r(h.data(), h.size());
+				std::string tag(reinterpret_cast<const char *>(r.read_bytes(4).data()), 4);
+				uint32_t size = r.read_u32();
+				if (tag == "GRUP") {
+					r.read_u32(); // label
+					uint32_t gtype = r.read_u32();
+					if (gtype == descend_type) {
+						on_group(pos + static_cast<long>(kHeaderSize), pos + static_cast<long>(size));
+					}
+					pos += static_cast<long>(size);
+					continue;
+				}
+				RecordInfo info;
+				info.type = tag;
+				info.data_size = size;
+				info.flags = r.read_u32();
+				info.form_id = r.read_u32();
+				info.data_offset = pos + static_cast<long>(kHeaderSize);
+				on_record(info);
+				pos = info.data_offset + static_cast<long>(info.data_size);
+			}
+		};
+
+		auto add_grid_cell = [&](const RecordInfo &cell) {
+			if (cell.type != "CELL") {
+				return;
+			}
+			// Subrecords point into `data`; it must outlive the loop.
+			const std::vector<uint8_t> data = read_record_data(cell);
+			for (const auto &s : parse_subrecords(data)) {
+				if (s.type == "XCLC" && s.size >= 8) {
+					util::ByteReader sr(s.data, s.size);
+					ExteriorGridCell grid;
+					grid.x = static_cast<int32_t>(sr.read_u32());
+					grid.y = static_cast<int32_t>(sr.read_u32());
+					grid.cell_form_id = cell.form_id;
+					index.grid_cells.push_back(grid);
+					return;
+				}
+			}
+		};
+
+		walk(wc_header_start + static_cast<long>(kHeaderSize), wc_end, 4,
+				[&](const RecordInfo &r) {
+					if (r.type == "CELL") {
+						index.persistent_cell_form_id = r.form_id;
+					}
+				},
+				[&](long block_start, long block_end) {
+					walk(block_start, block_end, 5,
+							[](const RecordInfo &) {},
+							[&](long sub_start, long sub_end) {
+								walk(sub_start, sub_end, UINT32_MAX, add_grid_cell, [](long, long) {});
+							});
+				});
+		out.push_back(std::move(index));
+	}
+	return out;
+}
+
 std::optional<ExteriorCellGrid> EsmFile::get_exterior_cell_grid(uint32_t cell_form_id) const {
 	auto cell = find_record_by_form_id(cell_form_id);
 	if (!cell || cell->type != "CELL") {

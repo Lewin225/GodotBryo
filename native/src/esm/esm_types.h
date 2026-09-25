@@ -172,6 +172,22 @@ struct ExteriorCellGrid {
 	int32_t y = 0;
 };
 
+// One exterior grid CELL of a worldspace, keyed by its own XCLC coordinate.
+struct ExteriorGridCell {
+	int32_t x = 0;
+	int32_t y = 0;
+	uint32_t cell_form_id = 0;
+};
+
+// Every CELL a worldspace owns: its persistent CELL (the one filed directly in
+// the World Children group, outside the block hierarchy; 0 if absent) and each
+// grid CELL inside the Exterior Cell Block/Sub-Block groups.
+struct WorldspaceCellIndex {
+	uint32_t wrld_form_id = 0;
+	uint32_t persistent_cell_form_id = 0;
+	std::vector<ExteriorGridCell> grid_cells;
+};
+
 // phases/2/07-runtime-cell-loader.md: a door REFR's resolved teleport
 // destination — the CELL it leads to (not just the destination REFR's
 // FormID) plus the landing transform.

@@ -190,6 +190,11 @@ public:
 	// valid case, not an error).
 	Dictionary get_exterior_cell_grid(int64_t cell_form_id) const;
 
+	// One Dictionary per WRLD: "wrld_form_id", "persistent_cell_form_id" (0 if
+	// none) and "grid", a PackedInt64Array of flat (x, y, cell_form_id)
+	// triples, one per grid CELL, x/y from the CELL's XCLC.
+	Array get_exterior_cell_index() const;
+
 	// A CELL's own EDID (e.g. "GSDocMitchellHouse"), for display purposes.
 	// Empty string if cell_form_id isn't a CELL or has no EDID — real for
 	// some unnamed exterior cells.
