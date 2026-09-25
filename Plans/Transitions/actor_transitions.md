@@ -545,8 +545,13 @@ Removed from `DoorReference`: `has_teleport_destination`,
   every same-named block regardless of parameter).
 - Register `MoveTo`, `PositionCell`, `PositionWorld` over `move_reference`.
 - A global editor-id → reference lookup, owned by `EsmServer`, including
-  persistent references in unloaded cells. Needed by `MoveTo SomeMarkerREF`
-  and `IsActionRef player`.
+  persistent references in unloaded cells. Needed by `MoveTo SomeMarkerREF`,
+  `SomeREF.Enable`, `set SomeREF.var to x` and `IsActionRef SomeREF`. Names
+  resolve through this index, not the compiled script's `SCRO` list, so
+  console input and hand-written scripts resolve the same way as authored
+  ones. The same index gives FormID → reference without reading the filing
+  CELL's other references (today `get_reference()` reads a whole persistent
+  CELL, 4468 references for WastelandNV, to build one).
 
 ## Player body persistence
 
