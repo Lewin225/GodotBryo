@@ -41,7 +41,7 @@ upstream, so the fix cannot be committed into the checkout; `native/SConstruct` 
 before globbing nifly's sources, so a fresh clone or a `git submodule update` still builds patched.
 Application is idempotent, and a patch that neither applies nor reverse-applies stops the build
 rather than silently producing a library that reads NIFs wrong. See
-[`native/nifly_patches/README.md`](../../../native/nifly_patches/README.md).
+[`native/nifly_patches/README.md`](../../../../native/nifly_patches/README.md).
 
 All 365 palette-addressed links across the five files now resolve. `test_nif_source` D6 asserts
 this per file and fails if the patch is ever dropped from the build.

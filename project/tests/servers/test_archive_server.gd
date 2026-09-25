@@ -1,6 +1,6 @@
 extends Node
 
-## Stage B gate (Plans/server_stack_build_order.md): ArchiveServer owns archive
+## Stage B gate (Plans/Completed Plans/server_stack_build_order.md): ArchiveServer owns archive
 ## discovery, BSA priority and byte reads, with an immutable catalog that is
 ## safe for concurrent reads.
 

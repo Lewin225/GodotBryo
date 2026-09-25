@@ -177,7 +177,7 @@ static func _cache_key(tex_path: String, alpha_safe: bool) -> String:
 
 ## Decisions
 
-Settled 2026-09-12 (Stage C of `Plans/server_stack_build_order.md`). Each is cheap to revisit.
+Settled 2026-09-12 (Stage C of `Plans/Completed Plans/server_stack_build_order.md`). Each is cheap to revisit.
 
 | question | decision |
 |---|---|

@@ -1,6 +1,6 @@
 extends Node
 
-## Stage E gate (Plans/server_stack_build_order.md): NifServer's contract layer
+## Stage E gate (Plans/Completed Plans/server_stack_build_order.md): NifServer's contract layer
 ## -- canonical paths, the cache, in-flight dedup, the admission cap, the
 ## per-frame build budget, and the section 3.2 ownership rules.
 ##

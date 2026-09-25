@@ -2,7 +2,7 @@
 extends Node
 
 ## NifServer -- one NIF/KF file in, one honest Godot resource out.
-## Implements Plans/NifServer/nif_server_v2.md sections 3 and 4.
+## Implements Plans/Completed Plans/NifServer/nif_server_v2.md sections 3 and 4.
 ##
 ## The queue, admission cap and per-frame build budget live here; the tree
 ## construction itself is NifTreeBuilder's. Callers never read the archive or

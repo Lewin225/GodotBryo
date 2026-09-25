@@ -5,8 +5,8 @@ tree; `request_kf()` serves a standalone KF as an unbound `AnimationLibrary`; th
 `request_lod()` helper resolves the verified external companion-file convention before using the
 ordinary NIF request path. There are no special cases for actors, doors or terrain.
 
-Design: [`Plans/NifServer/nif_server_v2.md`](../../../../Plans/NifServer/nif_server_v2.md).
-Corpus research behind it: [`Plans/NifServer/Research/`](../../../../Plans/NifServer/Research/).
+Design: [`Plans/Completed Plans/NifServer/nif_server_v2.md`](../../../../Plans/Completed%20Plans/NifServer/nif_server_v2.md).
+Corpus research behind it: [`Plans/Completed Plans/NifServer/Research/`](../../../../Plans/Completed%20Plans/NifServer/Research/).
 
 ---
 
@@ -108,7 +108,7 @@ pays for. An SCOL flattened is 4.8 ms; the same SCOL hierarchical is 13.0 ms plu
 copies taken on `WorkerThreadPool` while the main thread kept rendering came back structurally and
 resource-identical to a main-thread copy, and the worst frame fell from 14.4 ms to 8.3 ms — but
 every configuration aborted the process during engine shutdown, while the synchronous version exits
-cleanly. Do not re-attempt it without reading `Plans/NifServer/Implementation/outstanding_issues.md`
+cleanly. Do not re-attempt it without reading `Plans/Completed Plans/NifServer/Implementation/outstanding_issues.md`
 #11 first.
 
 **There is no eviction policy.** Templates stay resident until `purge()`/`purge_all()`, and a
@@ -158,9 +158,9 @@ an already-resident set. That is the whole of TextureServer's external surface: 
 **Synchronous, main thread.** `build()` does the whole job in one call on the calling thread, and
 callers run it on the main one. This is a statement of what is built, not a constraint that has been
 established: the queue, frame budget and worker split of
-[`nif_server_v2.md`](../../../../Plans/NifServer/nif_server_v2.md) section 4 are Stage E and do not
+[`nif_server_v2.md`](../../../../Plans/Completed%20Plans/NifServer/nif_server_v2.md) section 4 are Stage E and do not
 exist yet, and section 4's own rationale for the split is itself unverified — see
-[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md) #10.
+[`outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md) #10.
 
 `NifSource.load()` and `ArchiveServer.read()` are pure and take no locks, so both are safe to call
 from a worker today.
@@ -204,5 +204,5 @@ cd project
 ```
 
 Known gaps are recorded in
-[`Plans/NifServer/Implementation/outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md),
+[`Plans/Completed Plans/NifServer/Implementation/outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md),
 not left implicit.

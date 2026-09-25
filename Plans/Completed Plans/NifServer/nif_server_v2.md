@@ -564,7 +564,7 @@ Blockers, any one of which returns the hierarchical tree:
 
 `SETTLED`
 
-**Canonical source: [`enginedocs/lod.md`](../../enginedocs/lod.md)** and PR #57. That doc establishes
+**Canonical source: [`enginedocs/lod.md`](../../../enginedocs/lod.md)** and PR #57. That doc establishes
 the LOD systems, the VWD gate and the standalone-imposter class; this section records only what
 bears on NifServer's contract.
 

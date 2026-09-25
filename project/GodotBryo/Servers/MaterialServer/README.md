@@ -110,7 +110,7 @@ transforms and a `SELF_ILLUM` colour curve, and not one transform track.
 every frame.** That is the hazard above, arriving through animation rather than
 through a caller writing to a property. It does not exist yet only because
 property tracks are unimplemented — see
-[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md)
+[`outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md)
 #5. Implementing them creates it across 582 files.
 
 So sharing is decided per tier, not per server:
@@ -161,5 +161,5 @@ Which suggests splitting by axis of variation rather than picking one mechanism:
 
 Related: [`MeshServer`](../MeshServer/README.md) for the mesh side of the same
 question, and
-[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md)
+[`outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md)
 #11 for NifServer's missing cache.

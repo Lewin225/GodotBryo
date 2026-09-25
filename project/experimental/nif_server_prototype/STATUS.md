@@ -2,13 +2,13 @@
 
 Moved here 2026-09-12. **Not live code** — nothing references it, it is not an autoload, and it does
 not run. Kept only as reference material for Stage E of
-[`Plans/server_stack_build_order.md`](../../../Plans/server_stack_build_order.md).
+[`Plans/Completed Plans/server_stack_build_order.md`](../../../Plans/Completed%20Plans/server_stack_build_order.md).
 
 ## Why it was moved
 
 It was built against `NifReader` / `nif_loader.cpp`, a legacy pre-digested summary, rather than
 nifly's object model — which is what every measurement in
-[`nif_server_v2.md`](../../../Plans/NifServer/nif_server_v2.md) was taken from. That data source
+[`nif_server_v2.md`](../../../Plans/Completed%20Plans/NifServer/nif_server_v2.md) was taken from. That data source
 cannot express the §3 node map (no block type per node), §5.3 ragdoll split, §6 palette resolution,
 §7.3 property identity, §7.4 palette KFs, or §8 texture slots 3-5. Stage D builds the nifly-backed
 source; Stage E rebuilds the server on it.

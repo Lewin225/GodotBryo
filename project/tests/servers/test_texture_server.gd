@@ -1,6 +1,6 @@
 extends Node
 
-## Stage C gate (Plans/server_stack_build_order.md): TextureServer is the one
+## Stage C gate (Plans/Completed Plans/server_stack_build_order.md): TextureServer is the one
 ## DDS decode/upload/cache primitive, with the DXT1 alpha-variant behaviour
 ##
 ## Calls `_decode()` directly in places. That is private -- the public surface is

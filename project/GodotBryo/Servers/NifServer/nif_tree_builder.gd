@@ -4,7 +4,7 @@ class_name NifTreeBuilder
 
 ## Builds a Godot tree from a NifSource document.
 ##
-## This is the main-thread half of NifServer (Plans/NifServer/nif_server_v2.md
+## This is the main-thread half of NifServer (Plans/Completed Plans/NifServer/nif_server_v2.md
 ## sections 3 and 5), built directly on the nifly-backed NifSource rather than
 ## the legacy flattened loader -- which is what makes the section 3 node map
 ## possible at all: a node's block type is known, so a light becomes an

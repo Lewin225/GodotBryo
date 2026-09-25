@@ -472,7 +472,7 @@ misdiagnosis. `native/terrain_streamer/SConstruct` globs `../src/esm/esm_file.cp
 The artifact is gitignored, so its timestamp tells you when it was built, never what it was built
 from; a binary newer than one of its three inputs proves nothing. A stale one does not fail to
 load, it runs an obsolete `EsmFile` and corrupts the heap at shutdown. See
-`Plans/TerrainStreamer/heap_corruption.md`.
+`Plans/Completed Plans/TerrainStreamer/heap_corruption.md`.
 
 **Real gotcha, found and fixed the hard way**: the shared `godot-cpp` static
 archive (`native/godot-cpp/bin/libgodot-cpp.*.a`) has enough generated object

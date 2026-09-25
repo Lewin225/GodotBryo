@@ -1,6 +1,6 @@
 extends Node
 
-## Stage E parity gate (Plans/server_stack_build_order.md): NifSource against
+## Stage E parity gate (Plans/Completed Plans/server_stack_build_order.md): NifSource against
 ## the shipping NifReader/mesh_resolver path, over a fixed sample.
 ##
 ## The legacy path is the reference because it is what the game has been played

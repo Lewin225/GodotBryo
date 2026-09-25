@@ -83,7 +83,7 @@ NIF Server plan.
   immutable archive catalog owns the opened archives, BSA priority, and global normalized path → compact
   archive/entry index, with prefix enumeration using the same winner rule. A thin GDScript
   `ArchiveServer` autoload owns configuration and lifecycle only. Loose-file precedence remains an
-  explicit separate policy question in `Plans/ArchiveServer/archive_server.md` and is not assumed for v1.
+  explicit separate policy question in `Plans/Completed Plans/ArchiveServer/archive_server.md` and is not assumed for v1.
 - [x] **GDScript concurrency:** V1 worker tasks use private `NifReader` instances and private local
   Arrays/Dictionaries/PackedArrays while resolving. They publish a fresh immutable plain-data result;
   the main thread only reads it. Shared NifServer caches, queues, and counters are main-thread-owned.

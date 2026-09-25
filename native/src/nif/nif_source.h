@@ -8,7 +8,7 @@
 
 namespace nifsrc {
 
-// Stage D of Plans/server_stack_build_order.md: a reader over nifly's own
+// Stage D of Plans/Completed Plans/server_stack_build_order.md: a reader over nifly's own
 // object model, which is what every measurement in nif_server_v2.md was taken
 // from. Deliberately separate from nif_loader.{h,cpp}, the legacy pre-digested
 // summary -- that one stays untouched and keeps serving its existing callers.

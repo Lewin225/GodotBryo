@@ -2,7 +2,7 @@
 
 The project's one DDS decode / upload / cache primitive. Autoloaded singleton.
 
-Design: [`Plans/TextureServer/texture_server.md`](../../../../Plans/TextureServer/texture_server.md).
+Design: [`Plans/Completed Plans/TextureServer/texture_server.md`](../../../../Plans/Completed%20Plans/TextureServer/texture_server.md).
 
 Two callers need textures and neither owns a NIF — NifServer's material builder, and terrain.
 Folding texture ownership into either would relocate the wrong-owner problem rather than fix it,
@@ -81,7 +81,7 @@ worker path. Uploads drain in `_process()` under a per-frame budget.
 refcounted, so purging frees nothing while a material still holds the texture, and the next
 `request()` then decodes a *second* independent copy. It is not a memory-pressure valve without
 first filtering on external reference count. An eviction policy is
-[`outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md) #7.
+[`outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md) #7.
 
 ---
 

@@ -1,6 +1,6 @@
 extends Node
 
-## Stage A gate (Plans/server_stack_build_order.md): BsaArchive::read_at() is
+## Stage A gate (Plans/Completed Plans/server_stack_build_order.md): BsaArchive::read_at() is
 ## positional (pread / ReadFile+OVERLAPPED), so one shared reader is safe for
 ## concurrent extraction with no per-thread reader and no mutex.
 

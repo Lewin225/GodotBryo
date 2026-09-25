@@ -1,12 +1,12 @@
 extends Node
 
-## Stage D gate (Plans/server_stack_build_order.md): NifSource exposes nifly's
+## Stage D gate (Plans/Completed Plans/server_stack_build_order.md): NifSource exposes nifly's
 ## object model -- block types, collision subclass, all six texture slots, the
 ## object palette, property block identity, resolved controller links, extra
 ## data, and geometry/skin/collision.
 ##
 ## Figures here are asserted against the corpus research in
-## Plans/NifServer/Research/nifserver_design_findings.md. Counts run slightly
+## Plans/Completed Plans/NifServer/Research/nifserver_design_findings.md. Counts run slightly
 ## below the research totals because ArchiveServer returns priority winners
 ## only -- 204 duplicate .nif paths are shadowed by DLC overrides.
 

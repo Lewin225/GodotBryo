@@ -1,6 +1,6 @@
 # NifServer
 
-Implements [`Plans/NifServer/nif_server_v2.md`](../../../Plans/NifServer/nif_server_v2.md).
+Implements [`Plans/Completed Plans/NifServer/nif_server_v2.md`](../../../Plans/Completed%20Plans/NifServer/nif_server_v2.md).
 One NIF path in, one honest Godot tree out — the result reflects the file's contents, never the
 caller's intent. Nothing outside this folder is modified; no autoload is registered yet.
 

@@ -65,7 +65,7 @@ one cached build plus N duplicates gets the batching that N independent builds
 cannot.
 
 NifServer does not cache yet. See
-[`Plans/NifServer/Implementation/outstanding_issues.md`](../../../../Plans/NifServer/Implementation/outstanding_issues.md)
+[`Plans/Completed Plans/NifServer/Implementation/outstanding_issues.md`](../../../../Plans/Completed%20Plans/NifServer/Implementation/outstanding_issues.md)
 #11.
 
 ---
