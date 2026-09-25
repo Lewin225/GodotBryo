@@ -20,7 +20,7 @@ func _ready() -> void:
 	camera.make_current()
 	var streamer := TerrainStreamer.new()
 	streamer.load_radius = 2.0
-	streamer.configure(esm, GamebryoMeshResolver.new(DATA_DIR))
+	streamer.configure(esm)
 	add_child(streamer)
 	streamer.activate(int(world.form_id))
 	check(not streamer._is_collision_area_committed(Vector2i(-17, 0)),

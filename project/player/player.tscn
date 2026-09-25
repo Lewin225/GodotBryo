@@ -3,14 +3,7 @@
 [ext_resource type="Script" uid="uid://b3dympkwwkwah" path="res://player/player_controller.gd" id="1_controller"]
 [ext_resource type="Script" uid="uid://csqpmnbpusioc" path="res://GodotBryo/Types/Node/esm_humanoid_actor.gd" id="2_qjkh3"]
 [ext_resource type="Script" uid="uid://bqx2mbelqbts1" path="res://player/crosshair.gd" id="3_crosshair"]
-[ext_resource type="Script" uid="uid://cqell0rhynkh4" path="res://GodotBryo/Types/Resource/esm_actor_equipment_state.gd" id="3_ebec5"]
 [ext_resource type="Script" uid="uid://c1a8lyyotsrcs" path="res://player/interact_ray.gd" id="4_interactray"]
-[ext_resource type="Script" uid="uid://cwxyou5k05b3c" path="res://GodotBryo/Types/Resource/inventory_item.gd" id="4_yllr7"]
-[ext_resource type="Script" uid="uid://cxpuo5es1hfil" path="res://GodotBryo/Types/Resource/armor_reference.gd" id="5_kb6p2"]
-[ext_resource type="Script" uid="uid://4m0l1frfm6a6" path="res://GodotBryo/Types/Resource/alchemy_reference.gd" id="6_wodsf"]
-[ext_resource type="Script" uid="uid://daoneq1fu7qq7" path="res://GodotBryo/Types/Resource/misc_reference.gd" id="7_32hag"]
-[ext_resource type="Script" uid="uid://bc3wphhmwnlao" path="res://gamebryo/inventory.gd" id="8_tqiix"]
-[ext_resource type="Script" uid="uid://eg40nx1hbq1s" path="res://GodotBryo/Types/Resource/actor_reference.gd" id="9_e7oew"]
 [ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
@@ -18,161 +11,15 @@ margin = 0.06
 radius = 0.4
 height = 1.8
 
-[sub_resource type="Resource" id="Resource_ebec5"]
-script = ExtResource("3_ebec5")
-diagnostics = PackedStringArray()
+[sub_resource type="Gradient" id="Gradient_ebec5"]
+offsets = PackedFloat32Array(0, 0.30482456, 0.625, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.39607844, 1, 1, 1, 1, 1, 1, 1, 0)
 
-[sub_resource type="Resource" id="Resource_yllr7"]
-script = ExtResource("5_kb6p2")
-base_form_id = 979404
-instance_id = "inventory-ref:000EF1CC:0"
-
-[sub_resource type="Resource" id="Resource_kb6p2"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_yllr7")
-instance_id = "inventory:000EF1CC:0"
-is_equipped = true
-
-[sub_resource type="Resource" id="Resource_wodsf"]
-script = ExtResource("6_wodsf")
-base_form_id = 86377
-instance_id = "inventory-ref:00015169:1"
-
-[sub_resource type="Resource" id="Resource_32hag"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_wodsf")
-instance_id = "inventory:00015169:1"
-
-[sub_resource type="Resource" id="Resource_tqiix"]
-script = ExtResource("6_wodsf")
-base_form_id = 86376
-instance_id = "inventory-ref:00015168:0"
-
-[sub_resource type="Resource" id="Resource_e7oew"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_tqiix")
-instance_id = "inventory:00015168:2"
-
-[sub_resource type="Resource" id="Resource_c35mf"]
-script = ExtResource("6_wodsf")
-base_form_id = 86435
-instance_id = "inventory-ref:000151A3:0"
-
-[sub_resource type="Resource" id="Resource_65viv"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_c35mf")
-count = 2
-instance_id = "inventory:000151A3:3"
-
-[sub_resource type="Resource" id="Resource_x7c3f"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_bjvpn"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_x7c3f")
-instance_id = "inventory:0000000F:4"
-
-[sub_resource type="Resource" id="Resource_s7qer"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_g4c7l"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_s7qer")
-instance_id = "inventory:0000000F:5"
-
-[sub_resource type="Resource" id="Resource_knn7v"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_7pqkx"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_knn7v")
-instance_id = "inventory:0000000F:6"
-
-[sub_resource type="Resource" id="Resource_uw77l"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_rptt4"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_uw77l")
-instance_id = "inventory:0000000F:7"
-
-[sub_resource type="Resource" id="Resource_r7pn3"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_b8hi5"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_r7pn3")
-instance_id = "inventory:0000000F:8"
-
-[sub_resource type="Resource" id="Resource_2uvqg"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_1s1yo"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_2uvqg")
-instance_id = "inventory:0000000F:9"
-
-[sub_resource type="Resource" id="Resource_5ejfk"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_jd2rm"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_5ejfk")
-instance_id = "inventory:0000000F:10"
-
-[sub_resource type="Resource" id="Resource_q28gw"]
-script = ExtResource("7_32hag")
-base_form_id = 15
-instance_id = "inventory-ref:0000000F:0"
-
-[sub_resource type="Resource" id="Resource_ge24q"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_q28gw")
-instance_id = "inventory:0000000F:11"
-
-[sub_resource type="Resource" id="Resource_pnw6m"]
-script = ExtResource("7_32hag")
-base_form_id = 151720
-instance_id = "inventory-ref:000250A8:0"
-
-[sub_resource type="Resource" id="Resource_1so5t"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_pnw6m")
-instance_id = "inventory:000250A8:12"
-
-[sub_resource type="Resource" id="Resource_55jnj"]
-script = ExtResource("6_wodsf")
-base_form_id = 86430
-instance_id = "inventory-ref:0001519E:0"
-
-[sub_resource type="Resource" id="Resource_dx5ib"]
-script = ExtResource("4_yllr7")
-item_reference = SubResource("Resource_55jnj")
-instance_id = "inventory:0001519E:13"
-
-[sub_resource type="Resource" id="Resource_a2xo5"]
-script = ExtResource("8_tqiix")
-items = Array[ExtResource("4_yllr7")]([SubResource("Resource_kb6p2"), SubResource("Resource_32hag"), SubResource("Resource_e7oew"), SubResource("Resource_65viv"), SubResource("Resource_bjvpn"), SubResource("Resource_g4c7l"), SubResource("Resource_7pqkx"), SubResource("Resource_rptt4"), SubResource("Resource_b8hi5"), SubResource("Resource_1s1yo"), SubResource("Resource_jd2rm"), SubResource("Resource_ge24q"), SubResource("Resource_1so5t"), SubResource("Resource_dx5ib")])
-
-[sub_resource type="Resource" id="Resource_art4l"]
-script = ExtResource("9_e7oew")
-contents = SubResource("Resource_a2xo5")
-base_form_id = 1068044
-instance_id = "base:00104C0C"
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ebec5"]
+gradient = SubResource("Gradient_ebec5")
+fill = 1
+fill_from = Vector2(0.5, 0.4957265)
+fill_to = Vector2(0.9230769, 0.16239317)
 
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
@@ -195,9 +42,7 @@ shape = SubResource("CapsuleShape3D_player")
 
 [node name="EsmHumanoidActor" type="Node3D" parent="." unique_id=123295044]
 script = ExtResource("2_qjkh3")
-equipment_state = SubResource("Resource_ebec5")
 possessed_first_person = true
-reference = SubResource("Resource_art4l")
 metadata/_custom_type_script = "uid://csqpmnbpusioc"
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
@@ -208,6 +53,19 @@ far = 6000.0
 [node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
 target_position = Vector3(0, 0, -2.5)
 script = ExtResource("4_interactray")
+
+[node name="SpotLight3D" type="SpotLight3D" parent="Camera3D" unique_id=880402807]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32488638, -0.60089016, -0.14551902)
+light_color = Color(0.9395503, 0.79728204, 0.45056558, 1)
+light_energy = 2.0
+light_volumetric_fog_energy = 2.0
+light_projector = SubResource("GradientTexture2D_ebec5")
+shadow_enabled = true
+spot_range = 20.0
+spot_angle = 37.76
+
+[node name="ReflectionProbe" type="ReflectionProbe" parent="Camera3D" unique_id=584686752]
+update_mode = 1
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=98712345]
 

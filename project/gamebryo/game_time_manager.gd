@@ -1,10 +1,10 @@
 class_name GameTimeManager
 extends Node
 
-## Manages Gamebryo in-game time and the calendar.
+## Manages in-game time and the calendar.
 ##
-## The real Fallout: New Vegas engine tracks game time through five GLOB
-## records in FalloutNV.esm (verified via tools/time_weather_survey.cpp):
+## The real engine tracks game time through five GLOB
+## records (verified via tools/time_weather_survey.cpp against only FalloutNV.esm):
 ##   GameYear  (0x35) = 2281   -- starting year
 ##   GameMonth (0x36) = 9      -- 0-based: 9 = October
 ##   GameDay   (0x37) = 18     -- day of month (1-based in-game display)
@@ -31,9 +31,9 @@ const MONTH_NAMES: Array[String] = [
 ## Current game clock state — verified default values from FalloutNV.esm GLOBs.
 var game_hour: float = 12.0    ## Fractional hour in [0.0, 24.0)
 var game_day: int = 19         ## Day of month, 1-based (GLOB GameDay = 18, but
-                               ## the game displays it as Oct 19 on the Pip-Boy
-                               ## startup; 18 is day-index 0 = day 19 ambiguity
-                               ## accepted as-is from GLOB value + 1)
+							   ## the game displays it as Oct 19 on the Pip-Boy
+							   ## startup; 18 is day-index 0 = day 19 ambiguity
+							   ## accepted as-is from GLOB value + 1)
 var game_month: int = 9        ## 0-based month index: 9 = October
 var game_year: int = 2281
 var game_days_passed: float = 5.0  ## Cumulative fractional days since game start

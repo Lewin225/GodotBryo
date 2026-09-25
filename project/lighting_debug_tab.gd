@@ -35,8 +35,8 @@ func _ready() -> void:
 	_xemi_emission_spin.editable = false
 	_xemi_emission_spin.value_changed.connect(_on_xemi_emission_changed)
 	_auto_exposure_check.toggled.connect(_on_auto_exposure_toggled)
-	if _game != null and _game._world_environment != null:
-		var camera_attributes: CameraAttributesPractical = _game._world_environment.camera_attributes as CameraAttributesPractical
+	if _game != null and _game.world_environment != null:
+		var camera_attributes: CameraAttributesPractical = _game.world_environment.camera_attributes as CameraAttributesPractical
 		if camera_attributes != null:
 			_auto_exposure_check.button_pressed = camera_attributes.auto_exposure_enabled
 			_auto_exposure_scale_spin.value = camera_attributes.auto_exposure_scale
@@ -56,7 +56,7 @@ func _process(delta: float) -> void:
 		_refresh()
 
 func _refresh() -> void:
-	if _game == null or _game.cell_streamer == null or _game._typed_esm_reader() == null:
+	if _game == null or _game.cell_streamer == null or EsmServer.reader == null:
 		_summary_label.text = "(Game/CellStreamerV2/EsmServer not found)"
 		return
 	var cell_form_id: int = _game._hud_cell_form_id
@@ -72,7 +72,7 @@ func _rebuild_entries() -> void:
 	_entries.clear()
 	_light_list.clear()
 	_details_label.text = "Select a LIGH source for authored and applied values."
-	var esm: EsmReader = _game._typed_esm_reader()
+	var esm: EsmReader = EsmServer.reader
 	for reference: EsmReference in _game.cell_streamer.get_current_refs():
 		if reference == null or not reference is LightReference:
 			continue

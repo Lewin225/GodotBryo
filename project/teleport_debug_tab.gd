@@ -261,7 +261,7 @@ func _on_current_cell_pressed() -> void:
 	if game == null:
 		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
 		return
-	var esm: EsmReader = game._typed_esm_reader() if game.has_method("_typed_esm_reader") else null
+	var esm: EsmReader = EsmServer.reader
 	if esm == null and _engine != null:
 		esm = _engine.esm
 	if esm == null:

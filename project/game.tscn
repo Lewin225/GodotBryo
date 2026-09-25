@@ -61,8 +61,21 @@ func _on_tab_container_tab_changed(tab: int) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
-[node name="Game" type="Node3D" unique_id=215906396]
+[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "script_engine", "game_time_manager", "weather_manager", "celestial_controller", "terminal_session", "message_box", "cell_label", "sun", "world_environment", "player")]
 script = ExtResource("1")
+cell_streamer = NodePath("CellStreamerV2")
+world_streamer = NodePath("WorldStreamerV2")
+terrain_streamer = NodePath("TerrainStreamer")
+script_engine = NodePath("ScriptEngine")
+game_time_manager = NodePath("GameTimeManager")
+weather_manager = NodePath("WeatherManager")
+celestial_controller = NodePath("CelestialController")
+terminal_session = NodePath("TerminalSession")
+message_box = NodePath("MessageBox")
+cell_label = NodePath("DebugHud/CellLabel")
+sun = NodePath("Sun")
+world_environment = NodePath("WorldEnvironment")
+player = NodePath("Character")
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
@@ -72,8 +85,9 @@ handle_mouse_capture = true
 script = ExtResource("3_cellstreamerv2")
 spawn_reference_types = 3
 
-[node name="WorldStreamer" type="Node3D" parent="." unique_id=117832712]
+[node name="WorldStreamerV2" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
+load_radius = 3.0
 lod_load_radius = 20.0
 spawn_reference_types = 3
 
@@ -1718,21 +1732,5 @@ theme_override_font_sizes/font_size = 16
 text = "cell: —"
 horizontal_alignment = 2
 vertical_alignment = 1
-
-[node name="LookAtLabel" type="Label" parent="DebugHud" unique_id=1385502697]
-anchors_preset = -1
-anchor_top = 1.0
-anchor_right = 0.99700004
-anchor_bottom = 1.0
-offset_left = 18.0
-offset_top = -216.0
-offset_right = 0.45593262
-offset_bottom = -21.0
-grow_vertical = 0
-size_flags_vertical = 8
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
-theme_override_constants/shadow_offset_x = 1
-theme_override_constants/shadow_offset_y = 1
-theme_override_font_sizes/font_size = 14
 
 [connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]

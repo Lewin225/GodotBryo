@@ -62,7 +62,7 @@ func _check_real_data_fits_budget() -> void:
 	var terrain := Terrain3DBridge.create_terrain(self)
 	check(terrain.data != null, "Terrain3D.data initialized")
 	var pool := Terrain3DTexturePool.new(terrain)
-	var bridge := Terrain3DBridge.new(esm, resolver, pool)
+	var bridge := Terrain3DBridge.new(esm, pool)
 
 	var imported := 0
 	for dx in range(-15, 16):
@@ -72,7 +72,7 @@ func _check_real_data_fits_budget() -> void:
 			var cell: Dictionary = esm.find_exterior_cell(wrld_id, gx, gy)
 			if cell.is_empty():
 				continue
-			if bridge.import_cell(terrain, int(cell["form_id"])):
+			if await bridge.import_cell(terrain, int(cell["form_id"])):
 				imported += 1
 	check(imported > 100, "imported a real, substantial cell area (%d cells)" % imported)
 	check(pool.used_slot_count() < Terrain3DTexturePool.USABLE_SLOTS,

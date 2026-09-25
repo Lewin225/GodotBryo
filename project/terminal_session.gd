@@ -1,8 +1,8 @@
 class_name TerminalSession
 extends CanvasLayer
 
-## Player-facing TERM session owned by Game. A legacy TerminalNode or typed
-## EsmTerminalNode supplies immutable base-record data; this node alone owns
+## Player-facing TERM session owned by Game. EsmTerminalNode supplies
+## immutable base-record data; this node alone owns
 ## navigation, UI and the temporary player-input suspension.
 
 enum View { WELCOME, MENU, RESULT, NOTE }
@@ -32,9 +32,7 @@ func _ready() -> void:
 
 func open_session(terminal: Node, esm: EsmReader, player: Node) -> void:
 	var terminal_data: Dictionary = {}
-	if terminal is TerminalNode:
-		terminal_data = (terminal as TerminalNode).terminal_data
-	elif terminal is EsmTerminalNode:
+	if terminal is EsmTerminalNode:
 		var reference := (terminal as EsmTerminalNode).reference
 		if reference != null and reference.base != null:
 			terminal_data = esm.get_terminal_data(reference.base.form_id)

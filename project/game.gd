@@ -8,15 +8,17 @@ extends Node3D
 ## The player controller ("Character", the FPC addon) is a sibling of
 ## CellStreamerV2/WorldStreamer in this scene. Neither of those has any idea a
 ## player exists (phases/2/07-runtime-cell-loader.md,
-## phases/2/08-world-cell-streaming.md) — _process() below owns the interact
-## raycast instead: on a hit against anything exposing
-## activate() -> Dictionary (DoorNode today; any future interactable type
-## needs only that same contract, not a change here), it checks whether the
-## destination is interior or exterior (EsmReader.get_cell_worldspace()) and
-## routes to whichever of CellStreamerV2.load_cell() or
-## WorldStreamer.activate() applies — only one of the two is ever "where
-## the player is" at a time, so the other is torn down first. See
-## _try_interact()/_on_load_completed()/_do_exterior_transition() below.
+## phases/2/08-world-cell-streaming.md).
+##
+## Interact-driven activation dispatch (the old _try_interact()/
+## _interact_raycast() pair) has been removed pending the EsmNode.activate()
+## outcome rework — see Plans/GameGd/game_gd_decomposition.md item 4. Game
+## still owns the transition machinery an activation outcome would drive:
+## _do_exterior_transition() and _on_load_completed() route to whichever of
+## CellStreamerV2.load_cell() or WorldStreamer.activate() applies for a given
+## destination cell (EsmReader.get_cell_worldspace()) — only one of the two is
+## ever "where the player is" at a time, so the other is torn down first —
+## but neither currently has a caller.
 ##
 ## Player repositioning on load: this scene's own "Character" node (a
 ## CharacterBody3D — the FPC addon's root type) is found and moved directly
@@ -38,42 +40,34 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 # ESM/NIF data) -- picked to comfortably reach a door/lever from just
 # outside its collision, not tuned further.
 const INTERACT_REACH_METERS := 2.5
-const ITEM_DRAG_HOLD_SECONDS := 0.28
 const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_physicaliser.gd")
 
-var cell_streamer: CellStreamerV2
-var world_streamer: WorldStreamerV2
-var terrain_streamer: TerrainStreamer
-var script_engine: ScriptEngine
-var game_time_manager: GameTimeManager
-var weather_manager: WeatherManager
-var celestial_controller: CelestialController
-var terminal_session: TerminalSession
-var message_box: MessageBox
-var _cell_label: Label
+## Scene wiring. Exported rather than looked up by $Path in _ready(): a node
+## that is renamed or removed then shows as an empty slot in the inspector,
+## instead of surfacing as a null dereference at runtime.
+@export var cell_streamer: CellStreamerV2
+@export var world_streamer: WorldStreamerV2
+@export var terrain_streamer: TerrainStreamer
+@export var script_engine: ScriptEngine
+@export var game_time_manager: GameTimeManager
+@export var weather_manager: WeatherManager
+@export var celestial_controller: CelestialController
+@export var terminal_session: TerminalSession
+@export var message_box: MessageBox
+@export var cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
-var _sun: DirectionalLight3D
+@export var sun: DirectionalLight3D
+@export var world_environment: WorldEnvironment
+## The player. Exported for the same reason as the rest -- it was previously
+## bound by the literal node name "Character" alone.
+@export var player: CharacterBody3D
 var _interior_directional_light: DirectionalLight3D
-var _world_environment: WorldEnvironment
 var inventory := Inventory.new()
-var _pending_item: ItemNode = null
-var _dragging_item: ItemNode = null
-var _item_press_time_msec := 0
-
-# The player is a scene-authored direct child (game.tscn: Character), not a
-# dynamically discovered gameplay object.  Keep a validated cache instead of
-# recursively walking every streamed CellStreamerV2 child before reaching it.
-var _character_body: CharacterBody3D = null
 
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
 # (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
-# duplicated.
+# duplicated. F3 itself is currently unbound to anything in this file.
 #
-# F3 (freed up above) now toggles this instead: what the interact raycast is
-# currently looking at. Typed pipeline content resolves its hit NIF physics
-# child back to the ancestor EsmNode and reports its EsmReference/EsmBase;
-# legacy GamebryoReference content keeps its editor_description fallback.
-var _look_at_label: Label
 # Standalone .tres files (not inline .tscn sub-resources) so each is
 # independently editable/previewable in the editor -- WorldEnvironment
 # nodes can't be individually enabled/disabled (tried; Godot has no such
@@ -84,7 +78,8 @@ const INTERIOR_ENVIRONMENT := preload("res://interior_environment.tres")
 const EXTERIOR_ENVIRONMENT := preload("res://exterior_environment.tres")
 const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 
-# Set by _try_interact() right before a door-triggered load_cell() call, so
+# Set right before a door-triggered load_cell() call (currently unreachable
+# now that interact dispatch is removed; see the class doc comment), so
 # _on_load_completed() knows to land the player at the door's own
 # XTEL-resolved destination instead of the cell's COCMarkerHeading (which is
 # only correct for this scene's own startup load, not a door transition --
@@ -94,7 +89,6 @@ const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 # _find_coc_spawn_transform() does for the marker case.
 var _pending_door_spawn: Dictionary = {}
 var _shared_esm: EsmReader
-var _shared_resolver: GamebryoMeshResolver
 var _transition_generation := 0
 var _transition_in_progress := false
 
@@ -108,27 +102,13 @@ func _enter_tree() -> void:
 	if not _shared_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("Game: could not open FalloutNV.esm")
 		return
-	_shared_resolver = GamebryoMeshResolver.new(data_dir)
 	cell_streamer = get_node("CellStreamerV2") as CellStreamerV2
-	world_streamer = get_node("WorldStreamer") as WorldStreamerV2
+	world_streamer = get_node("WorldStreamerV2") as WorldStreamerV2
 	terrain_streamer = get_node("TerrainStreamer") as TerrainStreamer
-	terrain_streamer.configure(_shared_esm, _shared_resolver)
+	terrain_streamer.configure(_shared_esm)
 
 func _ready() -> void:
-	cell_streamer = $CellStreamerV2 # scene-authored typed interior double buffer
-	world_streamer = $WorldStreamer
-	terrain_streamer = $TerrainStreamer
-	script_engine = $ScriptEngine
-	game_time_manager = $GameTimeManager
-	weather_manager = $WeatherManager
-	celestial_controller = $CelestialController
-	terminal_session = $TerminalSession
-	message_box = $MessageBox
 	script_engine.message_box = message_box
-	_cell_label = $DebugHud/CellLabel
-	_look_at_label = $DebugHud/LookAtLabel
-	_sun = $Sun
-	_world_environment = $WorldEnvironment
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.
@@ -140,7 +120,9 @@ func _ready() -> void:
 	_set_exterior_environment(false) # deterministic starting state, not whatever the .tscn happened to have assigned
 	cell_streamer.load_started.connect(_on_load_started)
 	cell_streamer.load_completed.connect(_on_load_completed)
-	var typed_esm := await _await_typed_esm()
+	if not EsmServer.is_ready():
+		await EsmServer.esm_ready
+	var typed_esm: EsmReader = EsmServer.reader
 	if typed_esm == null:
 		push_error("Game: EsmServer did not become ready")
 		return
@@ -157,7 +139,7 @@ func _ready() -> void:
 	# exterior rendering until the WorldStreamer first goes exterior.
 	game_time_manager.configure(typed_esm)
 	weather_manager.configure(typed_esm)
-	celestial_controller.configure(_sun, _world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
+	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
 	var cell: Dictionary = typed_esm.find_cell_by_editor_id(DEFAULT_CELL_EDITOR_ID)
 	if cell.is_empty():
@@ -167,18 +149,6 @@ func _ready() -> void:
 
 func _on_load_started(cell_form_id: int) -> void:
 	print("game.gd: loading cell 0x%X..." % cell_form_id)
-
-func _await_typed_esm() -> EsmReader:
-	var server := get_tree().root.get_node_or_null("EsmServer")
-	if server == null:
-		return null
-	if not server.is_ready():
-		await server.esm_ready
-	return server.reader as EsmReader if server.is_ready() else null
-
-func _typed_esm_reader() -> EsmReader:
-	var server := get_tree().root.get_node_or_null("EsmServer") if get_tree() != null else null
-	return server.reader as EsmReader if server != null and server.is_ready() else null
 
 func _on_load_completed(cell_form_id: int, success: bool) -> void:
 	print("game.gd: cell 0x%X load complete, success=%s" % [cell_form_id, success])
@@ -218,130 +188,18 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 ## contract (an `activate() -> Dictionary` callable, per DoorNode's own
 ## established pattern in project/gamebryo/door_node.gd).
 func _process(_delta: float) -> void:
-	if Input.is_action_just_pressed("toggle_stats") and _look_at_label != null:
-		_look_at_label.visible = not _look_at_label.visible
-	if _look_at_label != null and _look_at_label.visible:
-		_update_look_at_label()
 	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_paused():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
 			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellStreamerV2's single-load case
 	if cell_streamer == null or cell_streamer.is_loading():
 		return # a load is already in flight -- don't stack another
-	_update_item_interaction()
 	# day-night: advance clock-driven environment every frame.
 	if game_time_manager != null and celestial_controller != null:
 		var climate := weather_manager.climate if weather_manager != null else {}
 		if not climate.is_empty():
 			celestial_controller.update(game_time_manager.game_hour, climate)
 			weather_manager.advance(_delta * game_time_manager.timescale / 3600.0)
-
-## Shared by _try_interact() and _update_look_at_label() -- the same
-## reach/gesture raycast, run either on an actual interact press or every
-## frame just to see what's being looked at. Returns {} if nothing usable
-## was hit, else { "collider": Object, "target": Object } -- `target` is
-## `collider` itself, or (for a Dynamic type's real collision, which lands
-## on its internal GamebryoCollisionBody child, not the GamebryoReference
-## itself -- enginedocs/nv_class_hierarchy.md: composed, not inherited)
-## the resolved owner_ref.
-func _interact_raycast() -> Dictionary:
-	var player := _get_character_body()
-	if player == null:
-		return {}
-	if "interact_ray" in player and player.interact_ray != null and player.interact_ray is InteractRay:
-		return player.interact_ray.get_interact_info()
-	if not ("CAMERA" in player) or player.CAMERA == null:
-		return {}
-	var camera: Camera3D = player.CAMERA
-	var from: Vector3 = camera.global_position
-	var to: Vector3 = from - camera.global_transform.basis.z * INTERACT_REACH_METERS
-	var query := PhysicsRayQueryParameters3D.create(from, to)
-	query.exclude = [player.get_rid()]
-	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
-	if result.is_empty():
-		return {}
-	var collider: Object = result.get("collider")
-	if collider == null or collider == player or (collider is Node and player.is_ancestor_of(collider)):
-		return {}
-	var target: Object = collider
-	if collider is GamebryoCollisionBody or collider is GamebryoRigidBody:
-		target = collider.owner_ref
-	var esm_node := _find_esm_node_ancestor(target)
-	if esm_node == null:
-		esm_node = _find_esm_node_ancestor(collider)
-	if esm_node != null:
-		target = esm_node
-	if target == player or (target is Node and player.is_ancestor_of(target)):
-		return {}
-	return { "collider": collider, "target": target }
-
-## F3-toggled (see _process()). Reuses _interact_raycast() unconditionally
-## every frame while visible. Typed NIF collision lands on a nested physics
-## body, so recover the ancestor EsmNode; retain the legacy editor-description
-## path for legacy content in inspection scenes; runtime interiors are typed.
-func _update_look_at_label() -> void:
-	var hit := _interact_raycast()
-	if hit.is_empty():
-		_look_at_label.text = ""
-		return
-	var collider: Object = hit["collider"]
-	var target: Object = hit["target"]
-	var text := "hit: %s" % String(collider.name)
-	if target != collider and target != null:
-		text += "\nowner: %s" % String(target.name)
-	var esm_node := _find_esm_node_ancestor(target)
-	if esm_node == null:
-		esm_node = _find_esm_node_ancestor(collider)
-	if esm_node != null:
-		text += "\nEsmNode: %s\n%s" % [esm_node.name, esm_node.get_debug_description()]
-	elif target != null and "editor_description" in target:
-		text += "\n" + String(target.editor_description)
-	_look_at_label.text = text
-
-## NifServer's StaticBody3D/CollisionShape3D tree has no legacy owner_ref.
-## The semantic EsmNode is its ancestor and is the durable ESM identity.
-func _find_esm_node_ancestor(object: Object) -> EsmNode:
-	if not object is Node:
-		return null
-	var node := object as Node
-	while node != null:
-		if node is EsmNode:
-			return node
-		node = node.get_parent()
-	return null
-
-## Tap E picks up an ItemNode; holding E for a short deliberate threshold
-## drags it instead. This preserves the existing one-key interact UX while
-## making both actions reachable without introducing a speculative binding.
-func _update_item_interaction() -> void:
-	if Input.is_action_just_pressed("interact"):
-		var hit := _interact_raycast()
-		var target: Object = hit.get("target") if not hit.is_empty() else null
-		if target is ItemNode:
-			_pending_item = target
-			_item_press_time_msec = Time.get_ticks_msec()
-		else:
-			_try_interact()
-	if _pending_item != null and Input.is_action_pressed("interact") and _dragging_item == null:
-		if Time.get_ticks_msec() - _item_press_time_msec >= int(ITEM_DRAG_HOLD_SECONDS * 1000.0):
-			var player := _get_character_body()
-			if player != null and "CAMERA" in player and _pending_item.begin_drag(player.CAMERA):
-				_dragging_item = _pending_item
-			_pending_item = null
-	if Input.is_action_just_released("interact"):
-		if _dragging_item != null:
-			_dragging_item.end_drag()
-			_dragging_item = null
-		elif _pending_item != null:
-			_pickup_item(_pending_item)
-		_pending_item = null
-
-func _pickup_item(target: Object) -> void:
-	var picked: Dictionary = target.pickup()
-	if picked.is_empty(): return
-	inventory.add_item(int(picked["base_form_id"]), picked["item_data"], int(picked.get("count", 1)))
-	if target is Node:
-		target.queue_free()
 
 func debug_add_inventory_item(base_form_id: int) -> bool:
 	for entry in inventory.get_entries():
@@ -373,7 +231,7 @@ func debug_place_at_me(args: Array, caller: Node) -> Variant:
 func debug_center_on_cell(args: Array) -> Variant:
 	if args.is_empty():
 		return { "error": "CenterOnCell requires a cell EditorID." }
-	var esm := _typed_esm_reader()
+	var esm: EsmReader = EsmServer.reader
 	if esm == null:
 		return { "error": "EsmServer is not ready." }
 	var cell: Dictionary = esm.find_cell_by_editor_id(str(args[0]))
@@ -389,82 +247,6 @@ func debug_center_on_cell(args: Array) -> Variant:
 	cell_streamer.load_cell(cell_form_id)
 	return cell_form_id
 
-## Dynamic types split into two real interact shapes right now: DoorNode
-## (the only real has_method("activate") case) still always calls its own
-## activate() directly, unconditionally -- this project's own known,
-## documented gap (phases/5/00-script-interpreter-foundation.md): a real
-## scripted door's default open/close behavior should be gated BEHIND its
-## own script explicitly calling `activate` (confirmed against
-## GSDocMitchellDoorScript's own real body), not run unconditionally the
-## way it is today. Fixing that needs dispatch_event() to propagate a
-## script-triggered activate() call's own outcome (the teleport-destination
-## Dictionary) back out to this caller, which doesn't exist yet -- real,
-## deliberately separate follow-up, not touched here.
-##
-## Everything else scripted (CONT/ACTI/etc, which have no activate() method
-## at all) gets real OnActivate dispatch instead -- confirmed real and
-## necessary via GSBrokenSMGScript, a real ACTI in GSDocMitchellHouse whose
-## whole OnActivate body (ShowMessage) never ran at all before this,
-## since nothing called target.activate() for a type that doesn't have one.
-## Mutually exclusive with the door branch on purpose: this doesn't touch
-## door behavior at all, sidestepping the outcome-propagation gap above
-## entirely for this real, narrower fix.
-func _try_interact() -> void:
-	if _transition_in_progress:
-		return
-	var hit := _interact_raycast()
-	if hit.is_empty():
-		return
-	var target: Object = hit["target"]
-	if target == null:
-		return
-	if target.has_method("pickup"):
-		_pickup_item(target)
-		return
-	if target is TerminalNode:
-		# TERM browsing is a Game-owned session, not an activate() outcome or
-		# a script side effect. Locking, conditions and menu scripts remain
-		# explicitly outside this first pass; TerminalSession displays those
-		# unavailable choices rather than silently executing or hiding them.
-		terminal_session.open_session(target, _typed_esm_reader(), _get_character_body())
-		return
-	if not target.has_method("activate"):
-		if script_engine != null and script_engine.is_scripted(target):
-			script_engine.dispatch_event(target, "OnActivate", _get_character_body())
-		return
-	var outcome: Dictionary = target.activate(_get_character_body()) if target is EsmNode else target.activate()
-	if outcome.has("terminal"):
-		terminal_session.open_session(outcome["terminal"], _typed_esm_reader(), _get_character_body())
-		return
-	if outcome.is_empty():
-		return # a valid interactable with nothing to do right now (e.g. a non-teleporting door)
-	if not outcome.has("dest_cell_form_id"):
-		push_warning("Game: activate() returned an unsupported outcome from %s" % target.name)
-		return
-
-	var dest_cell_form_id := int(outcome["dest_cell_form_id"])
-	var esm := _typed_esm_reader()
-	if esm == null:
-		return
-	var dest_wrld_form_id: int = esm.get_cell_worldspace(dest_cell_form_id)
-	if dest_wrld_form_id == -1:
-		# Interior destination -- CellStreamerV2's typed single-active-cell
-		# path. Only one of CellStreamerV2/WorldStreamer is ever "where the
-		# player is" at a time, but PAUSE the exterior streaming rather than
-		# deactivate() it -- this game's RAM budget has no reason to pay
-		# activate()'s full re-stream/re-texture cost on every single door
-		# back outside (a real, measured multi-second stall per door) the
-		# way the original Xbox 360 port's 512MB constraint would have
-		# forced. WorldStreamerV2 retains semantic roots, hides them, and
-		# disables their Node-based collision while the interior is active.
-		_transition_in_progress = true
-		_transition_generation += 1
-		terrain_streamer.set_paused(true)
-		world_streamer.set_paused(true)
-		_pending_door_spawn = { "position": outcome["dest_position"], "rotation": outcome["dest_rotation"] }
-		cell_streamer.load_cell(dest_cell_form_id)
-	else:
-		_do_exterior_transition(dest_wrld_form_id, outcome["dest_position"], outcome["dest_rotation"])
 
 ## phases/2/08-world-cell-streaming.md: a door into an exterior worldspace.
 ## Unlike the interior case, WorldStreamer needs no "load this cell" call --
@@ -494,20 +276,20 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 	var spawn := _convert_dest_spawn_transform_exterior(local_pos, local_rot)
 	reposition_player(spawn["position"], spawn["rotation"])
 
-	# Freeze the player for the duration of the initial streaming catch-up --
+	# Freeze the body for the duration of the initial streaming catch-up --
 	# without this, gravity keeps applying every physics frame while the
 	# destination's own terrain/collision is still streaming in behind the
-	# scenes, and the player falls through the world before it's ready.
+	# scenes, and the body falls through the world before it's ready.
 	# set_physics_process(false) stops the FPC addon's own gravity/movement
 	# processing entirely (it's all driven from CharacterBody3D's own
 	# _physics_process()), not just gravity specifically -- also freezes
-	# input, which is fine/expected here (matches the "release the player
+	# input, which is fine/expected here (matches the "release the body
 	# once streaming_settled fires" design this signal was built for).
-	var player := _get_character_body()
-	if player != null:
-		player.set_physics_process(false)
-		if "velocity" in player:
-			player.velocity = Vector3.ZERO
+	var body := _get_character_body()
+	if body != null:
+		body.set_physics_process(false)
+		if "velocity" in body:
+			body.velocity = Vector3.ZERO
 
 	var object_ready := [false]
 	var settled_callback := func() -> void: object_ready[0] = true
@@ -529,10 +311,10 @@ func _do_exterior_transition(wrld_form_id: int, local_pos: Vector3, local_rot: V
 		_transition_in_progress = false
 		return
 
-	if player != null:
-		if "velocity" in player:
-			player.velocity = Vector3.ZERO # discard whatever residual state accumulated, if any
-		player.set_physics_process(true)
+	if body != null:
+		if "velocity" in body:
+			body.velocity = Vector3.ZERO # discard whatever residual state accumulated, if any
+		body.set_physics_process(true)
 
 	var cell_form_id := world_streamer.get_current_cell_form_id()
 	if cell_form_id != 0:
@@ -560,12 +342,12 @@ func _can_release_exterior_transition(generation: int, terrain_status: TerrainSt
 ## nodes either (tried; Godot has no per-node enable/disable for those, so
 ## having two simultaneously in the tree was ambiguous about which won).
 func _set_exterior_environment(is_exterior: bool) -> void:
-	if _sun != null:
-		_sun.visible = is_exterior
+	if sun != null:
+		sun.visible = is_exterior
 	if _interior_directional_light != null:
 		_interior_directional_light.visible = false
-	if _world_environment != null:
-		_world_environment.environment = EXTERIOR_ENVIRONMENT if is_exterior else INTERIOR_ENVIRONMENT
+	if world_environment != null:
+		world_environment.environment = EXTERIOR_ENVIRONMENT if is_exterior else INTERIOR_ENVIRONMENT
 
 ## CELL.XCLL stores the directional source as Bethesda/Gamebryo X and Z
 ## Euler degrees.  The named XY field is the first (X) rotation in the
@@ -578,7 +360,7 @@ func _set_exterior_environment(is_exterior: bool) -> void:
 ## placements with no additional half-turn.
 static func _xcll_directional_basis(rotation_xy_degrees: int, rotation_z_degrees: int) -> Basis:
 	var raw_rotation := Vector3(deg_to_rad(float(rotation_xy_degrees)), 0.0, deg_to_rad(float(rotation_z_degrees)))
-	return GamebryoMeshResolver.refr_root_basis() * GamebryoMeshResolver.refr_basis(raw_rotation)
+	return EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * EsmReferencePhysicaliser.authored_rotation_basis(raw_rotation)
 
 ## CELL.XCLL's own per-cell authored ambient color, layered on top of the
 ## shared INTERIOR_ENVIRONMENT.tres baseline (energy/tonemap/SDFGI/SSAO/etc
@@ -592,8 +374,8 @@ static func _xcll_directional_basis(rotation_xy_degrees: int, rotation_z_degrees
 ## Only called for interior (CellStreamerV2) loads -- WorldStreamer's exterior
 ## cells use EXTERIOR_ENVIRONMENT's own flat sky-driven lighting instead.
 func _apply_cell_lighting(cell_form_id: int) -> void:
-	var esm := _typed_esm_reader()
-	if _world_environment == null or esm == null:
+	var esm: EsmReader = EsmServer.reader
+	if world_environment == null or esm == null:
 		return
 	var lighting: Dictionary = esm.get_cell_lighting_data(cell_form_id)
 	if lighting.is_empty():
@@ -623,7 +405,7 @@ func _apply_cell_lighting(cell_form_id: int) -> void:
 		env.fog_depth_curve = maxf(float(lighting.get("fog_power", 1.0)), 0.001)
 	else:
 		env.fog_enabled = false
-	_world_environment.environment = env
+	world_environment.environment = env
 
 func _apply_xcll_directional_light(lighting: Dictionary) -> void:
 	if _interior_directional_light == null:
@@ -645,10 +427,10 @@ func _apply_xcll_directional_light(lighting: Dictionary) -> void:
 ## {} for interior cells -- a real, valid case, not an error, per its own
 ## doc comment in esm_reader_gd.h).
 func _update_cell_hud(cell_form_id: int) -> void:
-	if _cell_label == null:
+	if cell_label == null:
 		return
 	_hud_cell_form_id = cell_form_id
-	var esm := _typed_esm_reader()
+	var esm: EsmReader = EsmServer.reader
 	if esm == null:
 		return
 	var editor_id: String = esm.get_cell_editor_id(cell_form_id)
@@ -656,7 +438,7 @@ func _update_cell_hud(cell_form_id: int) -> void:
 	var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
 	if not grid.is_empty():
 		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
-	_cell_label.text = "cell: " + label
+	cell_label.text = "cell: " + label
 
 ## Converts a raw XTEL destination into Godot world space for an EXTERIOR
 ## landing cell -- unlike _convert_authored_spawn_transform() below, there's no
@@ -723,22 +505,22 @@ func _find_fallback_spawn_transform() -> Dictionary:
 ## forward). Set HEAD's own rotation.y instead, and leave the body's
 ## rotation untouched, so both stay in sync.
 func reposition_player(pos: Vector3, rot: Vector3) -> void:
-	var player := _get_character_body()
-	if player == null:
+	var body := _get_character_body()
+	if body == null:
 		push_warning("game.gd: no CharacterBody3D found to reposition")
 		return
-	if player.has_method("teleport"):
-		player.teleport(pos)
+	if body.has_method("teleport"):
+		body.teleport(pos)
 	else:
-		player.global_position = pos
-	if "camera_pitch" in player:
-		player.camera_pitch = 0.0
-	if "HEAD" in player and player.HEAD != null:
-		player.HEAD.rotation.y = rot.y
+		body.global_position = pos
+	if "camera_pitch" in body:
+		body.camera_pitch = 0.0
+	if "HEAD" in body and body.HEAD != null:
+		body.HEAD.rotation.y = rot.y
 	else:
-		player.rotation.y = rot.y
-	if "velocity" in player:
-		player.velocity = Vector3.ZERO
+		body.rotation.y = rot.y
+	if "velocity" in body:
+		body.velocity = Vector3.ZERO
 
 ## This used to recurse from Game through its entire subtree. Character is
 ## after CellStreamerV2 in game.tscn, so every lookup first traversed streamed
@@ -746,10 +528,7 @@ func reposition_player(pos: Vector3, rot: Vector3) -> void:
 ## of profiler calls. Re-resolve only the authored direct child if the cache
 ## was invalidated by a future character replacement.
 func _get_character_body() -> CharacterBody3D:
-	if is_instance_valid(_character_body):
-		return _character_body
-	_character_body = get_node_or_null(^"Character") as CharacterBody3D
-	return _character_body
+	return player if is_instance_valid(player) else null
 
 ## Returns the currently-loaded cell's combined world-space AABB (from its
 ## MeshInstance3D descendants), or null if nothing is loaded / has no

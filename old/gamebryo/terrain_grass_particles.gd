@@ -46,14 +46,14 @@ func _init(p_terrain: Terrain3D, p_bridge: Terrain3DBridge, p_esm: EsmReader, p_
 ## grass definition can be linked by more than one terrain texture, hence the
 ## per-variant slot set rather than one guessed source texture.
 func observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
-	_observe_cell(cell_form_id, source_coord)
+	await _observe_cell(cell_form_id, source_coord)
 	_update_coverage_visibility()
 
 ## Region publication discovers several contributing cells at once. Defer the
 ## expensive material rebind and coverage update until the batch is complete.
 func observe_cells(cells: Array[Dictionary]) -> void:
 	for cell: Dictionary in cells:
-		_observe_cell(int(cell.get("cell_form_id", 0)), cell.get("coord", Vector2i.ZERO))
+		await _observe_cell(int(cell.get("cell_form_id", 0)), cell.get("coord", Vector2i.ZERO))
 	_update_coverage_visibility()
 
 ## Catalogue discovery records relationships only. Terrain assets and emitters
@@ -68,7 +68,7 @@ func update_coverage(center: Vector2i, committed_nearby_cells: Array[Dictionary]
 		var coord: Vector2i = cell.get("coord", Vector2i.ZERO)
 		next_cells[coord] = true
 		if not _coverage_cells.has(coord):
-			_observe_cell(int(cell.get("cell_form_id", 0)), coord)
+			await _observe_cell(int(cell.get("cell_form_id", 0)), coord)
 	if next_cells == _coverage_cells:
 		return
 	_coverage_cells = next_cells
@@ -85,6 +85,7 @@ func set_enabled(enabled: bool, restart_emitters := true) -> void:
 	for record: Dictionary in _emitters.values():
 		(record["node"] as GPUParticles3D).emitting = enabled and restart_emitters and (record["node"] as GPUParticles3D).visible
 
+## Coroutine: may await ground textures before resolving LTEX slots.
 func _observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
 	var land: Dictionary = esm.get_land_data(cell_form_id)
 	if land.is_empty():
@@ -97,6 +98,10 @@ func _observe_cell(cell_form_id: int, source_coord: Vector2i) -> void:
 		var ltex_id: int = int(layer.get("ltex_form_id", 0))
 		if ltex_id != 0:
 			ltex_ids[ltex_id] = true
+	# Slot resolution is synchronous and will refuse an LTEX whose texture was
+	# never prefetched. Publication normally warms these already, so this is
+	# usually a no-op that returns without suspending.
+	await bridge.ensure_ltex_textures(ltex_ids.keys())
 	for ltex_id: int in ltex_ids:
 		var slot: int = bridge.get_ltex_slot(ltex_id)
 		if slot < 0:

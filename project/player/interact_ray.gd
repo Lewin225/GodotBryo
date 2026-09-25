@@ -40,10 +40,7 @@ func _update_target() -> void:
 		if is_instance_valid(player_body) and (collider == player_body or player_body.is_ancestor_of(collider as Node)):
 			collider = null
 		else:
-			target = collider
-			if collider is GamebryoCollisionBody or collider is GamebryoRigidBody:
-				target = collider.owner_ref
-			target = semantic_target(target)
+			target = semantic_target(collider)
 			if is_instance_valid(player_body) and (target == player_body or (target is Node and player_body.is_ancestor_of(target))):
 				target = null
 				collider = null
@@ -59,9 +56,8 @@ func _update_target() -> void:
 		target_changed.emit(current_target, current_collider, current_type, current_action)
 
 
-## NifServer collision is deliberately an implementation child of a semantic
-## EsmNode. Controllers interact with that placement node, never the nested
-## StaticBody3D that happened to receive the physics hit.
+## Interactions happen on the semantic EsmNode, Not the collider
+## Searches upwards from the collider till we reach one or nothing
 static func semantic_target(target: Object) -> Object:
 	if not target is Node:
 		return target
@@ -74,6 +70,7 @@ static func semantic_target(target: Object) -> Object:
 
 
 func get_interact_info() -> Dictionary:
+	# Used by the ui to show interaction hints. Should be removed once that debug feature is removed
 	_update_target()
 	if current_target == null:
 		return {}
@@ -88,29 +85,22 @@ func get_interact_info() -> Dictionary:
 
 
 func get_interaction_type(target: Object) -> StringName:
+	# Used by the ui to show interaction hints. Should be removed once that debug feature is removed
 	if target == null:
 		return &"none"
-	if target is ItemNode:
-		return &"item"
 	if target is EsmItemNode:
 		return &"item"
-	if target is DoorNode:
-		return &"door"
 	if target is EsmDoorNode:
 		return &"door"
-	if target is ContainerNode:
-		return &"container"
 	if target is EsmContainerNode:
 		return &"container"
-	if target is TerminalNode:
-		return &"terminal"
 	if target is EsmTerminalNode:
 		return &"terminal"
-	if target is TalkingActivatorNode:
+	if target is EsmTalkingActivatorNode:
 		return &"talk"
-	if target is ActivatorNode:
+	if target is EsmActivatorNode:
 		return &"activator"
-	if target is FurnitureNode:
+	if target is EsmFurnitureNode:
 		return &"furniture"
 	if target.has_method("pickup"):
 		return &"item"
@@ -118,38 +108,28 @@ func get_interaction_type(target: Object) -> StringName:
 		return &"activate"
 	return &"none"
 
-
 func get_interaction_action(target: Object) -> String:
+	# Used by the ui to show interaction hints. Should be removed once that debug feature is removed
 	if target == null:
 		return ""
-	if target is ItemNode or target.has_method("pickup"):
+	if target is EsmItemNode or target.has_method("pickup"):
 		return ("🖐️ " if use_emojis else "") + "Pick Up"
-	if target is EsmItemNode:
-		return ("🖐️ " if use_emojis else "") + "Pick Up"
-	if target is DoorNode:
-		var prefix: String = "🚪 " if use_emojis else ""
-		return prefix + ("Close" if target.is_open else "Open")
 	if target is EsmDoorNode:
 		var prefix: String = "🚪 " if use_emojis else ""
 		var door_ref := (target as EsmDoorNode).reference as DoorReference
 		return prefix + ("Close" if door_ref != null and door_ref.is_open else "Open")
-	if target is ContainerNode:
-		return ("📦 " if use_emojis else "") + "Search"
 	if target is EsmContainerNode:
 		return ("📦 " if use_emojis else "") + "Search"
-	if target is TerminalNode:
-		return ("💻 " if use_emojis else "") + "Access"
 	if target is EsmTerminalNode:
 		return ("💻 " if use_emojis else "") + "Access"
-	if target is TalkingActivatorNode:
+	if target is EsmTalkingActivatorNode:
 		return ("💬 " if use_emojis else "") + "Talk"
-	if target is FurnitureNode:
-		var name_lower: String = String((target as Node).name).to_lower() if target is Node else ""
-		var desc_lower: String = String(target.get("editor_description")).to_lower() if target.get("editor_description") != null else ""
-		if "bed" in name_lower or "cot" in name_lower or "mattress" in name_lower or "bed" in desc_lower:
-			return ("🛏️ " if use_emojis else "") + "Sleep"
-		return ("🪑 " if use_emojis else "") + "Sit"
-	if target is ActivatorNode:
+	if target is EsmFurnitureNode:
+		# FURN's authored marker_flags carry the real sit/sleep/lean distinction.
+		# Until those bytes are decoded this stays one verb rather than guessing
+		# from the node's name, which is what the v0 path did.
+		return ("🪑 " if use_emojis else "") + "Use"
+	if target is EsmActivatorNode:
 		return ("⚡ " if use_emojis else "") + "Activate"
 	if target.has_method("activate"):
 		var prefix: String = "🔘 " if use_emojis else ""

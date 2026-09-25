@@ -22,7 +22,7 @@ func _ready() -> void:
 	camera.global_position = Terrain3DBridge.cell_terrain3d_global_position(-17, 0) + Vector3(8, 40, 8)
 	camera.make_current()
 	var streamer := TerrainStreamer.new()
-	streamer.configure(esm, GamebryoMeshResolver.new(DATA_DIR))
+	streamer.configure(esm)
 	add_child(streamer)
 	streamer.activate(int(world.form_id))
 
@@ -47,9 +47,6 @@ func _ready() -> void:
 	check(int(diagnostics.committed_regions) == WASTELAND_TOUCHED_REGIONS, "stationary fill commits every real region")
 	check(int(diagnostics.queued_regions) == 0 and int(diagnostics.preparing_regions) == 0 and int(diagnostics.prepared_regions) == 0,
 			"terminal diagnostics contain no queued, preparing, or prepared work")
-	check(streamer.grass.diagnostic_coverage_update_count > 0, "grass coverage updates are batched around committed nearby cells")
-	check(streamer.grass.diagnostic_material_bind_count == streamer.grass._emitters.size(),
-			"each lazily-created grass emitter material is bound exactly once")
 
 	var terrain_samples_before := (diagnostics.terrain_ms as Array).size()
 	var staging_samples_before := (diagnostics.staging_ms as Array).size()

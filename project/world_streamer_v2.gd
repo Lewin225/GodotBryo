@@ -14,7 +14,13 @@ signal streaming_settled
 
 const RADIUS_UNLOAD_FLOOR := 5.0
 const CHECK_INTERVAL_SEC := 0.1
-const CELL_SIZE_METERS := CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
+## Exterior cell size. 4096 Gamebryo units at 70 units/m; native/src/common/units.h
+## is the authority for that ratio and documents how it was confirmed. Defined
+## locally rather than imported from the legacy v0 CellStreamBuilder, which would
+## drag the whole /gamebryo object-registry chain into this streamer.
+const CELL_SIZE_UNITS := 4096.0
+const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
+const CELL_SIZE_METERS := CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS
 const SPAWN_REFR := 1 << 0
 const SPAWN_ACHR := 1 << 1
 const SPAWN_CREA := 1 << 2
@@ -162,7 +168,7 @@ func set_paused(paused: bool, hide_when_paused := true) -> void:
 ## Called by EsmNode when NifServer delivers a tree after a stream-state
 ## change.
 func apply_streaming_state_to_subtree(node: Node) -> void:
-	CellStreamBuilder.set_collision_disabled(node, _paused and _pause_hides)
+	EsmNode.set_collision_disabled(node, _paused and _pause_hides)
 
 func _process(delta: float) -> void:
 	if not is_active() or _paused or not _esm_is_ready():

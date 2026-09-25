@@ -34,7 +34,7 @@ func _ready() -> void:
 	camera.global_position = Terrain3DBridge.cell_terrain3d_global_position(-17, 0) + Vector3(8, 40, 8)
 	camera.make_current()
 	var streamer := TerrainStreamer.new()
-	streamer.configure(esm, GamebryoMeshResolver.new(DATA_DIR))
+	streamer.configure(esm)
 	add_child(streamer)
 	check(streamer._cache_family == TerrainStreamer.CACHE_FAMILY_PREFIX + GameDataConfig.ESM_FILE,
 		"cache family is derived from the configured master, without embedded worldspace IDs")
@@ -66,17 +66,14 @@ func _ready() -> void:
 	var retained: Dictionary = streamer.get_diagnostics().retained_worldspaces[int(wasteland.form_id)]
 	check(retained.cache_family == streamer._cache_family and not retained.active,
 		"outgoing Wasteland entry is retained in the configured-master cache family")
-	check(not retained.terrain_visible and not retained.terrain_physics and int(retained.collision_mode) == Terrain3DCollision.DISABLED
-			and not retained.grass_processing and int(retained.emitting_emitters) == 0,
-		"inactive terrain disables visibility, physics, collision, grass processing, and emitters")
+	check(not retained.terrain_visible and not retained.terrain_physics and int(retained.collision_mode) == Terrain3DCollision.DISABLED,
+		"inactive terrain disables visibility, physics, and collision")
 	var inactive_collision_updates := int(retained.collision_updates)
-	var inactive_grass_updates := int(retained.grass_coverage_updates)
 	for unused in range(30):
 		await get_tree().process_frame
 	retained = streamer.get_diagnostics().retained_worldspaces[int(wasteland.form_id)]
-	check(int(retained.collision_updates) == inactive_collision_updates and int(retained.grass_coverage_updates) == inactive_grass_updates
-			and int(retained.emitting_emitters) == 0,
-		"inactive entry accumulates zero collision, grass coverage, or emitting-particle work")
+	check(int(retained.collision_updates) == inactive_collision_updates,
+		"inactive entry accumulates zero collision work")
 	# Freeside remained active while the inactive-Wasteland audit ran above. Take
 	# the stale-result baseline immediately before its generation is superseded.
 	var freeside_committed_before_switch := int(streamer.get_diagnostics().committed_regions)

@@ -46,6 +46,19 @@ var _active_visual_detail := -1
 var _generated_children: Array[Node] = []
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
+## Recursively toggles every CollisionShape3D in a subtree.
+##
+## Streamers use this to keep a tile's collision inert while it is still being
+## built, and to drop collision for paused content without tearing the nodes
+## down. Static because it walks whatever subtree it is handed, including the
+## NIF-generated children that are not EsmNodes themselves.
+static func set_collision_disabled(node: Node, disabled: bool) -> void:
+	if node is CollisionShape3D:
+		node.disabled = disabled
+	for child in node.get_children():
+		set_collision_disabled(child, disabled)
+
+
 ## Default activation hook for all physicalized ESM nodes.
 ## Type-specific nodes override this for their native default behavior.
 func activate(_actor: Node = null) -> Dictionary:
@@ -231,7 +244,7 @@ func _on_nif_visual_ready(tree: Node3D) -> void:
 		instance.visibility_range_begin = near_cutoff
 		instance.visibility_range_begin_margin = near_margin
 		instance.visibility_range_end = 0.0
-	CellStreamBuilder.set_collision_disabled(tree, true)
+	set_collision_disabled(tree, true)
 
 func _clear_generated_children() -> void:
 	var children_to_clear: Array[Node] = _generated_children.duplicate()

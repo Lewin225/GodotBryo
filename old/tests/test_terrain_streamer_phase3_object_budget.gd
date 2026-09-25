@@ -34,7 +34,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	var terrain_streamer := TerrainStreamer.new()
-	terrain_streamer.configure(esm, resolver)
+	terrain_streamer.configure(esm)
 	add_child(terrain_streamer)
 	var world_streamer := WorldStreamer.new()
 	world_streamer.configure(esm, resolver)

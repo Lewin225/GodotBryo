@@ -140,7 +140,7 @@ func find_ref_by_form_id(refr_form_id: int) -> EsmReference:
 func apply_streaming_state_to_subtree(node: Node) -> void:
 	var loading_collision := _loading_root != null and is_instance_valid(_loading_root) \
 		and (_loading_root == node or _loading_root.is_ancestor_of(node))
-	CellStreamBuilder.set_collision_disabled(node, loading_collision)
+	EsmNode.set_collision_disabled(node, loading_collision)
 
 
 func _begin_load(cell_form_id: int, generation: int) -> void:
@@ -172,7 +172,7 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	# The old root remains visible and solid through every semantic placement.
 	# Only now expose and enable the replacement, then free the old sibling
 	# before assigning CurrentCell so Godot cannot rename it on collision.
-	CellStreamBuilder.set_collision_disabled(root, false)
+	EsmNode.set_collision_disabled(root, false)
 	root.visible = true
 	if _current != null and is_instance_valid(_current):
 		_current.free()

@@ -79,7 +79,7 @@ func _register_defaults() -> void:
 		if node == null:
 			return 0
 		node.visible = true
-		CellStreamBuilder.set_collision_disabled(node, false)
+		EsmNode.set_collision_disabled(node, false)
 		return 1)
 
 	register("Disable", func(_a, ctx: ScriptExecutionContext):
@@ -87,7 +87,7 @@ func _register_defaults() -> void:
 		if node == null:
 			return 0
 		node.visible = false
-		CellStreamBuilder.set_collision_disabled(node, true)
+		EsmNode.set_collision_disabled(node, true)
 		return 1)
 
 	register("GetDisabled", func(_a, ctx: ScriptExecutionContext):

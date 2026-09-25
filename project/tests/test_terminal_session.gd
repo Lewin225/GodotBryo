@@ -19,8 +19,7 @@ func _ready() -> void:
 	add_child(session)
 	await get_tree().process_frame
 
-	var note_terminal := TerminalNode.new()
-	note_terminal.configure_terminal(esm.get_terminal_data(0x166B56)) # VHDStealthSuitTerminal
+	var note_terminal := _typed_terminal(0x166B56) # VHDStealthSuitTerminal
 	session.open_session(note_terminal, esm, player)
 	check(session.visible, "opening a terminal shows the session overlay")
 	check(not player.is_physics_processing(), "opening a terminal suspends player physics input")
@@ -36,8 +35,7 @@ func _ready() -> void:
 	session.close_session()
 	check(player.is_physics_processing(), "exiting restores player physics input")
 
-	var submenu_terminal := TerminalNode.new()
-	submenu_terminal.configure_terminal(esm.get_terminal_data(0x17B7A0)) # P04CompanionFireTerminal
+	var submenu_terminal := _typed_terminal(0x17B7A0) # P04CompanionFireTerminal
 	session.open_session(submenu_terminal, esm, player)
 	check(session._view == TerminalSession.View.WELCOME, "non-empty DESC opens a welcome page first")
 	session._select_current()
@@ -47,13 +45,7 @@ func _ready() -> void:
 	check(session._view == TerminalSession.View.WELCOME and session._terminal_stack.size() == 2, "TNAM opens the authored submenu by FormID")
 	session.close_session()
 
-	var typed_base := TerminalBase.new()
-	typed_base.form_id = 0x166B56 # VHDStealthSuitTerminal
-	var typed_reference := TerminalReference.new()
-	typed_reference.base = typed_base
-	typed_reference.base_form_id = typed_base.form_id
-	var typed_terminal := EsmTerminalNode.new()
-	typed_terminal.configure(typed_reference)
+	var typed_terminal := _typed_terminal(0x166B56) # VHDStealthSuitTerminal
 	session.open_session(typed_terminal, esm, player)
 	check(session.visible and session._choices.item_count == 3, "typed EsmTerminalNode opens the same terminal session")
 	session.close_session()
@@ -62,6 +54,18 @@ func _ready() -> void:
 	session.queue_free()
 	player.queue_free()
 	_finish()
+
+## TerminalSession takes base-record data from the typed node's reference; the
+## v0 TerminalNode path it used to also accept is gone.
+func _typed_terminal(base_form_id: int) -> EsmTerminalNode:
+	var base := TerminalBase.new()
+	base.form_id = base_form_id
+	var reference := TerminalReference.new()
+	reference.base = base
+	reference.base_form_id = base_form_id
+	var node := EsmTerminalNode.new()
+	node.configure(reference)
+	return node
 
 func _finish() -> void:
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

@@ -26,7 +26,7 @@ func _ready() -> void:
 	var streamer := TerrainStreamer.new()
 	streamer.load_radius = 3.0
 	streamer.tiles_per_frame = 64
-	streamer.configure(esm, resolver)
+	streamer.configure(esm)
 	add_child(streamer)
 	streamer.activate(int(wrld["form_id"]))
 	var deadline := Time.get_ticks_msec() + 30000
@@ -57,29 +57,22 @@ func _ready() -> void:
 	var cancel_status := await streamer.await_ready_for(int(wrld["form_id"]), CENTER + Vector2i(10, 0), cancel_generation)
 	check(cancel_status == TerrainStreamer.ReadyStatus.CANCELLED, "pause cancels an outstanding readiness wait")
 	check(not streamer.visible and not streamer.terrain.visible
-			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DISABLED
-			and not streamer.grass.visible and not streamer.grass.is_processing(),
-			"pause disables terrain/grass visibility, processing, and collision")
+			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DISABLED,
+			"pause disables terrain visibility, processing, and collision")
 	streamer.set_paused(false)
 	check(streamer.visible and streamer.terrain.visible and streamer.terrain.is_physics_processing()
-			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DYNAMIC_GAME
-			and streamer.grass.visible and streamer.grass.is_processing(),
-			"same-worldspace resume restores camera-driven physics and grass before queue work")
+			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DYNAMIC_GAME,
+			"same-worldspace resume restores camera-driven physics before queue work")
 	var supersede_generation := streamer.get_generation()
 	call_deferred("_deactivate_streamer", streamer)
 	var supersede_status := await streamer.await_ready_for(int(wrld["form_id"]), CENTER + Vector2i(10, 0), supersede_generation)
 	check(supersede_status == TerrainStreamer.ReadyStatus.SUPERSEDED, "deactivation supersedes an outstanding readiness wait")
 
-	var world_source := FileAccess.get_file_as_string("res://world_streamer.gd")
-	var code_lines := PackedStringArray()
-	for line in world_source.split("\n"):
-		if not line.strip_edges().begins_with("#"):
-			code_lines.append(line)
-	var code := "\n".join(code_lines)
-	check(code.find("Terrain3D") == -1 and code.find("Terrain3DBridge") == -1 and code.find("TerrainGrass") == -1,
-			"WorldStreamer executable code contains no terrain implementation calls")
-	check(code.count("terrain_streamer.") == 1 and code.find("terrain_streamer.request_terrain_priority(coord)") != -1,
-			"WorldStreamer has exactly one terrain interaction: the priority hint")
+	# Two source-inspection checks lived here, asserting the v0 world_streamer.gd
+	# contained no terrain implementation and exactly one terrain call. That file
+	# is no longer part of the project, so the assertions had no subject: reading
+	# it returned "" and the first check passed vacuously. The separation they
+	# guarded is now structural -- v0 is out of the Godot project entirely.
 	var game = preload("res://game.gd").new()
 	game._transition_generation = 8
 	check(not game._can_release_exterior_transition(7, TerrainStreamer.ReadyStatus.READY, true),

@@ -36,7 +36,7 @@ var _suppress_config_signals := false
 
 
 func _ready() -> void:
-	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamer") as WorldStreamerV2
+	_world_streamer = get_tree().root.get_node_or_null("Game/WorldStreamerV2") as WorldStreamerV2
 	_nif_server = get_tree().root.get_node_or_null("NifServer")
 	_load_radius.value_changed.connect(func(value: float) -> void: _set_config("load_radius", value))
 	_lod_radius.value_changed.connect(func(value: float) -> void: _set_config("lod_load_radius", value))

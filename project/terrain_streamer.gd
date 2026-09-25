@@ -14,7 +14,13 @@ const CHECK_INTERVAL_SEC := 0.1
 const FAR_SLOT_INTERVAL := 4
 const MAX_WORKERS := 8
 const DEFAULT_REGIONS_PER_FRAME := 1
-const CELL_SIZE_METERS := CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
+## Exterior cell size. 4096 Gamebryo units at 70 units/m; native/src/common/units.h
+## is the authority for that ratio and documents how it was confirmed. Defined
+## locally rather than imported from the legacy v0 CellStreamBuilder, which would
+## drag the whole /gamebryo object-registry chain into this streamer.
+const CELL_SIZE_UNITS := 4096.0
+const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
+const CELL_SIZE_METERS := CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS
 
 ## Cache families are derived from the configured master, never from authored
 ## EditorIDs/FormID ranges embedded in source. This keeps worldspace discovery
@@ -27,11 +33,9 @@ const CACHE_FAMILY_PREFIX := "esm:"
 @export var terrain3d_debug_dump_grid := Vector2i(999999, 999999)
 
 var esm: EsmReader
-var resolver: GamebryoMeshResolver
 var terrain: Terrain3D
 var texture_pool: Terrain3DTexturePool
 var bridge: Terrain3DBridge
-var grass: TerrainGrassParticles
 var diagnostic_terrain_ms: Array[float] = []
 var diagnostic_publication_ms: Array[float] = []
 var diagnostic_staging_ms: Array[float] = []
@@ -74,10 +78,9 @@ var _cancelled_generations: Dictionary = {}
 var _ready_collision_centers: Dictionary = {}
 var _terrain_unavailable := false
 
-func configure(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver) -> void:
+func configure(esm_reader: EsmReader) -> void:
 	esm = esm_reader
-	resolver = mesh_resolver
-	_configured = esm != null and resolver != null
+	_configured = esm != null
 	if _configured:
 		# GameDataConfig is the authoritative selected master for this runtime.
 		# The value is a source identifier, not a list of content records.
@@ -91,7 +94,7 @@ func _ready() -> void:
 	if not fallback_esm.open(data_dir + GameDataConfigScript.ESM_FILE):
 		push_error("TerrainStreamer fallback could not open FalloutNV.esm")
 		return
-	configure(fallback_esm, GamebryoMeshResolver.new(data_dir))
+	configure(fallback_esm)
 
 func activate(worldspace_form_id: int) -> void:
 	if _active_wrld_form_id == worldspace_form_id:
@@ -133,10 +136,8 @@ func _create_entry(worldspace_form_id: int) -> void:
 	_terrain_unavailable = false
 	terrain = Terrain3DBridge.create_terrain(self)
 	texture_pool = Terrain3DTexturePool.new(terrain)
-	bridge = Terrain3DBridge.new(esm, resolver, texture_pool)
+	bridge = Terrain3DBridge.new(esm, texture_pool)
 	bridge.debug_dump_grid = terrain3d_debug_dump_grid
-	grass = TerrainGrassParticles.new(terrain, bridge, esm, resolver)
-	add_child(grass)
 	_bind_camera()
 	terrain.set_physics_process(true)
 	terrain.set_collision_mode(Terrain3DCollision.DYNAMIC_GAME)
@@ -159,8 +160,6 @@ func _suspend_active_entry() -> void:
 		terrain.visible = false
 		terrain.set_physics_process(false)
 		terrain.set_collision_mode(Terrain3DCollision.DISABLED)
-	if grass != null:
-		grass.set_enabled(false)
 	var entry := _capture_active_entry()
 	entry["active"] = false
 	_worldspace_entries[_active_wrld_form_id] = entry
@@ -176,11 +175,6 @@ func _resume_active_entry() -> void:
 		_bind_camera()
 		terrain.set_physics_process(true)
 		terrain.set_collision_mode(Terrain3DCollision.DYNAMIC_GAME)
-	if grass != null:
-		# Enable the controller before coverage, but leave emitters stopped until
-		# that coverage pass identifies the current camera's committed textures.
-		grass.set_enabled(true, false)
-		_update_grass_coverage()
 	_requeue_uncommitted_regions()
 	_ensure_worker_pool()
 	_check_streaming()
@@ -192,7 +186,7 @@ func _capture_active_entry() -> Dictionary:
 	return {
 		"worldspace_form_id": _active_wrld_form_id,
 		"cache_family": _cache_family,
-		"active": true, "terrain": terrain, "texture_pool": texture_pool, "bridge": bridge, "grass": grass,
+		"active": true, "terrain": terrain, "texture_pool": texture_pool, "bridge": bridge,
 		"generation": _generation, "resident": _resident, "desired_cells": _desired_cells,
 		"usable_cells": _usable_cells, "touched_regions": _touched_regions,
 		"committed_regions": _committed_regions, "region_states": _region_states,
@@ -212,7 +206,6 @@ func _restore_entry(entry: Dictionary) -> void:
 	terrain = entry.terrain as Terrain3D
 	texture_pool = entry.texture_pool as Terrain3DTexturePool
 	bridge = entry.bridge as Terrain3DBridge
-	grass = entry.grass as TerrainGrassParticles
 	_generation = int(entry.generation)
 	_resident = entry.resident
 	_desired_cells = entry.desired_cells
@@ -246,7 +239,6 @@ func _clear_active_references() -> void:
 	terrain = null
 	texture_pool = null
 	bridge = null
-	grass = null
 	_resident = {}; _desired_cells = {}; _usable_cells = {}; _touched_regions = {}
 	_committed_regions = {}; _region_states = {}; _region_cells = {}; _priority_hints = {}
 	_prepared_regions = []; _logical_slots = {}; _catalogue = {}; _catalogue_failed = false; _catalogue_error = ""; _idle_stagers = []
@@ -259,10 +251,7 @@ func _clear_active_references() -> void:
 	diagnostic_collision_updates = 0
 
 func _free_entry(entry: Dictionary) -> void:
-	var entry_grass := entry.get("grass") as TerrainGrassParticles
 	var entry_terrain := entry.get("terrain") as Terrain3D
-	if entry_grass != null and is_instance_valid(entry_grass):
-		entry_grass.free()
 	if entry_terrain != null and is_instance_valid(entry_terrain):
 		entry_terrain.free()
 
@@ -278,11 +267,6 @@ func set_paused(paused: bool) -> void:
 		terrain.visible = not paused
 		terrain.set_physics_process(not paused)
 		terrain.set_collision_mode(Terrain3DCollision.DISABLED if paused else Terrain3DCollision.DYNAMIC_GAME)
-	if grass != null:
-		if paused:
-			grass.set_enabled(false)
-		else:
-			grass.set_enabled(true, false)
 	if paused:
 		for location: Vector2i in _region_states:
 			if _region_states[location] in ["queued", "preparing", "prepared"]:
@@ -299,7 +283,6 @@ func set_paused(paused: bool) -> void:
 		if _catalogue_needs_rebuild():
 			_start_catalogue_job()
 		else:
-			_update_grass_coverage()
 			_requeue_uncommitted_regions()
 			_ensure_worker_pool()
 			_check_streaming()
@@ -371,7 +354,6 @@ func get_diagnostics() -> Dictionary:
 	for worldspace_id: int in _worldspace_entries:
 		var entry: Dictionary = _worldspace_entries[worldspace_id]
 		var entry_terrain := entry.get("terrain") as Terrain3D
-		var entry_grass := entry.get("grass") as TerrainGrassParticles
 		var entry_committed: Dictionary = entry.get("committed_regions", {})
 		var entry_pool := entry.get("texture_pool") as Terrain3DTexturePool
 		retained_entries[worldspace_id] = {
@@ -383,10 +365,6 @@ func get_diagnostics() -> Dictionary:
 			"terrain_visible": entry_terrain.visible if entry_terrain != null else false,
 			"terrain_physics": entry_terrain.is_physics_processing() if entry_terrain != null else false,
 			"collision_mode": entry_terrain.get_collision_mode() if entry_terrain != null else Terrain3DCollision.DISABLED,
-			"grass_processing": entry_grass.is_processing() if entry_grass != null else false,
-			"grass_emitters": entry_grass._emitters.size() if entry_grass != null else 0,
-			"grass_coverage_updates": entry_grass.diagnostic_coverage_update_count if entry_grass != null else 0,
-			"emitting_emitters": _count_emitting_emitters(entry_grass),
 			"idle_stagers": (entry.get("idle_stagers", []) as Array).size(),
 			"collision_updates": int(entry.get("collision_updates", 0)),
 		}
@@ -412,15 +390,6 @@ func get_diagnostics() -> Dictionary:
 		"texture_slots_used": texture_pool.used_slot_count() if texture_pool != null else 0,
 		"texture_entries": texture_pool.get_debug_texture_list() if texture_pool != null else [],
 	}
-
-func _count_emitting_emitters(entry_grass: TerrainGrassParticles) -> int:
-	if entry_grass == null:
-		return 0
-	var emitting := 0
-	for record: Dictionary in entry_grass._emitters.values():
-		if (record["node"] as GPUParticles3D).emitting:
-			emitting += 1
-	return emitting
 
 func _process(delta: float) -> void:
 	_poll_workers()
@@ -457,7 +426,6 @@ func _check_streaming() -> void:
 	var center: Variant = _current_grid_coord()
 	if center == null:
 		return
-	var center_changed: bool = center != _last_center
 	_last_center = center
 	_bind_camera()
 	_desired_cells.clear()
@@ -468,10 +436,6 @@ func _check_streaming() -> void:
 				continue
 			var coord: Vector2i = center + Vector2i(dx, dy)
 			_desired_cells[coord] = true
-	if center_changed:
-		#var _t_grass := ProfileScope.begin()
-		_update_grass_coverage()
-		#ProfileScope.end("TerrainStreamer._update_grass_coverage", _t_grass)
 
 func _start_catalogue_job() -> void:
 	if not _workers.is_empty():
@@ -490,6 +454,36 @@ func _start_catalogue_job() -> void:
 		holder[0] = {"stager": stager, "catalogue": stager.index_worldspace(worldspace)}
 	)
 	_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "catalogue", "stager_pool": _idle_stagers})
+
+## Every outstanding WorkerThreadPool task must be joined before this node goes
+## away.
+##
+## _poll_workers() only reaps tasks from _process(), and _process() stops at
+## get_tree().quit(). Anything still in _workers or _abandoned_tasks is then
+## never waited on: the node is freed, and with it the lambda's captured holder,
+## the stager pool and the native TerrainRegionStager that owns an open ESM
+## FILE* -- while a worker thread is still inside that task. The thread then
+## locks a mutex in freed memory, which surfaces as a SIGSEGV in
+## pthread_mutex_lock during engine shutdown, AFTER every check in the scene has
+## already passed. It reproduced only in scenes that pause or deactivate (both
+## call _abandon_workers(), which deliberately stops waiting) and then quit
+## before the tasks drained.
+##
+## Same hazard EsmServer documents for Thread, different primitive. These block,
+## and there is nothing to cancel -- the work is a bounded ESM read -- so
+## quitting mid-stage waits for that read rather than crashing.
+func _exit_tree() -> void:
+	_join_all_tasks()
+
+
+func _join_all_tasks() -> void:
+	for abandoned: Dictionary in _abandoned_tasks:
+		WorkerThreadPool.wait_for_task_completion(int(abandoned.task))
+	_abandoned_tasks.clear()
+	for worker: Dictionary in _workers:
+		WorkerThreadPool.wait_for_task_completion(int(worker.task))
+	_workers.clear()
+
 
 func _poll_workers() -> void:
 	for abandoned: Dictionary in _abandoned_tasks.duplicate():
@@ -560,7 +554,6 @@ func _finish_catalogue(payload: Dictionary) -> void:
 	var ids: PackedInt64Array = _catalogue.get("ltex_form_ids", PackedInt64Array())
 	for i in range(ids.size()):
 		_logical_slots[int(ids[i])] = i + 1
-	grass.discover_catalogue(ids)
 	var init_error := terrain.data.initialize_fixed_region_domain(_catalogue.get("region_domain", []))
 	if init_error != OK:
 		push_error("TerrainStreamer fixed-domain initialization failed: %s" % init_error)
@@ -658,13 +651,33 @@ func _start_worker_pool_initialization(count: int) -> void:
 		)
 		_workers.append({"task": task, "holder": holder, "generation": generation, "region": Vector2i.ZERO, "kind": "pool_init", "stager_pool": _idle_stagers})
 
+## Coroutine: publication awaits a region's ground textures.
+##
+## _publishing guards re-entry. _process() calls this without awaiting, so a
+## second frame can arrive while the first drain is still suspended on a
+## texture; without the guard both would pop from _prepared_regions and the
+## per-frame budget would stop meaning anything.
+var _publishing := false
+
 func _publish_prepared_regions() -> void:
+	if _publishing:
+		return
+	_publishing = true
+	var drain_generation := _generation
 	for unused in range(mini(regions_per_frame, _prepared_regions.size())):
+		if _prepared_regions.is_empty() or _generation != drain_generation:
+			break
 		var prepared: Dictionary = _prepared_regions.pop_front()
 		if int(prepared.generation) != _generation:
 			continue
-		if not _publish_worker_region(prepared.payload, prepared.location):
+		var published: bool = await _publish_worker_region(prepared.payload, prepared.location)
+		# The awaits above can outlive this generation; a teardown clears
+		# _prepared_regions, so re-queueing here would resurrect a stale region.
+		if _generation != drain_generation:
+			break
+		if not published:
 			_prepared_regions.append(prepared)
+	_publishing = false
 
 func _abandon_workers() -> void:
 	for worker: Dictionary in _workers:
@@ -682,13 +695,32 @@ func _count_region_state(state: String) -> int:
 			count += 1
 	return count
 
+## Coroutine. Returns false to defer: _publish_prepared_regions() re-queues the
+## region and retries next frame.
 func _publish_worker_region(payload: Dictionary, location: Vector2i) -> bool:
 	if not String(payload.get("error", "")).is_empty():
 		push_error("TerrainStreamer compose %s: %s" % [location, payload.error])
 		_region_states[location] = "cancelled"
 		return true
 	var started_us := Time.get_ticks_usec()
-	if not bridge.prepare_logical_slots(terrain, payload.get("used_ltex_form_ids", PackedInt64Array()), _logical_slots):
+	# Slot resolution below is synchronous and cannot fetch a texture itself, so
+	# every DDS this region needs is warmed and awaited first. TextureServer
+	# returns immediately for anything already resident, so a region whose
+	# textures are cached costs nothing here.
+	var used_ltex_form_ids: PackedInt64Array = payload.get("used_ltex_form_ids", PackedInt64Array())
+	var await_generation := _generation
+	var awaited_bridge := bridge
+	await bridge.ensure_ltex_textures(used_ltex_form_ids)
+	# Everything below touches `terrain` and `bridge`, and the await above can
+	# outlive a pause, a worldspace switch or a deactivate -- all of which free
+	# them. Resuming into freed nodes is a use-after-free, not a stale result:
+	# it crashed the engine at shutdown (SIGSEGV in pthread_mutex_lock) rather
+	# than failing visibly here. Consume the region so it is not retried against
+	# a torn-down streamer.
+	if _generation != await_generation or bridge != awaited_bridge \
+			or terrain == null or not is_instance_valid(terrain):
+		return true
+	if not bridge.prepare_logical_slots(terrain, used_ltex_form_ids, _logical_slots):
 		# Slot resolution is a deterministic main-thread operation. A false
 		# result is therefore a permanent publication failure, not a transient
 		# worker/resource condition; consuming the payload prevents a retry loop.
@@ -710,7 +742,6 @@ func _publish_worker_region(payload: Dictionary, location: Vector2i) -> bool:
 	for coord: Vector2i in _desired_cells:
 		if _usable_cells.has(coord) and _cell_is_committed(coord):
 			_resident[coord] = int(_usable_cells[coord])
-	_update_grass_coverage()
 	if _region_intersects_collision_area(location):
 		terrain.collision.update(true)
 		diagnostic_collision_updates += 1
@@ -723,20 +754,6 @@ func _region_intersects_collision_area(location: Vector2i) -> bool:
 		return false
 	var collision_radius_cells := float(terrain.collision_radius) / CELL_SIZE_METERS
 	return _region_distance_cells(location, _last_center) <= collision_radius_cells
-
-func _update_grass_coverage() -> void:
-	if grass == null or _last_center == null:
-		return
-	var cells: Array[Dictionary] = []
-	var bound := ceili(load_radius)
-	for dx in range(-bound, bound + 1):
-		for dy in range(-bound, bound + 1):
-			if not _within_radius(dx, dy, load_radius):
-				continue
-			var coord: Vector2i = _last_center + Vector2i(dx, dy)
-			if _usable_cells.has(coord) and _cell_is_committed(coord):
-				cells.append({"cell_form_id": int(_usable_cells[coord]), "coord": coord})
-	grass.update_coverage(_last_center, cells)
 
 func _regions_for_cell(coord: Vector2i) -> Array[Vector2i]:
 	var output: Array[Vector2i] = []

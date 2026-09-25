@@ -55,8 +55,13 @@ const QUADRANT_RANGES := [
 ]
 
 var esm: EsmReader
-var resolver: GamebryoMeshResolver
 var texture_pool: Terrain3DTexturePool
+
+## ltex_form_id -> {"diffuse": ImageTexture, "normal": ImageTexture}
+## Filled by ensure_ltex_textures() and read synchronously by _resolve_to_slot().
+## Slot resolution cannot await: it runs inside the frozen-slot/LUT bookkeeping,
+## which must not suspend partway through.
+var _ltex_textures: Dictionary = {}
 
 ## The N=7 ID maps store these stable LTEX slots, never the render-texture
 ## pool slot.  Two distinct LTEX records may share a DDS yet carry different
@@ -99,9 +104,8 @@ var _timing_pool_insert_ms: float = 0.0
 ## it's always obvious which cell (if any) is being watched.
 var debug_dump_grid: Vector2i = Vector2i(999999, 999999)
 
-func _init(esm_reader: EsmReader, mesh_resolver: GamebryoMeshResolver, pool: Terrain3DTexturePool) -> void:
+func _init(esm_reader: EsmReader, pool: Terrain3DTexturePool) -> void:
 	esm = esm_reader
-	resolver = mesh_resolver
 	texture_pool = pool
 	_render_slot_by_ltex_slot.resize(MAX_LTEX_SLOTS)
 	_render_slot_by_ltex_slot.fill(0)
@@ -154,6 +158,9 @@ static func _flipped_row(row: int) -> int:
 ## Returns false (no-op) if the cell has no LAND (interior cell, or a real exterior
 ## cell with no terrain data) -- a valid case, not an error, same as
 ## CellStreamBuilder.build_terrain()'s own null-return convention.
+##
+## Coroutine: awaits this cell's ground textures before resolving slots, since
+## slot resolution is synchronous and refuses an unprefetched LTEX.
 func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	var phase_started_us := 0
 	var total_started_us := 0
@@ -175,6 +182,12 @@ func import_cell(terrain: Terrain3D, cell_form_id: int) -> bool:
 	var heights: PackedFloat32Array = land.get("heights", PackedFloat32Array())
 	if heights.size() != GRID_SIZE * GRID_SIZE:
 		return false
+	var cell_ltex_ids: Dictionary = {}
+	for ltex in land.get("quadrant_base_ltex", PackedInt64Array()):
+		cell_ltex_ids[int(ltex)] = true
+	for layer: Dictionary in land.get("alpha_layers", []):
+		cell_ltex_ids[int(layer.get("ltex_form_id", 0))] = true
+	await ensure_ltex_textures(cell_ltex_ids.keys())
 	if collect_import_timings:
 		last_import_timings["land_lookup_ms"] = float(Time.get_ticks_usec() - phase_started_us) / 1000.0
 		phase_started_us = Time.get_ticks_usec()
@@ -598,6 +611,46 @@ func prewarm_textures(wrld_form_id: int, grid_min: int = -65, grid_max: int = 64
 				_resolve_ltex_slot(int(layer["ltex_form_id"]))
 	return texture_pool.used_slot_count() - before
 
+## Warms every DDS the given LTEX records need, then awaits them all.
+##
+## Warm-then-await is TextureServer's documented pattern: warming the whole set
+## first lets it decode concurrently, where awaiting one at a time would
+## serialise the set behind one decode each. alpha_safe is false throughout --
+## ground textures are DXT3/DXT5, which reach the GPU intact, and none rely on
+## DXT1 punch-through alpha.
+##
+## Must be awaited before any slot resolution touching these LTEX records.
+func ensure_ltex_textures(ltex_form_ids) -> void:
+	var wanted: Dictionary = {}
+	for raw in ltex_form_ids:
+		var ltex_id := int(raw)
+		if ltex_id != 0 and not _ltex_textures.has(ltex_id):
+			wanted[ltex_id] = true
+	if wanted.is_empty():
+		return
+
+	var paths: Dictionary = {}
+	for ltex_id: int in wanted:
+		var diffuse := esm.resolve_ltex_texture_path(ltex_id)
+		var normal := esm.resolve_ltex_normal_texture_path(ltex_id)
+		var diffuse_path := ("textures\\" + diffuse) if diffuse != "" else ""
+		var normal_path := ("textures\\" + normal) if normal != "" else ""
+		paths[ltex_id] = {"diffuse": diffuse_path, "normal": normal_path}
+		if diffuse_path != "":
+			TextureServer.warm(diffuse_path, false)
+		if normal_path != "":
+			TextureServer.warm(normal_path, false)
+
+	for ltex_id: int in paths:
+		var entry: Dictionary = paths[ltex_id]
+		var diffuse_tex: ImageTexture = null
+		var normal_tex: ImageTexture = null
+		if String(entry["diffuse"]) != "":
+			diffuse_tex = await TextureServer.request(entry["diffuse"], false)
+		if String(entry["normal"]) != "":
+			normal_tex = await TextureServer.request(entry["normal"], false)
+		_ltex_textures[ltex_id] = {"diffuse": diffuse_tex, "normal": normal_tex}
+
 func _resolve_to_slot(ltex_id: int) -> int:
 	if ltex_id == 0:
 		return -1
@@ -608,8 +661,16 @@ func _resolve_to_slot(ltex_id: int) -> int:
 		# visible, while the diagnostic identifies the authored identity.
 		push_error("Terrain3DBridge: LTEX %08X has no resolvable texture path; using pink fallback" % ltex_id)
 		return texture_pool.get_slot(null, "LTEX %08X (unresolved)" % ltex_id)
+	if not _ltex_textures.has(ltex_id):
+		# Slot resolution is synchronous by design, so it cannot fetch what was
+		# not prefetched. Refusing the slot is the safe outcome: assigning the
+		# fallback here would freeze a permanent pink slot for a texture that is
+		# merely late. Callers resolve this by awaiting ensure_ltex_textures().
+		push_error("Terrain3DBridge: LTEX %08X resolved before ensure_ltex_textures(); skipping" % ltex_id)
+		return -1
+	var cached: Dictionary = _ltex_textures[ltex_id]
 	var phase_started_us := Time.get_ticks_usec() if collect_import_timings else 0
-	var tex := resolver.load_texture("textures\\" + tex_path)
+	var tex: ImageTexture = cached["diffuse"]
 	if collect_import_timings:
 		_timing_diffuse_load_ms += float(Time.get_ticks_usec() - phase_started_us) / 1000.0
 	if tex == null:
@@ -619,12 +680,10 @@ func _resolve_to_slot(ltex_id: int) -> int:
 		return texture_pool.get_slot(null, tex_path)
 	# Real TX01 normal/bump map -- see Terrain3DTexturePool.get_slot()'s own
 	# comment on why this pool needs it now. A real, common case for this to
-	# be "" (not every real ground texture has one); resolver.load_texture()
-	# already returns null for an empty/unresolvable path.
-	var normal_path := esm.resolve_ltex_normal_texture_path(ltex_id)
+	# be null (not every real ground texture has one).
 	if collect_import_timings:
 		phase_started_us = Time.get_ticks_usec()
-	var normal_tex := resolver.load_texture("textures\\" + normal_path) if normal_path != "" else null
+	var normal_tex: ImageTexture = cached["normal"]
 	if collect_import_timings:
 		_timing_normal_load_ms += float(Time.get_ticks_usec() - phase_started_us) / 1000.0
 		phase_started_us = Time.get_ticks_usec()

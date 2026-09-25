@@ -5,7 +5,7 @@ extends Node3D
 # comment derives it algebraically -- this is the "confirm against real data, don't
 # trust the derivation alone" half) two ways:
 #
-#   1. Cross-check against CellStreamBuilder/GamebryoTerrainBuilder's own ACTUAL
+#   1. Cross-check against the v0 builder's own ACTUAL
 #      placement for the same real cell -- the live game's real ground truth for
 #      "where does this cell's terrain go," not a second independent guess.
 #   2. Two real adjacent cells (-17,0) and (-17,1) imported into the SAME Terrain3D
@@ -14,6 +14,10 @@ extends Node3D
 #      terrain rather than each being a disconnected island.
 
 const DATA_DIR := "../fresh_nv_copy/Data/"
+# The v0 CellStreamBuilder these came from now lives in old/, outside the Godot
+# project. native/src/common/units.h is the authority for the 70 units/m ratio.
+const CELL_SIZE_UNITS := 4096.0
+const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const CELL_GRID_X := -17
 const CELL_GRID_Y := 0
@@ -58,9 +62,9 @@ func _ready() -> void:
 	var old_terrain := GamebryoTerrainBuilder.build(land_a, [])
 	check(old_terrain != null, "GamebryoTerrainBuilder produced a node for cross-check")
 	var old_cell_origin := Vector3(
-			CELL_GRID_X * CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS,
+			CELL_GRID_X * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS,
 			0.0,
-			-(CELL_GRID_Y * CellStreamBuilder.CELL_SIZE_UNITS * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS))
+			-(CELL_GRID_Y * CELL_SIZE_UNITS * GAMEBRYO_UNITS_TO_METERS))
 	old_terrain.position = old_cell_origin
 	add_child(old_terrain)
 
@@ -68,13 +72,13 @@ func _ready() -> void:
 	var terrain := Terrain3DBridge.create_terrain(self)
 	check(terrain.data != null, "Terrain3D.data initialized")
 	var pool := Terrain3DTexturePool.new(terrain)
-	var bridge := Terrain3DBridge.new(esm, resolver, pool)
+	var bridge := Terrain3DBridge.new(esm, pool)
 
-	check(bridge.import_cell(terrain, cell_a_form_id), "bridge imported cell (%d, %d)" % [CELL_GRID_X, CELL_GRID_Y])
-	check(bridge.import_cell(terrain, cell_b_form_id), "bridge imported cell (%d, %d)" % [CELL_GRID_X, NEIGHBOR_GRID_Y])
+	check(await bridge.import_cell(terrain, cell_a_form_id), "bridge imported cell (%d, %d)" % [CELL_GRID_X, CELL_GRID_Y])
+	check(await bridge.import_cell(terrain, cell_b_form_id), "bridge imported cell (%d, %d)" % [CELL_GRID_X, NEIGHBOR_GRID_Y])
 
 	# Same GamebryoTerrainBuilder local-vertex convention: (col*spacing, height, -(row*spacing))
-	var old_spacing := 128.0 * CellStreamBuilder.GAMEBRYO_UNITS_TO_METERS
+	var old_spacing := 128.0 * GAMEBRYO_UNITS_TO_METERS
 	var cross_check_points := [Vector2i(0, 0), Vector2i(32, 0), Vector2i(0, 32), Vector2i(32, 32), Vector2i(16, 16)]
 	var max_err := 0.0
 	for p in cross_check_points:
