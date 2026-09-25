@@ -3,6 +3,7 @@
 #include "../common/byte_reader.h"
 #include "../common/units.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -488,104 +489,158 @@ std::vector<RecordInfo> EsmFile::get_child_records(const RecordInfo &parent) con
 	return out;
 }
 
+std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo &child) const {
+	std::vector<uint8_t> data = read_record_data(child);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	uint32_t base_form_id = 0;
+	uint32_t emittance_form_id = 0;
+	float position[3] = { 0.0f, 0.0f, 0.0f };
+	float rotation[3] = { 0.0f, 0.0f, 0.0f };
+	float scale = 1.0f;
+	bool has_data = false;
+	bool has_xtel = false;
+	bool has_xsrf_or_xsrd = false;
+	uint32_t dest_refr_form_id = 0;
+	float dest_position[3] = { 0.0f, 0.0f, 0.0f };
+	float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
+
+	for (const auto &s : subs) {
+		if (s.type == "NAME" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			base_form_id = sr.read_u32();
+		} else if (s.type == "XSRF" || s.type == "XSRD") {
+			// See ReferencePlacement::has_xsrf_or_xsrd's own
+			// doc comment (esm_types.h) for what this marks and why.
+			has_xsrf_or_xsrd = true;
+		} else if (s.type == "XEMI" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			emittance_form_id = sr.read_u32();
+		} else if (s.type == "DATA" && s.size >= 24) {
+			util::ByteReader sr(s.data, s.size);
+			// Position, not rotation/scale: Gamebryo units -> meters (units.h).
+			position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			rotation[0] = read_f32(sr);
+			rotation[1] = read_f32(sr);
+			rotation[2] = read_f32(sr);
+			has_data = true;
+		} else if (s.type == "XSCL" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			scale = read_f32(sr);
+		} else if (s.type == "XTEL" && s.size >= 32) {
+			util::ByteReader sr(s.data, s.size);
+			dest_refr_form_id = sr.read_u32();
+			// Same convention as DATA: position in Gamebryo units -> meters,
+			// rotation left in radians.
+			dest_position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			dest_position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			dest_position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			dest_rotation[0] = read_f32(sr);
+			dest_rotation[1] = read_f32(sr);
+			dest_rotation[2] = read_f32(sr);
+			has_xtel = true;
+		}
+	}
+
+	if (base_form_id == 0 || !has_data) {
+		return std::nullopt; // malformed or not a plain placed reference
+	}
+
+	ReferencePlacement pl;
+	pl.refr_form_id = child.form_id;
+	pl.base_form_id = base_form_id;
+	pl.emittance_form_id = emittance_form_id;
+	std::memcpy(pl.position, position, sizeof(position));
+	std::memcpy(pl.rotation, rotation, sizeof(rotation));
+	pl.scale = scale;
+	pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+	pl.has_xtel = has_xtel;
+	pl.has_xsrf_or_xsrd = has_xsrf_or_xsrd;
+	pl.dest_refr_form_id = dest_refr_form_id;
+	std::memcpy(pl.dest_position, dest_position, sizeof(dest_position));
+	std::memcpy(pl.dest_rotation, dest_rotation, sizeof(dest_rotation));
+
+	if (auto base = find_record_by_form_id(base_form_id)) {
+		pl.base_type = base->type;
+		std::vector<uint8_t> base_data = read_record_data(*base);
+		std::vector<Subrecord> base_subs = parse_subrecords(base_data);
+		for (const auto &s : base_subs) {
+			if (s.type == "EDID") {
+				pl.base_editor_id = s.as_string();
+			} else if (s.type == "MODL") {
+				pl.model_path = s.as_string();
+			} else if (s.type == "SCRI" && s.size >= 4) {
+				util::ByteReader sr(s.data, s.size);
+				pl.script_form_id = sr.read_u32();
+			}
+		}
+	}
+
+	return pl;
+}
+
 std::vector<ReferencePlacement> EsmFile::get_cell_references(const RecordInfo &cell) const {
 	std::vector<ReferencePlacement> out;
 	for (const RecordInfo &child : get_child_records(cell)) {
 		if (child.type != "REFR") {
-			continue; // ACHR/ACRE/etc — actors, not handled in Phase 1
+			continue; // ACHR/ACRE are read by get_cell_actors()
 		}
-
-		std::vector<uint8_t> data = read_record_data(child);
-		std::vector<Subrecord> subs = parse_subrecords(data);
-
-		uint32_t base_form_id = 0;
-		uint32_t emittance_form_id = 0;
-		float position[3] = { 0.0f, 0.0f, 0.0f };
-		float rotation[3] = { 0.0f, 0.0f, 0.0f };
-		float scale = 1.0f;
-		bool has_data = false;
-		bool has_xtel = false;
-		bool has_xsrf_or_xsrd = false;
-		uint32_t dest_refr_form_id = 0;
-		float dest_position[3] = { 0.0f, 0.0f, 0.0f };
-		float dest_rotation[3] = { 0.0f, 0.0f, 0.0f };
-
-		for (const auto &s : subs) {
-			if (s.type == "NAME" && s.size >= 4) {
-				util::ByteReader sr(s.data, s.size);
-				base_form_id = sr.read_u32();
-			} else if (s.type == "XSRF" || s.type == "XSRD") {
-				// See ReferencePlacement::has_xsrf_or_xsrd's own
-				// doc comment (esm_types.h) for what this marks and why.
-				has_xsrf_or_xsrd = true;
-			} else if (s.type == "XEMI" && s.size >= 4) {
-				util::ByteReader sr(s.data, s.size);
-				emittance_form_id = sr.read_u32();
-			} else if (s.type == "DATA" && s.size >= 24) {
-				util::ByteReader sr(s.data, s.size);
-				// Position, not rotation/scale: Gamebryo units -> meters (units.h).
-				position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				rotation[0] = read_f32(sr);
-				rotation[1] = read_f32(sr);
-				rotation[2] = read_f32(sr);
-				has_data = true;
-			} else if (s.type == "XSCL" && s.size >= 4) {
-				util::ByteReader sr(s.data, s.size);
-				scale = read_f32(sr);
-			} else if (s.type == "XTEL" && s.size >= 32) {
-				util::ByteReader sr(s.data, s.size);
-				dest_refr_form_id = sr.read_u32();
-				// Same convention as DATA: position in Gamebryo units -> meters,
-				// rotation left in radians.
-				dest_position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				dest_position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				dest_position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				dest_rotation[0] = read_f32(sr);
-				dest_rotation[1] = read_f32(sr);
-				dest_rotation[2] = read_f32(sr);
-				has_xtel = true;
-			}
+		if (auto pl = placement_from_refr(child)) {
+			out.push_back(std::move(*pl));
 		}
-
-		if (base_form_id == 0 || !has_data) {
-			continue; // malformed or not a plain placed reference — skip
-		}
-
-		ReferencePlacement pl;
-		pl.refr_form_id = child.form_id;
-		pl.base_form_id = base_form_id;
-		pl.emittance_form_id = emittance_form_id;
-		std::memcpy(pl.position, position, sizeof(position));
-		std::memcpy(pl.rotation, rotation, sizeof(rotation));
-		pl.scale = scale;
-		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
-		pl.has_xtel = has_xtel;
-		pl.has_xsrf_or_xsrd = has_xsrf_or_xsrd;
-		pl.dest_refr_form_id = dest_refr_form_id;
-		std::memcpy(pl.dest_position, dest_position, sizeof(dest_position));
-		std::memcpy(pl.dest_rotation, dest_rotation, sizeof(dest_rotation));
-
-		if (auto base = find_record_by_form_id(base_form_id)) {
-			pl.base_type = base->type;
-			std::vector<uint8_t> base_data = read_record_data(*base);
-			std::vector<Subrecord> base_subs = parse_subrecords(base_data);
-			for (const auto &s : base_subs) {
-				if (s.type == "EDID") {
-					pl.base_editor_id = s.as_string();
-				} else if (s.type == "MODL") {
-					pl.model_path = s.as_string();
-				} else if (s.type == "SCRI" && s.size >= 4) {
-					util::ByteReader sr(s.data, s.size);
-					pl.script_form_id = sr.read_u32();
-				}
-			}
-		}
-
-		out.push_back(std::move(pl));
 	}
 	return out;
+}
+
+std::optional<ReferencePlacement> EsmFile::placement_from_actor(const RecordInfo &child) const {
+	std::vector<uint8_t> data = read_record_data(child);
+	std::vector<Subrecord> subs = parse_subrecords(data);
+
+	uint32_t base_form_id = 0;
+	float position[3] = { 0.0f, 0.0f, 0.0f };
+	float rotation[3] = { 0.0f, 0.0f, 0.0f };
+	float scale = 1.0f;
+	bool has_data = false;
+
+	for (const auto &s : subs) {
+		if (s.type == "NAME" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			base_form_id = sr.read_u32();
+		} else if (s.type == "DATA" && s.size >= 24) {
+			util::ByteReader sr(s.data, s.size);
+			// Position, not rotation/scale: Gamebryo units -> meters (units.h).
+			position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
+			rotation[0] = read_f32(sr);
+			rotation[1] = read_f32(sr);
+			rotation[2] = read_f32(sr);
+			has_data = true;
+		} else if (s.type == "XSCL" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			scale = read_f32(sr);
+		}
+	}
+
+	if (base_form_id == 0 || !has_data) {
+		return std::nullopt; // malformed
+	}
+
+	ReferencePlacement pl;
+	pl.refr_form_id = child.form_id;
+	pl.base_form_id = base_form_id;
+	std::memcpy(pl.position, position, sizeof(position));
+	std::memcpy(pl.rotation, rotation, sizeof(rotation));
+	pl.scale = scale;
+	pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+
+	if (auto base = find_record_by_form_id(base_form_id)) {
+		fill_actor_base_fields(*base, pl);
+	}
+
+	return pl;
 }
 
 std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell) const {
@@ -594,54 +649,57 @@ std::vector<ReferencePlacement> EsmFile::get_cell_actors(const RecordInfo &cell)
 		if (child.type != "ACHR" && child.type != "ACRE") {
 			continue;
 		}
-
-		std::vector<uint8_t> data = read_record_data(child);
-		std::vector<Subrecord> subs = parse_subrecords(data);
-
-		uint32_t base_form_id = 0;
-		float position[3] = { 0.0f, 0.0f, 0.0f };
-		float rotation[3] = { 0.0f, 0.0f, 0.0f };
-		float scale = 1.0f;
-		bool has_data = false;
-
-		for (const auto &s : subs) {
-			if (s.type == "NAME" && s.size >= 4) {
-				util::ByteReader sr(s.data, s.size);
-				base_form_id = sr.read_u32();
-			} else if (s.type == "DATA" && s.size >= 24) {
-				util::ByteReader sr(s.data, s.size);
-				// Position, not rotation/scale: Gamebryo units -> meters (units.h).
-				position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				position[2] = read_f32(sr) * units::kGamebryoUnitsToMeters;
-				rotation[0] = read_f32(sr);
-				rotation[1] = read_f32(sr);
-				rotation[2] = read_f32(sr);
-				has_data = true;
-			} else if (s.type == "XSCL" && s.size >= 4) {
-				util::ByteReader sr(s.data, s.size);
-				scale = read_f32(sr);
-			}
+		if (auto pl = placement_from_actor(child)) {
+			out.push_back(std::move(*pl));
 		}
-
-		if (base_form_id == 0 || !has_data) {
-			continue; // malformed — skip
-		}
-
-		ReferencePlacement pl;
-		pl.refr_form_id = child.form_id;
-		pl.base_form_id = base_form_id;
-		std::memcpy(pl.position, position, sizeof(position));
-		std::memcpy(pl.rotation, rotation, sizeof(rotation));
-		pl.scale = scale;
-		pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
-
-		if (auto base = find_record_by_form_id(base_form_id)) {
-			fill_actor_base_fields(*base, pl);
-		}
-
-		out.push_back(std::move(pl));
 	}
+	return out;
+}
+
+std::optional<ReferencePlacement> EsmFile::get_reference_placement(uint32_t refr_form_id) const {
+	auto record = find_record_by_form_id(refr_form_id);
+	if (!record) {
+		return std::nullopt;
+	}
+	if (record->type == "REFR") {
+		return placement_from_refr(*record);
+	}
+	if (record->type == "ACHR" || record->type == "ACRE") {
+		return placement_from_actor(*record);
+	}
+	return std::nullopt;
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> EsmFile::get_placed_reference_cells() const {
+	std::vector<std::pair<uint32_t, uint32_t>> out;
+	// Walks every group; a record inside a Cell Persistent/Temporary/Visible
+	// Distant Children group (types 8, 9, 10) is filed in the CELL named by
+	// that group's label.
+	std::function<void(long, long, uint32_t)> walk_group = [&](long start, long end, uint32_t cell) {
+		long pos = start;
+		while (pos < end) {
+			std::vector<uint8_t> h = read_at(pos, kHeaderSize);
+			util::ByteReader r(h.data(), h.size());
+			std::string tag(reinterpret_cast<const char *>(r.read_bytes(4).data()), 4);
+			uint32_t size = r.read_u32();
+			if (tag == "GRUP") {
+				uint32_t label = r.read_u32();
+				uint32_t gtype = r.read_u32();
+				uint32_t child_cell = (gtype == 8 || gtype == 9 || gtype == 10) ? label : cell;
+				walk_group(pos + static_cast<long>(kHeaderSize), pos + static_cast<long>(size), child_cell);
+				pos += static_cast<long>(size);
+				continue;
+			}
+			r.read_u32(); // flags
+			uint32_t form_id = r.read_u32();
+			if (cell != 0 && (tag == "REFR" || tag == "ACHR" || tag == "ACRE")) {
+				out.emplace_back(form_id, cell);
+			}
+			pos += static_cast<long>(kHeaderSize) + static_cast<long>(size);
+		}
+	};
+	walk_group(0, file_size_, 0);
+	std::sort(out.begin(), out.end());
 	return out;
 }
 

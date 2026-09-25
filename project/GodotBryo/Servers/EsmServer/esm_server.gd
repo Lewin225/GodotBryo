@@ -49,6 +49,9 @@ var _record_index: Array = []
 var _grid_cells: Dictionary = {} # WRLD -> {Vector2i(x, y) -> grid CELL}
 var _persistent_cell_by_worldspace: Dictionary = {} # WRLD -> persistent CELL (0 if none)
 var _worldspace_by_cell: Dictionary = {} # grid or persistent CELL -> WRLD
+var _placed_reference_ids := PackedInt64Array() # sorted REFR/ACHR/ACRE FormIDs
+var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
+var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -93,6 +96,9 @@ func _process(_delta: float) -> void:
 	_grid_cells = _load_result.get("grid_cells", {})
 	_persistent_cell_by_worldspace = _load_result.get("persistent_cell_by_worldspace", {})
 	_worldspace_by_cell = _load_result.get("worldspace_by_cell", {})
+	_placed_reference_ids = _load_result.get("placed_reference_ids", PackedInt64Array())
+	_placed_reference_cells = _load_result.get("placed_reference_cells", PackedInt64Array())
+	_reference_by_editor_id = _load_result.get("reference_by_editor_id", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -109,7 +115,26 @@ func _open_reader_background() -> Dictionary:
 		return {"ok": false, "error": background_reader.get_last_error()}
 	var result := {"ok": true, "reader": background_reader, "record_index": background_reader.get_record_index()}
 	result.merge(_build_cell_index(background_reader.get_exterior_cell_index()))
+	result.merge(_build_reference_index(background_reader.get_placed_reference_cells(), result["record_index"]))
 	return result
+
+## Splits the native (reference, filing CELL) pairs into two sorted arrays for
+## binary search, and maps placed-reference editor IDs to FormIDs.
+static func _build_reference_index(pairs: PackedInt64Array, record_index: Array) -> Dictionary:
+	var ids := PackedInt64Array()
+	var cells := PackedInt64Array()
+	ids.resize(pairs.size() / 2)
+	cells.resize(pairs.size() / 2)
+	for i in ids.size():
+		ids[i] = pairs[i * 2]
+		cells[i] = pairs[i * 2 + 1]
+	var by_editor_id := {}
+	for row: Dictionary in record_index:
+		var record_type := String(row.get("record_type", ""))
+		var editor_id := String(row.get("editor_id", ""))
+		if not editor_id.is_empty() and (record_type == "REFR" or record_type == "ACHR" or record_type == "ACRE"):
+			by_editor_id[editor_id.to_lower()] = int(row["form_id"])
+	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
 ## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
@@ -214,17 +239,28 @@ func get_reference(instance_id: String) -> EsmReference:
 			return null
 		var base_form_id := _parse_prefixed_form_id(instance_id, "base:")
 		return create_reference_for_base(base_form_id)
+	if _authored_reference_cache.has(instance_id):
+		return _authored_reference_cache[instance_id]
 	var form_id := _parse_authored_id(instance_id)
-	if form_id == 0:
+	var cell_id := get_filing_cell_form_id(form_id)
+	if cell_id == 0:
 		return null
-	var owner: Dictionary = reader.find_cell_containing_ref(form_id)
-	if owner.is_empty():
+	var placement: Dictionary = reader.get_reference_placement(form_id)
+	if placement.is_empty():
 		return null
-	var cell_id := int(owner.get("cell_form_id", 0))
-	for placement in reader.get_cell_references(cell_id) + reader.get_cell_actors(cell_id):
-		if int(placement.get("refr_form_id", 0)) == form_id:
-			return _reference_from_placement(placement, instance_id, cell_id)
-	return null
+	return _reference_from_placement(placement, instance_id, cell_id)
+
+## The placed reference with this editor ID, or null. Case-insensitive.
+func find_reference_by_editor_id(editor_id: String) -> EsmReference:
+	var form_id := int(_reference_by_editor_id.get(editor_id.to_lower(), 0))
+	return get_reference("authored:%08X" % form_id) if form_id != 0 else null
+
+## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
+func get_filing_cell_form_id(refr_form_id: int) -> int:
+	var i := _placed_reference_ids.bsearch(refr_form_id)
+	if i < _placed_reference_ids.size() and _placed_reference_ids[i] == refr_form_id:
+		return int(_placed_reference_cells[i])
+	return 0
 
 ## Creates a zero-placement typed reference for inspecting a Base resource in
 ## the same physicalizer chain used by authored REFRs. The synthetic identity
@@ -372,11 +408,8 @@ func get_space_form_id_for_reference(instance_id: String) -> int:
 	var cached: EsmReference = _authored_reference_cache.get(instance_id)
 	if cached != null:
 		return cached.current_space_form_id
-	var form_id := _parse_authored_id(instance_id)
-	if form_id == 0 or reader == null:
-		return 0
-	var owner: Dictionary = reader.find_cell_containing_ref(form_id)
-	return get_space_form_id_for_cell(int(owner.get("cell_form_id", 0)))
+	var cell := get_filing_cell_form_id(_parse_authored_id(instance_id))
+	return get_space_form_id_for_cell(cell) if cell != 0 else 0
 
 ## The space a CELL belongs to: its WRLD for an exterior grid or persistent
 ## CELL, the CELL itself for an interior.

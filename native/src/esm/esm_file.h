@@ -111,6 +111,13 @@ public:
 	// or a record kind other than plain REFR) are skipped.
 	std::vector<ReferencePlacement> get_cell_references(const RecordInfo &cell) const;
 
+	// One placed REFR/ACHR/ACRE, read from its own record only.
+	std::optional<ReferencePlacement> get_reference_placement(uint32_t refr_form_id) const;
+
+	// (reference FormID, filing CELL FormID) for every placed REFR/ACHR/ACRE,
+	// sorted by reference FormID. One pass over the file's group headers.
+	std::vector<std::pair<uint32_t, uint32_t>> get_placed_reference_cells() const;
+
 	// A Static Collection (SCOL) bundles multiple STAT placements inside its
 	// own record body — not via child REFRs. Its subrecords are repeated
 	// (ONAM, DATA) pairs: ONAM is the FormID of a STAT, DATA is that part's
@@ -309,6 +316,8 @@ private:
 	// EDID/MODL/SCRI (every base record) plus RNAM/ACBS (NPC_ only) off
 	// `base` into `pl`. See ReferencePlacement's own doc comment for why
 	// RNAM isn't read for CREA (means something unrelated there).
+	std::optional<ReferencePlacement> placement_from_refr(const RecordInfo &child) const;
+	std::optional<ReferencePlacement> placement_from_actor(const RecordInfo &child) const;
 	void fill_actor_base_fields(const RecordInfo &base, ReferencePlacement &pl) const;
 
 	std::string path_;

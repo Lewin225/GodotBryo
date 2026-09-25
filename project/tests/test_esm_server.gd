@@ -62,6 +62,7 @@ func _ready() -> void:
 	_check_authored_reference_cache(server, index)
 	_check_reference_location(server)
 	_check_door_links_and_locks(server)
+	_check_reference_index(server, index)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -189,6 +190,63 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## FormID -> filing CELL, single-record placements, and editor-ID lookup.
+func _check_reference_index(server, index: Array) -> void:
+	var placed := 0
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if record_type == "REFR" or record_type == "ACHR" or record_type == "ACRE":
+			placed += 1
+	_check(server._placed_reference_ids.size() == placed, "the reference index holds every placed REFR/ACHR/ACRE (%d of %d)" % [server._placed_reference_ids.size(), placed])
+
+	# Filing CELL and single-record placement agree with the CELL walkers.
+	var wasteland := int(server.reader.find_worldspace_by_editor_id("WastelandNV").get("form_id", 0))
+	var compared := 0
+	var cell_mismatch := 0
+	var placement_mismatch := 0
+	var cells: Array[int] = [int(server._persistent_cell_by_worldspace[wasteland])]
+	for x in range(-24, -10):
+		for y in range(-6, 8):
+			var cell: int = server.get_exterior_cell_form_id(wasteland, Vector2i(x, y))
+			if cell != 0:
+				cells.append(cell)
+	for cell in cells:
+		for placement: Dictionary in server.reader.get_cell_references(cell) + server.reader.get_cell_actors(cell):
+			var form_id := int(placement["refr_form_id"])
+			compared += 1
+			if server.get_filing_cell_form_id(form_id) != cell:
+				cell_mismatch += 1
+			if server.reader.get_reference_placement(form_id) != placement:
+				placement_mismatch += 1
+	_check(compared > 12000, "reference-index sample is substantial (%d references)" % compared)
+	_check(cell_mismatch == 0, "every sampled reference's filing CELL matches the CELL that lists it (%d mismatched)" % cell_mismatch)
+	_check(placement_mismatch == 0, "every sampled single-record placement equals the CELL walker's (%d mismatched)" % placement_mismatch)
+
+	# Editor IDs named by real scripts.
+	var doc: EsmReference = server.find_reference_by_editor_id("DocMitchellREF")
+	_check(doc is ActorReference and doc.base.editor_id == "DocMitchell", "DocMitchellREF resolves to Doc Mitchell's actor")
+	_check(server.find_reference_by_editor_id("docmitchellref") == doc, "editor-ID lookup is case-insensitive and cached")
+	var marker: EsmReference = server.find_reference_by_editor_id("REPHQ2ndTeleport1")
+	_check(marker != null and marker.current_space_form_id != 0, "REPHQ2ndTeleport1 (a MoveTo target) resolves with a location")
+	_check(server.find_reference_by_editor_id("NoSuchReferenceEditorID") == null, "an unknown editor ID resolves to null")
+
+	# A reference filed in a worldspace persistent CELL builds from its own
+	# record: time one nothing has built yet, outside WastelandNV.
+	var freeside := int(server.reader.find_worldspace_by_editor_id("FreesideWorld").get("form_id", 0))
+	var freeside_persistent := int(server._persistent_cell_by_worldspace.get(freeside, 0))
+	var unbuilt := 0
+	for i in server._placed_reference_ids.size():
+		var id := "authored:%08X" % server._placed_reference_ids[i]
+		if server._placed_reference_cells[i] == freeside_persistent and not server._authored_reference_cache.has(id):
+			unbuilt = server._placed_reference_ids[i]
+			break
+	_check(unbuilt != 0, "FreesideWorld's persistent CELL has an unbuilt reference")
+	var started := Time.get_ticks_usec()
+	var built: EsmReference = server.get_reference("authored:%08X" % unbuilt)
+	var elapsed_ms := (Time.get_ticks_usec() - started) / 1000.0
+	_check(built != null and built.current_space_form_id == freeside, "it resolves into FreesideWorld")
+	_check(elapsed_ms < 50.0, "building one persistent-CELL reference reads only its own record (%.1f ms)" % elapsed_ms)
 
 ## XTEL links and XLOC lock state across every base-game XTEL door.
 func _check_door_links_and_locks(server) -> void:

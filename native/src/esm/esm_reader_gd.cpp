@@ -125,6 +125,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_exterior_cell", "wrld_form_id", "x", "y"), &EsmReader::find_exterior_cell);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_grid", "cell_form_id"), &EsmReader::get_exterior_cell_grid);
 	ClassDB::bind_method(D_METHOD("get_exterior_cell_index"), &EsmReader::get_exterior_cell_index);
+	ClassDB::bind_method(D_METHOD("get_reference_placement", "refr_form_id"), &EsmReader::get_reference_placement);
+	ClassDB::bind_method(D_METHOD("get_placed_reference_cells"), &EsmReader::get_placed_reference_cells);
 	ClassDB::bind_method(D_METHOD("get_cell_editor_id", "cell_form_id"), &EsmReader::get_cell_editor_id);
 	ClassDB::bind_method(D_METHOD("get_cell_worldspace", "cell_form_id"), &EsmReader::get_cell_worldspace);
 	ClassDB::bind_method(D_METHOD("get_land_data", "cell_form_id"), &EsmReader::get_land_data);
@@ -1004,6 +1006,40 @@ String EsmReader::get_cell_editor_id(int64_t cell_form_id) const {
 		last_error_ = String(e.what());
 		return "";
 	}
+}
+
+Dictionary EsmReader::get_reference_placement(int64_t refr_form_id) const {
+	Dictionary out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		if (auto pl = file_.get_reference_placement(static_cast<uint32_t>(refr_form_id))) {
+			out = placement_to_dict(*pl);
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+PackedInt64Array EsmReader::get_placed_reference_cells() const {
+	PackedInt64Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		const auto pairs = file_.get_placed_reference_cells();
+		out.resize(static_cast<int64_t>(pairs.size() * 2));
+		int64_t i = 0;
+		for (const auto &pair : pairs) {
+			out[i++] = static_cast<int64_t>(pair.first);
+			out[i++] = static_cast<int64_t>(pair.second);
+		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
 }
 
 Array EsmReader::get_exterior_cell_index() const {

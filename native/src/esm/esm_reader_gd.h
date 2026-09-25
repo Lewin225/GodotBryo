@@ -195,6 +195,15 @@ public:
 	// triples, one per grid CELL, x/y from the CELL's XCLC.
 	Array get_exterior_cell_index() const;
 
+	// One placed REFR/ACHR/ACRE as a placement Dictionary (the same shape as
+	// get_cell_references() entries), read from its own record. Empty if the
+	// FormID is not a placed reference.
+	Dictionary get_reference_placement(int64_t refr_form_id) const;
+
+	// Flat (reference FormID, filing CELL FormID) pairs for every placed
+	// REFR/ACHR/ACRE, sorted by reference FormID.
+	PackedInt64Array get_placed_reference_cells() const;
+
 	// A CELL's own EDID (e.g. "GSDocMitchellHouse"), for display purposes.
 	// Empty string if cell_form_id isn't a CELL or has no EDID — real for
 	// some unnamed exterior cells.

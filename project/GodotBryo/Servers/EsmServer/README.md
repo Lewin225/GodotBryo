@@ -44,6 +44,8 @@ EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
 EsmServer.get_space_form_id_for_reference(instance_id) -> int
+EsmServer.get_filing_cell_form_id(refr_form_id) -> int
+EsmServer.find_reference_by_editor_id(editor_id) -> EsmReference
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
 EsmServer.cell_at(space_form_id, position: Vector3) -> int
 EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
@@ -71,6 +73,14 @@ in-memory index of every worldspace's grid and persistent CELLs, built once on
 the load thread, and never touch the ESM file. Exterior references, including
 those filed in a worldspace's persistent CELL, get the grid CELL under their
 position.
+
+**Finding a reference.** Every placed REFR/ACHR/ACRE's filing CELL and every
+placed reference's editor ID are indexed on the load thread (native
+`EsmReader.get_placed_reference_cells()` and the record index).
+`get_reference("authored:%08X")` builds a reference from its own record
+(`EsmReader.get_reference_placement()`) without reading the rest of its CELL.
+`find_reference_by_editor_id()` is case-insensitive and returns the same cached
+instance.
 
 **Doors.** A `DoorReference` with XTEL has `teleport: DoorTeleportLink`: the
 destination door's instance id, the landing position and rotation, and the
