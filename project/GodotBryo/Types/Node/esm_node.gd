@@ -17,7 +17,11 @@ signal visual_detail_applied(detail: int)
 
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var reference: EsmReference:
 	set(value):
+		if is_inside_tree() and _nodes_by_reference.get(reference) == self:
+			_nodes_by_reference.erase(reference)
 		reference = value
+		if is_inside_tree() and reference != null:
+			_nodes_by_reference[reference] = self
 		_request_generation += 1
 		_startup_complete = false
 		_waiting_for_esm = false
@@ -45,6 +49,21 @@ var _request_generation := 0
 var _active_visual_detail := -1
 var _generated_children: Array[Node] = []
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
+
+## EsmReference -> the EsmNode representing it in a scene tree.
+static var _nodes_by_reference: Dictionary = {}
+
+## The node currently representing `esm_reference` in a scene tree, or null
+## when the reference is not physicalised.
+static func node_for(esm_reference: EsmReference) -> EsmNode:
+	var node: Variant = _nodes_by_reference.get(esm_reference)
+	return node if is_instance_valid(node) else null
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_TREE and reference != null:
+		_nodes_by_reference[reference] = self
+	elif what == NOTIFICATION_EXIT_TREE and _nodes_by_reference.get(reference) == self:
+		_nodes_by_reference.erase(reference)
 
 ## Recursively toggles every CollisionShape3D in a subtree.
 ##

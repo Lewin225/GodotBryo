@@ -22,16 +22,36 @@ func has_block(block_type: String) -> bool:
 			return true
 	return false
 
-## Runs every block whose blocktype matches (case-insensitive). Real
-## language behavior also gates on a block's own params (e.g. `OnTrigger
-## Play` vs. plain `OnTrigger`) -- not implemented this pass, a real,
-## documented gap (every same-named block runs regardless of its params).
-func run_block(block_type: String, ctx: ScriptExecutionContext) -> Variant:
+## Whether a `block_type` block would run for `subject` (see run_block).
+func has_block_for(block_type: String, ctx: ScriptExecutionContext, subject: Variant = null) -> bool:
+	for block in program["blocks"]:
+		if String(block["blocktype"]).to_lower() == block_type.to_lower() and _block_accepts(block, ctx, subject):
+			return true
+	return false
+
+## Runs every `block_type` block (case-insensitive) that accepts `subject`.
+## A block without a parameter always runs. A block with one runs only when
+## the parameter names `subject`: `Begin OnActivate Player` runs when the
+## player's reference is the activator, `Begin MenuMode 1001` when subject is
+## 1001.
+func run_block(block_type: String, ctx: ScriptExecutionContext, subject: Variant = null) -> Variant:
 	var result: Variant = null
 	for block in program["blocks"]:
-		if String(block["blocktype"]).to_lower() == block_type.to_lower():
+		if String(block["blocktype"]).to_lower() == block_type.to_lower() and _block_accepts(block, ctx, subject):
 			result = _exec_stmts(block["stmts"], ctx)
 	return result
+
+func _block_accepts(block: Dictionary, ctx: ScriptExecutionContext, subject: Variant) -> bool:
+	var params: Array = block.get("params", [])
+	if params.is_empty():
+		return true
+	if subject == null:
+		return false
+	var param: Variant = params[0]
+	if param is String:
+		var named := ctx.resolve_reference_name(param)
+		return named != null and named == subject
+	return ScriptExecutionContext.safe_equal(param, subject)
 
 func _exec_stmts(stmts: Array, ctx: ScriptExecutionContext) -> Variant:
 	var result: Variant = null
@@ -60,10 +80,8 @@ func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> voi
 	if not target.contains("."):
 		ctx.set_local(target, value)
 		return
-	# Cross-reference assignment (`OtherRef.Var`) -- design doc's
-	# "Cross-reference" storage tier. Real, deliberate gap: this
-	# interpreter has no global editor-id -> ExecutionContext registry yet
-	# to route the write to the right instance's own locals.
+	# Assignment to another reference's variable (`OtherREF.var`) is not
+	# supported and is dropped.
 	push_warning("ScriptInterpreter: cross-reference assignment to '%s' not implemented, dropped" % target)
 
 func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
@@ -73,21 +91,12 @@ func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 		"var":
 			return ctx.get_local(String(expr["name"]))
 		"name":
-			# A raw reference/editor-ID literal (script_parser.gd's own doc
-			# comment on _parse_ident_primary()) -- evaluates to its own
-			# literal text, EXCEPT the one real, special-cased global GECK
-			# keyword this interpreter actually resolves: "player", always
-			# meaning the real player character (distinct from
-			# ctx.action_ref -- see ScriptExecutionContext's own doc
-			# comment). Whichever function receives any other name
-			# (ShowMessage's MESG lookup, ...) decides what it means; this
-			# interpreter has no general editor-id -> Node/Resource registry
-			# to resolve the rest through yet, a real, deliberate gap noted
-			# elsewhere in this file.
+			# A bare name in source: a reference editor ID, a MESG editor ID
+			# for ShowMessage, and so on. Names the context can resolve become
+			# references; the rest stay as text for the called function.
 			var raw_name := String(expr["name"])
-			if raw_name.to_lower() == "player" and ctx.player_node != null:
-				return ctx.player_node
-			return raw_name
+			var named := ctx.resolve_reference_name(raw_name)
+			return named if named != null else raw_name
 		"unary":
 			return -_to_number(_eval(expr["operand"], ctx))
 		"binop":
@@ -134,26 +143,17 @@ func _eval_call(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 	var call_ctx := _resolve_call_context(expr, ctx)
 	return function_registry.call_function(String(expr["name"]), args, call_ctx)
 
-## Resolves a call's own `[Ref.]FuncName` reference prefix (if any) to the
-## Node that should act as `calling_reference` for this one call -- e.g.
-## `ActivatorREF.Enable` should toggle ActivatorREF, not the script's own
-## owner. Real, deliberate gap: only resolves references already sitting in
-## a local variable holding a live Node (e.g. set earlier via
-## `Set ActivatorREF to GetActionRef`) -- a bare editor-ID/persistent-
-## reference name with no such local (design doc's own "Cross-reference"
-## storage tier) isn't resolved yet, since that needs a global editor-id ->
-## Node registry this interpreter doesn't have wired in. Falls back to the
-## caller's own context (so the call still evaluates as unimplemented/no-op
-## instead of crashing) rather than guessing.
+## Resolves a call's `[Ref.]FuncName` prefix to the context the call runs
+## in: `ActivatorREF.Enable` acts on ActivatorREF, not on the script's own
+## reference. The prefix resolves through `player` or a `ref` local holding a
+## reference; any other name leaves the call on the caller's own context.
 func _resolve_call_context(expr: Dictionary, ctx: ScriptExecutionContext) -> ScriptExecutionContext:
 	var ref_name := String(expr.get("reference", ""))
 	if ref_name == "":
 		return ctx
-	var resolved: Variant = ctx.player_node if ref_name.to_lower() == "player" else ctx.get_local(ref_name)
-	if resolved is Node:
-		var sub_ctx := ScriptExecutionContext.new(resolved)
-		sub_ctx.locals = ctx.locals
-		sub_ctx.action_ref = ctx.action_ref
-		sub_ctx.player_node = ctx.player_node
-		return sub_ctx
+	var resolved: Variant = ctx.resolve_reference_name(ref_name)
+	if resolved == null:
+		resolved = ctx.get_local(ref_name)
+	if resolved is EsmReference:
+		return ctx.with_subject(resolved)
 	return ctx

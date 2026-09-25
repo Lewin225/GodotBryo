@@ -1,8 +1,7 @@
 extends Control
 
-## Scene-authored runtime scripting workbench. It deliberately consumes the
-## ScriptEngine debug API instead of reaching into private state, so the UI is
-## an observer of the real VM rather than a second script-instance model.
+## Scene-authored runtime scripting workbench. Reads ScriptServer's debug API
+## (instances, usage, console) rather than its internal state.
 
 @onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Instances
 @onready var _usage: RichTextLabel = $Margin/VBox/Usage
@@ -16,9 +15,9 @@ extends Control
 @onready var _suggestions_panel: PanelContainer = get_node_or_null("SuggestionsPanel")
 @onready var _suggestions_list: RichTextLabel = get_node_or_null("SuggestionsPanel/Margin/SuggestionsList")
 
-var _engine: ScriptEngine
+var _engine: Node
 var _instances: Array = []
-var _selected_node: Node = null
+var _selected_reference: EsmReference = null
 
 # Command history state
 var _history: Array[String] = []
@@ -34,7 +33,7 @@ var _navigating_suggestions: bool = false
 
 
 func _ready() -> void:
-	_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
+	_engine = get_tree().root.get_node_or_null("ScriptServer")
 	_source.editable = false
 	_source.gutters_draw_line_numbers = true
 	_output.editable = false
@@ -285,7 +284,7 @@ func _handle_tab_completion() -> void:
 func _get_contextual_candidates(left_text: String) -> Array[String]:
 	var game_node: Node = get_tree().root.get_node_or_null("Game") if is_inside_tree() else null
 	return ScriptCandidateProvider.get_contextual_candidates(
-		left_text, _engine, _selected_node, _instances, game_node
+		left_text, _engine, _selected_reference, _instances, game_node
 	)
 
 
@@ -296,46 +295,43 @@ func _process(_delta: float) -> void:
 
 func _refresh() -> void:
 	if _engine == null:
-		_usage.text = "ScriptEngine not found"
+		_usage.text = "ScriptServer not found"
 		return
-	var previous := _selected_node
+	var previous := _selected_reference
 	_instances = _engine.get_debug_instances()
 	_instances_list.clear()
 	for entry in _instances:
-		_instances_list.add_item("%s  —  %s" % [entry["node_name"], entry["script_name"]])
-		if entry["node"] == previous:
+		_instances_list.add_item("%s  —  %s%s" % [entry["name"], entry["script_name"], "" if entry["loaded"] else "  (unloaded)"])
+		if entry["reference"] == previous:
 			_instances_list.select(_instances_list.item_count - 1)
 	var usage: Dictionary = _engine.get_debug_usage()
-	_usage.text = "[color=#61afef]●[/color] [b]%d[/b] live context(s)   •   [color=#98c379]●[/color] [b]%d[/b] cached script(s)   •   [color=#e5c07b]●[/color] [b]%d[/b] local slot(s) ([color=#e5c07b]%d[/color] non-zero)" % [
-		usage["contexts"], usage["cached_scripts"], usage["local_slots"], usage["non_zero_locals"]
+	_usage.text = "[color=#61afef]●[/color] [b]%d[/b] script instance(s) ([b]%d[/b] loaded)   •   [color=#98c379]●[/color] [b]%d[/b] cached script(s)   •   [color=#e5c07b]●[/color] [b]%d[/b] local slot(s) ([color=#e5c07b]%d[/color] non-zero)" % [
+		usage["instances"], usage["loaded"], usage["cached_scripts"], usage["local_slots"], usage["non_zero_locals"]
 	]
-	if previous != null and not is_instance_valid(previous):
-		_selected_node = null
-		_show_selected()
 
 
 func _select_instance(index: int) -> void:
 	if index < 0 or index >= _instances.size():
 		return
-	_selected_node = _instances[index]["node"]
+	_selected_reference = _instances[index]["reference"]
 	_show_selected()
 
 
 func _show_selected() -> void:
-	if _selected_node == null:
-		_details.text = "[color=#7f848e]Select a live scripted reference. Console commands run with player as caller if none selected.[/color]"
+	if _selected_reference == null:
+		_details.text = "[color=#7f848e]Select a scripted reference. Console commands run with no calling reference if none is selected.[/color]"
 		_locals.text = ""
 		_source.text = ""
 		return
 	for entry in _instances:
-		if entry["node"] != _selected_node:
+		if entry["reference"] != _selected_reference:
 			continue
 		var block_badges: PackedStringArray = []
 		for b in entry.get("blocks", []):
 			block_badges.append("[color=#61afef][%s][/color]" % b)
-		_details.text = "[b]📜 %s[/b] [color=#98c379](0x%08X)[/color]   •   [b]Node:[/b] [color=#e5c07b]%s[/color]   •   [b]Blocks:[/b] %s" % [
+		_details.text = "[b]📜 %s[/b] [color=#98c379](0x%08X)[/color]   •   [b]Reference:[/b] [color=#e5c07b]%s[/color]   •   [b]Blocks:[/b] %s" % [
 			entry["script_name"], int(entry["script_form_id"]),
-			entry["node_name"], " ".join(block_badges) if not block_badges.is_empty() else "[color=#7f848e](none)[/color]"
+			entry["name"], " ".join(block_badges) if not block_badges.is_empty() else "[color=#7f848e](none)[/color]"
 		]
 
 		var locals_dict: Dictionary = entry.get("locals", {})
@@ -371,7 +367,7 @@ func _run_line() -> void:
 	_history_index = -1
 	_current_input_buffer = ""
 
-	var reply: Dictionary = _engine.run_debug_line(cmd, _selected_node)
+	var reply: Dictionary = _engine.run_debug_line(cmd, _selected_reference)
 	_output.text += "> " + cmd + "\n" + ("OK" if bool(reply.get("ok", false)) else "ERROR") + ": " + String(reply.get("message", ""))
 	if reply.has("result"):
 		_output.text += ": " + str(reply["result"])

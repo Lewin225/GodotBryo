@@ -26,12 +26,12 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 ## BBCode spans -- simpler, and avoids needing exact source offsets at all.
 ##
 ## Reuses the exact same lex/parse/registry pipeline
-## project/script_vm/script_engine.gd runs at actual game time -- this
+## GodotBryo/Servers/ScriptServer/script_server.gd runs at actual game time -- this
 ## tool's highlighting is only ever as correct (or as wrong) as the real
 ## interpreter, by construction, not a parallel bespoke text scan that
 ## could silently drift from what the game actually does.
 
-const REGISTRY_SCRIPT_PATH := "res://script_vm/script_function_registry.gd"
+const REGISTRY_SCRIPT_PATH := "res://GodotBryo/Servers/ScriptServer/script_function_registry.gd"
 
 const COLOR_KNOWN := Color("#7ec699") # implemented -- registered in script_function_registry.gd
 const COLOR_UNKNOWN := Color("#e06c75") # real, per script_function_registry.gd's own doc comment: evaluates to 0/false at runtime, not a guess

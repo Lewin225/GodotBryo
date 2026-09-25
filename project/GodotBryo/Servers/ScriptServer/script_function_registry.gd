@@ -1,36 +1,23 @@
 class_name ScriptFunctionRegistry
 extends RefCounted
 
-## String -> Callable(args: Array, ctx: ScriptExecutionContext) -> Variant,
-## the exact same shape as GamebryoObjectRegistry._factories
-## (project/gamebryo/object_registry.gd) -- runtime-populated, grown by
-## calling register(), never a compiled-in switch. Seeded here with only
-## the handful of real, ranked-by-usage functions
-## (enginedocs/nv_script_interpreter_design.md's "Tier 1" list) that map
-## onto systems this codebase actually has today -- inventory/quest/
-## faction/AI-backed functions from that same list are real, deliberate
-## gaps (see phases/5/00-script-interpreter-foundation.md), not oversights.
-## call() on an unregistered name logs it once and returns 0/false, never a
-## fabricated success -- matching the language's own real "silently stop,
-## don't crash" behavior for a bad reference (design doc's Variables
-## section) with the same non-crashing spirit for a missing function.
+## Script function table: name -> Callable(args: Array, ctx:
+## ScriptExecutionContext) -> Variant, grown at runtime through register().
+## Calling an unregistered name logs once and returns 0.
 
 var _functions := {} # lowercased name -> Callable
 var _canonical_names: Array[String] = [] # Original registered names for autocomplete/reflection
 var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam the log every frame
 
-## Set externally (ScriptEngine propagates its own esm whenever it's
-## assigned) -- null-safe everywhere it's used below, since a registry can
-## exist before an EsmReader is available (e.g. a bare unit test).
+## ESM reader for record lookups such as ShowMessage's MESG. Null until set.
 var esm: EsmReader = null
-## Set by game.gd along with the other handlers. Null-safe: a bare unit
-## test or headless scene that has no GameTimeManager simply returns 0
-## for time-dependent functions, same behaviour as before this system
-## existed, with no crash.
+## The player's physics body, for commands that act on the body itself
+## (ToggleCollision). Null when there is no player.
+var player_node: Node = null
+## Source of game time. Time functions return 0 while it is null.
 var game_time_manager: GameTimeManager = null
-## Set by game.gd: this registry deliberately knows script semantics, not
-## scene ownership or loader roots.  PlaceAtMe delegates the world mutation
-## to the one runtime owner that has both.
+## World-facing commands delegate to handlers registered by the scene that
+## owns the loaders. PlaceAtMe receives (args, calling_reference).
 var place_at_me_handler: Callable
 var center_on_cell_handler: Callable
 var show_message_handler: Callable
@@ -75,7 +62,7 @@ func _register_defaults() -> void:
 	register("GetRandomPercent", func(_a, _c): return randi_range(0, 99))
 
 	register("Enable", func(_a, ctx: ScriptExecutionContext):
-		var node := ctx.calling_reference
+		var node := EsmNode.node_for(ctx.calling_reference)
 		if node == null:
 			return 0
 		node.visible = true
@@ -83,7 +70,7 @@ func _register_defaults() -> void:
 		return 1)
 
 	register("Disable", func(_a, ctx: ScriptExecutionContext):
-		var node := ctx.calling_reference
+		var node := EsmNode.node_for(ctx.calling_reference)
 		if node == null:
 			return 0
 		node.visible = false
@@ -91,21 +78,16 @@ func _register_defaults() -> void:
 		return 1)
 
 	register("GetDisabled", func(_a, ctx: ScriptExecutionContext):
-		var node := ctx.calling_reference
+		var node := EsmNode.node_for(ctx.calling_reference)
 		if node == null:
 			return 0
 		return 0 if node.visible else 1)
 
+	# Runs the loaded node's activate() for the calling reference. The
+	# activator and abRunOnActivate arguments are not used.
 	register("Activate", func(_a, ctx: ScriptExecutionContext):
-		# Real signature is `Activate akActivator, abRunOnActivate` -- the
-		# activator argument and the "also run this script's own OnActivate"
-		# flag aren't consumed yet (this project's real activate() contract,
-		# door_node.gd/game.gd's interact raycast, takes neither). Calling
-		# the same activate() every other interactable already implements,
-		# per the design doc's "close: function dispatch" call, not a
-		# reimplementation.
-		var node := ctx.calling_reference
-		if node == null or not node.has_method("activate"):
+		var node := EsmNode.node_for(ctx.calling_reference)
+		if node == null:
 			return 0
 		node.activate()
 		return 1)
@@ -113,13 +95,7 @@ func _register_defaults() -> void:
 	register("IsActionRef", func(a: Array, ctx: ScriptExecutionContext):
 		if a.is_empty() or ctx.action_ref == null:
 			return 0
-		# safe_equal(), not a raw ==: a[0] is very often a "name" node's own
-		# literal String (an unresolved editor-ID like "player" -- this
-		# interpreter has no global editor-id -> Node registry to resolve it
-		# through yet), and GDScript's own == throws for a String-vs-Object
-		# comparison rather than just returning false (confirmed directly
-		# this session) -- would otherwise crash the very first real
-		# `IsActionRef player` this project's own real data uses.
+		# a[0] is a reference, or the text of a name that did not resolve.
 		return 1 if ScriptExecutionContext.safe_equal(a[0], ctx.action_ref) else 0)
 
 	register("GetActionRef", func(_a, ctx: ScriptExecutionContext):
@@ -127,8 +103,7 @@ func _register_defaults() -> void:
 		
 
 	register("Unlock", func(_a, _c):
-		# Real, deliberate gap: no lock/key state exists on any Dynamic type
-		# yet (DoorNode/ContainerNode have no `is_locked` field today).
+		# Not implemented; returns 0.
 		return 0)
 
 	register("PlaceAtMe", func(a: Array, ctx: ScriptExecutionContext):
@@ -145,10 +120,10 @@ func _register_defaults() -> void:
 	register("CenterOnCell", center_on_cell)
 	register("COC", center_on_cell)
 
+	# Toggles noclip on the calling reference's node, or on the player's body
+	# when there is no calling reference.
 	var toggle_collision := func(_a: Array, ctx: ScriptExecutionContext):
-		var target: Object = ctx.calling_reference
-		if target == null:
-			target = ctx.player_node
+		var target: Object = EsmNode.node_for(ctx.calling_reference) if ctx.calling_reference != null else player_node
 		if target != null and "noclip" in target:
 			target.noclip = !target.noclip
 			return 1 if target.noclip else 0

@@ -18,10 +18,9 @@ func _ready() -> void:
 	var msg_box := MESSAGE_BOX_SCENE.instantiate() as MessageBox
 	add_child(msg_box)
 
-	var script_engine := ScriptEngine.new()
-	script_engine.esm = esm
+	var script_engine: Node = get_node("/root/ScriptServer")
+	script_engine.function_registry.esm = esm
 	script_engine.message_box = msg_box
-	add_child(script_engine)
 
 	# 1. Initial button pressed state should be -1
 	var ctx := ScriptExecutionContext.new(null)
@@ -59,7 +58,7 @@ func _ready() -> void:
 	check(msg_box._toast_label.text == "...", "Toast notification label displays message text")
 
 	msg_box.free()
-	script_engine.free()
+	script_engine.message_box = null
 	_finish()
 
 

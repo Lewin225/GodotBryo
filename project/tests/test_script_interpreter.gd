@@ -26,16 +26,21 @@ func _ready() -> void:
 	check(ctx.get_local("x") == 7, "arithmetic + operator precedence: x == 7 (got %s)" % str(ctx.get_local("x")))
 	check(ctx.get_local("y") == 1, "correct if-branch taken: y == 1 (got %s)" % str(ctx.get_local("y")))
 
-	print("--- ScriptInterpreter: Enable/Disable/GetDisabled on the calling node ---")
-	var node := Node3D.new()
+	print("--- ScriptInterpreter: Disable acts on the calling reference's node ---")
+	var toggled_reference := EsmReference.new()
+	var node := EsmNode.new()
+	node.reference = toggled_reference
 	add_child(node)
-	var node_ctx := ScriptExecutionContext.new(node)
+	check(EsmNode.node_for(toggled_reference) == node, "EsmNode.node_for finds the node representing a reference")
+	var node_ctx := ScriptExecutionContext.new(toggled_reference)
 	var toggle_source := "BEGIN OnActivate\nDisable\nEND\n"
 	var toggle_program := ScriptParser.new(ScriptLexer.new(toggle_source).tokenize()).parse()
 	var toggle_interp := ScriptInterpreter.new(toggle_program, registry)
 	toggle_interp.run_block("OnActivate", node_ctx)
-	check(node.visible == false, "Disable set the calling node's visible to false")
-	node.queue_free()
+	check(node.visible == false, "Disable hid the calling reference's node")
+	remove_child(node)
+	check(EsmNode.node_for(toggled_reference) == null, "a node leaving the tree is no longer found for its reference")
+	node.free()
 
 	print("--- ScriptInterpreter: unimplemented function (statement position) returns 0, doesn't crash ---")
 	# A bare call STATEMENT -- always a real call (_parse_call_statement()),
@@ -87,93 +92,97 @@ func _ready() -> void:
 	ScriptInterpreter.new(truthy_program, registry).run_block("GameMode", truthy_ctx)
 	check(truthy_ctx.get_local("z") == 1, "a bare unresolved-ref condition evaluates truthy end-to-end, no crash (got %s)" % str(truthy_ctx.get_local("z")))
 
-	print("--- ScriptInterpreter/IsActionRef: 'player' resolves to the real player Node ---")
-	# Real GECK global keyword (ScriptInterpreter's own "name" case) --
-	# confirmed necessary this session: GSBrokenSMGScript's real OnActivate
-	# body is `if IsActionRef player / ShowMessage ...`, and without this,
-	# "player" stays an unresolved String forever, so IsActionRef can never
-	# be true no matter who actually activated it.
-	var fake_player := Node.new()
-	add_child(fake_player)
+	print("--- ScriptInterpreter/IsActionRef: 'player' resolves to the player's reference ---")
+	var player_ref := ActorReference.new()
 	var player_ctx := ScriptExecutionContext.new(null)
-	player_ctx.action_ref = fake_player
-	player_ctx.player_node = fake_player
+	player_ctx.action_ref = player_ref
+	player_ctx.player_reference = player_ref
 	var player_source := "BEGIN OnActivate\nif (IsActionRef player)\n\tSet z to 1\nelse\n\tSet z to 2\nendif\nEND\n"
 	var player_program := ScriptParser.new(ScriptLexer.new(player_source).tokenize()).parse()
 	ScriptInterpreter.new(player_program, registry).run_block("OnActivate", player_ctx)
-	check(player_ctx.get_local("z") == 1, "IsActionRef player is true when action_ref IS the real player Node (got %s)" % str(player_ctx.get_local("z")))
+	check(player_ctx.get_local("z") == 1, "IsActionRef player is true when the action reference is the player's (got %s)" % str(player_ctx.get_local("z")))
 
 	var other_ctx := ScriptExecutionContext.new(null)
-	other_ctx.action_ref = Node.new()
-	other_ctx.player_node = fake_player
+	other_ctx.action_ref = ActorReference.new()
+	other_ctx.player_reference = player_ref
 	ScriptInterpreter.new(player_program, registry).run_block("OnActivate", other_ctx)
-	check(other_ctx.get_local("z") == 2, "IsActionRef player is false when action_ref is a DIFFERENT Node (got %s)" % str(other_ctx.get_local("z")))
-	other_ctx.action_ref.free()
-	fake_player.queue_free()
+	check(other_ctx.get_local("z") == 2, "IsActionRef player is false for another actor (got %s)" % str(other_ctx.get_local("z")))
 
-	print("--- ScriptEngine: end-to-end via a real script from the ESM ---")
-	_test_script_engine()
+	print("--- ScriptInterpreter: block parameters gate on the dispatch subject ---")
+	var gated_source := "BEGIN OnActivate Player\nSet z to 1\nEND\n"
+	var gated := ScriptInterpreter.new(ScriptParser.new(ScriptLexer.new(gated_source).tokenize()).parse(), registry)
+	var gate_ctx := ScriptExecutionContext.new(null)
+	gate_ctx.player_reference = player_ref
+	gated.run_block("OnActivate", gate_ctx, other_ctx.action_ref)
+	check(gate_ctx.get_local("z") == null, "OnActivate Player does not run for another activator")
+	check(not gated.has_block_for("OnActivate", gate_ctx, other_ctx.action_ref), "has_block_for is false for another activator")
+	gated.run_block("OnActivate", gate_ctx, player_ref)
+	check(gate_ctx.get_local("z") == 1, "OnActivate Player runs for the player")
+	var ungated := ScriptInterpreter.new(player_program, registry)
+	check(ungated.has_block_for("OnActivate", gate_ctx, other_ctx.action_ref), "a block without a parameter runs for any activator")
+
+	print("--- ScriptServer: real scripts from the ESM ---")
+	await _test_script_server()
 
 	_finish()
 
-func _test_script_engine() -> void:
-	var esm := EsmReader.new()
-	var opened := esm.open("../fresh_nv_copy/Data/FalloutNV.esm")
-	check(opened, "EsmReader opened FalloutNV.esm")
-	if not opened:
+func _test_script_server() -> void:
+	var esm_server = get_node("/root/EsmServer")
+	if not esm_server.is_ready():
+		await esm_server.esm_ready
+	var server = get_node("/root/ScriptServer")
+	check(server.function_registry.esm == esm_server.reader, "ScriptServer reads scripts through EsmServer's reader")
+
+	# A real actor to act as activator and player.
+	var interior := int(esm_server.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var actors: Array[ActorReference] = []
+	for reference in esm_server.get_references_in_cell(interior):
+		if reference is ActorReference:
+			actors.append(reference)
+	check(not actors.is_empty(), "GSDocMitchellHouse has a placed actor")
+	if actors.is_empty():
 		return
+	var actor: ActorReference = actors[0]
 
-	var engine := ScriptEngine.new()
-	add_child(engine)
-	engine.esm = esm
+	# VLCSafetyTrigger01SCRIPT: `Set ActivatorREF to GetActionRef` on OnTriggerEnter.
+	var trigger_base := ActivatorBase.new()
+	trigger_base.script_form_id = 0x17b787
+	var trigger := ActivatorReference.new()
+	trigger.base = trigger_base
+	trigger.instance_id = "test:trigger"
+	var instance: ScriptInstance = server.get_script_instance(trigger)
+	check(instance != null and trigger.script_instance == instance, "a reference's ScriptInstance is created on first use and stored on it")
+	check(instance != null and instance.has_local("ActivatorREF"), "declared locals are seeded")
+	server.dispatch_event(trigger, "OnTriggerEnter", actor)
+	check(trigger.script_instance.locals.get("activatorref") == {"ref": actor.instance_id}, "a ref local is stored as the reference's instance id")
+	check(trigger.script_instance.get_local("ActivatorREF") == actor, "a ref local reads back as the same reference")
+	var debug_instances: Array = server.get_debug_instances()
+	var listed := false
+	for entry in debug_instances:
+		listed = listed or entry["reference"] == trigger
+	check(listed, "debug instances list the reference")
 
-	var node := Node3D.new()
+	# IndDoorSmAnim01's script is `Begin OnActivate Player / Activate`.
+	var door_base: EsmBase = esm_server.get_base(0x000463CE)
+	var door := DoorReference.new()
+	door.base = door_base
+	door.instance_id = "test:door"
+	server.player_reference = actor
+	check(server.has_block_for(door, "OnActivate", actor), "OnActivate Player runs for the player's reference")
+	check(actors.size() < 2 or not server.has_block_for(door, "OnActivate", actors[1]), "OnActivate Player does not run for another actor")
+
+	# Console: `Player.Disable` acts on the player's node.
+	var node := EsmNode.new()
+	node.reference = actor
 	add_child(node)
-	# VLCSafetyTrigger01SCRIPT's own real form_id, hand-verified this
-	# session (test_script_esm.gd asserts the same value).
-	engine.register_scripted_node(node, 0x17b787)
-	check(engine.is_scripted(node), "node registered with ScriptEngine")
-	var debug_instances: Array = engine.get_debug_instances()
-	check(debug_instances.size() == 1 and debug_instances[0]["node"] == node, "debug inspector reports the real live script context")
+	var reply: Dictionary = server.run_debug_line("Player.Disable")
+	check(bool(reply.get("ok", false)) and not node.visible, "console resolves Player to the player's reference and acts on its node")
+	server.player_reference = null
+	node.free()
 
-	var console_player := Node3D.new()
-	console_player.visible = true
-	add_child(console_player)
-	engine.player_node = console_player
-	var console_reply: Dictionary = engine.run_debug_line("Player.Disable")
-	check(bool(console_reply.get("ok", false)) and not console_player.visible, "console line uses production parser/interpreter and resolves Player reference")
-
-	var actor := Node3D.new()
-	add_child(actor)
-	engine.dispatch_event(node, "OnTriggerEnter", actor)
-	# The real script's own body: `Set ActivatorREF to GetActionRef;` then
-	# `ActivatorREF.MoveTo ...` (MoveTo is unimplemented -- logs and no-ops,
-	# doesn't crash the dispatch).
-	check(engine.function_registry != null, "ScriptEngine owns a real function registry")
-
-	engine.unregister_scripted_node(node)
-	check(not engine.is_scripted(node), "unregister_scripted_node() removes it")
-
-	print("--- ScriptFunctionRegistry: esm propagation for ShowMessage ---")
-	# ScriptEngine.esm's own setter propagates to function_registry.esm too
-	# (script_engine.gd's own doc comment) -- confirmed here rather than
-	# assumed, since that propagation is the only thing letting ShowMessage
-	# resolve anything at all. Deliberately NOT calling ShowMessage itself
-	# here (or anywhere in the automated suite) -- it triggers a real
-	# OS.alert(), and confirmed directly this session: when a real display
-	# is available (an active editor/Play session, e.g.), that genuinely
-	# blocks waiting for a click, exactly as documented -- correct behavior
-	# for the feature, but it makes an automated test hang non-deterministically
-	# depending on the environment. get_message_by_editor_id()'s own
-	# resolution is covered headlessly in test_script_esm.gd instead, which
-	# is the actual risk surface (real ESM parsing); OS.alert() itself is a
-	# one-line stdlib call with nothing of ours left to verify.
-	check(engine.function_registry.esm == esm, "function_registry.esm was propagated by the esm setter")
-
-	node.queue_free()
-	actor.queue_free()
-	console_player.queue_free()
-	engine.queue_free()
+	server.set_reference_loaded(trigger, true)
+	server.set_reference_loaded(trigger, false)
+	check(not server.is_reference_loaded(trigger), "an unloaded reference stops running GameMode")
 
 func _finish() -> void:
 	print("=======================")

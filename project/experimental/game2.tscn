@@ -4,7 +4,6 @@
 [ext_resource type="Script" uid="uid://cpml1uhqx0awg" path="res://cell_loader.gd" id="2_xspbh"]
 [ext_resource type="Script" uid="uid://cnp4qf6ibir88" path="res://world_streamer.gd" id="3_cps6k"]
 [ext_resource type="Script" uid="uid://dase3jw7ni1lo" path="res://terrain_streamer.gd" id="4_8tca4"]
-[ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="5_boqrt"]
 [ext_resource type="PackedScene" path="res://terminal_session.tscn" id="6_vfwdf"]
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="7_5gpan"]
 [ext_resource type="Environment" uid="uid://bd2r0yui1emjj" path="res://interior_environment.tres" id="8_nuj7l"]
@@ -59,9 +58,6 @@ script = ExtResource("3_cps6k")
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_8tca4")
 terrain3d_debug_dump_grid = Vector2i(-18, 0)
-
-[node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
-script = ExtResource("5_boqrt")
 
 [node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("6_vfwdf")]
 

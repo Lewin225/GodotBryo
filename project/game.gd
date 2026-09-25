@@ -48,7 +48,6 @@ const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_phys
 @export var cell_streamer: CellStreamerV2
 @export var world_streamer: WorldStreamerV2
 @export var terrain_streamer: TerrainStreamer
-@export var script_engine: ScriptEngine
 @export var game_time_manager: GameTimeManager
 @export var weather_manager: WeatherManager
 @export var celestial_controller: CelestialController
@@ -108,7 +107,7 @@ func _enter_tree() -> void:
 	terrain_streamer.configure(_shared_esm)
 
 func _ready() -> void:
-	script_engine.message_box = message_box
+	ScriptServer.message_box = message_box
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.
@@ -129,11 +128,10 @@ func _ready() -> void:
 	# Runtime interiors and exteriors share EsmServer's typed reference graph.
 	# Terrain keeps its private native reader because that independent pipeline
 	# still consumes raw LAND data rather than typed EsmReference resources.
-	script_engine.esm = typed_esm
-	script_engine.player_node = _get_character_body() # real GECK "player" keyword -- see ScriptEngine's own doc comment
-	script_engine.function_registry.place_at_me_handler = debug_place_at_me
-	script_engine.function_registry.center_on_cell_handler = debug_center_on_cell
-	script_engine.function_registry.game_time_manager = game_time_manager
+	ScriptServer.player_node = _get_character_body()
+	ScriptServer.function_registry.place_at_me_handler = debug_place_at_me
+	ScriptServer.function_registry.center_on_cell_handler = debug_center_on_cell
+	ScriptServer.function_registry.game_time_manager = game_time_manager
 
 	# day-night: configure time manager, weather + celestial, but don't activate
 	# exterior rendering until the WorldStreamer first goes exterior.
@@ -217,7 +215,7 @@ func debug_drop_inventory_item(base_form_id: int) -> bool:
 ## scene tree.  FalloutNV accepts Distance/Direction but ignores both in
 ## practice; use a safe nearby spread instead, and retain the caller's
 ## actual world rotation (including player look tilt when present).
-func debug_place_at_me(args: Array, caller: Node) -> Variant:
+func debug_place_at_me(args: Array, caller: EsmReference) -> Variant:
 	if caller == null or args.is_empty():
 		return 0
 	push_warning("PlaceAtMe is unavailable while the legacy registry is detached from CellStreamerV2")

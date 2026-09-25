@@ -135,11 +135,11 @@ const CATEGORIES: Array[String] = [
 @onready var _preset_tree: Tree = $Margin/VBox/PresetTree
 @onready var _teleport_selected_btn: Button = $Margin/VBox/ButtonsRow/TeleportSelectedBtn
 
-var _engine: ScriptEngine
+var _engine: Node
 
 
 func _ready() -> void:
-	_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
+	_engine = get_tree().root.get_node_or_null("ScriptServer")
 	_setup_tree()
 	_setup_categories()
 
@@ -262,8 +262,6 @@ func _on_current_cell_pressed() -> void:
 		_status_label.text = "[color=#e06c75]Game root node not found[/color]"
 		return
 	var esm: EsmReader = EsmServer.reader
-	if esm == null and _engine != null:
-		esm = _engine.esm
 	if esm == null:
 		_status_label.text = "[color=#e06c75]ESM reader not available[/color]"
 		return
@@ -282,9 +280,9 @@ func _on_current_cell_pressed() -> void:
 
 func teleport_to(editor_id: String) -> void:
 	if _engine == null:
-		_engine = get_tree().root.get_node_or_null("Game/ScriptEngine") as ScriptEngine
+		_engine = get_tree().root.get_node_or_null("ScriptServer")
 	if _engine == null:
-		_status_label.text = "[color=#e06c75]ScriptEngine not found[/color]"
+		_status_label.text = "[color=#e06c75]ScriptServer not found[/color]"
 		return
 
 	# Send command directly to the scripting engine (matches scripting_debug_tab _run_line)

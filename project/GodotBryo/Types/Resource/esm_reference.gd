@@ -40,6 +40,11 @@ signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
 ## position by EsmServer.cell_at(). Written only by _refresh_cell().
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY) var current_cell_form_id: int = 0
 
+## This reference's object script state, created by ScriptServer the first
+## time the script runs or a variable is written. Null when the base has no
+## script or it has not run yet.
+@export var script_instance: ScriptInstance
+
 var _cell_refresh_suspended := false
 static var _esm_server: Node
 

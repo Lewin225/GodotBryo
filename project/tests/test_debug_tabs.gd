@@ -90,18 +90,17 @@ func _ready() -> void:
 
 	# Test dynamic message extraction from live scripted instances
 	var test_instances: Array = [
-		{"node_name": "BrokenSMG", "script_name": "GSBrokenSMGScript", "source_text": "ShowMessage GSBrokenSMGMsg\n"}
+		{"name": "BrokenSMG", "script_name": "GSBrokenSMGScript", "source_text": "ShowMessage GSBrokenSMGMsg\n"}
 	]
 	var dynamic_msgs := ScriptCandidateProvider.get_message_candidates(null, test_instances)
 	check(dynamic_msgs.has("GSBrokenSMGMsg"), "ScriptCandidateProvider dynamically extracts 'GSBrokenSMGMsg' from active script source")
 
 	# Test ScriptCandidateProvider dynamic command generation
-	var dummy_engine := ScriptEngine.new()
-	dummy_engine.function_registry.register("MyDynamicDebugCmd", func(_a, _c): return 1)
-	var dynamic_cmds := ScriptCandidateProvider.get_command_candidates(dummy_engine)
+	var script_server: Node = get_node("/root/ScriptServer")
+	script_server.function_registry.register("MyDynamicDebugCmd", func(_a, _c): return 1)
+	var dynamic_cmds := ScriptCandidateProvider.get_command_candidates(script_server)
 	check(dynamic_cmds.has("MyDynamicDebugCmd"), "ScriptCandidateProvider includes newly registered function 'MyDynamicDebugCmd'")
 	check(dynamic_cmds.has("Player.MyDynamicDebugCmd"), "ScriptCandidateProvider includes player-scoped 'Player.MyDynamicDebugCmd'")
-	dummy_engine.free()
 
 	# Test EsmReader dynamic item and cell scanning against real game data
 	var test_esm := EsmReader.new()
@@ -184,15 +183,14 @@ func _ready() -> void:
 		check(player.noclip == false, "Player toggle_noclip() sets noclip=false again")
 		check(player.collision_shape.disabled == false, "Collision shape is re-enabled when noclip is off")
 
-		# Test TCL via script engine
-		var script_engine: ScriptEngine = game_node.get_node_or_null("ScriptEngine")
-		if script_engine != null:
-			script_engine.player_node = player
-			var res := script_engine.run_debug_line("tcl", player)
-			check(bool(res.get("ok", false)), "ScriptEngine executes 'tcl'")
-			check(player.noclip == true, "'tcl' command toggles player noclip to true")
-			script_engine.run_debug_line("tcl", player)
-			check(player.noclip == false, "'tcl' command toggles player noclip back to false")
+		# TCL through ScriptServer acts on the player's body.
+		script_server.player_node = player
+		var res: Dictionary = script_server.run_debug_line("tcl")
+		check(bool(res.get("ok", false)), "ScriptServer executes 'tcl'")
+		check(player.noclip == true, "'tcl' command toggles player noclip to true")
+		script_server.run_debug_line("tcl")
+		check(player.noclip == false, "'tcl' command toggles player noclip back to false")
+		script_server.player_node = null
 
 	game_node.free()
 

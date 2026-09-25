@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Returns the dynamically aggregated list of all executable commands & keywords.
 ## Only functions registered in ScriptFunctionRegistry are included.
-static func get_command_candidates(engine: ScriptEngine = null, instances: Array = []) -> Array[String]:
+static func get_command_candidates(engine: Node = null, instances: Array = []) -> Array[String]:
 	var candidates: Array[String] = []
 
 	# Get registered functions from active engine registry (or default registry)
@@ -35,7 +35,7 @@ static func get_command_candidates(engine: ScriptEngine = null, instances: Array
 
 	# Dynamically include live script instance nodes & FormIDs
 	for entry in instances:
-		var node_name := String(entry.get("node_name", ""))
+		var node_name := String(entry.get("name", ""))
 		var script_name := String(entry.get("script_name", ""))
 		var form_hex := "0x%X" % int(entry.get("script_form_id", 0))
 		if not node_name.is_empty() and not candidates.has(node_name):
@@ -77,17 +77,17 @@ static func get_cell_candidates(esm: EsmReader = null) -> Array[String]:
 static func get_item_candidates(engine_or_game: Object = null, optional_game_node: Object = null) -> Array[String]:
 	var items: Array[String] = []
 
-	var engine: ScriptEngine = null
+	var engine: Node = null
 	var game_node: Object = null
 
-	if engine_or_game is ScriptEngine:
-		engine = engine_or_game as ScriptEngine
+	if engine_or_game != null and "function_registry" in engine_or_game:
+		engine = engine_or_game as Node
 		game_node = optional_game_node
 	else:
 		game_node = engine_or_game if engine_or_game != null else optional_game_node
 
 	# 1. Dynamically extract all items (WEAP, ARMO, AMMO, ALCH, MISC, KEYM, BOOK) from active ESM
-	var esm: EsmReader = engine.esm if engine != null else null
+	var esm: EsmReader = engine.function_registry.esm if engine != null else null
 	if esm == null and game_node != null and "esm" in game_node and game_node.esm != null:
 		esm = game_node.esm as EsmReader
 
@@ -128,7 +128,7 @@ static func get_item_candidates(engine_or_game: Object = null, optional_game_nod
 
 
 ## Returns message candidates extracted from live script instances
-static func get_message_candidates(_engine: ScriptEngine = null, instances: Array = []) -> Array[String]:
+static func get_message_candidates(_engine: Node = null, instances: Array = []) -> Array[String]:
 	var messages: Array[String] = []
 	for entry in instances:
 		var source_text: String = String(entry.get("source_text", ""))
@@ -154,17 +154,17 @@ static func get_message_candidates(_engine: ScriptEngine = null, instances: Arra
 static func get_placeable_candidates(game_node: Node = null, instances: Array = []) -> Array[String]:
 	var list: Array[String] = get_item_candidates(game_node)
 	for entry in instances:
-		var node_name := String(entry.get("node_name", ""))
+		var node_name := String(entry.get("name", ""))
 		if not node_name.is_empty() and not list.has(node_name):
 			list.append(node_name)
 	return list
 
 
 ## Returns local variables for the selected node from actual script locals
-static func get_variable_candidates(selected_node: Node = null, instances: Array = []) -> Array[String]:
+static func get_variable_candidates(selected_reference: EsmReference = null, instances: Array = []) -> Array[String]:
 	var vars: Array[String] = []
 	for entry in instances:
-		if selected_node == null or entry.get("node") == selected_node:
+		if selected_reference == null or entry.get("reference") == selected_reference:
 			var locals_dict: Dictionary = entry.get("locals", {})
 			for k in locals_dict:
 				if not vars.has(k):
@@ -176,7 +176,7 @@ static func get_variable_candidates(selected_node: Node = null, instances: Array
 static func get_reference_candidates(instances: Array = []) -> Array[String]:
 	var refs: Array[String] = ["Player"]
 	for entry in instances:
-		var node_name := String(entry.get("node_name", ""))
+		var node_name := String(entry.get("name", ""))
 		if not node_name.is_empty() and not refs.has(node_name):
 			refs.append(node_name)
 	return refs
@@ -185,8 +185,8 @@ static func get_reference_candidates(instances: Array = []) -> Array[String]:
 ## Resolves contextual candidates based on line tokens and argument position
 static func get_contextual_candidates(
 	left_text: String,
-	engine: ScriptEngine = null,
-	selected_node: Node = null,
+	engine: Node = null,
+	selected_reference: EsmReference = null,
 	instances: Array = [],
 	game_node: Node = null
 ) -> Array[String]:
@@ -208,7 +208,7 @@ static func get_contextual_candidates(
 	if arg_idx == 1:
 		match cmd:
 			"coc", "centeroncell":
-				return get_cell_candidates(engine.esm if engine != null else null)
+				return get_cell_candidates(engine.function_registry.esm if engine != null else null)
 			"showmessage":
 				return get_message_candidates(engine, instances)
 			"additem", "removeitem", "player.additem", "player.removeitem", "equipitem", "unequipitem", "getitemcount":
@@ -218,7 +218,7 @@ static func get_contextual_candidates(
 			"setopenstate", "setdestroyed", "sethardcore", "player.sethardcore":
 				return ["0", "1"]
 			"set", "player.set":
-				return get_variable_candidates(selected_node, instances)
+				return get_variable_candidates(selected_reference, instances)
 			"kill", "resurrect", "enable", "disable", "getdisabled", "getdead":
 				return get_reference_candidates(instances)
 

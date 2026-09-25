@@ -28,11 +28,11 @@ the same controller path and leaves room for co-op.
 | Concern | Owner |
 |---|---|
 | Choosing what to activate | Controller: `PlayerController` via `InteractRay`, NPC package |
-| Performing the activation | Actor: `ScriptEngine.activate(target, self.reference)`; a `LOW_LEVEL` NPC's package calls it directly |
-| Script dispatch, `Activate` semantics | `ScriptEngine` |
+| Performing the activation | Actor: `ScriptServer.activate(target, self.reference)`; a `LOW_LEVEL` NPC's package calls it directly |
+| Script dispatch, `Activate` semantics | `ScriptServer` |
 | What activating a type means | `activate(ref, activator)` on the base type (`DoorBase`: teleport or swing) |
-| Moving any reference | `ScriptEngine.move_reference`, applied at one point per frame |
-| Using terminals, furniture, containers | Actor state (`using` / `used_by`) via `ScriptEngine.begin_use` / `end_use` |
+| Moving any reference | `ScriptServer.move_reference`, applied at one point per frame |
+| Using terminals, furniture, containers | Actor state (`using` / `used_by`) via `ScriptServer.begin_use` / `end_use` |
 | Loading the destination | Transition coordinator, reacting to the possessed actor's teleport |
 | Showing UI | `PlayerController`, from its possessed actor's `using` state |
 
@@ -59,10 +59,10 @@ Door transitions work again at G.
 ## Activation
 
 Activation is resource to resource, so `LOW_LEVEL` NPCs with no loaded node
-can use doors. It is owned by `ScriptEngine`:
+can use doors. It is owned by `ScriptServer`:
 
 ```
-ScriptEngine.activate(target: EsmReference, activator: EsmReference)
+ScriptServer.activate(target: EsmReference, activator: EsmReference)
   └─ run target's OnActivate block, or the default block
        └─ Activate  (inside the target's own block)
             └─ target.default_activate(activator)
@@ -119,7 +119,7 @@ class_name ScriptInstance extends Resource
   persist whether or not the reference is loaded and are saved with it.
 - `ScriptExecutionContext` is per dispatch only: calling reference, action
   ref, and the instance's locals. Built for one run and discarded.
-- `ScriptEngine` holds no per-reference state. It creates a reference's
+- `ScriptServer` holds no per-reference state. It creates a reference's
   `ScriptInstance` lazily on first run or first write, seeding the declared
   locals (SCPT `SLSD`/`SCVR`) to 0.
 - Cross-reference variables (`set MrJanitorREF.cleaning to 0`, a real patrol
@@ -135,7 +135,7 @@ class_name ScriptInstance extends Resource
 - `GameMode` (and `MenuMode`) blocks run only for references in loaded
   cells, as in Gamebryo, where object scripts stop when their cell is not
   loaded. Quest scripts are not reference scripts and are out of scope here.
-- `ScriptEngine` keeps the set of scripted references with a `GameMode` block
+- `ScriptServer` keeps the set of scripted references with a `GameMode` block
   in loaded cells, from the streamers' cell load/unload and
   `EsmServer.reference_cell_changed`. Membership is by cell, not by node:
   today's `_game_mode_nodes` misses any reference in a loaded cell without a
@@ -169,7 +169,7 @@ passed in.
 - `EsmBase.activate(ref, activator)` is a no-op; each base type with built-in
   activation overrides it. It decides what activating that type means and
   calls engine primitives to do it. It never implements a primitive itself,
-  and `ScriptEngine` holds no per-type table.
+  and `ScriptServer` holds no per-type table.
 - `EsmReference.default_activate(activator)` calls
   `base.activate(self, activator)`. It is the dispatch point `Activate` uses,
   and the place a per-reference override can be added later. No reference
@@ -181,14 +181,14 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 	var door := ref as DoorReference
 	if door.is_locked:
 		if door.lock_key != null and activator.has_item(door.lock_key):
-			ScriptEngine.unlock(door)
+			ScriptServer.unlock(door)
 		elif door.lock_level == 255:
 			return
 		else:
-			ScriptEngine.begin_use(activator, door, -1)   # lockpicking
+			ScriptServer.begin_use(activator, door, -1)   # lockpicking
 			return
 	if door.teleport != null:
-		ScriptEngine.move_reference(activator, door.teleport.get_destination_space_form_id(),
+		ScriptServer.move_reference(activator, door.teleport.get_destination_space_form_id(),
 			door.teleport.position, door.teleport.rotation)
 	else:
 		door.is_open = not door.is_open
@@ -205,7 +205,7 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 - Lock levels 0/25/50/75/100 are Very Easy through Very Hard; 255 requires
   the key. `FalloutNV.esm`: 252 locked DOOR refs (65 load doors), 89 at 255,
   99 with a key, 54 at 100+ with no key (openable only by script).
-- `ScriptEngine.lock(ref, level)` / `unlock(ref)` are the primitives that
+- `ScriptServer.lock(ref, level)` / `unlock(ref)` are the primitives that
   change it. Script `Lock`/`Unlock` and package door flags call them.
 - Package door flags (`PKDT`: lock/unlock doors at package start, end or
   location; 29 packages lock, 32 unlock) act once when triggered; they do not
@@ -225,16 +225,16 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
   on the reference for a future crime system.
 
 A new type is one override on its base. A new kind of effect is one new
-primitive on `ScriptEngine`.
+primitive on `ScriptServer`.
 
 ### Callers
 
 | Caller | Call |
 |---|---|
 | `PlayerController` | picks a target from `InteractRay`, instructs its pawn: `pawn.request_activate(target_ref)` |
-| Pawn (actor node) | `ScriptEngine.activate(target_ref, self.reference)`; no reach check |
-| `LOW_LEVEL` NPC package | `ScriptEngine.activate(door_ref, npc_ref)` directly |
-| Script `Activate` on another reference | `ScriptEngine.activate(target, ctx.calling_reference)` |
+| Pawn (actor node) | `ScriptServer.activate(target_ref, self.reference)`; no reach check |
+| `LOW_LEVEL` NPC package | `ScriptServer.activate(door_ref, npc_ref)` directly |
+| Script `Activate` on another reference | `ScriptServer.activate(target, ctx.calling_reference)` |
 
 Activation passes the `EsmReference` resource itself, never its id.
 `EsmServer` hands out one instance per `instance_id`, so the resource is the
@@ -260,7 +260,7 @@ That is actor state, not a UI event:
   first free) is decided when furniture use is implemented.
 - Terminals and containers are single-user: `used_by: ActorReference`.
   Activation does nothing when `used_by` is another actor.
-- `ScriptEngine.begin_use(actor, target, marker)` / `end_use(actor)` are the
+- `ScriptServer.begin_use(actor, target, marker)` / `end_use(actor)` are the
   primitives that set both sides together. Nothing writes these fields
   directly.
 - `activate` on terminal, furniture and container base types calls
@@ -302,7 +302,7 @@ REFRs carry embedded patrol result scripts (`XPRD`/`XPPA`/`INAM` +
 `SCHR`/`SCTX`/`SCRO`; 1343 in `FalloutNV.esm`, 106 with source text, on STAT,
 IDLM and FURN markers). They have no blocks and are not part of activation.
 They belong to the package system, which runs them on the arriving NPC.
-`ScriptEngine` needs to run a bare statement list with a given subject for
+`ScriptServer` needs to run a bare statement list with a given subject for
 them and for dialogue result scripts.
 
 ## Moving references
@@ -310,7 +310,7 @@ them and for dialogue result scripts.
 One primitive moves any reference:
 
 ```
-ScriptEngine.move_reference(ref, space_form_id, position, rotation)
+ScriptServer.move_reference(ref, space_form_id, position, rotation)
 ```
 
 - Queues the move. Several moves of one reference in a frame collapse to the
@@ -536,7 +536,7 @@ Removed from `DoorReference`: `has_teleport_destination`,
 - `ScriptExecutionContext.calling_reference` and `action_ref` become
   `EsmReference`, with the node looked up only when one is loaded. `MoveTo`
   and `Activate` must work on references with no node.
-- Script state moves from `ScriptEngine._contexts[node]` to
+- Script state moves from `ScriptServer._contexts[node]` to
   `EsmReference.script_instance`; `ScriptExecutionContext` becomes per
   dispatch.
 - `Activate` follows the calling rules under "Activation" and honours
@@ -578,7 +578,7 @@ in the core primitive. Rejected in favour of possession (see "Model").
 
 - Verify against the original game: after `player.MoveTo` to another cell,
   does the rest of the calling script stop for that frame (recalled from the
-  GECK wiki, unverified)? If so, `ScriptEngine` stops the calling block when a
+  GECK wiki, unverified)? If so, `ScriptServer` stops the calling block when a
   move of the possessed reference is queued.
 - Verify: does `GetPos` immediately after `MoveTo` in the same script return
   the old position? Deferred moves produce that behaviour.

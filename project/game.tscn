@@ -8,7 +8,6 @@
 [ext_resource type="Script" uid="uid://cio1g7pp5m0b1" path="res://terrain_streaming_debug_tab.gd" id="5_terrainstreamingdebug"]
 [ext_resource type="Script" uid="uid://v48u060dlupj" path="res://world_streaming_debug_tab.gd" id="5_worldstreamingdebug"]
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
-[ext_resource type="Script" uid="uid://iw4wxlcq2qat" path="res://script_vm/script_engine.gd" id="7_scriptengine"]
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="PackedScene" uid="uid://cwo34unl5x2h5" path="res://terminal_session.tscn" id="10_terminalsession"]
@@ -61,12 +60,11 @@ func _on_tab_container_tab_changed(tab: int) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
-[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "script_engine", "game_time_manager", "weather_manager", "celestial_controller", "terminal_session", "message_box", "cell_label", "sun", "world_environment", "player")]
+[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "game_time_manager", "weather_manager", "celestial_controller", "terminal_session", "message_box", "cell_label", "sun", "world_environment", "player")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
 world_streamer = NodePath("WorldStreamerV2")
 terrain_streamer = NodePath("TerrainStreamer")
-script_engine = NodePath("ScriptEngine")
 game_time_manager = NodePath("GameTimeManager")
 weather_manager = NodePath("WeatherManager")
 celestial_controller = NodePath("CelestialController")
@@ -94,9 +92,6 @@ spawn_reference_types = 3
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_terrainstreamer")
 terrain3d_debug_dump_grid = Vector2i(-18, 0)
-
-[node name="ScriptEngine" type="Node" parent="." unique_id=208706505]
-script = ExtResource("7_scriptengine")
 
 [node name="GameTimeManager" type="Node" parent="." unique_id=391827164]
 script = ExtResource("13_gametimemanager")
