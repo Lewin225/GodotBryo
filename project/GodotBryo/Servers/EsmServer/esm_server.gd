@@ -52,6 +52,10 @@ var _worldspace_by_cell: Dictionary = {} # grid or persistent CELL -> WRLD
 var _placed_reference_ids := PackedInt64Array() # sorted REFR/ACHR/ACRE FormIDs
 var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
+## References whose cell has changed since they were built, by current CELL:
+## CELL -> {EsmReference: true}. They are listed only under that CELL.
+var _relocated_by_cell: Dictionary = {}
+var _relocated: Dictionary = {} # EsmReference -> current CELL
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -59,6 +63,7 @@ var state := "loading"
 var _pending_rehydrates: Array[EsmBase] = []
 
 func _ready() -> void:
+	reference_cell_changed.connect(_on_reference_cell_changed)
 	_load_thread = Thread.new()
 	_load_thread.start(_open_reader_background)
 
@@ -295,15 +300,31 @@ func create_inventory_item_reference(base_form_id: int, instance_id: String = ""
 		result.instance_id = instance_id
 	return result
 
+## The references currently in a CELL: those filed in it that have not moved
+## to another CELL, and those that have moved into it.
 func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 	var result: Array[EsmReference] = []
 	if reader == null:
 		return result
 	for placement in reader.get_cell_references(cell_form_id) + reader.get_cell_actors(cell_form_id):
 		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), cell_form_id)
-		if reference != null:
+		if reference != null and not _relocated.has(reference):
 			result.append(reference)
+	for reference: EsmReference in _relocated_by_cell.get(cell_form_id, {}):
+		result.append(reference)
 	return result
+
+## Whether a reference's cell has changed since it was built.
+func is_relocated(reference: EsmReference) -> bool:
+	return _relocated.has(reference)
+
+func _on_reference_cell_changed(reference: EsmReference, old_cell_form_id: int, new_cell_form_id: int) -> void:
+	if _relocated_by_cell.has(old_cell_form_id):
+		(_relocated_by_cell[old_cell_form_id] as Dictionary).erase(reference)
+	if not _relocated_by_cell.has(new_cell_form_id):
+		_relocated_by_cell[new_cell_form_id] = {}
+	_relocated_by_cell[new_cell_form_id][reference] = true
+	_relocated[reference] = new_cell_form_id
 
 ## Every authored ACHR represented by an ActorReference, regardless of which
 ## CELL/worldspace callers are currently loading. The returned objects are the
@@ -440,8 +461,9 @@ func get_references_in_exterior_cell(worldspace_form_id: int, coord: Vector2i) -
 	var cell_form_id := get_exterior_cell_form_id(worldspace_form_id, coord)
 	return get_references_in_cell(cell_form_id) if cell_form_id != 0 else []
 
-## Persistent exterior references belong to the worldspace rather than any
-## individual grid tile, but use the same typed resource construction path.
+## References filed in a worldspace's persistent CELL, excluding any whose
+## cell has changed since they were built: those are listed only under their
+## current CELL by get_references_in_cell().
 func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[EsmReference]:
 	var result: Array[EsmReference] = []
 	if reader == null:
@@ -454,7 +476,7 @@ func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[
 			"authored:%08X" % int(placement.get("refr_form_id", 0)),
 			persistent_cell
 		)
-		if reference != null:
+		if reference != null and not _relocated.has(reference):
 			result.append(reference)
 	return result
 

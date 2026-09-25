@@ -81,6 +81,7 @@ func _ready() -> void:
 	await _check_leveled_item_resources(server, index)
 	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
+	_check_relocated_references(server)
 	await _check_saved_base_rehydrates(server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -191,6 +192,32 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## A reference is listed under the CELL it is currently in.
+func _check_relocated_references(server) -> void:
+	var wasteland := int(server.reader.find_worldspace_by_editor_id("WastelandNV").get("form_id", 0))
+	var interior := int(server.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var cell_a: int = server.get_exterior_cell_form_id(wasteland, Vector2i(-18, 0))
+	var cell_b: int = server.get_exterior_cell_form_id(wasteland, Vector2i(-17, 0))
+	var size: float = server.EXTERIOR_CELL_SIZE_METERS
+	var moved: EsmReference = server.get_references_in_cell(interior)[0]
+	var home_position := moved.position
+	moved.set_location(wasteland, Vector3(-18 * size + 3.0, 3.0, 0))
+	_check(server.is_relocated(moved), "a reference that changed CELL is relocated")
+	_check(not server.get_references_in_cell(interior).has(moved), "it is no longer listed in the CELL it left")
+	_check(server.get_references_in_cell(cell_a).count(moved) == 1, "it is listed once in the CELL it entered")
+	moved.set_location(interior, home_position)
+	_check(server.get_references_in_cell(interior).count(moved) == 1 and not server.get_references_in_cell(cell_a).has(moved),
+			"moved back, it is listed once in its own CELL again")
+
+	var persistent: EsmReference = null
+	for reference in server.get_persistent_references_for_worldspace(wasteland):
+		if not reference.has_xsrf_or_xsrd:
+			persistent = reference
+			break
+	persistent.position = Vector3(-17 * size + 3.0, 3.0, 0)
+	_check(not server.get_persistent_references_for_worldspace(wasteland).has(persistent), "a relocated persistent reference leaves the persistent list")
+	_check(server.get_references_in_cell(cell_b).count(persistent) == 1, "and is listed under its current grid CELL")
 
 ## Every base record carrying SCRI exposes it, across every scripted type.
 func _check_base_scripts(server, index: Array) -> void:

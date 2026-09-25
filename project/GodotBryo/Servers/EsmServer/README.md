@@ -39,7 +39,8 @@ EsmServer.get_reference(instance_id) -> EsmReference # a placed instance
 EsmServer.get_reference_type(refr_form_id) -> Script
 EsmServer.create_reference_for_base(base_form_id) -> EsmReference
 EsmServer.create_inventory_item_reference(base_form_id, instance_id := "") -> EsmReference
-EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]
+EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]   # currently in it
+EsmServer.is_relocated(reference) -> bool
 EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
@@ -73,6 +74,12 @@ in-memory index of every worldspace's grid and persistent CELLs, built once on
 the load thread, and never touch the ESM file. Exterior references, including
 those filed in a worldspace's persistent CELL, get the grid CELL under their
 position.
+
+**Listings follow references.** `get_references_in_cell()` returns the references
+currently in the CELL: those filed in it that have not moved to another CELL, plus those
+that have moved in. A reference whose cell has changed since it was built is relocated
+and is listed only under its current CELL; `get_persistent_references_for_worldspace()`
+leaves it out.
 
 **Finding a reference.** Every placed REFR/ACHR/ACRE's filing CELL and every
 placed reference's editor ID are indexed on the load thread (native
