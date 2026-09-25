@@ -51,6 +51,14 @@ persistent-cell "near fade"), not abstract advice. Worth reading before
 you build a fix on top of any theory about undocumented Bethesda data or
 behavior.
 
+## GitHub CLI authentication
+
+When `gh` reports an authentication failure from the filesystem sandbox, do
+not conclude that the user's GitHub token is invalid. The sandbox may be
+unable to access the user's keyring. Re-run the read-only auth check with
+normal environment access before asking the user to authenticate or taking
+any action based on the reported failure.
+
 - **A spot-check is not verification — an exhaustive census is.** One
   theory during #56 (that certain persistent-cell objects were placed via
   a specific baked-tile naming convention) got built into a whole feature,
