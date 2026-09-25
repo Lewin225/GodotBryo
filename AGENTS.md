@@ -171,24 +171,32 @@ tools/                      — gitignored, holds the native Godot binary
 `project/project.godot`'s `run/main_scene` is `res://game.tscn`, script
 `game.gd`. Node tree (see `game.tscn`):
 
-- **`Game`** (root, `Node3D`, `game.gd`) — owns the interact raycast, door
-  transition routing (interior vs. exterior), player spawn/repositioning,
-  and the interior/exterior `WorldEnvironment` swap. Neither `CellLoader` nor
-  `WorldStreamer` knows a player exists at all — `game.gd`'s `_process()` is
-  the only thing that does, via `_find_character_body()`.
-- **`CellLoader`** (`cell_loader.gd`) — single-active-interior-cell loader.
-  Used for every interior destination.
-- **`WorldStreamer`** (`world_streamer.gd`) — continuous adjacent-tile
-  exterior streaming. Purely position-reactive: tracks the active camera,
-  not the player body directly. Only one of `CellLoader`/`WorldStreamer` is
-  ever "live" at a time; `game.gd` tears down/pauses the other on a
-  transition (see `set_paused()` below — entering an interior pauses
-  `WorldStreamer` rather than tearing it down, so exterior state survives the
-  visit).
+- **`Game`** (root, `Node3D`, `game.gd`) — wires the scene, has the player
+  controller possess `EsmServer.get_player_reference()`, starts the game by
+  COC-ing that reference to `GSDocMitchellHouse`, and reacts to where the
+  player ends up: interior/exterior `WorldEnvironment` swap, XCLL lighting,
+  weather/sky, debug HUD.
+- **`TransitionCoordinator`** (`transition_coordinator.gd`) — keeps the
+  loaded space equal to the possessed actor's space. On that actor's
+  teleport (`ScriptServer.reference_teleported`) it repositions the body
+  within the same space, or freezes it, loads the destination (interior CELL
+  via `CellStreamerV2`, worldspace via `WorldStreamerV2` + `TerrainStreamer`),
+  places the body from the reference and releases it. Doors, `MoveTo` and
+  `coc` all reach it by moving the player's reference; see
+  `Plans/Transitions/actor_transitions.md`.
+- **`CellStreamerV2`** (`cell_streamer_v2.gd`) — single-active-interior-cell
+  loader. **`WorldStreamerV2`** (`world_streamer_v2.gd`) — continuous
+  adjacent-tile exterior streaming, tracking the active camera. Only one is
+  live at a time; entering an interior pauses `WorldStreamerV2` rather than
+  tearing it down, so exterior state survives the visit. Both physicalise or
+  remove references as they move between CELLs, and never physicalise the
+  possessed reference.
 - **`Sun`** / **`WorldEnvironment`** — swapped between `interior_environment.tres`
   and `exterior_environment.tres` on every transition (`_set_exterior_environment()`).
-- **`Character`** — an instance of the third-party `addons/fpc/character.tscn`
-  first-person controller.
+- **`Character`** — `player/player.tscn`, a `PlayerController`. It possesses
+  an `ActorReference`, writes its position and heading to it every physics
+  frame (unless frozen), and activates what its `InteractRay` targets through
+  `ScriptServer.activate()` on the `interact` action.
 - **`Debug Tools`** (`Window`, hidden by default, toggled with the **Home**
   key) — a `TabContainer` of in-game debug panels, see below.
 - **`DebugHud`** (`CanvasLayer`) — always-on `CellLabel` (current cell name +

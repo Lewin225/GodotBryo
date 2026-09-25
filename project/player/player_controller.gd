@@ -224,6 +224,9 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"interact"):
+		request_activate()
+		return
 	if debug_click_shake and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		return
 		# Incedibly annoying
@@ -244,6 +247,7 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_sync_possessed()
 	if is_teleporting:
 		is_teleporting = false
 		_publish_actor_motion()
@@ -673,6 +677,47 @@ func _update_camera_transform(delta: float) -> void:
 
 
 # --- Public Interface ---
+
+## The actor this controller possesses. Its reference is where the player is:
+## the body writes its position and heading to it every physics frame, and a
+## teleport of it moves the body (TransitionCoordinator).
+var possessed: ActorReference = null
+## While frozen the body neither moves nor writes to `possessed`.
+var frozen := false
+
+## Takes control of `actor`: scripts' `player` becomes its reference, and
+## body-level commands act on this body.
+func possess(actor: ActorReference) -> void:
+	possessed = actor
+	ScriptServer.player_reference = actor
+	ScriptServer.player_node = self
+
+func set_frozen(value: bool) -> void:
+	frozen = value
+	set_physics_process(not value)
+	velocity = Vector3.ZERO
+
+## Moves the body to a Godot-space position and yaw, with no leftover motion
+## or camera pitch.
+func place_body(target_global_position: Vector3, yaw: float) -> void:
+	teleport(target_global_position)
+	rotation.y = yaw
+	camera_pitch = 0.0
+
+## Activates what the interact ray is aimed at, with the possessed actor as the
+## activator.
+func request_activate() -> void:
+	if possessed == null or interact_ray == null:
+		return
+	var target := interact_ray.current_target as EsmNode
+	if target != null and target.reference != null:
+		ScriptServer.activate(target.reference, possessed)
+
+func _sync_possessed() -> void:
+	if frozen or possessed == null or possessed.current_space_form_id == 0:
+		return
+	possessed.position = EsmReferencePhysicaliser.authored_position(global_position)
+	possessed.rotation = EsmReferencePhysicaliser.authored_heading(rotation.y)
 
 ## Adds trauma to the procedural camera shake system.
 func apply_camera_shake(trauma_amount: float) -> void:

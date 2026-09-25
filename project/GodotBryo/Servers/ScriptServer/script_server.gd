@@ -31,7 +31,8 @@ var message_box: MessageBox = null:
 var function_registry := ScriptFunctionRegistry.new()
 
 var _interpreter_cache: Dictionary = {} # SCPT FormID -> ScriptInterpreter
-var _loaded_game_mode: Dictionary = {} # EsmReference -> true: loaded, has GameMode/MenuMode
+var _loaded: Dictionary = {} # EsmReference -> true: every loaded reference with a script
+var _loaded_game_mode: Dictionary = {} # the loaded ones with GameMode/MenuMode
 var _instances: Dictionary = {} # EsmReference -> true: every reference whose script has run
 var _last_button_pressed: int = -1
 var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
@@ -226,7 +227,10 @@ func _free_furniture_slot(furniture: FurnitureReference, marker: int) -> int:
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.
 func set_reference_loaded(reference: EsmReference, loaded: bool) -> void:
 	if not loaded:
+		_loaded.erase(reference)
 		_loaded_game_mode.erase(reference)
+		return
+	if _loaded.has(reference):
 		return
 	var instance := get_script_instance(reference)
 	if instance == null:
@@ -234,13 +238,15 @@ func set_reference_loaded(reference: EsmReference, loaded: bool) -> void:
 	var interpreter := _get_or_parse(instance.script_form_id)
 	if interpreter == null:
 		return
+	_loaded[reference] = true
 	if interpreter.has_block("GameMode") or interpreter.has_block("MenuMode"):
 		_loaded_game_mode[reference] = true
 	if interpreter.has_block("OnLoad"):
 		dispatch_event(reference, "OnLoad")
 
+## Whether a reference with a script is in a loaded CELL.
 func is_reference_loaded(reference: EsmReference) -> bool:
-	return _loaded_game_mode.has(reference)
+	return _loaded.has(reference)
 
 ## Runs one console statement through the production lexer, parser and
 ## interpreter. With a target reference the statement runs as that
@@ -275,7 +281,7 @@ func get_debug_instances() -> Array:
 		out.append({
 			"reference": reference,
 			"name": reference.instance_id,
-			"loaded": _loaded_game_mode.has(reference),
+			"loaded": _loaded.has(reference),
 			"script_form_id": instance.script_form_id,
 			"script_name": String(interpreter.program.get("script_name", "")) if interpreter != null else "",
 			"blocks": block_names,
@@ -294,7 +300,7 @@ func get_debug_usage() -> Dictionary:
 			local_slots += 1
 			if ScriptExecutionContext.is_truthy(value):
 				non_zero += 1
-	return { "instances": _instances.size(), "loaded": _loaded_game_mode.size(), "cached_scripts": _interpreter_cache.size(), "local_slots": local_slots, "non_zero_locals": non_zero }
+	return { "instances": _instances.size(), "loaded": _loaded.size(), "cached_scripts": _interpreter_cache.size(), "local_slots": local_slots, "non_zero_locals": non_zero }
 
 func _context(reference: EsmReference, instance: ScriptInstance, action_ref: EsmReference) -> ScriptExecutionContext:
 	var ctx := ScriptExecutionContext.new(reference, instance)

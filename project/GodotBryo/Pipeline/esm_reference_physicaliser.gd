@@ -133,6 +133,16 @@ static func placement_transform(position: Vector3, rotation: Vector3, scale: flo
 	var conversion := Transform3D(GAMEBRYO_TO_GODOT_BASIS, Vector3.ZERO)
 	return conversion * authored * conversion.affine_inverse()
 
+## Inverse of placement_transform()'s translation: a Godot-space position as
+## an authored one (metres, Gamebryo Z-up axes).
+static func authored_position(godot_position: Vector3) -> Vector3:
+	return GAMEBRYO_TO_GODOT_BASIS.inverse() * godot_position
+
+## A Godot yaw (rotation about +Y) as an authored rotation: a heading about
+## Gamebryo +Z, which placement_transform() maps back to -z about Godot +Y.
+static func authored_heading(godot_yaw: float) -> Vector3:
+	return Vector3(0.0, 0.0, -godot_yaw)
+
 ## Gamebryo stores REFR Euler angles in radians. The established NV path uses
 ## the negated authored angles in X/Y/Z composition order.
 static func authored_rotation_basis(rotation: Vector3) -> Basis:

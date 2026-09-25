@@ -50,7 +50,12 @@ references in `_physics_process()`, earlier in the frame. Script `MoveTo Target 
 **Blocks.** Event blocks (`OnActivate`, `OnTriggerEnter`, ...) run whenever
 `dispatch_event()` is called, whether or not the reference is loaded. `GameMode` and
 `MenuMode` run every frame only for references marked loaded with
-`set_reference_loaded()`, which also runs `OnLoad`. A block with a parameter
+`set_reference_loaded()`, which also runs `OnLoad` (once per load).
+`CellStreamerV2` marks its current CELL's references loaded; `WorldStreamerV2`
+marks those of resident tiles at full detail, and unloads them when a tile drops to
+LOD, is removed, or is paused for an interior visit. References moving between
+CELLs are unloaded by the streamer they left and loaded (deferred to the end of the
+frame) by the one they entered. A block with a parameter
 (`Begin OnActivate Player`) runs only when the parameter names the dispatch's action
 reference; a block without one always runs.
 

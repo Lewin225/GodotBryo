@@ -73,16 +73,17 @@ func _ready() -> void:
 	# is no longer part of the project, so the assertions had no subject: reading
 	# it returned "" and the first check passed vacuously. The separation they
 	# guarded is now structural -- v0 is out of the Godot project entirely.
-	var game = preload("res://game.gd").new()
-	game._transition_generation = 8
-	check(not game._can_release_exterior_transition(7, TerrainStreamer.ReadyStatus.READY, true),
-			"a stale door transition cannot release the player")
-	check(not game._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.CANCELLED, true),
+	var coordinator := TransitionCoordinator.new()
+	coordinator._generation = 8
+	check(not coordinator._can_release_exterior_transition(7, TerrainStreamer.ReadyStatus.READY, true),
+			"a stale transition cannot release the player")
+	check(not coordinator._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.CANCELLED, true),
 			"cancelled terrain readiness cannot release the player")
-	check(not game._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, false),
+	check(not coordinator._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, false),
 			"terrain readiness alone cannot release before objects settle")
-	check(game._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, true),
+	check(coordinator._can_release_exterior_transition(8, TerrainStreamer.ReadyStatus.READY, true),
 		"the current transition releases only after object and collision-safe terrain readiness")
+	coordinator.free()
 
 	# Unknown/DLC/mod worldspaces must not strand Game's transition await. They
 	# are accepted and complete through a no-LAND fallback when this selected

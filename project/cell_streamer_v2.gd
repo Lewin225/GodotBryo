@@ -100,6 +100,7 @@ func cancel_load(advance_generation := true) -> void:
 
 func unload_current() -> void:
 	cancel_load()
+	_set_scripts_loaded(_current_refs, false)
 	if _current != null and is_instance_valid(_current):
 		_current.free()
 	_current = null
@@ -174,11 +175,13 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	# before assigning CurrentCell so Godot cannot rename it on collision.
 	EsmNode.set_collision_disabled(root, false)
 	root.visible = true
+	_set_scripts_loaded(_current_refs, false)
 	if _current != null and is_instance_valid(_current):
 		_current.free()
 	root.name = "CurrentCell"
 	_current = root
 	_current_refs = _loading_refs.duplicate()
+	_set_scripts_loaded(_current_refs, true)
 	_loading_root = null
 	_loading_refs.clear()
 	_loading = false
@@ -187,23 +190,44 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	load_completed.emit(cell_form_id, true)
 
 
-## Keeps the current CELL's nodes in step with references changing CELL: a
-## reference arriving in it is physicalised, one leaving it loses its node.
+## Keeps the current CELL's nodes in step with references changing CELL.
+## Leaving is handled immediately: the reference is unloaded and loses this
+## streamer's node. Arriving is deferred to the end of the frame
+## (_on_reference_arrived), after every streamer has handled the change, so a
+## node or load another streamer is about to drop cannot hide the arrival.
 func _on_reference_cell_changed(reference: EsmReference, _old_cell_form_id: int, new_cell_form_id: int) -> void:
 	var current_cell := get_current_cell_form_id()
 	if current_cell == 0:
 		return
-	var node := EsmNode.node_for(reference)
-	var owned := node != null and is_ancestor_of(node)
 	if new_cell_form_id == current_cell:
 		if not _current_refs.has(reference):
 			_current_refs.append(reference)
-		if node == null and _should_spawn(reference):
-			_physicaliser.physicalise(reference, _current, EsmNode.VisualDetail.FULL)
-	elif owned:
+		_on_reference_arrived.call_deferred(reference)
+		return
+	if _current_refs.has(reference):
 		_current_refs.erase(reference)
+		ScriptServer.set_reference_loaded(reference, false)
+	var node := EsmNode.node_for(reference)
+	if node != null and is_ancestor_of(node):
 		node.get_parent().remove_child(node)
 		node.queue_free()
+
+## Loads and physicalises a reference that is still in the current CELL at the
+## end of the frame, unless it already has a node.
+func _on_reference_arrived(reference: EsmReference) -> void:
+	var current_cell := get_current_cell_form_id()
+	if current_cell == 0 or reference.current_cell_form_id != current_cell:
+		return
+	ScriptServer.set_reference_loaded(reference, true)
+	if EsmNode.node_for(reference) == null and _should_spawn(reference):
+		_physicaliser.physicalise(reference, _current, EsmNode.VisualDetail.FULL)
+
+## Tells ScriptServer the current CELL's references are loaded (their
+## GameMode/OnLoad blocks run) or not.
+func _set_scripts_loaded(references: Array[EsmReference], loaded: bool) -> void:
+	for reference in references:
+		if reference != null:
+			ScriptServer.set_reference_loaded(reference, loaded)
 
 ## Whether a CELL being loaded should spawn `reference`: a reference whose
 ## CELL has changed belongs only to the CELL it is in now.
@@ -211,6 +235,9 @@ func _belongs_to_cell(reference: EsmReference, cell_form_id: int) -> bool:
 	return not esm_server.is_relocated(reference) or reference.current_cell_form_id == cell_form_id
 
 func _should_spawn(reference: EsmReference) -> bool:
+	# The player's body stands in for the possessed actor; it gets no node.
+	if reference == ScriptServer.player_reference:
+		return false
 	if reference is ActorReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:

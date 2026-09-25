@@ -99,6 +99,7 @@ func activate(worldspace_form_id: int) -> void:
 func deactivate() -> void:
 	if _active_wrld_form_id == -1:
 		return
+	_set_all_scripts_loaded(false)
 	_active_wrld_form_id = -1
 	_generation += 1
 	_paused = false
@@ -150,6 +151,8 @@ func set_paused(paused: bool, hide_when_paused := true) -> void:
 	var next_pause_hides := hide_when_paused if paused else false
 	if paused == _paused and next_pause_hides == _pause_hides:
 		return
+	if paused != _paused:
+		_set_all_scripts_loaded(not paused)
 	_paused = paused
 	_pause_hides = next_pause_hides
 	visible = not (_paused and _pause_hides)
@@ -336,6 +339,7 @@ func _start_tile(coord: Vector2i, detail: EsmNode.VisualDetail) -> void:
 	var references: Array[EsmReference] = esm_server.get_references_in_cell(cell_form_id)
 	_tile_references[coord] = references
 	root.set_meta("references", references)
+	_set_root_scripts_loaded(root, detail == EsmNode.VisualDetail.FULL)
 	_queue_population(root, references, false)
 
 
@@ -423,6 +427,7 @@ func _start_persistent_tile(coord: Vector2i) -> void:
 	_persistent_pending[coord] = true
 	var references: Array = _persistent_references_by_tile.get(coord, [])
 	root.set_meta("references", references)
+	_set_root_scripts_loaded(root, int(root.get_meta("visual_detail")) == EsmNode.VisualDetail.FULL)
 	_queue_population(root, references, true)
 
 
@@ -512,6 +517,9 @@ func _closest_population_job_index(jobs: Array[Dictionary], center: Vector2i) ->
 
 
 func _should_spawn(reference: EsmReference) -> bool:
+	# The player's body stands in for the possessed actor; it gets no node.
+	if reference == ScriptServer.player_reference:
+		return false
 	if reference is ActorReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
@@ -534,29 +542,65 @@ func _should_physicalise(reference: EsmReference, detail: EsmNode.VisualDetail) 
 		and not reference is CreatureReference
 
 
-## Keeps nodes in step with references changing CELL: a reference arriving in
-## a resident tile is physicalised there (or its node moved there), and one
-## leaving every resident tile loses its node.
+## Tells ScriptServer whether a tile root's references are in a loaded CELL:
+## a tile at full detail is loaded (its GameMode/OnLoad blocks run); a tile in
+## the LOD ring, removed, or retained while paused is not.
+func _set_root_scripts_loaded(root: Node, loaded: bool) -> void:
+	for reference in root.get_meta("references", []):
+		if reference != null:
+			ScriptServer.set_reference_loaded(reference, loaded)
+
+func _set_all_scripts_loaded(loaded: bool) -> void:
+	for root: Node3D in _resident.values():
+		_set_root_scripts_loaded(root, loaded and int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL)
+	for root: Node3D in _persistent_tiles.values():
+		_set_root_scripts_loaded(root, loaded and int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL)
+
+## Keeps nodes in step with references changing CELL. Leaving is handled
+## immediately: a reference no longer under any resident tile loses this
+## streamer's node and is unloaded. A node already in a resident tile moves to
+## the tile under it. Arriving is deferred to the end of the frame
+## (_on_reference_arrived), after every streamer has handled the change, so a
+## node or load another streamer is about to drop cannot hide the arrival.
 func _on_reference_cell_changed(reference: EsmReference, _old_cell_form_id: int, _new_cell_form_id: int) -> void:
 	if not is_active():
 		return
 	var node := EsmNode.node_for(reference)
 	var owned := node != null and is_ancestor_of(node)
 	var root := _tile_root_for(reference)
+	if not _is_script_loaded_here(reference):
+		ScriptServer.set_reference_loaded(reference, false)
 	if root == null:
 		if owned:
 			node.get_parent().remove_child(node)
 			node.queue_free()
 		return
-	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL))
 	var references: Array = root.get_meta("references", [])
 	if not references.has(reference):
 		references.append(reference)
-	if owned:
-		if node.get_parent() != root:
-			node.reparent(root)
-	elif node == null and _should_physicalise(reference, detail):
+	if owned and node.get_parent() != root:
+		node.reparent(root)
+	_on_reference_arrived.call_deferred(reference)
+
+## Physicalises and loads a reference that is still under a resident tile at
+## the end of the frame, unless it already has a node.
+func _on_reference_arrived(reference: EsmReference) -> void:
+	if not is_active():
+		return
+	var root := _tile_root_for(reference)
+	if root == null:
+		return
+	if _is_script_loaded_here(reference):
+		ScriptServer.set_reference_loaded(reference, true)
+	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL))
+	if EsmNode.node_for(reference) == null and _should_physicalise(reference, detail):
 		_physicaliser.physicalise(reference, root, detail)
+
+## Whether this streamer holds `reference` in a loaded CELL: a resident tile
+## at full detail while not paused.
+func _is_script_loaded_here(reference: EsmReference) -> bool:
+	var root := _tile_root_for(reference)
+	return root != null and not _paused and int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL
 
 ## The resident tile root for the grid CELL under a reference, or null when
 ## the reference is in another space or that tile is not resident.
@@ -576,6 +620,7 @@ func _remove_tile(coord: Vector2i) -> void:
 	_pending.erase(coord)
 	if _resident.has(coord):
 		var root: Node3D = _resident[coord]
+		_set_root_scripts_loaded(root, false)
 		root.free()
 		_resident.erase(coord)
 	_tile_references.erase(coord)
@@ -585,6 +630,7 @@ func _remove_persistent_tile(coord: Vector2i) -> void:
 	_persistent_pending.erase(coord)
 	if _persistent_tiles.has(coord):
 		var root: Node3D = _persistent_tiles[coord]
+		_set_root_scripts_loaded(root, false)
 		root.free()
 		_persistent_tiles.erase(coord)
 
@@ -597,6 +643,7 @@ func _set_tile_visual_detail(root: Node, detail: EsmNode.VisualDetail) -> void:
 	if previous == detail:
 		return
 	root.set_meta("visual_detail", detail)
+	_set_root_scripts_loaded(root, detail == EsmNode.VisualDetail.FULL)
 	if detail == EsmNode.VisualDetail.LOD:
 		_prune_tile_to_lod(root)
 	_set_subtree_visual_detail(root, detail)

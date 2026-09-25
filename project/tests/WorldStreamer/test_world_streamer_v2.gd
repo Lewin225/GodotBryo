@@ -127,7 +127,7 @@ func _ready() -> void:
 		check(physicalised.transform.origin.is_equal_approx(converted_position), "EsmNode converts its authored placement into Godot space")
 		check(physicalised.get_authored_transform().origin.is_equal_approx(physicalised.reference.position), "authored transform inverts placement conversion for future dirty checks")
 
-	_check_references_follow_moves(streamer, esm_server, int(world.form_id))
+	await _check_references_follow_moves(streamer, esm_server, int(world.form_id))
 
 	streamer.set_paused(true, false)
 	check(streamer.is_paused() and streamer.visible and not streamer.is_pause_hiding(),
@@ -154,6 +154,7 @@ func _check_references_follow_moves(streamer: WorldStreamerV2, esm_server, waste
 	var tile_root: Node3D = streamer._resident.get(Vector2i(-17, 0))
 	script_server.move_reference(doc, wasteland, Vector3(-17 * size + 10.0, 10.0, 0), doc.rotation)
 	script_server.apply_pending_moves()
+	await get_tree().process_frame
 	var node := EsmNode.node_for(doc)
 	check(node != null and node.get_parent() == tile_root, "an actor moved into a resident tile is physicalised in it")
 	var neighbour: Node3D = streamer._resident.get(Vector2i(-18, 0))

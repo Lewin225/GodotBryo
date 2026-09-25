@@ -63,10 +63,10 @@ func _ready() -> void:
 				break
 		var expected_coc := EsmReferencePhysicaliser.placement_transform(coc.position, coc.rotation)
 		check(coc_node != null and coc_node.transform.is_equal_approx(expected_coc), "COC marker uses the physicaliser's shared authored transform")
-		var game_transformer: Node = (load("res://game.gd") as Script).new()
-		var spawn: Dictionary = game_transformer.call("_convert_authored_spawn_transform", coc.position, coc.rotation)
-		check(Vector3(spawn["position"]).is_equal_approx(expected_coc.origin), "Game COC spawn uses the same physicaliser translation")
-		game_transformer.free()
+		check(EsmReferencePhysicaliser.authored_position(expected_coc.origin).is_equal_approx(coc.position),
+				"authored_position inverts the COC marker's placement translation")
+		check(is_zero_approx(angle_difference(EsmReferencePhysicaliser.authored_heading(expected_coc.basis.get_euler().y).z, coc.rotation.z)),
+				"authored_heading inverts the COC marker's placement yaw")
 	var teleport_door: DoorReference = null
 	for reference in streamer.get_current_refs():
 		if reference is DoorReference and reference.teleport != null:
@@ -74,10 +74,10 @@ func _ready() -> void:
 			break
 	if teleport_door != null:
 		var expected_xtel := EsmReferencePhysicaliser.placement_transform(teleport_door.teleport.position, teleport_door.teleport.rotation)
-		var game_transformer: Node = (load("res://game.gd") as Script).new()
-		var spawn: Dictionary = game_transformer.call("_convert_authored_spawn_transform", teleport_door.teleport.position, teleport_door.teleport.rotation)
-		check(Vector3(spawn["position"]).is_equal_approx(expected_xtel.origin), "Game XTEL spawn uses the same physicaliser translation")
-		game_transformer.free()
+		check(EsmReferencePhysicaliser.authored_position(expected_xtel.origin).is_equal_approx(teleport_door.teleport.position),
+				"authored_position inverts an XTEL landing's placement translation")
+		check(is_zero_approx(angle_difference(EsmReferencePhysicaliser.authored_heading(expected_xtel.basis.get_euler().y).z, teleport_door.teleport.rotation.z)),
+				"authored_heading inverts an XTEL landing's placement yaw")
 	else:
 		check(false, "Doc Mitchell's house contains a typed teleport door fixture")
 
@@ -142,6 +142,7 @@ func _check_references_follow_moves(streamer: CellStreamerV2, esm_server, doc_ho
 
 	script_server.move_reference(doc, doc_house, home, home_rotation)
 	script_server.apply_pending_moves()
+	await get_tree().process_frame
 	var returned := EsmNode.node_for(doc)
 	check(returned != null and returned.get_parent() == streamer._current and streamer._current_refs.has(doc), "moved back in, it is physicalised again")
 
@@ -156,6 +157,7 @@ func _check_references_follow_moves(streamer: CellStreamerV2, esm_server, doc_ho
 		var visitor_home := visitor.position
 		script_server.move_reference(visitor, doc_house, home + Vector3(0, 1, 0), visitor.rotation)
 		script_server.apply_pending_moves()
+		await get_tree().process_frame
 		var arrived := EsmNode.node_for(visitor)
 		check(arrived != null and arrived.get_parent() == streamer._current, "an actor moved in from another interior appears")
 		script_server.move_reference(visitor, saloon, visitor_home, visitor.rotation)
