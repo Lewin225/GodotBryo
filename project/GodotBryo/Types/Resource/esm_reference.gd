@@ -58,7 +58,7 @@ func set_location(space_form_id: int, new_position: Vector3, notify := true) -> 
 func _refresh_cell(notify := true) -> void:
 	if _cell_refresh_suspended or current_space_form_id == 0:
 		return
-	var server := _get_esm_server()
+	var server := get_esm_server()
 	if server == null or not server.is_ready():
 		return
 	var cell: int = server.cell_at(current_space_form_id, position)
@@ -71,7 +71,7 @@ func _refresh_cell(notify := true) -> void:
 		server.reference_cell_changed.emit(self, old_cell, cell)
 
 ## The EsmServer autoload, or null where it does not exist (the editor).
-static func _get_esm_server() -> Node:
+static func get_esm_server() -> Node:
 	if is_instance_valid(_esm_server):
 		return _esm_server
 	var tree := Engine.get_main_loop() as SceneTree

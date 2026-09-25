@@ -308,7 +308,7 @@ func get_all_xtel_door_references() -> Array[DoorReference]:
 			"authored:%08X" % int(placement.get("refr_form_id", 0)),
 			int(placement.get("cell_form_id", 0))
 		) as DoorReference
-		if reference != null and reference.has_teleport_destination:
+		if reference != null and reference.teleport != null:
 			result.append(reference)
 	return result
 
@@ -344,7 +344,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
 		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as DoorReference
-		if reference != null and reference.has_teleport_destination:
+		if reference != null and reference.teleport != null:
 			result.append(reference)
 	return result
 
@@ -365,6 +365,18 @@ func _get_xtel_door_placements() -> Array:
 		return _xtel_door_placements
 	_xtel_door_placements = reader.get_all_xtel_doors()
 	return _xtel_door_placements
+
+## Space of an authored reference without building it: the cached
+## reference's own space, or the space of the CELL that files it.
+func get_space_form_id_for_reference(instance_id: String) -> int:
+	var cached: EsmReference = _authored_reference_cache.get(instance_id)
+	if cached != null:
+		return cached.current_space_form_id
+	var form_id := _parse_authored_id(instance_id)
+	if form_id == 0 or reader == null:
+		return 0
+	var owner: Dictionary = reader.find_cell_containing_ref(form_id)
+	return get_space_form_id_for_cell(int(owner.get("cell_form_id", 0)))
 
 ## The space a CELL belongs to: its WRLD for an exterior grid or persistent
 ## CELL, the CELL itself for an interior.
@@ -439,30 +451,30 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 		actor.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	if result is DoorReference:
 		var door_ref: DoorReference = result
-		door_ref.has_teleport_destination = bool(placement.get("has_xtel", false))
-		door_ref.teleport_destination_refr_form_id = int(placement.get("dest_refr_form_id", 0))
-		door_ref.teleport_position = placement.get("dest_position", Vector3.ZERO)
-		door_ref.teleport_rotation = placement.get("dest_rotation", Vector3.ZERO)
-		if door_ref.teleport_destination_refr_form_id != 0 and reader != null:
-			var destination_owner: Dictionary = reader.find_cell_containing_ref(door_ref.teleport_destination_refr_form_id)
-			door_ref.teleport_destination_cell_form_id = int(destination_owner.get("cell_form_id", 0))
 		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
+		var destination_form_id := int(placement.get("dest_refr_form_id", 0))
+		if bool(placement.get("has_xtel", false)) and destination_form_id != 0:
+			var link := DoorTeleportLink.new()
+			link.destination_id = "authored:%08X" % destination_form_id
+			link.position = placement.get("dest_position", Vector3.ZERO)
+			link.rotation = placement.get("dest_rotation", Vector3.ZERO)
+			var xtel := _subrecord(ref_raw, "XTEL")
+			link.no_alarm = xtel.size() >= 32 and (_u32(xtel, 28) & 0x01) != 0
+			door_ref.teleport = link
+		# XLOC presence means locked, at any level (level 0 is Very Easy).
 		var lock_data := _subrecord(ref_raw, "XLOC")
 		if lock_data.size() >= 9:
 			door_ref.lock_level = _u8(lock_data)
 			door_ref.lock_key_form_id = _u32(lock_data, 4)
 			door_ref.lock_key = get_base(door_ref.lock_key_form_id) as KeyBase
 			door_ref.lock_flags = _u8(lock_data, 8)
-			door_ref.is_locked = door_ref.lock_level > 0 or door_ref.lock_key_form_id != 0
+			door_ref.is_locked = true
 			door_ref.is_leveled_lock = (door_ref.lock_flags & 0x04) != 0
 		var activation := _subrecord(ref_raw, "XACT")
 		if activation.size() >= 4:
 			door_ref.activation_flags = _u32(activation)
 		door_ref.is_open_by_default = _subrecord_present(ref_raw, "ONAM") or (door_ref.activation_flags & 0x08) != 0
 		door_ref.is_open = door_ref.is_open_by_default
-		var teleport := _subrecord(ref_raw, "XTEL")
-		if teleport.size() >= 32:
-			door_ref.teleport_no_alarm = (_u32(teleport, 28) & 0x01) != 0
 	if result is ActivatorReference or result is ContainerReference or result is FurnitureReference:
 		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
 		var activation := _subrecord(ref_raw, "XACT")

@@ -61,6 +61,7 @@ func _ready() -> void:
 	_check(found_actor, "an ACHR resolves as ActorReference")
 	_check_authored_reference_cache(server, index)
 	_check_reference_location(server)
+	_check_door_links_and_locks(server)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -188,6 +189,55 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## XTEL links and XLOC lock state across every base-game XTEL door.
+func _check_door_links_and_locks(server) -> void:
+	var doors: Array[DoorReference] = server.get_all_xtel_door_references()
+	_check(doors.size() == 1108, "every FalloutNV.esm XTEL door has a link (%d)" % doors.size())
+	var by_id := {}
+	for door in doors:
+		by_id[door.instance_id] = door
+	var reciprocal := 0
+	var destination_known := 0
+	var landing_on_grid := 0
+	var exterior_landings := 0
+	var no_alarm := 0
+	var locked := 0
+	var locked_level_zero_keyless := 0
+	for door in doors:
+		var link := door.teleport
+		var target: DoorReference = by_id.get(link.destination_id)
+		if target != null:
+			destination_known += 1
+			if target.teleport.destination_id == door.instance_id:
+				reciprocal += 1
+		var space := link.get_destination_space_form_id()
+		if space != 0 and server._persistent_cell_by_worldspace.has(space):
+			exterior_landings += 1
+			if server.cell_at(space, link.position) != server._persistent_cell_by_worldspace[space]:
+				landing_on_grid += 1
+		if link.no_alarm:
+			no_alarm += 1
+		if door.is_locked:
+			locked += 1
+			if door.lock_level == 0 and door.lock_key_form_id == 0:
+				locked_level_zero_keyless += 1
+	_check(destination_known == doors.size(), "every XTEL destination is itself an XTEL door (%d)" % destination_known)
+	_check(reciprocal == 1106, "1106 XTEL links lead to a door that leads straight back (%d)" % reciprocal)
+	_check(exterior_landings == 491, "491 XTEL links land in a worldspace (%d)" % exterior_landings)
+	_check(landing_on_grid == exterior_landings, "every worldspace landing lies on a grid CELL (%d of %d)" % [landing_on_grid, exterior_landings])
+	_check(no_alarm == 0, "no base-game XTEL sets the no-alarm flag (%d)" % no_alarm)
+	_check(locked == 65, "65 XTEL doors are locked (%d)" % locked)
+	_check(locked_level_zero_keyless == 6, "6 locked XTEL doors are Very Easy with no key (%d)" % locked_level_zero_keyless)
+
+	# One link resolved all the way to its destination door.
+	var back_door: DoorReference = by_id.get("authored:0010901D")
+	_check(back_door != null and back_door.is_locked and back_door.lock_level == 0, "Prospector Saloon back door (0010901D) is locked at Very Easy")
+	var interior := int(server.reader.find_cell_by_editor_id("GSProspectorSaloonInterior").get("form_id", 0))
+	var inside: DoorReference = back_door.teleport.destination if back_door != null else null
+	_check(inside != null and inside.instance_id == back_door.teleport.destination_id, "the back door's link resolves its destination door")
+	_check(inside != null and inside.current_space_form_id == interior and back_door.teleport.get_destination_space_form_id() == interior, "the back door lands in the saloon interior")
+	_check(inside == null or inside == by_id.get(inside.instance_id), "a resolved destination is the shared cached DoorReference")
 
 func _check_package_bases(server, index: Array) -> void:
 	var package_count := 0
@@ -455,7 +505,7 @@ func _check_door_resources(server, index: Array) -> void:
 			found_door_reference = true
 			_check(reference.base is DoorBase, "DoorReference points to DoorBase")
 			_check(reference.lock_key_form_id == 0 or reference.lock_key != null, "DoorReference resolves its lock key Base")
-			_check(reference.teleport_destination_refr_form_id == 0 or reference.has_teleport_destination, "DoorReference XTEL state is consistent")
+			_check(reference.teleport == null or not reference.teleport.destination_id.is_empty(), "DoorReference XTEL link names its destination")
 			var node: EsmNode = _physicalise_in_tree(reference)
 			_check(node is EsmDoorNode, "Door physicalizer returns its semantic node immediately")
 			_check_interact_ray_resolves_esm_node(node)
@@ -487,16 +537,22 @@ func _check_interact_ray_resolves_esm_node(door: EsmNode) -> void:
 ## This does not depend on a particular authored test door having XTEL: it
 ## asserts the exact receipt Game consumes to select the destination loader.
 func _check_typed_door_activation_receipt() -> void:
-	var reference := DoorReference.new()
-	reference.has_teleport_destination = true
-	reference.teleport_destination_cell_form_id = 0x00123456
-	reference.teleport_position = Vector3(1.0, 2.0, 3.0)
-	reference.teleport_rotation = Vector3(0.1, 0.2, 0.3)
+	# Doc Mitchell's front door (interior side) leads to Goodsprings.
+	var interior := int(EsmServer.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var reference: DoorReference = null
+	for candidate in EsmServer.get_references_in_cell(interior):
+		if candidate is DoorReference and candidate.teleport != null:
+			reference = candidate
+			break
+	_check(reference != null, "GSDocMitchellHouse has a teleport door")
+	if reference == null:
+		return
 	var door := EsmDoorNode.new()
 	door.configure(reference)
 	var outcome := door.activate()
-	_check(int(outcome.get("dest_cell_form_id", 0)) == reference.teleport_destination_cell_form_id, "EsmDoorNode activation returns its XTEL destination cell")
-	_check(outcome.get("dest_position", Vector3.ZERO) == reference.teleport_position and outcome.get("dest_rotation", Vector3.ZERO) == reference.teleport_rotation, "EsmDoorNode activation preserves XTEL spawn transform")
+	var expected_cell: int = EsmServer.cell_at(reference.teleport.get_destination_space_form_id(), reference.teleport.position)
+	_check(int(outcome.get("dest_cell_form_id", 0)) == expected_cell and expected_cell != 0, "EsmDoorNode activation returns the CELL under its XTEL landing")
+	_check(outcome.get("dest_position", Vector3.ZERO) == reference.teleport.position and outcome.get("dest_rotation", Vector3.ZERO) == reference.teleport.rotation, "EsmDoorNode activation preserves XTEL spawn transform")
 	door.free()
 
 

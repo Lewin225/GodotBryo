@@ -69,13 +69,13 @@ func _ready() -> void:
 		game_transformer.free()
 	var teleport_door: DoorReference = null
 	for reference in streamer.get_current_refs():
-		if reference is DoorReference and reference.has_teleport_destination:
+		if reference is DoorReference and reference.teleport != null:
 			teleport_door = reference
 			break
 	if teleport_door != null:
-		var expected_xtel := EsmReferencePhysicaliser.placement_transform(teleport_door.teleport_position, teleport_door.teleport_rotation)
+		var expected_xtel := EsmReferencePhysicaliser.placement_transform(teleport_door.teleport.position, teleport_door.teleport.rotation)
 		var game_transformer: Node = (load("res://game.gd") as Script).new()
-		var spawn: Dictionary = game_transformer.call("_convert_authored_spawn_transform", teleport_door.teleport_position, teleport_door.teleport_rotation)
+		var spawn: Dictionary = game_transformer.call("_convert_authored_spawn_transform", teleport_door.teleport.position, teleport_door.teleport.rotation)
 		check(Vector3(spawn["position"]).is_equal_approx(expected_xtel.origin), "Game XTEL spawn uses the same physicaliser translation")
 		game_transformer.free()
 	else:

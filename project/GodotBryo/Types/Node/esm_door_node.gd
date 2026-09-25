@@ -21,12 +21,16 @@ func activate(_actor: Node = null) -> Dictionary:
 	var door_reference := reference as DoorReference
 	if door_reference == null:
 		return {}
-	if door_reference.has_teleport_destination and door_reference.teleport_destination_cell_form_id != 0:
-		return {
-			"dest_cell_form_id": door_reference.teleport_destination_cell_form_id,
-			"dest_position": door_reference.teleport_position,
-			"dest_rotation": door_reference.teleport_rotation,
-		}
+	var link := door_reference.teleport
+	var server := EsmReference.get_esm_server()
+	if link != null and server != null:
+		var space := link.get_destination_space_form_id()
+		if space != 0:
+			return {
+				"dest_cell_form_id": server.cell_at(space, link.position),
+				"dest_position": link.position,
+				"dest_rotation": link.rotation,
+			}
 	_toggle_swing()
 	return {}
 

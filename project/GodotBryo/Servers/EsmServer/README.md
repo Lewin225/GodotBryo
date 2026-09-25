@@ -43,6 +43,7 @@ EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]
 EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
+EsmServer.get_space_form_id_for_reference(instance_id) -> int
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
 EsmServer.cell_at(space_form_id, position: Vector3) -> int
 EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
@@ -70,6 +71,12 @@ in-memory index of every worldspace's grid and persistent CELLs, built once on
 the load thread, and never touch the ESM file. Exterior references, including
 those filed in a worldspace's persistent CELL, get the grid CELL under their
 position.
+
+**Doors.** A `DoorReference` with XTEL has `teleport: DoorTeleportLink`: the
+destination door's instance id, the landing position and rotation, and the
+no-alarm flag. The link resolves its destination door and space through this
+server on demand and never stores the door, since most XTEL doors lead to each
+other. A door with XLOC is locked at any level; level 0 is Very Easy.
 
 **Resources, not dictionaries.** The return is a typed `Resource` with real
 properties, inspectable in the editor and serialisable. `rehydrate()` refills

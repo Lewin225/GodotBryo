@@ -193,13 +193,14 @@ func _seed_portals(esm_server, total: int) -> void:
 	var completed := 0
 	while completed < total:
 		for door: DoorReference in esm_server.get_xtel_door_reference_batch(completed, records_per_frame):
-			if door != null and door.has_teleport_destination and door.teleport_destination_cell_form_id != 0:
+			var destination_space: int = door.teleport.get_destination_space_form_id() if door != null and door.teleport != null else 0
+			if destination_space != 0:
 				var portal = NpcPortalScript.new()
 				portal.source_reference = door
-				portal.source_space_form_id = esm_server.get_space_form_id_for_cell(door.current_cell_form_id)
+				portal.source_space_form_id = door.current_space_form_id
 				portal.source_position = door.position
-				portal.destination_space_form_id = esm_server.get_space_form_id_for_cell(door.teleport_destination_cell_form_id)
-				portal.destination_position = door.teleport_position
+				portal.destination_space_form_id = destination_space
+				portal.destination_position = door.teleport.position
 				portals.append(portal)
 				if not portals_by_source_space.has(portal.source_space_form_id):
 					portals_by_source_space[portal.source_space_form_id] = []

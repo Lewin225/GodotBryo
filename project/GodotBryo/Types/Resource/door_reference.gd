@@ -12,23 +12,14 @@ extends EsmReference
 @export var lock_flags: int = 0
 ## Raw REFR XACT activation flags.
 @export var activation_flags: int = 0
-## Whether REFR XLOC marks this door as locked.
+## Current lock state. A door with XLOC starts locked at any level; level 0
+## is Very Easy, not unlocked.
 @export var is_locked: bool = false
 ## Whether the REFR XLOC lock uses a leveled lock.
 @export var is_leveled_lock: bool = false
 ## Whether REFR XACT/ONAM marks this door open by default.
 @export var is_open_by_default: bool = false
-## REFR XTEL no-alarm teleport flag.
-@export var teleport_no_alarm: bool = false
-## Whether this REFR has an XTEL teleport destination.
-@export var has_teleport_destination: bool = false
-## REFR XTEL destination door reference FormID.
-@export var teleport_destination_refr_form_id: int = 0
-## Owning cell of the REFR XTEL destination.
-@export var teleport_destination_cell_form_id: int = 0
-## REFR XTEL destination position.
-@export var teleport_position: Vector3 = Vector3.ZERO
-## REFR XTEL destination rotation.
-@export var teleport_rotation: Vector3 = Vector3.ZERO
+## REFR XTEL, or null when this door does not teleport.
+@export var teleport: DoorTeleportLink
 ## Current runtime open state.
 @export var is_open: bool = false
