@@ -4,6 +4,16 @@ extends EsmReference
 
 enum SimulationMode { LOW_LEVEL, PHYSICAL_LEASED }
 
+## Emitted when this actor starts or stops using a reference.
+signal using_changed(previous: EsmReference, current: EsmReference)
+
+## The reference this actor is using (terminal, container, furniture, a door
+## it is lockpicking), or null. One at a time. Set only by
+## ScriptServer.begin_use / end_use. Runtime state, not saved.
+var using: EsmReference = null
+## The furniture marker index occupied while using furniture, else -1.
+var using_marker: int = -1
+
 ## Immutable CELL which authored this ACHR placement. Save loading restores an
 ## overlay onto this shared Resource; it must never rewrite spawn provenance.
 @export var spawn_cell_form_id: int = 0

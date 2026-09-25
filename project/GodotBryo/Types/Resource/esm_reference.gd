@@ -45,6 +45,11 @@ signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
 ## script or it has not run yet.
 @export var script_instance: ScriptInstance
 
+## The actor using this reference, for references used by one actor at a
+## time (terminals, containers, a door being lockpicked). Set only by
+## ScriptServer.begin_use / end_use. Runtime state, not saved.
+var used_by: ActorReference = null
+
 var _cell_refresh_suspended := false
 static var _esm_server: Node
 
@@ -82,3 +87,9 @@ static func get_esm_server() -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	_esm_server = tree.root.get_node_or_null("EsmServer") if tree != null else null
 	return _esm_server
+
+## Built-in activation of this reference: its base type's activate(). The
+## dispatch point for ScriptServer; a reference type may override it.
+func default_activate(activator: EsmReference) -> void:
+	if base != null:
+		base.activate(self, activator)

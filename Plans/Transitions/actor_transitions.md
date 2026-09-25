@@ -147,16 +147,15 @@ class_name ScriptInstance extends Resource
 
 ### `Activate`
 
-What `Activate` does depends on where it is called from:
-
-- From outside the target's own script (pawn, NPC package, another
-  reference's script): runs the target's `OnActivate` block, or the default
-  block.
-- From inside the target's own `OnActivate` block: calls
-  `target.default_activate(activator)` and does not re-enter the block,
-  unless called with `abRunOnActivate = 1`.
+- Script `Activate [ActionRef] [RunOnActivateBlockFlag]` performs the target's
+  built-in activation. With the flag 1 it runs the target's `OnActivate`
+  block instead, as any other activation does. `Activate` inside a target's
+  own `OnActivate` block therefore never re-enters it. Flag semantics are
+  from the GECK wiki, unverified in game.
 - The activator is the explicit `ActionRef` argument when given
   (`Activate player`), otherwise the current action ref.
+- Activations from outside scripts (pawn, NPC package) run the target's
+  `OnActivate` block, or the default block.
 
 ### Base-type activation
 

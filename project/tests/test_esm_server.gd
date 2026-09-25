@@ -518,7 +518,7 @@ func _check_door_resources(server, index: Array) -> void:
 			node.queue_free()
 			break
 	_check(found_door_reference, "a real DOOR placement resolves as DoorReference")
-	_check_typed_door_activation_receipt()
+	_check_activation(get_node("/root/EsmServer"), get_node("/root/ScriptServer"))
 	_check_misc_physicaliser(server)
 
 ## NifServer returns ordinary Node3D/StaticBody3D descendants. Interaction
@@ -534,31 +534,142 @@ func _check_interact_ray_resolves_esm_node(door: EsmNode) -> void:
 	_check(InteractRay.new().get_interaction_action(door).contains("Open") or InteractRay.new().get_interaction_action(door).contains("Close"), "InteractRay supplies EsmDoorNode action text")
 	nif_child.queue_free()
 
-## This does not depend on a particular authored test door having XTEL: it
-## asserts the exact receipt Game consumes to select the destination loader.
-func _check_typed_door_activation_receipt() -> void:
-	# Doc Mitchell's front door (interior side) leads to Goodsprings.
-	var interior := int(EsmServer.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
-	var reference: DoorReference = null
-	for candidate in EsmServer.get_references_in_cell(interior):
-		if candidate is DoorReference and candidate.teleport != null:
-			reference = candidate
-			break
-	_check(reference != null, "GSDocMitchellHouse has a teleport door")
-	if reference == null:
-		return
-	var door := EsmDoorNode.new()
-	door.configure(reference)
-	var outcome := door.activate()
-	var expected_cell: int = EsmServer.cell_at(reference.teleport.get_destination_space_form_id(), reference.teleport.position)
-	_check(int(outcome.get("dest_cell_form_id", 0)) == expected_cell and expected_cell != 0, "EsmDoorNode activation returns the CELL under its XTEL landing")
-	_check(outcome.get("dest_position", Vector3.ZERO) == reference.teleport.position and outcome.get("dest_rotation", Vector3.ZERO) == reference.teleport.rotation, "EsmDoorNode activation preserves XTEL spawn transform")
-	door.free()
+## Built-in activation of doors, furniture and terminals, and script gating.
+func _check_activation(esm_server, script_server) -> void:
+	var interior := int(esm_server.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var plain_door: DoorReference = null
+	var load_door: DoorReference = null
+	var actors: Array[ActorReference] = []
+	for reference in esm_server.get_references_in_cell(interior):
+		if reference is DoorReference and not reference.is_locked:
+			if reference.teleport == null and plain_door == null:
+				plain_door = reference
+			elif reference.teleport != null and load_door == null:
+				load_door = reference
+		elif reference is ActorReference:
+			actors.append(reference)
+	var actor := ActorReference.new()
+	actor.instance_id = "test:actor"
+	actor.contents = Inventory.new()
+	var other_actor := ActorReference.new()
+	other_actor.instance_id = "test:other"
 
+	# A plain door toggles with no node loaded.
+	_check(plain_door != null and EsmNode.node_for(plain_door) == null, "GSDocMitchellHouse has an unloaded plain door")
+	if plain_door != null:
+		var was_open := plain_door.is_open
+		script_server.activate(plain_door, actor)
+		_check(plain_door.is_open != was_open, "activating a plain door with no node toggles is_open")
+		script_server.activate(plain_door, actor)
 
-## REFR 0010757E is the open-by-default gate outside Doc Mitchell's house.
-## It starts as a distant LOD in WorldStreamer, so the full NIF can arrive
-## after the semantic DoorReference already knows that it is open.
+	# A load door queues a move of the activator to its landing.
+	_check(load_door != null, "GSDocMitchellHouse has an unlocked load door")
+	if load_door != null:
+		script_server.activate(load_door, actor)
+		var move: Dictionary = script_server.get_pending_move(actor)
+		_check(int(move.get("space_form_id", 0)) == load_door.teleport.get_destination_space_form_id()
+				and move.get("position") == load_door.teleport.position and move.get("rotation") == load_door.teleport.rotation,
+				"activating a load door queues the activator's move to its landing")
+
+	# Locks, over every locked XTEL door.
+	var keyed: DoorReference = null
+	var requires_key: DoorReference = null
+	var pickable: DoorReference = null
+	var player_only: Array[DoorReference] = []
+	for door: DoorReference in esm_server.get_all_xtel_door_references():
+		if door.base != null and door.base.form_id == 0x000463CE:
+			player_only.append(door)
+		if not door.is_locked:
+			continue
+		if door.lock_key != null and keyed == null:
+			keyed = door
+		elif door.lock_key == null and door.lock_level >= 255 and requires_key == null:
+			requires_key = door
+		elif door.lock_key == null and door.lock_level < 255 and pickable == null:
+			pickable = door
+	_check(keyed != null and requires_key != null and pickable != null, "locked XTEL doors cover keyed, key-only and pickable locks")
+	if keyed != null:
+		script_server.activate(keyed, other_actor)
+		var expected_use: DoorReference = keyed if keyed.lock_level < 255 else null
+		_check(keyed.is_locked and script_server.get_pending_move(other_actor).is_empty() and other_actor.using == expected_use,
+				"a keyed door without its key stays locked (lockpicking below level 255)")
+		script_server.end_use(other_actor)
+		actor.contents.add_item(keyed.lock_key.form_id)
+		script_server.activate(keyed, actor)
+		_check(not keyed.is_locked and int(script_server.get_pending_move(actor).get("space_form_id", 0)) == keyed.teleport.get_destination_space_form_id(),
+				"carrying the key unlocks the door and goes through it")
+		script_server.lock(keyed)
+	if requires_key != null:
+		script_server.activate(requires_key, other_actor)
+		_check(requires_key.is_locked and other_actor.using == null and script_server.get_pending_move(other_actor).is_empty(),
+				"a level-255 lock without its key does nothing")
+	if pickable != null:
+		script_server.activate(pickable, other_actor)
+		_check(other_actor.using == pickable and pickable.used_by == other_actor, "a pickable lock makes the activator use the door")
+		script_server.end_use(other_actor)
+		_check(other_actor.using == null and pickable.used_by == null, "end_use clears both sides")
+
+	# `Begin OnActivate Player / Activate`: the player goes through by script,
+	# anyone else through the built-in activation.
+	_check(player_only.size() == 24, "24 IndDoorSmAnim01 load doors (%d)" % player_only.size())
+	player_only = player_only.filter(func(d: DoorReference) -> bool: return not d.is_locked)
+	if not player_only.is_empty():
+		var door := player_only[0]
+		script_server.player_reference = actor
+		script_server.activate(door, actor)
+		_check(int(script_server.get_pending_move(actor).get("space_form_id", 0)) == door.teleport.get_destination_space_form_id(),
+				"the player goes through an OnActivate Player door via its script")
+		script_server.activate(door, other_actor)
+		_check(int(script_server.get_pending_move(other_actor).get("space_form_id", 0)) == door.teleport.get_destination_space_form_id(),
+				"another actor goes through it via the built-in activation")
+		script_server.player_reference = null
+
+	# Script `Activate` performs the built-in activation without re-running OnActivate.
+	if plain_door != null:
+		var was_open := plain_door.is_open
+		var program := ScriptParser.new(ScriptLexer.new("begin GameMode\nActivate\nend").tokenize()).parse()
+		var ctx := ScriptExecutionContext.new(plain_door)
+		ctx.action_ref = actor
+		ScriptInterpreter.new(program, script_server.function_registry).run_block("GameMode", ctx)
+		_check(plain_door.is_open != was_open, "script Activate runs the target's built-in activation")
+		script_server.default_activate(plain_door, actor)
+
+	# Furniture with two active markers seats two actors, then refuses a third.
+	var bench: FurnitureBase = null
+	for row in esm_server.get_record_index():
+		if String(row.get("record_type", "")) == "FURN":
+			var base := esm_server.get_base(int(row["form_id"])) as FurnitureBase
+			if base != null and base.get_active_markers().size() == 2:
+				bench = base
+				break
+	_check(bench != null, "a FURN base has exactly two active markers")
+	if bench != null:
+		var seat := FurnitureReference.new()
+		seat.base = bench
+		var third := ActorReference.new()
+		script_server.activate(seat, actor)
+		script_server.activate(seat, other_actor)
+		script_server.activate(seat, third)
+		_check(actor.using == seat and other_actor.using == seat and actor.using_marker != other_actor.using_marker,
+				"two actors sit at different markers of one piece of furniture")
+		_check(third.using == null, "a third actor finds no free marker")
+		script_server.end_use(actor)
+		script_server.activate(seat, third)
+		_check(third.using == seat and third.using_marker == bench.get_active_markers()[0], "a freed marker can be taken")
+		script_server.end_use(other_actor)
+		script_server.end_use(third)
+
+	# A terminal has one user at a time.
+	var terminal := TerminalReference.new()
+	terminal.base = esm_server.get_base(0x00166B56)
+	var used_signals: Array = []
+	actor.using_changed.connect(func(previous, current): used_signals.append([previous, current]))
+	script_server.activate(terminal, actor)
+	script_server.activate(terminal, other_actor)
+	_check(actor.using == terminal and terminal.used_by == actor and other_actor.using == null, "a terminal has one user")
+	script_server.end_use(actor)
+	_check(used_signals == [[null, terminal], [terminal, null]], "using_changed reports start and end of use")
+
 func _check_open_door_full_visual_state(server) -> void:
 	var reference := server.get_reference("authored:0010757E") as DoorReference
 	_check(reference != null, "Doc Mitchell exterior gate resolves as a DoorReference")
@@ -578,7 +689,7 @@ func _check_open_door_full_visual_state(server) -> void:
 		var open_turn := Quaternion.IDENTITY.angle_to(gate.quaternion) if gate != null else 0.0
 		_check(open_turn > 1.0, "full NIF is immediately posed open (%.3f rad)" % open_turn)
 		_check(not player.is_playing(), "open-state pose is held rather than replaying after stream-in")
-		node.activate()
+		get_node("/root/ScriptServer").default_activate(reference, null)
 		_check(not reference.is_open and player.current_animation == "Close" and player.is_playing(),
 			"first activation of an authored-open gate plays Close")
 	host.queue_free()

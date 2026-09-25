@@ -3,7 +3,7 @@
 class_name EsmContainerNode
 extends EsmNode
 
-@export_tool_button("Activate") var activate_button: Callable = activate
+@export_tool_button("Activate") var activate_button: Callable = on_activated.bind(null)
 var inventory: Inventory
 
 func _on_reference_ready() -> void:
@@ -14,12 +14,8 @@ func _on_reference_ready() -> void:
 		container_ref.contents = Inventory.new()
 	inventory = container_ref.contents
 
-func activate(_actor: Node = null) -> Dictionary:
-	var container_ref := reference as ContainerReference
-	if container_ref == null: return {}
-	var opening := not container_ref.is_open
+## Plays the container's Open animation.
+func on_activated(_activator: EsmReference) -> void:
 	var player := get_nif_animation_player()
-	var animation_name := "Open" if opening else "Close"
-	if player != null and player.has_animation(animation_name): player.play(animation_name)
-	container_ref.is_open = opening
-	return {}
+	if player != null and player.has_animation("Open"):
+		player.play("Open")

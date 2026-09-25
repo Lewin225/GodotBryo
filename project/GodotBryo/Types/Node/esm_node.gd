@@ -78,10 +78,11 @@ static func set_collision_disabled(node: Node, disabled: bool) -> void:
 		set_collision_disabled(child, disabled)
 
 
-## Default activation hook for all physicalized ESM nodes.
-## Type-specific nodes override this for their native default behavior.
-func activate(_actor: Node = null) -> Dictionary:
-	return {}
+## Presents a completed activation of this node's reference (animation,
+## sound). Activation itself happens on the reference through ScriptServer;
+## by the time this runs its state has already changed.
+func on_activated(_activator: EsmReference) -> void:
+	pass
 
 func _ready() -> void:
 	call_deferred("_rehydrate_and_start")

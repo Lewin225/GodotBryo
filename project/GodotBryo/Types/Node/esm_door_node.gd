@@ -3,49 +3,26 @@
 class_name EsmDoorNode
 extends EsmNode
 
-## New resource-backed door node for the EsmReferencePhysicaliser pipeline.
-## This remains separate from the legacy project/gamebryo/DoorNode until the
-## new physicalisation path is ready to replace that construction route.
-
-## Editor test hook. This deliberately calls the same public activation
-## pathway used by runtime interaction.
+## Editor preview: toggles the door's open state and plays it.
 @export_tool_button("Activate Door") var activate_button: Callable = _editor_activate
 
 func _editor_activate() -> void:
-	activate()
-
-## Default DOOR activation returns the same destination receipt as the legacy
-## door path. Game owns the actual transition; a non-teleporting door toggles
-## its authored open/closed animation locally.
-func activate(_actor: Node = null) -> Dictionary:
 	var door_reference := reference as DoorReference
 	if door_reference == null:
-		return {}
-	var link := door_reference.teleport
-	var server := EsmReference.get_esm_server()
-	if link != null and server != null:
-		var space := link.get_destination_space_form_id()
-		if space != 0:
-			return {
-				"dest_cell_form_id": server.cell_at(space, link.position),
-				"dest_position": link.position,
-				"dest_rotation": link.rotation,
-			}
-	_toggle_swing()
-	return {}
+		return
+	door_reference.is_open = not door_reference.is_open
+	on_activated(null)
 
-func _toggle_swing() -> void:
+## Plays Open or Close to match the reference's is_open. A teleporting door
+## has no open state to show.
+func on_activated(_activator: EsmReference) -> void:
 	var door_reference := reference as DoorReference
-	if door_reference == null:
+	if door_reference == null or door_reference.teleport != null:
 		return
 	var player := get_nif_animation_player()
-	if player != null and player.is_playing():
-		return
-	var opening := not door_reference.is_open
-	var animation_name := "Open" if opening else "Close"
+	var animation_name := "Open" if door_reference.is_open else "Close"
 	if player != null and player.has_animation(animation_name):
 		player.play(animation_name)
-	door_reference.is_open = opening
 
 
 ## A paired LOD has no animated gate panel. When WorldStreamer promotes an

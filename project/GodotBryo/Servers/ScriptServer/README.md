@@ -12,6 +12,14 @@ kept in this server except which references are loaded.
 ## Contract
 
 ```gdscript
+ScriptServer.activate(target, activator)                 # OnActivate block, or built-in
+ScriptServer.default_activate(target, activator)         # built-in only, then node presents
+ScriptServer.move_reference(reference, space_form_id, position, rotation)   # queued
+ScriptServer.get_pending_move(reference) -> Dictionary
+ScriptServer.begin_use(actor, target, marker := -1) -> bool
+ScriptServer.end_use(actor)
+ScriptServer.lock(reference, level := -1)
+ScriptServer.unlock(reference)
 ScriptServer.dispatch_event(reference, block_type, action_ref := null) -> Variant
 ScriptServer.has_block_for(reference, block_type, action_ref := null) -> bool
 ScriptServer.get_script_instance(reference) -> ScriptInstance   # created on first use
@@ -34,6 +42,21 @@ ScriptServer.function_registry: ScriptFunctionRegistry
 (`Begin OnActivate Player`) runs only when the parameter names the dispatch's action
 reference; a block without one always runs.
 
+**Activation.** `activate()` runs the target's `OnActivate` block that accepts the
+activator; with none, it performs the built-in activation, as if the block were
+`Begin OnActivate / Activate / End`. The built-in activation is
+`EsmReference.default_activate()`, which calls the base type's `activate(ref,
+activator)`: doors unlock with their key, start lockpicking, move the activator
+through XTEL or toggle open; terminals, containers and furniture start being used.
+The target's loaded node then plays it (`EsmNode.on_activated()`). Script `Activate`
+performs the built-in activation, or runs `OnActivate` when its second argument is 1;
+its activator is the first argument, or the dispatch's action reference.
+
+**Use.** `begin_use()` / `end_use()` set `ActorReference.using` / `using_marker` and
+the target's side together: `used_by` for single-user references, one
+`FurnitureReference.occupants` slot per active MNAM marker for furniture.
+`ActorReference.using_changed` reports both. Use state is runtime only.
+
 **Contexts.** `ScriptExecutionContext` is built per dispatch: calling reference, action
 reference, the player's reference, and the calling reference's `ScriptInstance`. Script
 values are int, float or `EsmReference`; a `ref` local is stored in the instance as
@@ -42,8 +65,8 @@ values are int, float or `EsmReference`; a `ref` local is stored in the instance
 **Names.** `player` resolves to `player_reference`. Other reference names in source stay
 as text; functions that take editor IDs (ShowMessage's MESG) resolve them themselves.
 
-**Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`,
-`Activate`) find it with `EsmNode.node_for(reference)` and do nothing when the reference
+**Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
+find it with `EsmNode.node_for(reference)` and do nothing when the reference
 is not physicalised.
 
 **Handlers.** World-facing commands delegate to callables on `function_registry` set by

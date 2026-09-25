@@ -32,3 +32,7 @@ extends EsmBase
 ## convenience resource, not an ESM record type; linked Note/submenu FormIDs
 ## remain explicit fields on each item.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var menu_items: Array[TerminalMenuItem] = []
+
+## Using a terminal: the actor becomes its single user.
+func activate(ref: EsmReference, activator: EsmReference) -> void:
+	ScriptServer.begin_use(activator, ref)

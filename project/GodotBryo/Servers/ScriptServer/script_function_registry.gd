@@ -19,6 +19,9 @@ var game_time_manager: GameTimeManager = null
 ## World-facing commands delegate to handlers registered by the scene that
 ## owns the loaders. PlaceAtMe receives (args, calling_reference).
 var place_at_me_handler: Callable
+## The ScriptServer that performs activation, locking and unlocking for the
+## Activate, Lock and Unlock commands. Null in a bare registry.
+var script_server: Object = null
 var center_on_cell_handler: Callable
 var show_message_handler: Callable
 var get_button_pressed_handler: Callable
@@ -83,13 +86,28 @@ func _register_defaults() -> void:
 			return 0
 		return 0 if node.visible else 1)
 
-	# Runs the loaded node's activate() for the calling reference. The
-	# activator and abRunOnActivate arguments are not used.
-	register("Activate", func(_a, ctx: ScriptExecutionContext):
-		var node := EsmNode.node_for(ctx.calling_reference)
-		if node == null:
+	# `[Ref.]Activate [ActionRef] [RunOnActivateBlockFlag]`. The activator is
+	# ActionRef when given, else this dispatch's action reference. With the
+	# flag 1 the target's OnActivate block runs as for any activation;
+	# otherwise the built-in activation runs directly, so `Activate` inside a
+	# target's own OnActivate block does not re-enter it.
+	register("Activate", func(a: Array, ctx: ScriptExecutionContext):
+		var target := ctx.calling_reference
+		if target == null or script_server == null:
 			return 0
-		node.activate()
+		var activator: EsmReference = a[0] if a.size() > 0 and a[0] is EsmReference else ctx.action_ref
+		var run_block := a.size() > 1 and ScriptExecutionContext.is_truthy(a[1])
+		if run_block:
+			script_server.activate(target, activator)
+		else:
+			script_server.default_activate(target, activator)
+		return 1)
+
+	# `[Ref.]Lock [Level]` / `[Ref.]Unlock` on the calling reference.
+	register("Lock", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or script_server == null:
+			return 0
+		script_server.lock(ctx.calling_reference, int(a[0]) if a.size() > 0 and (a[0] is int or a[0] is float) else -1)
 		return 1)
 
 	register("IsActionRef", func(a: Array, ctx: ScriptExecutionContext):
@@ -102,9 +120,11 @@ func _register_defaults() -> void:
 		return ctx.action_ref)
 		
 
-	register("Unlock", func(_a, _c):
-		# Not implemented; returns 0.
-		return 0)
+	register("Unlock", func(_a, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or script_server == null:
+			return 0
+		script_server.unlock(ctx.calling_reference)
+		return 1)
 
 	register("PlaceAtMe", func(a: Array, ctx: ScriptExecutionContext):
 		if a.is_empty() or not place_at_me_handler.is_valid():

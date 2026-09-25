@@ -28,3 +28,30 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_minimal_use: bool = false
 ## DOOR FNAM sliding-door flag.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_sliding_door: bool = false
+
+## A locked door opens for an activator carrying its key, and unlocks. Without
+## the key a level-255 lock fails; any other level starts lockpicking, which is
+## using the door. An unlocked door with XTEL moves the activator to the
+## landing; one without toggles open and closed.
+func activate(ref: EsmReference, activator: EsmReference) -> void:
+	var door := ref as DoorReference
+	if door == null:
+		return
+	if door.is_locked:
+		if door.lock_key != null and _carries(activator, door.lock_key.form_id):
+			ScriptServer.unlock(door)
+		elif door.lock_level >= 255:
+			return
+		else:
+			ScriptServer.begin_use(activator, door)
+			return
+	if door.teleport != null:
+		ScriptServer.move_reference(activator, door.teleport.get_destination_space_form_id(), door.teleport.position, door.teleport.rotation)
+	else:
+		door.is_open = not door.is_open
+
+static func _carries(activator: EsmReference, item_form_id: int) -> bool:
+	if activator == null or not "contents" in activator:
+		return false
+	var inventory: Inventory = activator.get("contents")
+	return inventory != null and inventory.has_item(item_form_id)

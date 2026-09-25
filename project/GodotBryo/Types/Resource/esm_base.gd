@@ -42,3 +42,11 @@ func all_subrecord_data(tag: String) -> Array[PackedByteArray]:
 		if String(subrecord.get("type", "")) == tag:
 			result.append(subrecord.get("data", PackedByteArray()))
 	return result
+
+## Built-in activation of references of this type: what happens when
+## `activator` activates `ref` and no script block replaces it. Stateless and
+## shared by every placement, so the reference is passed in. Types with
+## built-in activation override this and call ScriptServer primitives
+## (move_reference, begin_use, lock, unlock) to do the work.
+func activate(_ref: EsmReference, _activator: EsmReference) -> void:
+	pass

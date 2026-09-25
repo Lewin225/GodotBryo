@@ -31,8 +31,10 @@ var _interpreter_cache: Dictionary = {} # SCPT FormID -> ScriptInterpreter
 var _loaded_game_mode: Dictionary = {} # EsmReference -> true: loaded, has GameMode/MenuMode
 var _instances: Dictionary = {} # EsmReference -> true: every reference whose script has run
 var _last_button_pressed: int = -1
+var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
 
 func _ready() -> void:
+	function_registry.script_server = self
 	function_registry.show_message_handler = _handle_show_message
 	function_registry.get_button_pressed_handler = _handle_get_button_pressed
 	var esm_server := get_node_or_null("/root/EsmServer")
@@ -93,6 +95,109 @@ func has_block_for(reference: EsmReference, block_type: String, action_ref: EsmR
 		return false
 	var interpreter := _get_or_parse(instance.script_form_id)
 	return interpreter != null and interpreter.has_block_for(block_type, _context(reference, instance, action_ref), action_ref)
+
+## `activator` activates `target`. Runs the target's OnActivate block that
+## accepts the activator; when there is none, performs the built-in
+## activation, as if the block were `Begin OnActivate / Activate / End`.
+func activate(target: EsmReference, activator: EsmReference) -> void:
+	if target == null:
+		return
+	if has_block_for(target, "OnActivate", activator):
+		dispatch_event(target, "OnActivate", activator)
+	else:
+		default_activate(target, activator)
+
+## Built-in activation of `target` by `activator`, without running any script
+## block: the target's default_activate(), then its loaded node, if any,
+## presents the result.
+func default_activate(target: EsmReference, activator: EsmReference) -> void:
+	if target == null:
+		return
+	target.default_activate(activator)
+	var node := EsmNode.node_for(target)
+	if node != null:
+		node.on_activated(activator)
+
+## Queues moving `reference` to `position` / `rotation` (metres, Gamebryo
+## Z-up; radians) in `space_form_id`. A later move of the same reference
+## before the queue is applied replaces this one.
+func move_reference(reference: EsmReference, space_form_id: int, position: Vector3, rotation: Vector3) -> void:
+	if reference == null:
+		return
+	_pending_moves[reference] = {"space_form_id": space_form_id, "position": position, "rotation": rotation}
+
+## The queued move for `reference`, or an empty Dictionary.
+func get_pending_move(reference: EsmReference) -> Dictionary:
+	return _pending_moves.get(reference, {})
+
+## `actor` starts using `target`. Furniture takes a free active marker
+## (`marker` when given and free); any other reference is single-user. An
+## actor using something else stops using it first. Returns false when
+## `actor` is not an actor or `target` is fully occupied.
+func begin_use(actor: EsmReference, target: EsmReference, marker := -1) -> bool:
+	var user := actor as ActorReference
+	if user == null or target == null:
+		return false
+	if user.using == target:
+		return true
+	var slot := -1
+	if target is FurnitureReference:
+		slot = _free_furniture_slot(target as FurnitureReference, marker)
+		if slot < 0:
+			return false
+	elif target.used_by != null and target.used_by != user:
+		return false
+	if user.using != null:
+		end_use(user)
+	if target is FurnitureReference:
+		(target as FurnitureReference).occupants[slot] = user
+		user.using_marker = (target.base as FurnitureBase).get_active_markers()[slot]
+	else:
+		target.used_by = user
+		user.using_marker = -1
+	user.using = target
+	user.using_changed.emit(null, target)
+	return true
+
+## `actor` stops using whatever it is using.
+func end_use(actor: EsmReference) -> void:
+	var user := actor as ActorReference
+	if user == null or user.using == null:
+		return
+	var target := user.using
+	if target is FurnitureReference:
+		var occupants := (target as FurnitureReference).occupants
+		for i in occupants.size():
+			if occupants[i] == user:
+				occupants[i] = null
+	elif target.used_by == user:
+		target.used_by = null
+	user.using = null
+	user.using_marker = -1
+	user.using_changed.emit(target, null)
+
+## Locks a door at `level` (0-100 Very Easy to Very Hard, 255 requires the key).
+func lock(reference: EsmReference, level := -1) -> void:
+	var door := reference as DoorReference
+	if door == null:
+		return
+	if level >= 0:
+		door.lock_level = level
+	door.is_locked = true
+
+func unlock(reference: EsmReference) -> void:
+	var door := reference as DoorReference
+	if door != null:
+		door.is_locked = false
+
+func _free_furniture_slot(furniture: FurnitureReference, marker: int) -> int:
+	var markers := (furniture.base as FurnitureBase).get_active_markers() if furniture.base is FurnitureBase else PackedInt32Array()
+	if furniture.occupants.size() != markers.size():
+		furniture.occupants.resize(markers.size())
+	if marker >= 0:
+		var slot := markers.find(marker)
+		return slot if slot >= 0 and furniture.occupants[slot] == null else -1
+	return furniture.occupants.find(null)
 
 ## Marks a reference's cell loaded or unloaded. Loading runs its OnLoad block
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.
