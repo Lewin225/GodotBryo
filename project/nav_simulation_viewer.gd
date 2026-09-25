@@ -1,6 +1,6 @@
 extends Node3D
 
-## Visualizer for [NavNpcSimulationServer] and the authored navmesh behind it.
+## Visualizer for the NpcSimulationServer autoload and the authored navmesh behind it.
 ##
 ## Unlike npc_simulation_viewer.gd, which plots raw authored vectors untouched
 ## and therefore renders the world on its side, this one applies the codebase's
@@ -17,7 +17,7 @@ const NAVMESH_ALPHA := 0.45
 ## matter.
 const RECORD_HUE_STEP := 0.137
 
-@onready var simulation = $NavNpcSimulationServer
+@onready var simulation: Node = get_node("/root/NpcSimulationServer")
 @onready var navmesh_surface: MeshInstance3D = $NavmeshSurface
 @onready var coarse_graph_lines: MeshInstance3D = $CoarseGraphLines
 @onready var actor_points: MultiMeshInstance3D = $ActorPoints
@@ -69,6 +69,10 @@ func _ready() -> void:
 	walker_marker.visible = false
 	simulation.seed_progress.connect(_on_seed_progress)
 	simulation.seed_finished.connect(_on_seed_finished)
+	if simulation.is_seeded:
+		_on_seed_finished.call_deferred()
+	else:
+		simulation.seed()
 	_refresh_status()
 
 ## The codebase's established Z-up -> Y-up mapping (terrain_grass_particles.gd,
@@ -870,7 +874,7 @@ func _refresh_status() -> void:
 		]
 
 	status_label.text = "\n".join([
-		"NavNpcSimulationServer navmesh viewer — %s" % simulation.status,
+		"NpcSimulationServer navmesh viewer — %s" % simulation.status,
 		"navmesh: %d records, %s triangles, %.1f MB, loaded in %.0f ms" % [
 			int(stats.get("records", 0)),
 			String.num_int64(int(stats.get("triangles", 0))),

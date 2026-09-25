@@ -187,6 +187,8 @@ func _resolve_esm_server() -> bool:
 		return true
 	var root := get_tree().root if get_tree() != null else null
 	esm_server = root.get_node_or_null("EsmServer") if root != null else null
+	if esm_server != null and not esm_server.reference_cell_changed.is_connected(_on_reference_cell_changed):
+		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
 	return esm_server != null
 
 
@@ -491,7 +493,8 @@ func _process_population() -> void:
 		else:
 			_persistent_population_jobs[job_index] = job
 		var detail: EsmNode.VisualDetail = int(job["root"].get_meta("visual_detail", EsmNode.VisualDetail.FULL))
-		if reference != null and _should_physicalise(reference, detail) and not _has_physicalised_reference(job["root"], reference):
+		if reference != null and _should_physicalise(reference, detail) and _belongs_to_root(reference, job["root"]) \
+				and EsmNode.node_for(reference) == null:
 			_physicaliser.physicalise(reference, job["root"], detail)
 		budget -= 1
 
@@ -530,6 +533,44 @@ func _should_physicalise(reference: EsmReference, detail: EsmNode.VisualDetail) 
 		and not reference is ActorReference \
 		and not reference is CreatureReference
 
+
+## Keeps nodes in step with references changing CELL: a reference arriving in
+## a resident tile is physicalised there (or its node moved there), and one
+## leaving every resident tile loses its node.
+func _on_reference_cell_changed(reference: EsmReference, _old_cell_form_id: int, _new_cell_form_id: int) -> void:
+	if not is_active():
+		return
+	var node := EsmNode.node_for(reference)
+	var owned := node != null and is_ancestor_of(node)
+	var root := _tile_root_for(reference)
+	if root == null:
+		if owned:
+			node.get_parent().remove_child(node)
+			node.queue_free()
+		return
+	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL))
+	var references: Array = root.get_meta("references", [])
+	if not references.has(reference):
+		references.append(reference)
+	if owned:
+		if node.get_parent() != root:
+			node.reparent(root)
+	elif node == null and _should_physicalise(reference, detail):
+		_physicaliser.physicalise(reference, root, detail)
+
+## The resident tile root for the grid CELL under a reference, or null when
+## the reference is in another space or that tile is not resident.
+func _tile_root_for(reference: EsmReference) -> Node3D:
+	if reference.current_space_form_id != _active_wrld_form_id:
+		return null
+	return _resident.get(_authored_grid_coord(reference.position))
+
+## Whether a population job for `root` should spawn `reference`: a reference
+## whose CELL has changed belongs only to the tile under it.
+func _belongs_to_root(reference: EsmReference, root: Node3D) -> bool:
+	if not esm_server.is_relocated(reference):
+		return true
+	return _tile_root_for(reference) == root
 
 func _remove_tile(coord: Vector2i) -> void:
 	_pending.erase(coord)

@@ -127,6 +127,8 @@ func _ready() -> void:
 		check(physicalised.transform.origin.is_equal_approx(converted_position), "EsmNode converts its authored placement into Godot space")
 		check(physicalised.get_authored_transform().origin.is_equal_approx(physicalised.reference.position), "authored transform inverts placement conversion for future dirty checks")
 
+	_check_references_follow_moves(streamer, esm_server, int(world.form_id))
+
 	streamer.set_paused(true, false)
 	check(streamer.is_paused() and streamer.visible and not streamer.is_pause_hiding(),
 		"plain pause retains visible exterior geometry and collision state")
@@ -141,3 +143,24 @@ func _ready() -> void:
 	check(not streamer.is_active() and streamer._resident.is_empty(), "deactivate frees v2 semantic tile roots")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Resident tiles gain and lose nodes as references move in and out of them.
+func _check_references_follow_moves(streamer: WorldStreamerV2, esm_server, wasteland: int) -> void:
+	var script_server = get_node("/root/ScriptServer")
+	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
+	var home_space := doc.current_space_form_id
+	var home := doc.position
+	var size: float = esm_server.EXTERIOR_CELL_SIZE_METERS
+	var tile_root: Node3D = streamer._resident.get(Vector2i(-17, 0))
+	script_server.move_reference(doc, wasteland, Vector3(-17 * size + 10.0, 10.0, 0), doc.rotation)
+	script_server.apply_pending_moves()
+	var node := EsmNode.node_for(doc)
+	check(node != null and node.get_parent() == tile_root, "an actor moved into a resident tile is physicalised in it")
+	var neighbour: Node3D = streamer._resident.get(Vector2i(-18, 0))
+	if neighbour != null:
+		script_server.move_reference(doc, wasteland, Vector3(-18 * size + 10.0, 10.0, 0), doc.rotation)
+		script_server.apply_pending_moves()
+		check(EsmNode.node_for(doc) == node and node.get_parent() == neighbour, "moving to another resident tile keeps the node and reparents it")
+	script_server.move_reference(doc, home_space, home, doc.rotation)
+	script_server.apply_pending_moves()
+	check(EsmNode.node_for(doc) == null, "leaving the worldspace removes its node")

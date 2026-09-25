@@ -1,8 +1,15 @@
 # NpcSimulationServer
 
-`nav_npc_simulation_server.gd` (`NavNpcSimulationServer`) indexes every authored
-placed actor and every XTEL door, grounds each actor against real NAVM triangles,
-and routes between them.
+`nav_npc_simulation_server.gd`, autoloaded as `NpcSimulationServer`, indexes every
+authored placed actor and every XTEL door, grounds each actor against real NAVM
+triangles, and routes between them.
+
+- **Lifecycle** — nothing loads until `seed()` is called; `seed_finished` fires when
+  the navmesh, actors and portals are ready. Tests may instantiate the script
+  directly and seed their own instance.
+- **Index** — `actors_by_space_form_id` / `actors_by_cell_form_id` and grounding
+  follow `EsmServer.reference_cell_changed`, so an actor that moves or walks into
+  another CELL is re-indexed and re-grounded.
 
 - **Positions** — authored REFR/ACHR vectors plus a navmesh snap
 - **Routing** — A* over triangles, funnelled, async, cross-space, component-aware

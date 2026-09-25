@@ -17,11 +17,11 @@ signal visual_detail_applied(detail: int)
 
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var reference: EsmReference:
 	set(value):
-		if is_inside_tree() and _nodes_by_reference.get(reference) == self:
-			_nodes_by_reference.erase(reference)
+		if is_inside_tree():
+			_unregister_reference()
 		reference = value
-		if is_inside_tree() and reference != null:
-			_nodes_by_reference[reference] = self
+		if is_inside_tree():
+			_register_reference()
 		_request_generation += 1
 		_startup_complete = false
 		_waiting_for_esm = false
@@ -60,10 +60,32 @@ static func node_for(esm_reference: EsmReference) -> EsmNode:
 	return node if is_instance_valid(node) else null
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_ENTER_TREE and reference != null:
-		_nodes_by_reference[reference] = self
-	elif what == NOTIFICATION_EXIT_TREE and _nodes_by_reference.get(reference) == self:
+	if what == NOTIFICATION_ENTER_TREE:
+		_register_reference()
+	elif what == NOTIFICATION_EXIT_TREE:
+		_unregister_reference()
+
+func _register_reference() -> void:
+	if reference == null:
+		return
+	_nodes_by_reference[reference] = self
+	if not reference.teleported.is_connected(_on_reference_teleported):
+		reference.teleported.connect(_on_reference_teleported)
+
+func _unregister_reference() -> void:
+	if reference == null:
+		return
+	if _nodes_by_reference.get(reference) == self:
 		_nodes_by_reference.erase(reference)
+	if reference.teleported.is_connected(_on_reference_teleported):
+		reference.teleported.disconnect(_on_reference_teleported)
+
+## A teleport within the same space moves the node to the reference's new
+## placement. Leaving the loaded space is handled by the streamer that owns
+## the node.
+func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) -> void:
+	if old_space_form_id == new_space_form_id:
+		transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
 
 ## Recursively toggles every CollisionShape3D in a subtree.
 ##

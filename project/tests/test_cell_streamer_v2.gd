@@ -81,6 +81,9 @@ func _ready() -> void:
 	else:
 		check(false, "Doc Mitchell's house contains a typed teleport door fixture")
 
+	await _check_references_follow_moves(streamer, esm_server, int(doc_house.form_id))
+	first_current = streamer._current
+
 	# A synthetic collision shape exercises the exact late-NIF callback hook:
 	# while LoadingCell is active it inherits disabled state, after the semantic
 	# swap it inherits enabled state without relying on NIF timing.
@@ -115,3 +118,51 @@ func _ready() -> void:
 	check(streamer._current == null and streamer.get_current_refs().is_empty(), "unload frees typed current cell and reference lookup state")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## The loaded CELL's nodes follow references moving in, out and within it.
+func _check_references_follow_moves(streamer: CellStreamerV2, esm_server, doc_house: int) -> void:
+	var script_server = get_node("/root/ScriptServer")
+	streamer.spawn_reference_types = CellStreamerV2.SPAWN_REFR | CellStreamerV2.SPAWN_ACHR
+	await _await_load(streamer, doc_house)
+	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
+	var node := EsmNode.node_for(doc)
+	check(node != null and node.get_parent() == streamer._current, "Doc Mitchell is physicalised in his loaded house")
+	var home := doc.position
+	var home_rotation := doc.rotation
+
+	script_server.move_reference(doc, doc_house, home + Vector3(1, 0, 0), home_rotation)
+	script_server.apply_pending_moves()
+	check(EsmNode.node_for(doc) == node and node.transform.is_equal_approx(EsmReferencePhysicaliser.placement_transform(doc.position, doc.rotation, doc.scale)),
+			"a teleport inside the loaded CELL moves the same node")
+
+	var wasteland := int(esm_server.reader.find_worldspace_by_editor_id("WastelandNV").get("form_id", 0))
+	script_server.move_reference(doc, wasteland, Vector3(-1000, 20, 0), home_rotation)
+	script_server.apply_pending_moves()
+	check(EsmNode.node_for(doc) == null and not streamer._current_refs.has(doc), "an actor moved out of the loaded CELL loses its node")
+
+	script_server.move_reference(doc, doc_house, home, home_rotation)
+	script_server.apply_pending_moves()
+	var returned := EsmNode.node_for(doc)
+	check(returned != null and returned.get_parent() == streamer._current and streamer._current_refs.has(doc), "moved back in, it is physicalised again")
+
+	var saloon := int(esm_server.reader.find_cell_by_editor_id("GSProspectorSaloonInterior").get("form_id", 0))
+	var visitor: EsmReference = null
+	for reference in esm_server.get_references_in_cell(saloon):
+		if reference is ActorReference:
+			visitor = reference
+			break
+	check(visitor != null, "GSProspectorSaloonInterior has an actor")
+	if visitor != null:
+		var visitor_home := visitor.position
+		script_server.move_reference(visitor, doc_house, home + Vector3(0, 1, 0), visitor.rotation)
+		script_server.apply_pending_moves()
+		var arrived := EsmNode.node_for(visitor)
+		check(arrived != null and arrived.get_parent() == streamer._current, "an actor moved in from another interior appears")
+		script_server.move_reference(visitor, saloon, visitor_home, visitor.rotation)
+		script_server.apply_pending_moves()
+		check(EsmNode.node_for(visitor) == null, "and disappears when moved back out")
+
+	await _await_load(streamer, doc_house)
+	var reloaded := EsmNode.node_for(doc)
+	check(reloaded != null and reloaded.get_parent() == streamer._current, "reloading the CELL physicalises its references again")
+	check(esm_server.get_references_in_cell(doc_house).count(doc) == 1, "a reference that left and returned is listed once")

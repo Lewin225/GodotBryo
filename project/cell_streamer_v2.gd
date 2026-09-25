@@ -57,7 +57,7 @@ func _process(_delta: float) -> void:
 	while budget > 0 and next_index < references.size():
 		var reference := references[next_index] as EsmReference
 		next_index += 1
-		if reference != null and _should_spawn(reference):
+		if reference != null and _should_spawn(reference) and _belongs_to_cell(reference, int(_job.get("cell_form_id", 0))):
 			# FULL is intentional: interior VWD/paired-LOD policy belongs only to
 			# exterior tile residency, which this class deliberately does not own.
 			_physicaliser.physicalise(reference, root, EsmNode.VisualDetail.FULL)
@@ -187,6 +187,29 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	load_completed.emit(cell_form_id, true)
 
 
+## Keeps the current CELL's nodes in step with references changing CELL: a
+## reference arriving in it is physicalised, one leaving it loses its node.
+func _on_reference_cell_changed(reference: EsmReference, _old_cell_form_id: int, new_cell_form_id: int) -> void:
+	var current_cell := get_current_cell_form_id()
+	if current_cell == 0:
+		return
+	var node := EsmNode.node_for(reference)
+	var owned := node != null and is_ancestor_of(node)
+	if new_cell_form_id == current_cell:
+		if not _current_refs.has(reference):
+			_current_refs.append(reference)
+		if node == null and _should_spawn(reference):
+			_physicaliser.physicalise(reference, _current, EsmNode.VisualDetail.FULL)
+	elif owned:
+		_current_refs.erase(reference)
+		node.get_parent().remove_child(node)
+		node.queue_free()
+
+## Whether a CELL being loaded should spawn `reference`: a reference whose
+## CELL has changed belongs only to the CELL it is in now.
+func _belongs_to_cell(reference: EsmReference, cell_form_id: int) -> bool:
+	return not esm_server.is_relocated(reference) or reference.current_cell_form_id == cell_form_id
+
 func _should_spawn(reference: EsmReference) -> bool:
 	if reference is ActorReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
@@ -200,6 +223,8 @@ func _resolve_esm_server() -> bool:
 		return true
 	var root := get_tree().root if get_tree() != null else null
 	esm_server = root.get_node_or_null("EsmServer") if root != null else null
+	if esm_server != null and not esm_server.reference_cell_changed.is_connected(_on_reference_cell_changed):
+		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
 	return esm_server != null
 
 

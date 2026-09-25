@@ -1,12 +1,9 @@
-class_name NavNpcSimulationServer
 extends Node
 
-## Navmesh-backed alternate to [NpcSimulationServer].
-##
-## The original NSS indexes actors by their raw authored positions alone, so it
-## has no way to answer whether a point is real standable ground -- the question
-## that motivated this variant. This one loads the whole game's authored NAVM
-## data through [NavmeshReader] and grounds every actor against it.
+## Simulates placed actors outside the loaded world. Autoloaded as
+## NpcSimulationServer. seed() loads the whole game's authored NAVM data through
+## [NavmeshReader], indexes every placed actor and XTEL door, and grounds each
+## actor against the navmesh; it runs only when called.
 ##
 ## Two layers, deliberately kept distinct because their confidence levels
 ## differ:
@@ -82,8 +79,12 @@ var _load_thread: Thread
 var _next_request_id := 1
 var _route_tasks: Dictionary = {}
 
+var _indexed_space_by_instance_id: Dictionary = {}
+
 func _ready() -> void:
-	seed.call_deferred()
+	var esm_server := get_tree().root.get_node_or_null("EsmServer")
+	if esm_server != null:
+		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
 
 func _exit_tree() -> void:
 	# Same hazard EsmServer documents: destroying a running Thread aborts the
@@ -113,6 +114,7 @@ func seed() -> void:
 	actors_by_instance_id.clear()
 	actors_by_space_form_id.clear()
 	actors_by_cell_form_id.clear()
+	_indexed_space_by_instance_id.clear()
 	grounding_by_instance_id.clear()
 	portals.clear()
 	portals_by_source_space.clear()
@@ -236,6 +238,7 @@ func get_component_at(space_form_id: int, position: Vector3, radius := 0.0) -> i
 
 func _index_actor(actor: ActorReference) -> void:
 	actors_by_instance_id[actor.instance_id] = actor
+	_indexed_space_by_instance_id[actor.instance_id] = actor.current_space_form_id
 	_add_to_index(actors_by_space_form_id, actor.current_space_form_id, actor)
 	_add_to_index(actors_by_cell_form_id, actor.current_cell_form_id, actor)
 	var grounding := ground(actor)
@@ -246,6 +249,29 @@ func _add_to_index(index: Dictionary, key: int, actor: ActorReference) -> void:
 	if not index.has(key):
 		index[key] = {}
 	index[key][actor.instance_id] = actor
+
+func _remove_from_index(index: Dictionary, key: int, actor: ActorReference) -> void:
+	if index.has(key):
+		(index[key] as Dictionary).erase(actor.instance_id)
+
+## Keeps a tracked actor's space and cell index, and its grounding, in step
+## with where it is.
+func _on_reference_cell_changed(reference: EsmReference, old_cell_form_id: int, new_cell_form_id: int) -> void:
+	var actor := reference as ActorReference
+	if actor == null or not _is_tracked(actor):
+		return
+	_remove_from_index(actors_by_cell_form_id, old_cell_form_id, actor)
+	_add_to_index(actors_by_cell_form_id, new_cell_form_id, actor)
+	var old_space := int(_indexed_space_by_instance_id.get(actor.instance_id, 0))
+	if old_space != actor.current_space_form_id:
+		_remove_from_index(actors_by_space_form_id, old_space, actor)
+		_add_to_index(actors_by_space_form_id, actor.current_space_form_id, actor)
+		_indexed_space_by_instance_id[actor.instance_id] = actor.current_space_form_id
+	var grounding := ground(actor)
+	if grounding.is_empty():
+		grounding_by_instance_id.erase(actor.instance_id)
+	else:
+		grounding_by_instance_id[actor.instance_id] = grounding
 
 ## Where this actor would actually stand, as opposed to where the ESM places
 ## them. Empty when no navmesh lies within `ground_snap_radius`, which is a real

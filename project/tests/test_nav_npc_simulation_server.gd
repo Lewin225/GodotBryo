@@ -32,7 +32,9 @@ func _ready() -> void:
 	var simulation = NavNpcSimulationServerScript.new()
 	simulation.records_per_frame = 256
 	add_child(simulation)
+	simulation.seed()
 	await simulation.seed_finished
+	_check_index_follows_moves(simulation, esm)
 
 	var navmesh = simulation.navmesh
 	_check(navmesh != null and navmesh.is_loaded(), "navmesh loaded")
@@ -415,7 +417,7 @@ func _ready() -> void:
 		_check(viewer.get_script() != null, "viewer root actually has its script attached")
 		_check(viewer.has_method("_build_navmesh_surface") and viewer.has_method("_route_between_random_actors"),
 			"viewer exposes its own build/route methods (catches a script that failed to parse)")
-		_check(viewer.has_node("NavNpcSimulationServer"), "viewer owns its own NavNpcSimulationServer")
+		_check(not viewer.has_node("NavNpcSimulationServer"), "viewer uses the NpcSimulationServer autoload rather than its own instance")
 		_check(viewer.has_node("NavmeshSurface") and viewer.has_node("CoarseGraphLines") and viewer.has_node("ActorPoints")
 			and viewer.has_node("GroundingLines") and viewer.has_node("PortalLines") and viewer.has_node("PortalBoxes")
 			and viewer.has_node("RouteLine") and viewer.has_node("BatchRouteLines")
@@ -434,3 +436,22 @@ func _ready() -> void:
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## A tracked actor's space and cell index follow EsmReference moves.
+func _check_index_follows_moves(simulation, esm) -> void:
+	var interior := int(esm.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	var doc: ActorReference = esm.find_reference_by_editor_id("DocMitchellREF")
+	_check(doc != null and simulation.get_actors_in_cell(interior).has(doc), "Doc Mitchell is indexed in his house")
+	var wasteland := int(esm.reader.find_worldspace_by_editor_id("WastelandNV").get("form_id", 0))
+	var size: float = esm.EXTERIOR_CELL_SIZE_METERS
+	var outside: int = esm.get_exterior_cell_form_id(wasteland, Vector2i(-18, 0))
+	var home := doc.position
+	doc.set_location(wasteland, Vector3(-18 * size + 20.0, 20.0, 0))
+	_check(not simulation.get_actors_in_cell(interior).has(doc) and simulation.get_actors_in_cell(outside).has(doc),
+			"moving an actor moves it between cell indexes")
+	_check(not simulation.get_actors_in_space(interior).has(doc) and simulation.get_actors_in_space(wasteland).has(doc),
+			"and between space indexes")
+	doc.set_location(interior, home)
+	_check(simulation.get_actors_in_cell(interior).has(doc) and not simulation.get_actors_in_space(wasteland).has(doc),
+			"moving it back restores both")
+	_check(simulation.is_grounded(doc), "it is re-grounded at its restored position")

@@ -1,7 +1,6 @@
 [gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://nav_simulation_viewer.gd" id="1_viewer"]
-[ext_resource type="Script" path="res://GodotBryo/Servers/NpcSimulationServer/nav_npc_simulation_server.gd" id="2_nav_nss"]
 [ext_resource type="Script" path="res://free_cam.gd" id="3_camera"]
 
 [sub_resource type="Environment" id="Environment_nav"]
@@ -20,9 +19,6 @@ corner_radius_bottom_left = 6
 
 [node name="NavSimulationViewer" type="Node3D"]
 script = ExtResource("1_viewer")
-
-[node name="NavNpcSimulationServer" type="Node" parent="."]
-script = ExtResource("2_nav_nss")
 
 [node name="NavmeshSurface" type="MeshInstance3D" parent="."]
 
@@ -65,5 +61,5 @@ theme_override_styles/panel = SubResource("StyleBox_status")
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 16
-text = "NavNpcSimulationServer navmesh viewer
+text = "NpcSimulationServer navmesh viewer
 Waiting for EsmServer"

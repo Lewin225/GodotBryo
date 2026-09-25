@@ -57,8 +57,9 @@ func _process(_delta: float) -> void:
 		dispatch_event(reference, "GameMode")
 	apply_pending_moves()
 
-## Applies every queued move: sets space, position and rotation together (one
-## cell refresh), then emits the reference's teleported and
+## Applies every queued move: sets rotation, then space and position together
+## (one cell refresh, so anything reacting to the cell change sees the final
+## transform), then emits the reference's teleported and
 ## reference_teleported. Moves queued while applying wait for the next call.
 func apply_pending_moves() -> void:
 	var moves := _pending_moves
@@ -67,8 +68,8 @@ func apply_pending_moves() -> void:
 		var move: Dictionary = moves[reference]
 		var old_space := reference.current_space_form_id
 		var new_space := int(move["space_form_id"])
-		reference.set_location(new_space, move["position"])
 		reference.rotation = move["rotation"]
+		reference.set_location(new_space, move["position"])
 		reference.teleported.emit(old_space, new_space)
 		reference_teleported.emit(reference, old_space, new_space)
 
