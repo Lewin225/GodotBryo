@@ -4,4 +4,3 @@
 
 [node name="EsmHumanoidActor" type="Node3D" unique_id=654429205]
 script = ExtResource("1")
-construction_profiling_enabled = false

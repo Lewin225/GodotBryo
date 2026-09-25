@@ -31,9 +31,7 @@ signal animation_load_failed(reason: String)
 		show_gore = value
 		_apply_gore_visibility()
 
-## Ragdolls are authored in the skeleton NIF, but an inert humanoid should not
-## expose their debug bodies or activate their simulator. This remains an
-## explicit inspector opt-in until an NPC controller owns ragdoll state.
+## Ragdolls are served by NifServer,  but aren't ready to use yet. disable them for now
 @export var ragdoll_simulator_enabled: bool = false:
 	set(value):
 		ragdoll_simulator_enabled = value
@@ -44,9 +42,7 @@ signal animation_load_failed(reason: String)
 		possessed_first_person = value
 		_apply_possessed_first_person_render_mode()
 
-## Opt-in construction/animation timing for streamed-actor investigation.
-## The authored EsmHumanoidActor base scene keeps this off for normal runtime
-## instances; enable that scene flag when collecting a focused trace.
+## Opt-in construction/animation timing for profilling actor load time
 @export var construction_profiling_enabled: bool = false
 
 @export_tool_button("Import Actor Data From Preset Or FormID") var load_button: Callable = _editor_load
@@ -54,9 +50,7 @@ signal animation_load_failed(reason: String)
 @export_tool_button("Unload Actor") var unload_button: Callable = _editor_unload_actor
 @export_tool_button("Refresh Equipment") var refresh_equipment_button: Callable = _editor_refresh_equipment
 
-const PRESET_FORM_IDS := {
-	"Doc Mitchell (Goodsprings)": 0x00104C0C,
-}
+const PRESET_FORM_IDS := {"Doc Mitchell (Goodsprings)": 0x00104C0C,}
 const BODY_NODE_NAME := "Body"
 const STAGING_NODE_NAME := "HumanoidStaging"
 const LOOK_TARGET_NODE_NAME := "Look Target"
@@ -64,17 +58,17 @@ const LOOK_TARGET_BONE_NAME := "Bip01 Head"
 const LOCOMOTION_SUBDIRECTORY := "locomotion/"
 const ANIMATION_CLIPS_PER_FRAME := 4
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
-# BSDismemberBodyPartType: NifSkope's FNV enum defines 101–113 as
-# BP_SECTIONCAP_* and 201–213 as BP_TORSOCAP_*. GECK confirms these are the
-# gore partitions shown on dismemberment. NifServer preserves raw IDs only;
-# this visual policy belongs to the humanoid assembly.
-const SECTION_CAP_FIRST := 101
+
+
+# This is a placeholder for hiding gore, not the real implementation
+const SECTION_CAP_FIRST := 101 # Found from NifSkope & Geck
 const SECTION_CAP_LAST := 113
 const TORSO_CAP_FIRST := 201
 const TORSO_CAP_LAST := 213
 
 var _active_record: NpcBase = null
 var _is_female := false
+
 var _rebuilding := false
 var _standalone_preview := false
 var _load_generation := 0
@@ -177,8 +171,8 @@ func _rehydrate_and_build() -> void:
 			reference = hydrated
 			_rehydrating_reference = false
 			return
-	var record := reference.base as NpcBase
-	if record == null:
+
+	if reference.base == null:
 		push_warning("EsmHumanoidActor: reference is not backed by an NPC_ record")
 		return
 	if _loading or _humanoid_visual_built:
@@ -187,7 +181,7 @@ func _rehydrate_and_build() -> void:
 	_connect_inventory_signal()
 	_project_equipment_from_inventory()
 	if _load_requested:
-		_start_visual_load(record)
+		_start_visual_load(reference.base)
 
 
 ## The explicit near-residency entry point. Rehydration/importing only makes
@@ -205,26 +199,27 @@ func load_actor() -> void:
 	_queue_rehydrate_and_build()
 
 
-func _start_visual_load(record: NpcBase) -> void:
-	_begin_construction_profile(record)
-	if record.race == null:
+func _start_visual_load(reference_base: NpcBase) -> void:
+	_begin_construction_profile(reference_base)
+	if reference_base.race == null:
 		_finish_visual_load(false, "NPC record has no race")
 		return
 	_cancel_visual_load()
 	_load_generation += 1
 	_loading = true
 	_rebuilding = true
-	_active_record = record
-	_is_female = record.is_female
-	_requested_assets = _requested_asset_set(record)
+	_active_record = reference_base
+	_is_female = reference_base.is_female
+	_requested_assets = _requested_asset_set(reference_base)
 	_delivered_trees.clear()
 	_load_failures.clear()
+	# The staging root is used to hold nodes before they become visible
 	_staging_root = Node3D.new()
 	_staging_root.name = STAGING_NODE_NAME
 	_staging_root.visible = false
 	add_child(_staging_root)
-	if Engine.is_editor_hint() and owner != null:
-		_own_recursive(_staging_root)
+	if Engine.is_editor_hint() and owner != null: _own_recursive(_staging_root)
+	
 	var nif_server := get_tree().root.get_node_or_null("NifServer")
 	if nif_server == null:
 		_finish_visual_load(false, "NifServer autoload is unavailable")
