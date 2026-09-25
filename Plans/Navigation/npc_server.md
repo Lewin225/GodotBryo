@@ -431,3 +431,6 @@ preferred but may cause issues updating the shared ActorReference resources
 - Not now: DOOR `FNAM` "Minimal Use" (14 DOOR bases in `FalloutNV.esm`) is an
   NPC routing preference for portal selection. Sliding (51) and Hidden (3) do
   not affect routing.
+- Not now: seeding in the running game. `NpcSimulationServer` is an autoload
+  but seeds only when `seed()` is called; `game.gd` does not call it, so the
+  running game has no simulated actors, routes or portals.

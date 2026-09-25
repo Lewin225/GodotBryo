@@ -183,7 +183,7 @@ tools/                      — gitignored, holds the native Godot binary
   via `CellStreamerV2`, worldspace via `WorldStreamerV2` + `TerrainStreamer`),
   places the body from the reference and releases it. Doors, `MoveTo` and
   `coc` all reach it by moving the player's reference; see
-  `Plans/Transitions/actor_transitions.md`.
+  `Plans/Completed Plans/Transitions/actor_transitions.md`.
 - **`CellStreamerV2`** (`cell_streamer_v2.gd`) — single-active-interior-cell
   loader. **`WorldStreamerV2`** (`world_streamer_v2.gd`) — continuous
   adjacent-tile exterior streaming, tracking the active camera. Only one is

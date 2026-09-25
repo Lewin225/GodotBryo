@@ -95,6 +95,18 @@ the scene that owns the loaders: `place_at_me_handler(args, calling_reference)`,
 
 ---
 
+## Unverified behaviour
+
+What the code assumes where the original game's behaviour has not been checked in play.
+Each is a reason to test before building on it.
+
+| Assumption | Code | Source | How to check |
+|---|---|---|---|
+| `Activate`'s `RunOnActivateBlockFlag` defaults to 0 = built-in activation; 1 runs the target's `OnActivate` | registry `Activate` | GECK wiki, recalled | scripted door + console `SomeDoorREF.Activate player` with and without `1` |
+| Code after `player.MoveTo` to another CELL still runs that frame | `move_reference` never interrupts the caller | GECK wiki recalls the rest of the script stops | a script that sets a variable after `player.MoveTo` |
+| `GetPos` right after `MoveTo` in the same script returns the old position | moves are queued and applied after `GameMode` | follows from deferred moves | `GetPos` is not implemented yet |
+| Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
+
 ## Files
 
 | File | Role |

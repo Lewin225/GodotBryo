@@ -145,7 +145,7 @@ outcomes. What is wrong is that Game re-implements type dispatch *on top of* it:
   player that does not have one. Since the player always has one now, that
   branch is dead weight keeping a second implementation alive.
 
-> Superseded for doors and transitions by `Plans/Transitions/actor_transitions.md`.
+> Superseded for doors and transitions by `Plans/Completed Plans/Transitions/actor_transitions.md`.
 
 The activation contract itself is the right shape and does not need replacing.
 What moves out is the *dispatch*: a node returns an outcome, and a handler
@@ -182,7 +182,7 @@ null-returning variant is genuinely wanted, it belongs next to
 
 ## What Game should keep
 
-> Superseded for doors and transitions by `Plans/Transitions/actor_transitions.md`.
+> Superseded for doors and transitions by `Plans/Completed Plans/Transitions/actor_transitions.md`.
 
 Door/worldspace transitions (`_do_exterior_transition`,
 `_can_release_exterior_transition`, `_convert_*_spawn_transform`,

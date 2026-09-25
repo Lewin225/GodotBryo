@@ -1,5 +1,15 @@
 # Actor space transitions
 
+**Status: complete.** Build order stages A–G are implemented, each with its
+gate test (`tests/test_esm_server`, `test_script_interpreter`,
+`test_cell_streamer_v2`, `WorldStreamer/test_world_streamer_v2`,
+`test_nav_npc_simulation_server`, `test_transitions`). Follow-on work:
+`Plans/UseState/use_state.md` (UI driven by `ActorReference.using`, exterior
+`coc`), `Plans/Navigation/npc_server.md` (seeding in game, streamer
+checkout/checkin). Behaviour assumed but not verified in game is listed in
+`project/GodotBryo/Servers/ScriptServer/README.md` under "Unverified
+behaviour".
+
 How any actor, player or NPC, moves between spaces, and how the loaded world
 follows the player. Replaces the door-transition ownership described in
 `Plans/GameGd/game_gd_decomposition.md` §4 and "What Game should keep".
@@ -575,15 +585,4 @@ in the core primitive. Rejected in favour of possession (see "Model").
 
 ## Open
 
-- Verify against the original game: after `player.MoveTo` to another cell,
-  does the rest of the calling script stop for that frame (recalled from the
-  GECK wiki, unverified)? If so, `ScriptServer` stops the calling block when a
-  move of the possessed reference is queued.
-- Verify: does `GetPos` immediately after `MoveTo` in the same script return
-  the old position? Deferred moves produce that behaviour.
-- Owner passage through locked doors: do owners (NPC or faction) pass their
-  own locked doors, and does `Lock`'s `AsOwner` parameter (recalled from the
-  GECK wiki) decide it? 21 owned locked load doors in `FalloutNV.esm`. Until
-  verified, NPCs never pass a locked door without its key; a package that
-  unlocks the door is their route through. Console tests at `000ED1AA` gave no
-  clean result.
+None. Unverified assumptions are tracked in the ScriptServer README.
