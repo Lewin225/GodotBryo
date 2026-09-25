@@ -56,6 +56,13 @@ var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID ->
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
 var _relocated: Dictionary = {} # EsmReference -> current CELL
+var _player_reference: ActorReference = null
+
+## FormID of the Player NPC_ record. The player's own placed reference
+## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
+## for it.
+const PLAYER_BASE_FORM_ID := 0x00000007
+const PLAYER_INSTANCE_ID := "player"
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -239,6 +246,8 @@ func get_reference_type(refr_form_id: int) -> Script:
 func get_reference(instance_id: String) -> EsmReference:
 	if _game_session != null:
 		return _game_session.get_reference(instance_id)
+	if instance_id == PLAYER_INSTANCE_ID:
+		return get_player_reference()
 	if reader == null or not instance_id.begins_with("authored:"):
 		if reader == null or not instance_id.begins_with("base:"):
 			return null
@@ -254,6 +263,15 @@ func get_reference(instance_id: String) -> EsmReference:
 	if placement.is_empty():
 		return null
 	return _reference_from_placement(placement, instance_id, cell_id)
+
+## The player's reference: one ActorReference on the Player NPC_ record, the
+## same instance on every call. Unplaced (space 0) until something moves it.
+func get_player_reference() -> ActorReference:
+	if _player_reference == null and is_ready():
+		_player_reference = create_reference_for_base(PLAYER_BASE_FORM_ID) as ActorReference
+		if _player_reference != null:
+			_player_reference.instance_id = PLAYER_INSTANCE_ID
+	return _player_reference
 
 ## The placed reference with this editor ID, or null. Case-insensitive.
 func find_reference_by_editor_id(editor_id: String) -> EsmReference:

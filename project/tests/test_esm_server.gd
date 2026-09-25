@@ -82,6 +82,7 @@ func _ready() -> void:
 	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	_check_relocated_references(server)
+	_check_player_reference(server)
 	await _check_saved_base_rehydrates(server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -192,6 +193,16 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## The player's reference is one canonical ActorReference.
+func _check_player_reference(server) -> void:
+	var player: ActorReference = server.get_player_reference()
+	_check(player != null and player.base is NpcBase and player.base.form_id == 0x7, "the player reference is an ActorReference on the Player NPC_ record")
+	_check(server.get_player_reference() == player and server.get_reference("player") == player, "every lookup returns the same player reference")
+	_check(player.instance_id == "player" and player.current_space_form_id == 0, "the player reference starts unplaced")
+	var instance := ScriptInstance.new()
+	instance.set_local("who", player)
+	_check(instance.get_local("who") == player, "a ref local holding the player reads back as the same reference")
 
 ## A reference is listed under the CELL it is currently in.
 func _check_relocated_references(server) -> void:

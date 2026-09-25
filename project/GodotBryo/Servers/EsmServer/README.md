@@ -47,6 +47,7 @@ EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
 EsmServer.get_space_form_id_for_reference(instance_id) -> int
 EsmServer.get_filing_cell_form_id(refr_form_id) -> int
 EsmServer.find_reference_by_editor_id(editor_id) -> EsmReference
+EsmServer.get_player_reference() -> ActorReference              # also get_reference("player")
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
 EsmServer.cell_at(space_form_id, position: Vector3) -> int
 EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
