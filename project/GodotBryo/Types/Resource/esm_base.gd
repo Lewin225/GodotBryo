@@ -11,6 +11,9 @@ extends Resource
 		if not _rehydrating and not source_uri.is_empty():
 			call_deferred("_auto_rehydrate")
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var full_name: String = ""
+## SCRI: FormID of this record's SCPT script, or 0. Any record type may carry
+## one; for placeable types it is the object script of every placement.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_form_id: int = 0
 var raw_subrecords: Array[Dictionary] = []
 var diagnostics: PackedStringArray = []
 var _rehydrating := false

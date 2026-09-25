@@ -63,6 +63,7 @@ func _ready() -> void:
 	_check_reference_location(server)
 	_check_door_links_and_locks(server)
 	_check_reference_index(server, index)
+	_check_base_scripts(server, index)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -190,6 +191,27 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## Every base record carrying SCRI exposes it, across every scripted type.
+func _check_base_scripts(server, index: Array) -> void:
+	var expected := {"NPC_": 1046, "ACTI": 992, "CCRD": 270, "CREA": 260, "MISC": 178, "DOOR": 136, "CONT": 124,
+		"ARMO": 47, "TERM": 20, "TACT": 18, "WEAP": 17, "FURN": 16, "KEYM": 7, "LIGH": 4, "AMMO": 2, "ALCH": 2}
+	var scripted := {}
+	var started := Time.get_ticks_msec()
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if not expected.has(record_type):
+			continue
+		var base: EsmBase = server.get_base(int(row["form_id"]))
+		if base != null and base.script_form_id != 0:
+			scripted[record_type] = int(scripted.get(record_type, 0)) + 1
+	var mismatched: PackedStringArray = []
+	for record_type: String in expected:
+		if int(scripted.get(record_type, 0)) != int(expected[record_type]):
+			mismatched.append("%s %d/%d" % [record_type, int(scripted.get(record_type, 0)), expected[record_type]])
+	_check(mismatched.is_empty(), "every scripted base record exposes its SCRI (%s) [%d ms]" % [", ".join(mismatched) if not mismatched.is_empty() else "all types match", Time.get_ticks_msec() - started])
+	var doc: EsmReference = server.find_reference_by_editor_id("DocMitchellREF")
+	_check(doc != null and doc.base.script_form_id != 0, "Doc Mitchell's NPC record has an object script")
 
 ## FormID -> filing CELL, single-record placements, and editor-ID lookup.
 func _check_reference_index(server, index: Array) -> void:

@@ -594,6 +594,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		result.raw_subrecords.append(subrecord)
 	result.editor_id = _string(_subrecord(raw, "EDID"))
 	result.full_name = _string(_subrecord(raw, "FULL"))
+	result.script_form_id = _u32(_subrecord(raw, "SCRI"))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
 	elif result is PackageBase:
@@ -692,7 +693,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is DoorBase:
 		var door: DoorBase = result
 		door.model_path = _string(_subrecord(raw, "MODL"))
-		door.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		door.open_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		door.close_sound_form_id = _u32(_subrecord(raw, "ANAM"))
 		door.loop_sound_form_id = _u32(_subrecord(raw, "BNAM"))
@@ -708,7 +708,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is LightBase:
 		var light: LightBase = result
 		light.model_path = _string(_subrecord(raw, "MODL"))
-		light.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		light.icon_path = _string(_subrecord(raw, "ICON"))
 		light.small_icon_path = _string(_subrecord(raw, "MICO"))
 		light.fade_value = _f32(_subrecord(raw, "FMAM"))
@@ -735,7 +734,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is ActivatorBase:
 		var activator: ActivatorBase = result
 		activator.model_path = _string(_subrecord(raw, "MODL"))
-		activator.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		activator.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		activator.activation_sound_form_id = _u32(_subrecord(raw, "VNAM"))
 		activator.radio_template_form_id = _u32(_subrecord(raw, "INAM"))
@@ -747,7 +745,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is ContainerBase:
 		var container: ContainerBase = result
 		container.model_path = _string(_subrecord(raw, "MODL"))
-		container.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		var container_data := _subrecord(raw, "DATA")
 		container.flags = _u8(container_data)
 		container.weight = _f32(container_data, 1)
@@ -760,21 +757,18 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is FurnitureBase:
 		var furniture: FurnitureBase = result
 		furniture.model_path = _string(_subrecord(raw, "MODL"))
-		furniture.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		furniture.marker_flags = _subrecord(raw, "MNAM")
 	elif result is BookBase or result is CaravanCardBase or result is CaravanMoneyBase:
 		result.set("model_path", _string(_subrecord(raw, "MODL")))
 	elif result is TalkingActivatorBase:
 		var talking_activator: TalkingActivatorBase = result
 		talking_activator.model_path = _string(_subrecord(raw, "MODL"))
-		talking_activator.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		talking_activator.voice_type_form_id = _u32(_subrecord(raw, "VNAM"))
 		talking_activator.sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		talking_activator.sound_path = _sound_path(talking_activator.sound_form_id)
 	elif result is TerminalBase:
 		var terminal: TerminalBase = result
 		terminal.model_path = _string(_subrecord(raw, "MODL"))
-		terminal.script_form_id = _u32(_subrecord(raw, "SCRI"))
 		terminal.welcome_text = _string(_subrecord(raw, "DESC"))
 		terminal.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		terminal.looping_sound_path = _sound_path(terminal.looping_sound_form_id)
