@@ -11,6 +11,9 @@ var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam th
 
 ## ESM reader for record lookups such as ShowMessage's MESG. Null until set.
 var esm: EsmReader = null
+## Script coordinates are Gamebryo units; references use metres
+## (native/src/common/units.h is the authority for 70 units per metre).
+const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 ## The player's physics body, for commands that act on the body itself
 ## (ToggleCollision). Null when there is no player.
 var player_node: Node = null
@@ -103,6 +106,41 @@ func _register_defaults() -> void:
 			script_server.default_activate(target, activator)
 		return 1)
 
+	# `[Ref.]MoveTo Target [x y z]`: moves the calling reference to Target's
+	# space and position plus the offset (Gamebryo units), taking Target's
+	# rotation.
+	register("MoveTo", func(a: Array, ctx: ScriptExecutionContext):
+		var target: Variant = a[0] if a.size() > 0 else null
+		if ctx.calling_reference == null or not target is EsmReference or script_server == null:
+			return 0
+		var offset := Vector3(_number(a, 1), _number(a, 2), _number(a, 3)) * GAMEBRYO_UNITS_TO_METERS
+		var marker := target as EsmReference
+		script_server.move_reference(ctx.calling_reference, marker.current_space_form_id, marker.position + offset, marker.rotation)
+		return 1)
+
+	# `[Ref.]PositionCell x y z zRot CellID`: Gamebryo units, degrees; the
+	# CELL by editor ID. Keeps the reference's x/y rotation.
+	register("PositionCell", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm == null:
+			return 0
+		var cell := int(esm.find_cell_by_editor_id(str(a[4])).get("form_id", 0))
+		var esm_server := EsmReference.get_esm_server()
+		if cell == 0 or esm_server == null:
+			return 0
+		_position(ctx.calling_reference, esm_server.get_space_form_id_for_cell(cell), a)
+		return 1)
+
+	# `[Ref.]PositionWorld x y z zRot WorldspaceID`: as PositionCell, in a
+	# worldspace named by editor ID.
+	register("PositionWorld", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm == null:
+			return 0
+		var worldspace := int(esm.find_worldspace_by_editor_id(str(a[4])).get("form_id", 0))
+		if worldspace == 0:
+			return 0
+		_position(ctx.calling_reference, worldspace, a)
+		return 1)
+
 	# `[Ref.]Lock [Level]` / `[Ref.]Unlock` on the calling reference.
 	register("Lock", func(a: Array, ctx: ScriptExecutionContext):
 		if ctx.calling_reference == null or script_server == null:
@@ -178,3 +216,16 @@ func _register_defaults() -> void:
 		if get_button_pressed_handler.is_valid():
 			return get_button_pressed_handler.call(ctx)
 		return -1)
+
+## Numeric argument `index`, or 0 when absent or not a number.
+static func _number(args: Array, index: int) -> float:
+	if index < args.size() and (args[index] is int or args[index] is float):
+		return float(args[index])
+	return 0.0
+
+## Queues PositionCell/PositionWorld's move: x y z in Gamebryo units, zRot in
+## degrees.
+func _position(reference: EsmReference, space_form_id: int, args: Array) -> void:
+	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
+	var rotation := Vector3(reference.rotation.x, reference.rotation.y, deg_to_rad(_number(args, 3)))
+	script_server.move_reference(reference, space_form_id, position, rotation)

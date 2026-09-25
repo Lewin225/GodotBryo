@@ -313,7 +313,9 @@ func _parse_ident_primary() -> Dictionary:
 		# itself, not a swallowed 0. A declared local still reads its own
 		# value, per the language's real variable-declaration rule (design
 		# doc's Variables section).
-		if String(call["reference"]) == "" and _declared_names.has(String(call["name"]).to_lower()):
+		if String(call["reference"]) != "":
+			return { "kind": "ref_var", "reference": call["reference"], "name": call["name"] }
+		if _declared_names.has(String(call["name"]).to_lower()):
 			return { "kind": "var", "name": call["name"] }
 		return { "kind": "name", "name": call["name"] }
 	var args := []

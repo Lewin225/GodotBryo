@@ -5,6 +5,9 @@ extends Resource
 ## Emitted when current_cell_form_id changes because space or position changed.
 ## EsmServer.reference_cell_changed carries the same change for every reference.
 signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
+## Emitted when ScriptServer applies a move of this reference (a teleport, as
+## opposed to movement synced from a physics body).
+signal teleported(old_space_form_id: int, new_space_form_id: int)
 
 ## Runtime-resolved Base resource. It is visible for inspection but deliberately
 ## excluded from scene/resource storage; base_form_id is the persisted identity.

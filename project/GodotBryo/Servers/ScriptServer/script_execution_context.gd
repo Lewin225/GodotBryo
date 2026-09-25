@@ -30,12 +30,16 @@ func with_subject(reference: EsmReference) -> ScriptExecutionContext:
 	sub.player_reference = player_reference
 	return sub
 
-## Resolves a bare name in script source to a reference, or null. Only
-## `player` resolves here.
+## Resolves a bare name in script source to a reference, or null: `player`
+## is the player's reference; any other name is looked up as a placed
+## reference's editor ID.
 func resolve_reference_name(name: String) -> EsmReference:
 	if name.to_lower() == "player":
 		return player_reference
-	return null
+	var server := EsmReference.get_esm_server()
+	if server == null or not server.is_ready():
+		return null
+	return server.find_reference_by_editor_id(name)
 
 ## Script truthiness: 0, including an unassigned `ref`, is false; anything
 ## else is true. Explicit per type because GDScript's bool() rejects Strings,

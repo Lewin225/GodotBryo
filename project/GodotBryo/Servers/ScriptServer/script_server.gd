@@ -8,6 +8,9 @@ extends Node
 ## MenuMode blocks run each frame only for references marked loaded through
 ## set_reference_loaded(). Parsed scripts are cached per SCPT FormID.
 
+## A queued move was applied to `reference`.
+signal reference_teleported(reference: EsmReference, old_space_form_id: int, new_space_form_id: int)
+
 ## The reference `player` resolves to in scripts. Null while no actor is
 ## possessed by the player.
 var player_reference: EsmReference = null
@@ -34,6 +37,10 @@ var _last_button_pressed: int = -1
 var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
 
 func _ready() -> void:
+	# Runs after default-priority nodes' _process each frame. Physics bodies
+	# sync their references in _physics_process, which runs earlier still, so
+	# queued moves are applied after that frame's body sync.
+	process_priority = 100
 	function_registry.script_server = self
 	function_registry.show_message_handler = _handle_show_message
 	function_registry.get_button_pressed_handler = _handle_get_button_pressed
@@ -44,15 +51,30 @@ func _ready() -> void:
 		else:
 			esm_server.esm_ready.connect(func(): function_registry.esm = esm_server.reader, CONNECT_ONE_SHOT)
 
+## Each frame: GameMode blocks of loaded references, then queued moves.
 func _process(_delta: float) -> void:
 	for reference: EsmReference in _loaded_game_mode.keys():
 		dispatch_event(reference, "GameMode")
+	apply_pending_moves()
+
+## Applies every queued move: sets space, position and rotation together (one
+## cell refresh), then emits the reference's teleported and
+## reference_teleported. Moves queued while applying wait for the next call.
+func apply_pending_moves() -> void:
+	var moves := _pending_moves
+	_pending_moves = {}
+	for reference: EsmReference in moves:
+		var move: Dictionary = moves[reference]
+		var old_space := reference.current_space_form_id
+		var new_space := int(move["space_form_id"])
+		reference.set_location(new_space, move["position"])
+		reference.rotation = move["rotation"]
+		reference.teleported.emit(old_space, new_space)
+		reference_teleported.emit(reference, old_space, new_space)
 
 ## The SCPT FormID `reference` runs: its base record's SCRI, or 0.
 static func get_script_form_id(reference: EsmReference) -> int:
-	if reference == null or reference.base == null or not "script_form_id" in reference.base:
-		return 0
-	return int(reference.base.script_form_id)
+	return reference.base.script_form_id if reference != null and reference.base != null else 0
 
 ## The reference's ScriptInstance, created with its declared locals set to 0
 ## the first time it is needed. Null when the reference has no script.

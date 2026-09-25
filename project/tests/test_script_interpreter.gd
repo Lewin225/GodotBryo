@@ -184,6 +184,63 @@ func _test_script_server() -> void:
 	server.set_reference_loaded(trigger, false)
 	check(not server.is_reference_loaded(trigger), "an unloaded reference stops running GameMode")
 
+	await _test_moves_and_names(esm_server, server)
+
+## MoveTo / PositionCell / queued moves, and editor-ID names in scripts.
+func _test_moves_and_names(esm_server, server) -> void:
+	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
+	var marker: EsmReference = esm_server.find_reference_by_editor_id("REPHQ2ndTeleport1")
+	check(doc != null and marker != null and EsmNode.node_for(doc) == null, "DocMitchellREF (unloaded) and REPHQ2ndTeleport1 resolve")
+	if doc == null or marker == null:
+		return
+	var start_space := doc.current_space_form_id
+	var start_position := doc.position
+	var start_rotation := doc.rotation
+	var events: Array = []
+	var on_teleport := func(reference, old_space, new_space): if reference == doc: events.append([old_space, new_space])
+	server.reference_teleported.connect(on_teleport)
+	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+		var program := ScriptParser.new(ScriptLexer.new("begin GameMode\n%s\nend" % source).tokenize()).parse()
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+
+	# MoveTo on a reference with no node: queued, then applied.
+	run.call("MoveTo REPHQ2ndTeleport1 0 0 70", ScriptExecutionContext.new(doc))
+	check(doc.current_space_form_id == start_space and not server.get_pending_move(doc).is_empty(), "MoveTo queues the move rather than applying it")
+	server.apply_pending_moves()
+	check(doc.current_space_form_id == marker.current_space_form_id and doc.position.is_equal_approx(marker.position + Vector3(0, 0, 1)),
+			"MoveTo puts the reference at the marker's space and position plus the offset (70 units = 1 m)")
+	check(doc.rotation == marker.rotation, "MoveTo takes the marker's rotation")
+	check(doc.current_cell_form_id == esm_server.cell_at(marker.current_space_form_id, doc.position), "the moved reference's cell follows its new position")
+	check(events == [[start_space, marker.current_space_form_id]], "reference_teleported reports the old and new space once")
+
+	# Several moves in one frame: only the last is applied.
+	events.clear()
+	server.move_reference(doc, marker.current_space_form_id, marker.position + Vector3(5, 0, 0), Vector3.ZERO)
+	server.move_reference(doc, start_space, start_position, start_rotation)
+	server.apply_pending_moves()
+	check(doc.current_space_form_id == start_space and doc.position == start_position and events.size() == 1, "moves queued in one frame collapse to the last")
+
+	# PositionCell: Gamebryo units and degrees into a named CELL.
+	events.clear()
+	run.call("PositionCell 700 1400 70 90 GSDocMitchellHouse", ScriptExecutionContext.new(doc))
+	server.apply_pending_moves()
+	var interior := int(esm_server.reader.find_cell_by_editor_id("GSDocMitchellHouse").get("form_id", 0))
+	check(doc.current_space_form_id == interior and doc.position.is_equal_approx(Vector3(10, 20, 1)) and is_equal_approx(doc.rotation.z, PI / 2),
+			"PositionCell converts units and degrees and lands in the named CELL")
+	server.move_reference(doc, start_space, start_position, start_rotation)
+	server.apply_pending_moves()
+	server.reference_teleported.disconnect(on_teleport)
+
+	# Names resolve to placed references; another reference's variables are writable.
+	var ctx := ScriptExecutionContext.new(null)
+	ctx.action_ref = doc
+	run.call("if (IsActionRef DocMitchellREF)\nset z to 1\nendif", ctx)
+	check(ctx.get_local("z") == 1, "an editor-ID name in a script resolves to the placed reference")
+	var writer := ScriptExecutionContext.new(null)
+	run.call("set DocMitchellREF.PlayerLeft to 1\nset z to DocMitchellREF.PlayerLeft", writer)
+	check(doc.script_instance != null and doc.script_instance.get_local("PlayerLeft") == 1, "set DocMitchellREF.PlayerLeft writes Doc Mitchell's own script variable")
+	check(writer.get_local("z") == 1, "DocMitchellREF.PlayerLeft reads it back")
+
 func _finish() -> void:
 	print("=======================")
 	if failures == 0:

@@ -16,6 +16,7 @@ ScriptServer.activate(target, activator)                 # OnActivate block, or 
 ScriptServer.default_activate(target, activator)         # built-in only, then node presents
 ScriptServer.move_reference(reference, space_form_id, position, rotation)   # queued
 ScriptServer.get_pending_move(reference) -> Dictionary
+ScriptServer.apply_pending_moves()                       # also run every frame
 ScriptServer.begin_use(actor, target, marker := -1) -> bool
 ScriptServer.end_use(actor)
 ScriptServer.lock(reference, level := -1)
@@ -34,6 +35,17 @@ ScriptServer.player_node: Node                # the player's body, for ToggleCol
 ScriptServer.message_box: MessageBox          # ShowMessage / GetButtonPressed
 ScriptServer.function_registry: ScriptFunctionRegistry
 ```
+
+**Moves.** `move_reference()` queues; a later move of the same reference replaces the
+queued one. Each frame `_process()` runs loaded references' `GameMode` blocks, then
+applies the queue: space, position and rotation are set together (one cell refresh) and
+the reference's `teleported(old_space, new_space)` and
+`reference_teleported(reference, old_space, new_space)` are emitted. `process_priority`
+is 100, so this runs after default-priority `_process()`; physics bodies sync their
+references in `_physics_process()`, earlier in the frame. Script `MoveTo Target [x y z]`
+(offset in Gamebryo units, Target's rotation), `PositionCell x y z zRot CellID` and
+`PositionWorld x y z zRot WorldspaceID` (Gamebryo units, degrees) all queue through
+`move_reference()`.
 
 **Blocks.** Event blocks (`OnActivate`, `OnTriggerEnter`, ...) run whenever
 `dispatch_event()` is called, whether or not the reference is loaded. `GameMode` and
@@ -62,8 +74,11 @@ reference, the player's reference, and the calling reference's `ScriptInstance`.
 values are int, float or `EsmReference`; a `ref` local is stored in the instance as
 `{"ref": instance_id}` and read back as the reference.
 
-**Names.** `player` resolves to `player_reference`. Other reference names in source stay
-as text; functions that take editor IDs (ShowMessage's MESG) resolve them themselves.
+**Names.** `player` resolves to `player_reference`; any other name that is a placed
+reference's editor ID resolves to that reference (`EsmServer.find_reference_by_editor_id`),
+loaded or not. Other names stay as text for functions that take editor IDs of other record
+types (ShowMessage's MESG). `SomeREF.var` reads and writes a variable of that reference's
+own `ScriptInstance`.
 
 **Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
 find it with `EsmNode.node_for(reference)` and do nothing when the reference

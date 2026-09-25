@@ -80,9 +80,13 @@ func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> voi
 	if not target.contains("."):
 		ctx.set_local(target, value)
 		return
-	# Assignment to another reference's variable (`OtherREF.var`) is not
-	# supported and is dropped.
-	push_warning("ScriptInterpreter: cross-reference assignment to '%s' not implemented, dropped" % target)
+	# `OtherREF.var`: a variable of another reference's script.
+	var dot := target.find(".")
+	var instance := _instance_of(target.substr(0, dot), ctx)
+	if instance != null:
+		instance.set_local(target.substr(dot + 1), value)
+	else:
+		push_warning("ScriptInterpreter: '%s' names no reference with a script, assignment dropped" % target)
 
 func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 	match String(expr["kind"]):
@@ -97,6 +101,10 @@ func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 			var raw_name := String(expr["name"])
 			var named := ctx.resolve_reference_name(raw_name)
 			return named if named != null else raw_name
+		"ref_var":
+			var instance := _instance_of(String(expr["reference"]), ctx)
+			var value: Variant = instance.get_local(String(expr["name"])) if instance != null else null
+			return value if value != null else 0
 		"unary":
 			return -_to_number(_eval(expr["operand"], ctx))
 		"binop":
@@ -145,15 +153,26 @@ func _eval_call(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 
 ## Resolves a call's `[Ref.]FuncName` prefix to the context the call runs
 ## in: `ActivatorREF.Enable` acts on ActivatorREF, not on the script's own
-## reference. The prefix resolves through `player` or a `ref` local holding a
-## reference; any other name leaves the call on the caller's own context.
+## reference. A prefix that names no reference leaves the call on the
+## caller's own context.
 func _resolve_call_context(expr: Dictionary, ctx: ScriptExecutionContext) -> ScriptExecutionContext:
 	var ref_name := String(expr.get("reference", ""))
 	if ref_name == "":
 		return ctx
-	var resolved: Variant = ctx.resolve_reference_name(ref_name)
-	if resolved == null:
-		resolved = ctx.get_local(ref_name)
-	if resolved is EsmReference:
-		return ctx.with_subject(resolved)
-	return ctx
+	var resolved := _resolve_reference(ref_name, ctx)
+	return ctx.with_subject(resolved) if resolved != null else ctx
+
+## A reference prefix: a `ref` local of this script, `player`, or a placed
+## reference's editor ID.
+func _resolve_reference(ref_name: String, ctx: ScriptExecutionContext) -> EsmReference:
+	var local: Variant = ctx.get_local(ref_name) if ctx.has_local(ref_name) else null
+	if local is EsmReference:
+		return local
+	return ctx.resolve_reference_name(ref_name)
+
+## The ScriptInstance of the reference `ref_name` names, or null.
+func _instance_of(ref_name: String, ctx: ScriptExecutionContext) -> ScriptInstance:
+	var reference := _resolve_reference(ref_name, ctx)
+	if reference == null or function_registry.script_server == null:
+		return null
+	return function_registry.script_server.get_script_instance(reference)
