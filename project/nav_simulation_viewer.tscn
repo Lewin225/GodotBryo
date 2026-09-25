@@ -1,0 +1,69 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://nav_simulation_viewer.gd" id="1_viewer"]
+[ext_resource type="Script" path="res://GodotBryo/Servers/NpcSimulationServer/nav_npc_simulation_server.gd" id="2_nav_nss"]
+[ext_resource type="Script" path="res://free_cam.gd" id="3_camera"]
+
+[sub_resource type="Environment" id="Environment_nav"]
+background_mode = 1
+background_color = Color(0.02, 0.028, 0.045, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.35, 0.4, 0.55, 1)
+ambient_light_energy = 0.5
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_status"]
+bg_color = Color(0.02, 0.025, 0.04, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="NavSimulationViewer" type="Node3D"]
+script = ExtResource("1_viewer")
+
+[node name="NavNpcSimulationServer" type="Node" parent="."]
+script = ExtResource("2_nav_nss")
+
+[node name="NavmeshSurface" type="MeshInstance3D" parent="."]
+
+[node name="CoarseGraphLines" type="MeshInstance3D" parent="."]
+
+[node name="GroundingLines" type="MeshInstance3D" parent="."]
+
+[node name="ActorPoints" type="MultiMeshInstance3D" parent="."]
+
+[node name="PortalLines" type="MeshInstance3D" parent="."]
+
+[node name="PortalBoxes" type="MultiMeshInstance3D" parent="."]
+
+[node name="RouteLine" type="MeshInstance3D" parent="."]
+
+[node name="BatchRouteLines" type="MeshInstance3D" parent="."]
+
+[node name="WalkerMarker" type="MeshInstance3D" parent="."]
+
+[node name="BatchWalkers" type="MultiMeshInstance3D" parent="."]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_nav")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.955336, 0.29552, 0, -0.29552, 0.955336, 0, 400, 800)
+script = ExtResource("3_camera")
+current = true
+
+[node name="Hud" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="PanelContainer" parent="Hud"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 1120.0
+offset_bottom = 190.0
+theme_override_styles/panel = SubResource("StyleBox_status")
+
+[node name="Status" type="Label" parent="Hud/Panel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "NavNpcSimulationServer navmesh viewer
+Waiting for EsmServer"

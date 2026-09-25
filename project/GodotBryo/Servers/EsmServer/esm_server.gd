@@ -28,6 +28,16 @@ const TYPE_TO_REFERENCE := {
 
 var reader
 var _cache: Dictionary = {}
+# Authored placed references (REFR, ACHR, and ACRE) have stable identities
+# for the lifetime of this server. Save loading must inject/replace its restored
+# authored reference state here, rather than constructing parallel Resources.
+var _authored_reference_cache: Dictionary = {}
+var _placed_actor_placements: Array = []
+var _xtel_door_placements: Array = []
+var _placed_actor_instance_ids: PackedStringArray = PackedStringArray()
+var _xtel_door_instance_ids: PackedStringArray = PackedStringArray()
+var _placed_actor_ids_built := false
+var _xtel_door_ids_built := false
 var _record_index: Array = []
 var _game_session = null
 var _load_thread: Thread
@@ -220,6 +230,112 @@ func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 			result.append(reference)
 	return result
 
+## Every authored ACHR represented by an ActorReference, regardless of which
+## CELL/worldspace callers are currently loading. The returned objects are the
+## canonical authored-reference cache instances.
+func get_all_placed_actor_references() -> Array[ActorReference]:
+	var result: Array[ActorReference] = []
+	for placement in _get_placed_actor_placements():
+		var reference := _reference_from_placement(
+			placement,
+			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			int(placement.get("cell_form_id", 0))
+		) as ActorReference
+		if reference != null:
+			result.append(reference)
+	return result
+
+## Stable authored IDs for all placed NPC ACHRs. This deliberately does no
+## Resource construction, so a data-only consumer can resolve the canonical
+## references incrementally without depending on streamer residency.
+func get_all_placed_actor_instance_ids() -> PackedStringArray:
+	if reader == null:
+		return PackedStringArray()
+	if _placed_actor_ids_built:
+		return _placed_actor_instance_ids.duplicate()
+	_placed_actor_ids_built = true
+	for placement in _get_placed_actor_placements():
+		_placed_actor_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+	return _placed_actor_instance_ids.duplicate()
+
+## Every placed DOOR REFR with an authored XTEL destination, independent of
+## which CELL/worldspace callers currently have resident. These are canonical
+## authored-reference cache instances.
+func get_all_xtel_door_references() -> Array[DoorReference]:
+	var result: Array[DoorReference] = []
+	for placement in _get_xtel_door_placements():
+		var reference := _reference_from_placement(
+			placement,
+			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			int(placement.get("cell_form_id", 0))
+		) as DoorReference
+		if reference != null and reference.has_teleport_destination:
+			result.append(reference)
+	return result
+
+## Stable authored IDs for placed DOOR REFRs whose raw record has XTEL. The
+## record scan remains ESM-facing; it neither asks a streamer for a resident
+## population nor constructs any visual/physics content.
+func get_all_xtel_door_instance_ids() -> PackedStringArray:
+	if reader == null:
+		return PackedStringArray()
+	if _xtel_door_ids_built:
+		return _xtel_door_instance_ids.duplicate()
+	_xtel_door_ids_built = true
+	for placement in _get_xtel_door_placements():
+		_xtel_door_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+	return _xtel_door_instance_ids.duplicate()
+
+## Frame-sized construction access for data-only global consumers. Placement
+## discovery happened in one native CELL census; each slice still goes through
+## the canonical authored-reference cache.
+func get_placed_actor_reference_batch(offset: int, limit: int) -> Array[ActorReference]:
+	var result: Array[ActorReference] = []
+	var placements := _get_placed_actor_placements()
+	for index in range(offset, min(offset + limit, placements.size())):
+		var placement: Dictionary = placements[index]
+		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as ActorReference
+		if reference != null:
+			result.append(reference)
+	return result
+
+func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReference]:
+	var result: Array[DoorReference] = []
+	var placements := _get_xtel_door_placements()
+	for index in range(offset, min(offset + limit, placements.size())):
+		var placement: Dictionary = placements[index]
+		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as DoorReference
+		if reference != null and reference.has_teleport_destination:
+			result.append(reference)
+	return result
+
+func _get_placed_actor_placements() -> Array:
+	if not _placed_actor_placements.is_empty() or reader == null:
+		return _placed_actor_placements
+	if not reader.has_method("get_all_placed_npc_actors"):
+		push_error("EsmServer requires a rebuilt EsmReader for placed NPC census")
+		return _placed_actor_placements
+	_placed_actor_placements = reader.get_all_placed_npc_actors()
+	return _placed_actor_placements
+
+func _get_xtel_door_placements() -> Array:
+	if not _xtel_door_placements.is_empty() or reader == null:
+		return _xtel_door_placements
+	if not reader.has_method("get_all_xtel_doors"):
+		push_error("EsmServer requires a rebuilt EsmReader for XTEL door census")
+		return _xtel_door_placements
+	_xtel_door_placements = reader.get_all_xtel_doors()
+	return _xtel_door_placements
+
+## A simulation space is a raw authored coordinate space: the owning WRLD for
+## exteriors, or the CELL itself for interiors. It intentionally has no
+## interior/exterior policy beyond this identity mapping.
+func get_space_form_id_for_cell(cell_form_id: int) -> int:
+	if cell_form_id == 0:
+		return 0
+	var worldspace_form_id := int(reader.get_cell_worldspace(cell_form_id)) if reader != null else -1
+	return worldspace_form_id if worldspace_form_id > 0 else cell_form_id
+
 ## Returns the real exterior CELL at `coord`, or zero where that worldspace
 ## has no authored tile. World streaming never reaches into the native reader.
 func get_exterior_cell_form_id(worldspace_form_id: int, coord: Vector2i) -> int:
@@ -250,6 +366,8 @@ func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[
 	return result
 
 func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) -> EsmReference:
+	if _authored_reference_cache.has(id):
+		return _authored_reference_cache[id]
 	var type_tag := String(placement.get("base_type", ""))
 	var name := String(TYPE_TO_REFERENCE.get(type_tag, "EsmReference"))
 	var script = load(ResourceRoot + _snake_case(name) + ".gd")
@@ -268,6 +386,11 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
 	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
 	_populate_reference_inventory(result)
+	if result is ActorReference:
+		var actor: ActorReference = result
+		actor.spawn_cell_form_id = cell_id
+		actor.current_space_form_id = get_space_form_id_for_cell(cell_id)
+		actor.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	if result is DoorReference:
 		var door_ref: DoorReference = result
 		door_ref.has_teleport_destination = bool(placement.get("has_xtel", false))
@@ -307,6 +430,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 			result.is_open = false
 	if result is StaticReference or result is MovableStaticReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
+	_authored_reference_cache[id] = result
 	return result
 
 ## CNTO is the authored seed for an owner inventory. The live inventory is
@@ -381,6 +505,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result.full_name = _string(_subrecord(raw, "FULL"))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
+	elif result is PackageBase:
+		_populate_package(result as PackageBase, raw)
 	elif result is WeaponBase:
 		var weapon: WeaponBase = result
 		weapon.model_path = _string(_subrecord(raw, "MODL"))
@@ -720,6 +846,342 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 			if extra.size() >= 12:
 				entry.health_percent = _f32(extra, 8)
 		result.entries.append(entry)
+
+## Populate Fallout New Vegas's PACK record using xEdit's FNV schema
+## (`enginedocs/xEdit/Core/wbDefinitionsFNV.pas`). The local GECK pages
+## `Packages/Category_Packages` and `Packages/How Are Packages Evaluated`
+## document the resulting schedule/condition/ordered-selection semantics.
+## OpenMW's ESM4 PACK reader was checked as a secondary comparison, but it
+## explicitly labels its Fallout branches FIXME, so it is not used as format
+## authority. The shipped master has both 12-byte FNV and 8-byte legacy PKDT
+## forms, plus 20- and 28-byte CTDA forms; preserve and decode both rather
+## than treating either as malformed.
+func _populate_package(result: PackageBase, raw: Dictionary) -> void:
+	result.general_flags_raw = 0
+	result.general_flags = null
+	result.package_type = PackageBase.PackageType.FIND
+	result.fallout_behavior_flags_raw = 0
+	result.fallout_behavior_flags = null
+	result.type_specific_flags_raw = 0
+	result.type_specific_flags = null
+	result.location_1 = null
+	result.location_2 = null
+	result.schedule = null
+	result.target_1 = null
+	result.target_2 = null
+	result.conditions.clear()
+	result.idle_animation_form_ids.clear()
+	result.idle_collection_chance_raw = PackedByteArray()
+	result.idle_collection_flags_raw = PackedByteArray()
+	result.idle_collection_timer_raw = PackedByteArray()
+	result.combat_style_form_id = 0
+	result.has_eat_marker = false
+	result.escort_distance = 0
+	result.follow_start_location_trigger_radius = 0.0
+	result.patrol_repeatable = true
+	result.use_weapon_data = null
+	result.has_use_item_marker = false
+	result.has_ambush_marker = false
+	result.dialogue_data = null
+	result.on_begin = null
+	result.on_end = null
+	result.on_change = null
+
+	var current_event: PackageEvent = null
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
+		match tag:
+			"PKDT":
+				_populate_package_general(result, data)
+			"PLDT":
+				result.location_1 = _package_location(result, "PLDT", data)
+			"PLD2":
+				result.location_2 = _package_location(result, "PLD2", data)
+			"PSDT":
+				result.schedule = _package_schedule(result, data)
+			"PTDT":
+				result.target_1 = _package_target(result, "PTDT", data)
+			"PTD2":
+				result.target_2 = _package_target(result, "PTD2", data)
+			"CTDA":
+				var condition := _package_condition(result, data)
+				if condition != null:
+					result.conditions.append(condition)
+			"IDLA":
+				for offset in range(0, data.size() - 3, 4):
+					result.idle_animation_form_ids.append(_u32(data, offset))
+			"IDLC":
+				result.idle_collection_chance_raw = data.duplicate()
+			"IDLF":
+				result.idle_collection_flags_raw = data.duplicate()
+			"IDLT":
+				result.idle_collection_timer_raw = data.duplicate()
+			"CNAM":
+				result.combat_style_form_id = _u32(data)
+			"PKED":
+				result.has_eat_marker = true
+			"PKE2":
+				result.escort_distance = _u32(data)
+			"PKFD":
+				result.follow_start_location_trigger_radius = _f32(data)
+			"PKPT":
+				result.patrol_repeatable = _u8(data) != 0
+			"PKW3":
+				result.use_weapon_data = _package_use_weapon_data(result, data)
+			"PUID":
+				result.has_use_item_marker = true
+			"PKAM":
+				result.has_ambush_marker = true
+			"PKDD":
+				result.dialogue_data = _package_dialogue_data(result, data)
+			"POBA":
+				current_event = PackageEvent.new()
+				result.on_begin = current_event
+			"POEA":
+				current_event = PackageEvent.new()
+				result.on_end = current_event
+			"POCA":
+				current_event = PackageEvent.new()
+				result.on_change = current_event
+			_:
+				if current_event != null:
+					_populate_package_event_subrecord(current_event, tag, data)
+
+func _populate_package_general(result: PackageBase, data: PackedByteArray) -> void:
+	if data.size() != 8 and data.size() != 12:
+		result.diagnostics.append("PACK 0x%08X has PKDT with %d bytes; expected 8 or 12" % [result.form_id, data.size()])
+		return
+	result.general_flags_raw = _u32(data)
+	result.general_flags = _decode_package_general_flags(result.general_flags_raw)
+	# Both forms encode the package type at offset four. The 12-byte FNV form
+	# then carries a padding byte, Fallout Behavior flags, type-specific flags,
+	# and two final unused bytes.
+	result.package_type = _u8(data, 4)
+	if data.size() == 12:
+		result.fallout_behavior_flags_raw = _u16(data, 6)
+		result.type_specific_flags_raw = _u16(data, 8)
+		result.fallout_behavior_flags = _decode_package_fallout_behavior_flags(result.fallout_behavior_flags_raw)
+		result.type_specific_flags = _decode_package_type_specific_flags(result.package_type, result.type_specific_flags_raw)
+	else:
+		result.fallout_behavior_flags = _decode_package_fallout_behavior_flags(0)
+		result.type_specific_flags = _decode_package_type_specific_flags(result.package_type, 0)
+
+func _decode_package_general_flags(raw_flags: int) -> PackageGeneralFlags:
+	var result := PackageGeneralFlags.new()
+	result.offers_services = (raw_flags & 0x00000001) != 0
+	result.must_reach_location = (raw_flags & 0x00000002) != 0
+	result.must_complete = (raw_flags & 0x00000004) != 0
+	result.lock_doors_at_package_start = (raw_flags & 0x00000008) != 0
+	result.lock_doors_at_package_end = (raw_flags & 0x00000010) != 0
+	result.lock_doors_at_location = (raw_flags & 0x00000020) != 0
+	result.unlock_doors_at_package_start = (raw_flags & 0x00000040) != 0
+	result.unlock_doors_at_package_end = (raw_flags & 0x00000080) != 0
+	result.unlock_doors_at_location = (raw_flags & 0x00000100) != 0
+	result.continue_if_player_near = (raw_flags & 0x00000200) != 0
+	result.once_per_day = (raw_flags & 0x00000400) != 0
+	result.skip_fallout_behavior = (raw_flags & 0x00001000) != 0
+	result.always_run = (raw_flags & 0x00002000) != 0
+	result.always_sneak = (raw_flags & 0x00020000) != 0
+	result.allow_swimming = (raw_flags & 0x00040000) != 0
+	result.allow_falls = (raw_flags & 0x00080000) != 0
+	result.head_tracking_off = (raw_flags & 0x00100000) != 0
+	result.weapons_unequipped = (raw_flags & 0x00200000) != 0
+	result.defensive_combat = (raw_flags & 0x00400000) != 0
+	result.weapon_drawn = (raw_flags & 0x00800000) != 0
+	result.no_idle_animations = (raw_flags & 0x01000000) != 0
+	result.pretend_in_combat = (raw_flags & 0x02000000) != 0
+	result.continue_during_combat = (raw_flags & 0x04000000) != 0
+	result.no_combat_alert = (raw_flags & 0x08000000) != 0
+	result.no_warn_or_attack_behavior = (raw_flags & 0x10000000) != 0
+	var known_mask := 0x1FFFFFFF & ~0x0001C800
+	result.unknown_mask = raw_flags & ~known_mask
+	return result
+
+func _decode_package_fallout_behavior_flags(raw_flags: int) -> PackageFalloutBehaviorFlags:
+	var result := PackageFalloutBehaviorFlags.new()
+	result.hellos_to_player = (raw_flags & 0x0001) != 0
+	result.random_conversations = (raw_flags & 0x0002) != 0
+	result.observe_combat_behavior = (raw_flags & 0x0004) != 0
+	result.reaction_to_player_actions = (raw_flags & 0x0010) != 0
+	result.friendly_fire_comments = (raw_flags & 0x0020) != 0
+	result.aggro_radius_behavior = (raw_flags & 0x0040) != 0
+	result.allow_idle_chatter = (raw_flags & 0x0080) != 0
+	result.avoid_radiation = (raw_flags & 0x0100) != 0
+	result.unknown_mask = raw_flags & ~0x0177
+	return result
+
+func _decode_package_type_specific_flags(package_type: int, raw_flags: int) -> PackageTypeSpecificFlags:
+	var result := PackageTypeSpecificFlags.new()
+	var known_mask := 0
+	match package_type:
+		PackageBase.PackageType.FIND, PackageBase.PackageType.ESCORT, PackageBase.PackageType.EAT:
+			result.allow_buying = (raw_flags & 0x0100) != 0
+			result.allow_killing = (raw_flags & 0x0200) != 0
+			result.allow_stealing = (raw_flags & 0x0400) != 0
+			known_mask = 0x0700
+		PackageBase.PackageType.WANDER, PackageBase.PackageType.SANDBOX:
+			result.no_eating = (raw_flags & 0x0001) != 0
+			result.no_sleeping = (raw_flags & 0x0002) != 0
+			result.no_conversation = (raw_flags & 0x0004) != 0
+			result.no_idle_markers = (raw_flags & 0x0008) != 0
+			result.no_furniture = (raw_flags & 0x0010) != 0
+			result.no_wandering = (raw_flags & 0x0020) != 0
+			known_mask = 0x003F
+		PackageBase.PackageType.USE_ITEM_AT:
+			result.sit_down = (raw_flags & 0x0004) != 0
+			result.allow_buying = (raw_flags & 0x0100) != 0
+			result.allow_killing = (raw_flags & 0x0200) != 0
+			result.allow_stealing = (raw_flags & 0x0400) != 0
+			known_mask = 0x0704
+		PackageBase.PackageType.AMBUSH:
+			result.hide_while_ambushing = (raw_flags & 0x0001) != 0
+			known_mask = 0x0001
+		PackageBase.PackageType.GUARD:
+			result.remain_near_reference_to_guard = (raw_flags & 0x0008) != 0
+			known_mask = 0x0008
+	result.unknown_mask = raw_flags & ~known_mask
+	return result
+
+func _package_location(owner: PackageBase, tag: String, data: PackedByteArray) -> PackageLocation:
+	if data.size() != 12:
+		owner.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 12" % [owner.form_id, tag, data.size()])
+		return null
+	var location := PackageLocation.new()
+	location.location_type = _i32(data)
+	location.location_value = _decode_package_location_value(location.location_type, _u32(data, 4))
+	location.radius = _i32(data, 8)
+	return location
+
+func _decode_package_location_value(location_type: PackageLocation.LocationType, raw_value: int) -> PackageLocationValue:
+	var result := PackageLocationValue.new()
+	result.raw_value = raw_value
+	match location_type:
+		PackageLocation.LocationType.NEAR_REFERENCE:
+			result.value_kind = PackageLocationValue.ValueKind.REFERENCE
+			result.reference_instance_id = "authored:%08X" % raw_value
+		PackageLocation.LocationType.IN_CELL:
+			result.value_kind = PackageLocationValue.ValueKind.CELL
+			result.cell_form_id = raw_value
+		PackageLocation.LocationType.NEAR_CURRENT_LOCATION:
+			result.value_kind = PackageLocationValue.ValueKind.CURRENT_LOCATION
+		PackageLocation.LocationType.NEAR_EDITOR_LOCATION:
+			result.value_kind = PackageLocationValue.ValueKind.EDITOR_LOCATION
+		PackageLocation.LocationType.OBJECT_ID:
+			result.value_kind = PackageLocationValue.ValueKind.OBJECT_BASE
+			result.object_base_form_id = raw_value
+		PackageLocation.LocationType.OBJECT_TYPE:
+			result.value_kind = PackageLocationValue.ValueKind.OBJECT_TYPE
+			result.object_type = raw_value
+		PackageLocation.LocationType.NEAR_LINKED_REFERENCE:
+			result.value_kind = PackageLocationValue.ValueKind.LINKED_REFERENCE
+		PackageLocation.LocationType.AT_PACKAGE_LOCATION:
+			result.value_kind = PackageLocationValue.ValueKind.PACKAGE_LOCATION
+	return result
+
+func _package_schedule(owner: PackageBase, data: PackedByteArray) -> PackageSchedule:
+	if data.size() != 8:
+		owner.diagnostics.append("PACK 0x%08X has PSDT with %d bytes; expected 8" % [owner.form_id, data.size()])
+		return null
+	var schedule := PackageSchedule.new()
+	schedule.month = _i8(data)
+	schedule.day_of_week = _i8(data, 1)
+	schedule.date = _i8(data, 2)
+	schedule.time = _i8(data, 3)
+	schedule.duration_hours = _u32(data, 4)
+	return schedule
+
+func _package_target(owner: PackageBase, tag: String, data: PackedByteArray) -> PackageTarget:
+	if data.size() != 16:
+		owner.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 16" % [owner.form_id, tag, data.size()])
+		return null
+	var target := PackageTarget.new()
+	target.target_type = _i32(data)
+	target.target_value = _u32(data, 4)
+	target.count_or_distance = _i32(data, 8)
+	target.unknown = _f32(data, 12)
+	return target
+
+func _package_condition(owner: PackageBase, data: PackedByteArray) -> PackageCondition:
+	if data.size() != 20 and data.size() != 28:
+		owner.diagnostics.append("PACK 0x%08X has CTDA with %d bytes; expected 20 or 28" % [owner.form_id, data.size()])
+		return null
+	var condition := PackageCondition.new()
+	condition.type_flags = _u8(data)
+	condition.comparison_value = _f32(data, 4)
+	# The Condition Type bit which changes the comparison word into a GLOB
+	# FormID is xEdit's CTDA comparison-value union discriminator.
+	if (condition.type_flags & 0x04) != 0:
+		condition.comparison_global_form_id = _u32(data, 4)
+	condition.function_id = _u16(data, 8)
+	condition.parameter_1 = _u32(data, 12)
+	condition.parameter_2 = _u32(data, 16)
+	if data.size() == 28:
+		condition.has_run_on = true
+		condition.run_on = _u32(data, 20)
+		condition.reference_form_id = _u32(data, 24)
+	return condition
+
+func _package_use_weapon_data(owner: PackageBase, data: PackedByteArray) -> PackageUseWeaponData:
+	if data.size() != 24:
+		owner.diagnostics.append("PACK 0x%08X has PKW3 with %d bytes; expected 24" % [owner.form_id, data.size()])
+		return null
+	var result := PackageUseWeaponData.new()
+	result.flags = _u32(data)
+	result.always_hit = (result.flags & 0x00000001) != 0
+	result.does_no_damage = (result.flags & 0x00000100) != 0
+	result.crouch_to_reload = (result.flags & 0x00010000) != 0
+	result.hold_fire_when_blocked = (result.flags & 0x01000000) != 0
+	result.fire_rate = _u8(data, 4)
+	result.fire_count = _u8(data, 5)
+	result.burst_count = _u16(data, 6)
+	result.shots_per_volley_min = _u16(data, 8)
+	result.shots_per_volley_max = _u16(data, 10)
+	result.pause_between_volleys_min = _f32(data, 12)
+	result.pause_between_volleys_max = _f32(data, 16)
+	return result
+
+func _package_dialogue_data(owner: PackageBase, data: PackedByteArray) -> PackageDialogueData:
+	if data.size() != 24:
+		owner.diagnostics.append("PACK 0x%08X has PKDD with %d bytes; expected 24" % [owner.form_id, data.size()])
+		return null
+	var result := PackageDialogueData.new()
+	result.field_of_view = _f32(data)
+	result.topic_form_id = _u32(data, 4)
+	result.flags = _u32(data, 8)
+	result.no_headtracking = (result.flags & 0x00000001) != 0
+	result.does_not_control_target_movement = (result.flags & 0x00000100) != 0
+	result.dialogue_type = _u32(data, 16)
+	result.unknown = _u32(data, 20)
+	return result
+
+func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: PackedByteArray) -> void:
+	match tag:
+		"INAM": event.idle_form_id = _u32(data)
+		"TNAM": event.topic_form_id = _u32(data)
+		"SCHR":
+			event.script_header = data.duplicate()
+			event.script_reference_count = _u32(data, 4)
+			event.compiled_script_size = _u32(data, 8)
+			event.script_variable_count = _u32(data, 12)
+			event.script_type = _u16(data, 16)
+			event.script_flags = _u16(data, 18)
+		"SCDA": event.compiled_script = data.duplicate()
+		"SCTX": event.script_source = _string(data)
+		"SLSD":
+			event.local_variable_data.append(data.duplicate())
+			var local := PackageScriptLocal.new()
+			local.index = _u32(data)
+			local.variable_type = _u8(data, 16)
+			local.raw_data = data.duplicate()
+			event.local_variables.append(local)
+		"SCVR":
+			var name := _string(data)
+			event.local_variable_names.append(name)
+			if not event.local_variables.is_empty():
+				event.local_variables.back().name = name
+		"SCRO": event.script_references.append(_u32(data))
+		"SCRV": event.script_local_reference_indices.append(_u32(data))
 
 func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 	result.model_path = _string(_subrecord(raw, "MODL"))

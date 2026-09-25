@@ -100,6 +100,8 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_cell_containing_ref", "refr_form_id"), &EsmReader::find_cell_containing_ref);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
 	ClassDB::bind_method(D_METHOD("get_cell_actors", "cell_form_id"), &EsmReader::get_cell_actors);
+	ClassDB::bind_method(D_METHOD("get_all_placed_npc_actors"), &EsmReader::get_all_placed_npc_actors);
+	ClassDB::bind_method(D_METHOD("get_all_xtel_doors"), &EsmReader::get_all_xtel_doors);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
 	ClassDB::bind_method(D_METHOD("get_scol_parts", "scol_form_id"), &EsmReader::get_scol_parts);
@@ -437,6 +439,74 @@ Array EsmReader::get_cell_actors(int64_t cell_form_id) const {
 		for (const auto &pl : file_.get_cell_actors(*cell)) {
 			out.push_back(placement_to_dict(pl));
 		}
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Array EsmReader::get_all_placed_npc_actors() const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		// FormID lookup elsewhere in EsmFile resolves the last record when a
+		// master contains an override duplicate. Match that established
+		// canonical identity rule here rather than emitting two placements for
+		// one authored instance ID.
+		std::unordered_map<uint32_t, int> output_index_by_form_id;
+		file_.for_each_record([&](const esm::RecordInfo &cell) {
+			if (cell.type != "CELL") {
+				return;
+			}
+			for (const auto &placement : file_.get_cell_actors(cell)) {
+				if (placement.base_type != "NPC_") {
+					continue;
+				}
+				Dictionary entry = placement_to_dict(placement);
+				entry["cell_form_id"] = static_cast<int64_t>(cell.form_id);
+				auto existing = output_index_by_form_id.find(placement.refr_form_id);
+				if (existing == output_index_by_form_id.end()) {
+					output_index_by_form_id[placement.refr_form_id] = out.size();
+					out.push_back(entry);
+				} else {
+					out[existing->second] = entry;
+				}
+			}
+		});
+	} catch (const std::exception &e) {
+		last_error_ = String(e.what());
+	}
+	return out;
+}
+
+Array EsmReader::get_all_xtel_doors() const {
+	Array out;
+	if (!opened_) {
+		return out;
+	}
+	try {
+		std::unordered_map<uint32_t, int> output_index_by_form_id;
+		file_.for_each_record([&](const esm::RecordInfo &cell) {
+			if (cell.type != "CELL") {
+				return;
+			}
+			for (const auto &placement : file_.get_cell_references(cell)) {
+				if (placement.base_type != "DOOR" || !placement.has_xtel) {
+					continue;
+				}
+				Dictionary entry = placement_to_dict(placement);
+				entry["cell_form_id"] = static_cast<int64_t>(cell.form_id);
+				auto existing = output_index_by_form_id.find(placement.refr_form_id);
+				if (existing == output_index_by_form_id.end()) {
+					output_index_by_form_id[placement.refr_form_id] = out.size();
+					out.push_back(entry);
+				} else {
+					out[existing->second] = entry;
+				}
+			}
+		});
 	} catch (const std::exception &e) {
 		last_error_ = String(e.what());
 	}

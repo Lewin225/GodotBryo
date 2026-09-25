@@ -40,6 +40,9 @@ EsmServer.get_reference_type(refr_form_id) -> Script
 EsmServer.create_reference_for_base(base_form_id) -> EsmReference
 EsmServer.create_inventory_item_reference(base_form_id, instance_id := "") -> EsmReference
 EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]
+EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
+EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
+EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
 EsmServer.rehydrate(resource: EsmBase) -> bool
 ```
 
