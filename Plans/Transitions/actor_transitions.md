@@ -38,6 +38,24 @@ the same controller path and leaves room for co-op.
 
 `game.gd` keeps no interaction, door or transition logic.
 
+## Build order
+
+Each stage ends at a test against the shipped data that prints
+`ALL CHECKS PASSED`. A stage starts only after the previous gate passes.
+`EsmServer` changes are their own stages (its README).
+
+| Stage | Work | Gate |
+|---|---|---|
+| A | EsmServer location: `current_space_form_id` on `EsmReference`; `position` setter and `_refresh_cell`; grid index, `cell_at`, `reference_cell_changed`; exterior persistent references seeded into their grid cell | every placed exterior reference's cell is the grid cell under it; interiors unchanged; the signal fires only on a cell change |
+| B | EsmServer doors: `DoorTeleportLink` replaces the `teleport_*` fields (callers `esm_door_node.gd`, NPC server portal seeding, `interact_ray.gd`); `is_locked` from XLOC presence | all XTELs populate a link; reciprocal pairs resolve; the 19 keyless level-0 doors are locked |
+| C | `ScriptServer` autoload (`GodotBryo/Servers/ScriptServer/`) replacing the `ScriptEngine` scene node; `ScriptInstance` on `EsmReference`; per-dispatch contexts; block-parameter gating | existing script tests pass; `OnActivate Player` runs for the player only |
+| D | Activation: `ScriptServer.activate`, default block, `Activate` rules, `EsmBase.activate` / `default_activate`, `DoorBase.activate`, `begin_use` / `end_use`, `lock` / `unlock`, `using` / `occupants` | a door activated with no node toggles `is_open`; a load door queues a move; key, level-255 and lockpick paths |
+| E | Moves: per-frame queue and frame order, `reference_teleported`, `MoveTo` / `PositionCell` / `PositionWorld`; editor-id → reference lookup (EsmServer sub-stage) | `MoveTo` on an unloaded reference; moves in one frame collapse to the last |
+| F | World reacts: `NavNpcSimulationServer` autoload indexing from `reference_cell_changed`; streamers physicalise/remove on cell change; nodes snap on same-space teleport | an NPC moved into a loaded cell appears; one moved out disappears |
+| G | Player: `PlayerController` possession and `request_activate`; transition coordinator extracted from `game.gd`; frozen body; COC through the mover | in game: a door both ways, a same-space door, COC |
+
+Door transitions work again at G.
+
 ## Activation
 
 Activation is resource to resource, so `LOW_LEVEL` NPCs with no loaded node
