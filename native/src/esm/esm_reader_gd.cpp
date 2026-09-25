@@ -704,7 +704,9 @@ Array EsmReader::get_record_index() const {
 			try {
 				std::string editor_id;
 				std::string full_name;
-				for (const auto &sub : esm::EsmFile::parse_subrecords(file_.read_record_data(r))) {
+				// Subrecords point into `data`; it must outlive the loop.
+				const std::vector<uint8_t> data = file_.read_record_data(r);
+				for (const auto &sub : esm::EsmFile::parse_subrecords(data)) {
 					if (sub.type == "EDID") editor_id = sub.as_string();
 					else if (sub.type == "FULL") full_name = sub.as_string();
 				}
