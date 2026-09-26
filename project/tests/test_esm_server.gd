@@ -310,6 +310,14 @@ func _check_reference_index(server, index: Array) -> void:
 	var marker: EsmReference = server.find_reference_by_editor_id("REPHQ2ndTeleport1")
 	_check(marker != null and marker.current_space_form_id != 0, "REPHQ2ndTeleport1 (a MoveTo target) resolves with a location")
 	_check(server.find_reference_by_editor_id("NoSuchReferenceEditorID") == null, "an unknown editor ID resolves to null")
+	var quests := 0
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) == "QUST":
+			quests += 1
+	_check(server._quest_by_editor_id.size() == quests, "every QUST is indexed by editor ID (%d)" % quests)
+	var repcon: EsmBase = server.find_quest_by_editor_id("repconhqfreeform")
+	_check(repcon != null and repcon.record_type == "QUST" and repcon.editor_id.to_lower() == "repconhqfreeform" and repcon.script_form_id != 0,
+			"RepconHQFreeform resolves, case-insensitively, to its QUST record (REPCONHQFreeform) with a script")
 
 	# A reference filed in a worldspace persistent CELL builds from its own
 	# record: time one nothing has built yet, outside WastelandNV.

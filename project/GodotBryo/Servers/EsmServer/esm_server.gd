@@ -52,6 +52,7 @@ var _worldspace_by_cell: Dictionary = {} # grid or persistent CELL -> WRLD
 var _placed_reference_ids := PackedInt64Array() # sorted REFR/ACHR/ACRE FormIDs
 var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
+var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
 ## References whose cell has changed since they were built, by current CELL:
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
@@ -111,6 +112,7 @@ func _process(_delta: float) -> void:
 	_placed_reference_ids = _load_result.get("placed_reference_ids", PackedInt64Array())
 	_placed_reference_cells = _load_result.get("placed_reference_cells", PackedInt64Array())
 	_reference_by_editor_id = _load_result.get("reference_by_editor_id", {})
+	_quest_by_editor_id = _load_result.get("quest_by_editor_id", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -141,12 +143,17 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 		ids[i] = pairs[i * 2]
 		cells[i] = pairs[i * 2 + 1]
 	var by_editor_id := {}
+	var quests := {}
 	for row: Dictionary in record_index:
 		var record_type := String(row.get("record_type", ""))
 		var editor_id := String(row.get("editor_id", ""))
-		if not editor_id.is_empty() and (record_type == "REFR" or record_type == "ACHR" or record_type == "ACRE"):
+		if editor_id.is_empty():
+			continue
+		if record_type == "REFR" or record_type == "ACHR" or record_type == "ACRE":
 			by_editor_id[editor_id.to_lower()] = int(row["form_id"])
-	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id}
+		elif record_type == "QUST":
+			quests[editor_id.to_lower()] = int(row["form_id"])
+	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id, "quest_by_editor_id": quests}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
 ## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
@@ -277,6 +284,13 @@ func get_player_reference() -> ActorReference:
 func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 	var form_id := int(_reference_by_editor_id.get(editor_id.to_lower(), 0))
 	return get_reference("authored:%08X" % form_id) if form_id != 0 else null
+
+## The QUST record with this editor ID, or null. Case-insensitive. Its
+## script_form_id is the quest script whose variables scripts reach as
+## `QuestEditorID.var`.
+func find_quest_by_editor_id(editor_id: String) -> EsmBase:
+	var form_id := int(_quest_by_editor_id.get(editor_id.to_lower(), 0))
+	return get_base(form_id) if form_id != 0 else null
 
 ## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
 func get_filing_cell_form_id(refr_form_id: int) -> int:
