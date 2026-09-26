@@ -49,6 +49,7 @@ EsmServer.get_filing_cell_form_id(refr_form_id) -> int
 EsmServer.find_reference_by_editor_id(editor_id) -> EsmReference
 EsmServer.get_player_reference() -> ActorReference              # also get_reference("player")
 EsmServer.find_quest_by_editor_id(editor_id) -> EsmBase
+EsmServer.get_quest_state(quest: EsmBase) -> QuestState          # one per QUST
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
 EsmServer.cell_at(space_form_id, position: Vector3) -> int
 EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
@@ -90,6 +91,11 @@ placed reference's editor ID are indexed on the load thread (native
 (`EsmReader.get_reference_placement()`) without reading the rest of its CELL.
 `find_reference_by_editor_id()` is case-insensitive and returns the same cached
 instance.
+
+**Quests.** A QUST record has no placements, so its runtime state (script
+variables, stage, stages done) lives in a `QuestState`, the quest's equivalent of an
+`EsmReference`. `get_quest_state()` returns one canonical instance per quest, cached here
+alongside the built references.
 
 **Doors.** A `DoorReference` with XTEL has `teleport: DoorTeleportLink`: the
 destination door's instance id, the landing position and rotation, and the

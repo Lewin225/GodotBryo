@@ -316,6 +316,10 @@ func _check_reference_index(server, index: Array) -> void:
 			quests += 1
 	_check(server._quest_by_editor_id.size() == quests, "every QUST is indexed by editor ID (%d)" % quests)
 	var repcon: EsmBase = server.find_quest_by_editor_id("repconhqfreeform")
+	var repcon_state: QuestState = server.get_quest_state(repcon)
+	_check(repcon_state != null and repcon_state.quest == repcon and server.get_quest_state(repcon) == repcon_state and repcon_state.stage == 0,
+			"a quest has one canonical QuestState, starting at stage 0")
+	_check(server.get_quest_state(server.get_base(0x000E3778)) == null, "a non-quest record has no QuestState")
 	_check(repcon != null and repcon.record_type == "QUST" and repcon.editor_id.to_lower() == "repconhqfreeform" and repcon.script_form_id != 0,
 			"RepconHQFreeform resolves, case-insensitively, to its QUST record (REPCONHQFreeform) with a script")
 
