@@ -4,6 +4,11 @@ extends Node
 ## running, their stages, and when their scripts run. Autoloaded as
 ## QuestServer. Quests are world state, shared by every actor and player.
 
+## Whether a stage flagged to complete the quest has been set.
+func is_completed(quest: EsmBase) -> bool:
+	var state := get_quest_state(quest)
+	return state != null and state.completed
+
 ## Seconds between runs of a quest script whose QUST record gives no delay.
 const DEFAULT_SCRIPT_DELAY := 5.0
 

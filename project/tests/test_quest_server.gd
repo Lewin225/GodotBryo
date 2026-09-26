@@ -59,6 +59,31 @@ func _ready() -> void:
 			"setting a stage runs its result script, which can set further stages (75, 76, 79 done)")
 	check(script_server.run_debug_line("GetStageDone VCG01 76").get("result") == 1, "GetStageDone reads it from scripts")
 
+	# A stage whose unconditioned log entry is flagged complete-quest completes it.
+	var completing_quest: QuestBase = null
+	var completing_stage := -1
+	for row: Dictionary in esm_server.get_record_index():
+		if String(row.get("record_type", "")) != "QUST":
+			continue
+		var candidate := esm_server.get_base(int(row["form_id"])) as QuestBase
+		for stage: QuestStage in candidate.stages:
+			for entry: QuestLogEntry in stage.log_entries:
+				if entry.condition_count == 0 and (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0 and entry.script_source.strip_edges().is_empty():
+					completing_quest = candidate
+					completing_stage = stage.index
+					break
+			if completing_quest != null:
+				break
+		if completing_quest != null:
+			break
+	check(completing_quest != null, "found a quest stage that completes its quest")
+	if completing_quest != null:
+		var edid := completing_quest.editor_id
+		check(script_server.run_debug_line("GetQuestCompleted %s" % edid).get("result") == 0, "GetQuestCompleted is 0 before (%s)" % edid)
+		script_server.run_debug_line("SetStage %s %d" % [edid, completing_stage])
+		check(quests.is_completed(completing_quest) and script_server.run_debug_line("GetQuestCompleted %s" % edid).get("result") == 1,
+				"setting a completing stage makes GetQuestCompleted 1 (%s %d)" % [edid, completing_stage])
+
 	# Script control of quests.
 	script_server.run_debug_line("StartQuest RepconHQFreeform")
 	check(quests.is_running(repcon) and script_server.run_debug_line("GetQuestRunning RepconHQFreeform").get("result") == 1, "StartQuest / GetQuestRunning")

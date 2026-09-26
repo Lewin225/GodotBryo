@@ -41,6 +41,7 @@ const KNOWN_ARITIES := {
 	"getstage": 1,
 	"getstagedone": 2,
 	"getquestrunning": 1,
+	"getquestcompleted": 1,
 	"isactionref": 1,
 	"getsecondspassed": 0,
 	"gamedayspassed": 0,

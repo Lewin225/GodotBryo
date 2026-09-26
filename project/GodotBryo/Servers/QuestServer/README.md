@@ -15,6 +15,7 @@ QUST, not on any actor.
 QuestServer.begin_game()                            # start the start-enabled quests
 QuestServer.get_quest_state(quest) -> QuestState     # one per QUST, created on first use
 QuestServer.start_quest(quest) / stop_quest(quest) / is_running(quest) -> bool
+QuestServer.is_completed(quest) -> bool
 QuestServer.get_script_delay(quest) -> float
 QuestServer.set_script_delay(quest, seconds)
 QuestServer.get_stage(quest) -> int
@@ -40,7 +41,7 @@ log entries have them), so a stage whose entries all have conditions runs none. 
 entry flagged complete or fail marks the quest so.
 
 **Scripts** reach this through `GetStage`, `GetStageDone`, `SetStage`, `StartQuest`,
-`StopQuest`, `GetQuestRunning` and `SetQuestDelay`, and `QuestEditorID.var` for variables.
+`StopQuest`, `GetQuestRunning`, `GetQuestCompleted` and `SetQuestDelay`, and `QuestEditorID.var` for variables.
 
 ## Not yet
 

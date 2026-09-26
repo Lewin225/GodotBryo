@@ -161,7 +161,8 @@ func _register_defaults() -> void:
 
 	# Quests, named by editor ID: `GetStage Quest`, `GetStageDone Quest Stage`,
 	# `SetStage Quest Stage`, `StartQuest Quest`, `StopQuest Quest`,
-	# `GetQuestRunning Quest`, `SetQuestDelay Quest Seconds`.
+	# `GetQuestRunning Quest`, `GetQuestCompleted Quest`,
+	# `SetQuestDelay Quest Seconds`.
 	register("GetStage", func(a: Array, _c):
 		var quests := _quest_server()
 		return quests.get_stage(_quest(a, 0)) if quests != null else 0)
@@ -190,6 +191,9 @@ func _register_defaults() -> void:
 	register("GetQuestRunning", func(a: Array, _c):
 		var quests := _quest_server()
 		return 1 if quests != null and quests.is_running(_quest(a, 0)) else 0)
+	register("GetQuestCompleted", func(a: Array, _c):
+		var quests := _quest_server()
+		return 1 if quests != null and quests.is_completed(_quest(a, 0)) else 0)
 	register("SetQuestDelay", func(a: Array, _c):
 		var quests := _quest_server()
 		if quests == null or _quest(a, 0) == null:
