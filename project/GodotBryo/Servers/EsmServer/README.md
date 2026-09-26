@@ -50,6 +50,7 @@ EsmServer.find_reference_by_editor_id(editor_id) -> EsmReference
 EsmServer.get_player_reference() -> ActorReference              # also get_reference("player")
 EsmServer.find_quest_by_editor_id(editor_id) -> EsmBase
 EsmServer.find_global_by_editor_id(editor_id) -> Dictionary     # GLOB type and authored value
+EsmServer.get_game_setting(editor_id) -> Variant                # GMST value; null when the ESM has none
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int
 EsmServer.cell_at(space_form_id, position: Vector3) -> int
 EsmServer.exterior_grid_coord(position: Vector3) -> Vector2i   # static
@@ -60,6 +61,11 @@ Signals `esm_ready`, `failed(message)` and
 `reference_cell_changed(reference, old_cell_form_id, new_cell_form_id)`. `state` is `"loading"` until the
 background parse completes — the reader opens on its own `Thread` in `_ready()`,
 so nothing blocks startup.
+
+**Actor stats.** `NpcBase.actor_stats` and `CreatureBase.actor_stats` are an `ActorStats`
+read from ACBS, DATA, DNAM (NPC_ only) and AIDT. `get_game_setting()` reads a GMST by
+editor ID on first use; FalloutNV.esm omits settings left at their engine default, which
+`ActorValue.DEFAULT_SETTINGS` supplies.
 
 **Base versus Reference.** An `EsmBase` is the authored record: what a Nuka-Cola
 *is*. An `EsmReference` is one placed or carried instance of it. Two dispatch

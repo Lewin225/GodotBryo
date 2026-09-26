@@ -13,3 +13,12 @@ extends EsmReference
 @export var topic_form_id: int = 0
 @export var alive: bool = true
 @export var contents: Inventory
+## Actor values: what has changed from the base record's derived values.
+## Created on first use.
+@export var actor_values: ActorValues
+
+func get_actor_values() -> ActorValues:
+	if actor_values == null:
+		actor_values = ActorValues.new()
+	actor_values.owner = self
+	return actor_values

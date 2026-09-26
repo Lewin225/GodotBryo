@@ -113,6 +113,18 @@ last ran (0 on its first run), tracked per `ScriptInstance` in the runtime-only
 `last_run_msec`. Every run through `dispatch_event` or `run_quest_block` restarts
 that script's clock; result scripts and console lines get 0 and restart nothing.
 
+**Actor values.** `GetActorValue`/`GetAV`, `GetBaseActorValue`/`GetBaseAV`,
+`GetPermanentActorValue`/`GetPermAV`, `SetActorValue`/`SetAV`, `ModActorValue`/`ModAV`,
+`ForceActorValue`/`ForceAV`, `DamageActorValue`/`DamageAV`, `RestoreActorValue`/`RestoreAV`,
+`GetHealthPercentage` and `GetLevel` act on the calling reference's `ActorValues`
+(`EsmReference.get_actor_values()`, null for non-actors, which read 0). The actor value is
+named by its script name, case-insensitive (`ActorValue.from_name`). Current = base +
+permanent + damage: SetAV replaces the base, ModAV adds to the permanent modifier, ForceAV
+is ModAV by (value − current), DamageAV and RestoreAV move the damage modifier, which stays
+≤ 0. `GetHealthPercentage` is current Health / base Health, 1.0 when base Health is 0.
+Base values derive from the base record's `ActorStats`, following NPC_/CREA templates
+that supply stats.
+
 **Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
 find it with `EsmNode.node_for(reference)` and do nothing when the reference
 is not physicalised.
@@ -143,6 +155,10 @@ Each is a reason to test before building on it.
 | Code after `player.MoveTo` to another CELL still runs that frame | `move_reference` never interrupts the caller | GECK wiki recalls the rest of the script stops | a script that sets a variable after `player.MoveTo` |
 | `GetPos` right after `MoveTo` in the same script returns the old position | moves are queued and applied after `GameMode` | follows from deferred moves | `GetPos` is not implemented yet |
 | `GetSecondsPassed` counts real time, not game time (timescale), per calling script | `ScriptServer._start_run` | GECK wiki, recalled | a quest script counting down 10 s with `GetSecondsPassed` at timescale 30 |
+| Derived base values other than human Health: creature Health (DATA health alone), action points, carry weight, crit chance, heal rate, melee/unarmed damage, poison/rad resist | `ActorValue.derive_base` | GMST names and GECK defaults; the way they combine is inferred | console `GetBaseAV` for each on Doc Mitchell and Rex |
+| Human Health = base health + EnduranceMult × (Endurance + EnduranceOffset) + LevelMult × (level − 1), with `fAVDHealth*` for the player and `fAVDNPCHealth*` for NPCs | `ActorValue._health` | Nexus Mods forum, "Equal base health for all humans" (forums.nexusmods.com/topic/7329951); Fallout wiki for the player; the level-1 player's 200 at Endurance 5 confirmed in the original | console `GetBaseAV Health` on Doc Mitchell (expects 65) |
+| Creature skill actor values (Barter–Unarmed) are 0; CREA DATA's combat/magic/stealth skills are not mapped onto them | `ActorValue.derive_base` | no source | console `GetAV Guns` on a creature |
+| Templates from a leveled list (LVLN/LVLC: 587 NPC_, 429 CREA with Use Stats) fall back to the record's own stats | `ActorValues.get_stats` | leveled template resolution not implemented | an NPC_ templated from an LVLN, e.g. a generic Powder Ganger |
 | Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
 
 ## Files

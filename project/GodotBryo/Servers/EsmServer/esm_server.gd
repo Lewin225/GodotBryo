@@ -54,6 +54,8 @@ var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
 var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
 var _global_by_editor_id: Dictionary = {} # lowercased GLOB EDID -> FormID
+var _game_setting_by_editor_id: Dictionary = {} # lowercased GMST EDID -> FormID
+var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 ## References whose cell has changed since they were built, by current CELL:
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
@@ -115,6 +117,7 @@ func _process(_delta: float) -> void:
 	_reference_by_editor_id = _load_result.get("reference_by_editor_id", {})
 	_quest_by_editor_id = _load_result.get("quest_by_editor_id", {})
 	_global_by_editor_id = _load_result.get("global_by_editor_id", {})
+	_game_setting_by_editor_id = _load_result.get("game_setting_by_editor_id", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -147,6 +150,7 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 	var by_editor_id := {}
 	var quests := {}
 	var globals := {}
+	var game_settings := {}
 	for row: Dictionary in record_index:
 		var record_type := String(row.get("record_type", ""))
 		var editor_id := String(row.get("editor_id", ""))
@@ -158,8 +162,11 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 			quests[editor_id.to_lower()] = int(row["form_id"])
 		elif record_type == "GLOB":
 			globals[editor_id.to_lower()] = int(row["form_id"])
+		elif record_type == "GMST":
+			game_settings[editor_id.to_lower()] = int(row["form_id"])
 	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id,
-			"quest_by_editor_id": quests, "global_by_editor_id": globals}
+			"quest_by_editor_id": quests, "global_by_editor_id": globals,
+			"game_setting_by_editor_id": game_settings}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
 ## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
@@ -304,6 +311,25 @@ func find_quest_by_editor_id(editor_id: String) -> EsmBase:
 func find_global_by_editor_id(editor_id: String) -> Dictionary:
 	var form_id := int(_global_by_editor_id.get(editor_id.to_lower(), 0))
 	return reader.get_global_variable(form_id) if form_id != 0 and reader != null else {}
+
+## A GMST's value by editor ID (case-insensitive): float for an `f` setting,
+## int for `i`, bool for `b`, String for `s`; null when FalloutNV.esm has no
+## such GMST (the engine's own default applies).
+func get_game_setting(editor_id: String) -> Variant:
+	var key := editor_id.to_lower()
+	if _game_settings.has(key):
+		return _game_settings[key]
+	var form_id := int(_game_setting_by_editor_id.get(key, 0))
+	var value: Variant = null
+	if form_id != 0 and reader != null:
+		var data := _subrecord(reader.get_record_data(form_id), "DATA")
+		match key.left(1):
+			"f": value = _f32(data)
+			"i": value = _i32(data)
+			"b": value = _u32(data) != 0
+			"s": value = _string(data)
+	_game_settings[key] = value
+	return value
 
 ## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
 func get_filing_cell_form_id(refr_form_id: int) -> int:
@@ -733,6 +759,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 			face.fgts_decoded = bool(decoded.get("fgts_decoded", false))
 			face.diagnostics = decoded.get("diagnostics", PackedStringArray())
 		npc.face_gen = face
+		npc.actor_stats = _actor_stats(raw, false)
 		npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
 		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
 		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
@@ -1387,6 +1414,7 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 		"SCRV": event.script_local_reference_indices.append(_u32(data))
 
 func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
+	result.actor_stats = _actor_stats(raw, true)
 	result.model_path = _string(_subrecord(raw, "MODL"))
 	result.model_list_filenames.clear()
 	result.model_list_paths.clear()
@@ -1408,6 +1436,45 @@ func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 	for data in _all_subrecords(raw, "PNAM"):
 		if data.size() >= 4:
 			result.pnam_values.append(_u32(data))
+
+## An NPC_ or CREA record's ACBS, DATA, DNAM (NPC_ only) and AIDT.
+func _actor_stats(raw: Dictionary, is_creature: bool) -> ActorStats:
+	var stats := ActorStats.new()
+	stats.is_creature = is_creature
+	var acbs := _subrecord(raw, "ACBS")
+	stats.flags = _u32(acbs)
+	stats.fatigue = _u16(acbs, 4)
+	stats.level = _u16(acbs, 8)
+	stats.calc_min = _u16(acbs, 10)
+	stats.calc_max = _u16(acbs, 12)
+	stats.speed_mult = _u16(acbs, 14)
+	stats.karma = _f32(acbs, 16)
+	stats.template_flags = _u16(acbs, 22)
+	stats.template_form_id = _u32(_subrecord(raw, "TPLT"))
+	var data := _subrecord(raw, "DATA")
+	var attributes_offset := 10 if is_creature else 4
+	if is_creature:
+		stats.combat_skill = _u8(data, 1)
+		stats.magic_skill = _u8(data, 2)
+		stats.stealth_skill = _u8(data, 3)
+		stats.base_health = _i16(data, 4)
+		stats.damage = _i16(data, 8)
+	else:
+		stats.base_health = _i32(data)
+		var dnam := _subrecord(raw, "DNAM")
+		stats.skills = PackedInt32Array()
+		for i in mini(dnam.size(), 14):
+			stats.skills.append(dnam[i])
+	for i in 7:
+		stats.attributes[i] = _u8(data, attributes_offset + i)
+	var aidt := _subrecord(raw, "AIDT")
+	stats.aggression = _u8(aidt, 0)
+	stats.confidence = _u8(aidt, 1)
+	stats.energy = _u8(aidt, 2)
+	stats.responsibility = _u8(aidt, 3)
+	stats.mood = _u8(aidt, 4)
+	stats.assistance = _i8(aidt, 14)
+	return stats
 
 func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void:
 	result.skeleton_model_path = _string(_subrecord(raw, "MODL"))

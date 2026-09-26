@@ -30,6 +30,8 @@ var class_form_id: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_child: bool = false
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_flags: int = 0
 var face_gen: FaceGenData
+## ACBS, DATA, DNAM and AIDT stats.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "ActorStats", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var actor_stats: ActorStats
 
 
 func animation_search_paths() -> PackedStringArray:

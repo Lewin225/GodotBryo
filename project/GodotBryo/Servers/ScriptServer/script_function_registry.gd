@@ -200,6 +200,34 @@ func _register_defaults() -> void:
 			return 0
 		quests.set_script_delay(_quest(a, 0), _number(a, 1))
 		return 1)
+
+	# Actor values of the calling actor, named by script name (`GetAV Health`).
+	# Each has a long and a short name.
+	for names: Array in [["GetActorValue", "GetAV"], ["GetBaseActorValue", "GetBaseAV"], ["GetPermanentActorValue", "GetPermAV"]]:
+		var getter: String = {"GetActorValue": "get_current", "GetBaseActorValue": "get_base", "GetPermanentActorValue": "get_permanent"}[names[0]]
+		for name: String in names:
+			register(name, func(a: Array, ctx: ScriptExecutionContext):
+				var values := _actor_values(ctx)
+				var code := _actor_value_code(a, 0)
+				return values.call(getter, code) if values != null and code >= 0 else 0)
+	for names: Array in [["SetActorValue", "SetAV"], ["ModActorValue", "ModAV"], ["ForceActorValue", "ForceAV"],
+			["DamageActorValue", "DamageAV"], ["RestoreActorValue", "RestoreAV"]]:
+		var setter: String = {"SetActorValue": "set_base", "ModActorValue": "modify", "ForceActorValue": "force",
+				"DamageActorValue": "damage_value", "RestoreActorValue": "restore_value"}[names[0]]
+		for name: String in names:
+			register(name, func(a: Array, ctx: ScriptExecutionContext):
+				var values := _actor_values(ctx)
+				var code := _actor_value_code(a, 0)
+				if values == null or code < 0:
+					return 0
+				values.call(setter, code, _number(a, 1))
+				return 1)
+	register("GetHealthPercentage", func(_a, ctx: ScriptExecutionContext):
+		var values := _actor_values(ctx)
+		return values.health_percentage() if values != null else 0)
+	register("GetLevel", func(_a, ctx: ScriptExecutionContext):
+		var values := _actor_values(ctx)
+		return values.get_level() if values != null else 0)
 		
 
 	register("Unlock", func(_a, ctx: ScriptExecutionContext):
@@ -273,6 +301,19 @@ func _position(reference: EsmReference, space_form_id: int, args: Array) -> void
 	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
 	var rotation := Vector3(reference.rotation.x, reference.rotation.y, deg_to_rad(_number(args, 3)))
 	script_server.move_reference(reference, space_form_id, position, rotation)
+
+## The calling reference's actor values, or null when it is not an actor.
+static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:
+	return ctx.calling_reference.get_actor_values() if ctx.calling_reference != null else null
+
+## The actor value code an argument names, or -1.
+static func _actor_value_code(args: Array, index: int) -> int:
+	if index >= args.size():
+		return -1
+	var code := ActorValue.from_name(str(args[index]))
+	if code < 0:
+		push_warning("ScriptFunctionRegistry: unknown actor value '%s'" % str(args[index]))
+	return code
 
 ## The QUST named by argument `index` (its editor ID), or null.
 static func _quest(args: Array, index: int) -> EsmBase:

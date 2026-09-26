@@ -7,3 +7,5 @@ extends EsmBase
 @export var animation_filenames: Array[String] = []
 @export var animation_paths: Array[String] = []
 @export var pnam_values: Array[int] = []
+## ACBS, DATA and AIDT stats.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "ActorStats", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var actor_stats: ActorStats

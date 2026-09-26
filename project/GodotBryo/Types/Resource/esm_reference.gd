@@ -91,6 +91,10 @@ static func get_esm_server() -> Node:
 	_esm_server = tree.root.get_node_or_null("EsmServer") if tree != null else null
 	return _esm_server
 
+## This reference's actor values, or null when it is not an actor.
+func get_actor_values() -> ActorValues:
+	return null
+
 ## Built-in activation of this reference: its base type's activate(). The
 ## dispatch point for ScriptServer; a reference type may override it.
 func default_activate(activator: EsmReference) -> void:
