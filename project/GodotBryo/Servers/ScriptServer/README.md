@@ -108,6 +108,11 @@ reference first, then as a quest.
 returns the clicked button to that reference only, once, and -1 to every other
 reference. Many loaded scripts poll `GetButtonPressed` every frame.
 
+**Elapsed time.** `GetSecondsPassed` returns the real seconds since the calling script
+last ran (0 on its first run), tracked per `ScriptInstance` in the runtime-only
+`last_run_msec`. Every run through `dispatch_event` or `run_quest_block` restarts
+that script's clock; result scripts and console lines get 0 and restart nothing.
+
 **Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
 find it with `EsmNode.node_for(reference)` and do nothing when the reference
 is not physicalised.
@@ -137,6 +142,7 @@ Each is a reason to test before building on it.
 | `Activate`'s `RunOnActivateBlockFlag` defaults to 0 = built-in activation; 1 runs the target's `OnActivate` | registry `Activate` | GECK wiki, recalled | scripted door + console `SomeDoorREF.Activate player` with and without `1` |
 | Code after `player.MoveTo` to another CELL still runs that frame | `move_reference` never interrupts the caller | GECK wiki recalls the rest of the script stops | a script that sets a variable after `player.MoveTo` |
 | `GetPos` right after `MoveTo` in the same script returns the old position | moves are queued and applied after `GameMode` | follows from deferred moves | `GetPos` is not implemented yet |
+| `GetSecondsPassed` counts real time, not game time (timescale), per calling script | `ScriptServer._start_run` | GECK wiki, recalled | a quest script counting down 10 s with `GetSecondsPassed` at timescale 30 |
 | Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
 
 ## Files

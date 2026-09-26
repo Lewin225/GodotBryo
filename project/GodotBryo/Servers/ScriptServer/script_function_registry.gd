@@ -53,10 +53,9 @@ func call_function(name: String, args: Array, ctx: ScriptExecutionContext) -> Va
 	return 0
 
 func _register_defaults() -> void:
-	register("GetSecondsPassed", func(_a, _c):
-		if game_time_manager != null:
-			return game_time_manager.consume_seconds_passed()
-		return 0.0)
+	# Real seconds since the calling script last ran.
+	register("GetSecondsPassed", func(_a, ctx: ScriptExecutionContext):
+		return ctx.seconds_passed)
 	register("GameDaysPassed", func(_a, _c):
 		if game_time_manager != null:
 			return game_time_manager.game_days_passed

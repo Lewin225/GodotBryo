@@ -14,7 +14,7 @@ extends Node
 ##
 ## This class advances time each process frame (when not paused/interior),
 ## fires signals on hour and day changes, and exposes helpers for
-## script VM integration (GetSecondsPassed, GameDaysPassed, GetCurrentTime).
+## script VM integration (GameDaysPassed, GetCurrentTime).
 
 ## Signals
 signal hour_changed(new_hour: float)
@@ -153,7 +153,6 @@ func advance_hours(hours: float) -> void:
 	hour_changed.emit(game_hour)
 
 ## Drain and return accumulated real-seconds-scaled game seconds since last call.
-## Used by ScriptFunctionRegistry.GetSecondsPassed.
 func consume_seconds_passed() -> float:
 	var val := _seconds_passed_accumulator
 	_seconds_passed_accumulator = 0.0

@@ -206,6 +206,16 @@ func _test_globals(server) -> void:
 	check(not server.globals.has_global("GSBrokenSMGMsg") and not server.globals.has_global("GSBrokenSMGMsg"), "a non-global name is not a global (cached)")
 	server.globals.set_global("CGHealTimer", 120)
 
+	# GetSecondsPassed is per script: real seconds since that script last ran.
+	var instance := ScriptInstance.new()
+	server._start_run(ScriptExecutionContext.new(null, instance))
+	instance.last_run_msec -= 1500
+	var probe := ScriptExecutionContext.new(null, instance)
+	server._start_run(probe)
+	check(absf(probe.seconds_passed - 1.5) < 0.1, "GetSecondsPassed is the real time since this script last ran (%.2f s)" % probe.seconds_passed)
+	var other_probe := ScriptExecutionContext.new(null, ScriptInstance.new())
+	server._start_run(other_probe)
+	check(other_probe.seconds_passed == 0.0, "another script's first run starts at 0, unaffected")
 
 ## Quest variables, per-reference message buttons, and the Lucky 38 elevator.
 func _test_quests_and_messages(esm_server, server) -> void:

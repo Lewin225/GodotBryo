@@ -120,6 +120,7 @@ func dispatch_event(reference: EsmReference, block_type: String, action_ref: Esm
 	if interpreter == null:
 		return null
 	var ctx := _context(reference, instance, action_ref)
+	_start_run(ctx)
 	return interpreter.run_block(block_type, ctx, action_ref)
 
 ## Whether dispatching `block_type` with `action_ref` would run a block.
@@ -262,7 +263,9 @@ func run_quest_block(quest: EsmBase, block_type: String) -> Variant:
 	var interpreter := _get_or_parse(instance.script_form_id)
 	if interpreter == null:
 		return null
-	return interpreter.run_block(block_type, _context(null, instance, null))
+	var ctx := _context(null, instance, null)
+	_start_run(ctx)
+	return interpreter.run_block(block_type, ctx)
 
 ## Marks a reference's cell loaded or unloaded. Loading runs its OnLoad block
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.
@@ -368,6 +371,14 @@ func get_debug_usage() -> Dictionary:
 			if ScriptExecutionContext.is_truthy(value):
 				non_zero += 1
 	return { "instances": _instances.size(), "loaded": _loaded.size(), "cached_scripts": _interpreter_cache.size(), "local_slots": local_slots, "non_zero_locals": non_zero }
+
+## Marks a script run: the context's seconds_passed is the real time since the
+## instance last ran, and the instance's clock restarts now.
+func _start_run(ctx: ScriptExecutionContext) -> void:
+	var instance := ctx.instance
+	var now := Time.get_ticks_msec()
+	ctx.seconds_passed = 0.0 if instance.last_run_msec < 0 else (now - instance.last_run_msec) / 1000.0
+	instance.last_run_msec = now
 
 func _context(reference: EsmReference, instance: ScriptInstance, action_ref: EsmReference) -> ScriptExecutionContext:
 	var ctx := ScriptExecutionContext.new(reference, instance)
