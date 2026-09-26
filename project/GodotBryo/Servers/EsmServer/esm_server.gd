@@ -304,6 +304,7 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	result.rotation = Vector3.ZERO
 	result.scale = 1.0
 	_populate_reference_inventory(result)
+	_populate_terminal_lock(result)
 	return result
 
 ## Creates a typed item reference for Inventory.restore_state(). Unlike a
@@ -561,8 +562,18 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 			result.is_open = false
 	if result is StaticReference or result is MovableStaticReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
+	_populate_terminal_lock(result)
 	_authored_reference_cache[id] = result
 	return result
+
+## A terminal's lock state starts from its base's DNAM.
+func _populate_terminal_lock(reference: EsmReference) -> void:
+	var terminal := reference as TerminalReference
+	if terminal == null or not terminal.base is TerminalBase:
+		return
+	var base := terminal.base as TerminalBase
+	terminal.is_locked = not base.is_unlocked
+	terminal.lock_level = base.hacking_difficulty
 
 ## CNTO is the authored seed for an owner inventory. The live inventory is
 ## kept on the owner reference as typed item references and is not rebuilt

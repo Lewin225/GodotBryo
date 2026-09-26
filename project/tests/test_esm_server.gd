@@ -83,6 +83,7 @@ func _ready() -> void:
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	_check_relocated_references(server)
 	_check_player_reference(server)
+	_check_terminal_locks(server, index)
 	await _check_saved_base_rehydrates(server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -193,6 +194,25 @@ func _check_reference_location(server) -> void:
 	_check(own_events == server_events, "the reference's own cell_changed matches EsmServer.reference_cell_changed")
 	server.reference_cell_changed.disconnect(on_server)
 	probe.cell_changed.disconnect(on_own)
+
+## Terminal lock state starts from every TERM base's DNAM.
+func _check_terminal_locks(server, index: Array) -> void:
+	var locked := 0
+	var by_level := {}
+	var with_note := 0
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "TERM":
+			continue
+		var terminal := server.create_reference_for_base(int(row["form_id"])) as TerminalReference
+		if terminal == null or not terminal.is_locked:
+			continue
+		locked += 1
+		by_level[terminal.lock_level] = int(by_level.get(terminal.lock_level, 0)) + 1
+		if (terminal.base as TerminalBase).password_note_form_id != 0:
+			with_note += 1
+	_check(locked == 151, "151 TERM bases start locked (%d)" % locked)
+	_check(by_level == {0: 44, 1: 19, 2: 44, 3: 21, 4: 18, 5: 5}, "locked terminals by difficulty match the census (%s)" % [by_level])
+	_check(with_note == 21, "21 locked terminals name a password note (%d)" % with_note)
 
 ## The player's reference is one canonical ActorReference.
 func _check_player_reference(server) -> void:
