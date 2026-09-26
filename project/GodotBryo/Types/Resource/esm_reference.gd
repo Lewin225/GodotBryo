@@ -9,48 +9,58 @@ signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
 ## opposed to movement synced from a physics body).
 signal teleported(old_space_form_id: int, new_space_form_id: int)
 
-## Runtime-resolved Base resource. It is visible for inspection but deliberately
-## excluded from scene/resource storage; base_form_id is the persisted identity.
-## Resolved base record for this placed REFR.
+## NAME's base record, resolved. Set by EsmServer; used for everything the
+## base defines (model, scripts, activation). Visible for inspection but not
+## saved; base_form_id is the persisted identity.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base: EsmBase
-## REFR NAME base record FormID; persisted identity for the link.
+## NAME: the base record's FormID. Read; the persisted link to `base`.
 @export var base_form_id: int = 0
-## Stable authored or runtime instance identifier.
+## Not an ESM field: the reference's identity in EsmServer's index.
+## `authored:<FormID>` for a placed REFR/ACHR/ACRE (its record header FormID),
+## `player`, `base:<FormID>` for one created from a base, `inventory:...` for
+## a carried item. Set; used by get_reference(), saves and the debug tools.
 @export var instance_id: String = ""
-## Space containing this reference: the WRLD for an exterior position, the
-## CELL itself for an interior one. 0 when the reference is not placed.
+## Not an ESM field: the space containing this reference, the WRLD for an
+## exterior position or the CELL for an interior one, from the CELL that files
+## the placement; 0 when not placed. Set; used by the streamers and
+## transitions, and with `position` to derive the cell.
 @export var current_space_form_id: int = 0:
 	set(value):
 		current_space_form_id = value
 		_refresh_cell()
-## REFR DATA position: metres, Gamebryo Z-up axes.
+## DATA position, converted to metres, Gamebryo Z-up axes. Read; used for
+## placement and to derive the cell. Movement writes it at runtime.
 @export var position: Vector3 = Vector3.ZERO:
 	set(value):
 		position = value
 		_refresh_cell()
-## REFR DATA rotation in engine coordinates.
+## DATA rotation: radians about X, Y, Z, Gamebryo axes. Read; used for
+## placement.
 @export var rotation: Vector3 = Vector3.ZERO
-## REFR XSCL scale value.
+## XSCL: the scale; 1.0 when absent. Read; used for placement.
 @export var scale: float = 1.0
-## Raw REFR "Visible When Distant" flag. It is authored placement data, not a
-## request to load the companion model: WorldStreamer owns that spatial policy.
+## Record header flag 0x8000 (Visible When Distant). Read; used by
+## WorldStreamerV2's distant-object policy. It is authored placement
+## data, not a request to load the companion model: WorldStreamer owns that
+## spatial policy.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var visible_when_distant: bool = false
-## Raw presence of the persistent skyline stand-in subrecords XSRF/XSRD. Their
-## byte meaning is still undocumented; the confirmed observation is enough to
-## select the separate begin-only visibility policy in EsmNode.
+## Presence of XSRF or XSRD. Read (presence only; their bytes are
+## undocumented); used by EsmNode to select the begin-only visibility policy
+## for persistent skyline stand-ins.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var has_xsrf_or_xsrd: bool = false
-## CELL containing this reference, derived from current_space_form_id and
-## position by EsmServer.cell_at(). Written only by _refresh_cell().
+## Not an ESM field: the CELL containing this reference, derived from
+## current_space_form_id and position by EsmServer.cell_at(). Written only by
+## _refresh_cell(); used by the streamers, NpcSimulationServer and Game.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY) var current_cell_form_id: int = 0
 
-## This reference's object script state, created by ScriptServer the first
-## time the script runs or a variable is written. Null when the base has no
-## script or it has not run yet.
+## Not an ESM field: this reference's object script state (locals), created
+## by ScriptServer the first time the script runs or a variable is written.
+## Null when the base has no script or it has not run yet. Saved.
 @export var script_instance: ScriptInstance
 
-## The actor using this reference, for references used by one actor at a
-## time (terminals, containers, a door being lockpicked). Set only by
-## ScriptServer.begin_use / end_use. Runtime state, not saved.
+## Runtime state with no ESM source: the actor using this reference, for
+## references used by one actor at a time (terminals, containers, a door being
+## lockpicked). Set only by ScriptServer.begin_use / end_use; not saved.
 var used_by: ActorReference = null
 
 var _cell_refresh_suspended := false

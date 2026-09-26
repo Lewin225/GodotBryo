@@ -2,19 +2,34 @@
 class_name EsmBase
 extends Resource
 
+## Record header FormID. Read; the record's identity everywhere.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var form_id: int = 0
+## EDID. Read; used to find records by editor ID and for display.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var editor_id: String = ""
+## Record header type tag (NPC_, DOOR, ...). Read; used by EsmServer to pick
+## the Base and Reference classes and by type checks such as QUST.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var record_type: String = ""
+## Not an ESM field: `esm://FalloutNV.esm/<type>/<FormID>`, the persisted link
+## to the record. Set by EsmServer; used to rehydrate the record's fields when
+## a saved resource or packed scene is loaded.
 @export var source_uri: String = "":
 	set(value):
 		source_uri = value
 		if not _rehydrating and not source_uri.is_empty():
 			call_deferred("_auto_rehydrate")
+## FULL: the display name. Read; used by EsmNode, the physicaliser and the
+## GodotBryo browser for names and labels.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var full_name: String = ""
 ## SCRI: FormID of this record's SCPT script, or 0. Any record type may carry
-## one; for placeable types it is the object script of every placement.
+## one; for placeable types it is the object script of every placement. Read;
+## used by ScriptServer to run object and quest scripts.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_form_id: int = 0
+## Every subrecord of the record, as {"type", "data"}. Read; used through
+## subrecord_data() / all_subrecord_data() for fields not decoded into typed
+## properties (CNTO inventory seeds, for one).
 var raw_subrecords: Array[Dictionary] = []
+## Not an ESM field: problems EsmServer met decoding the record (truncated or
+## unexpected subrecord sizes in LVLI, PACK, BPTD). Set; not read by anything.
 var diagnostics: PackedStringArray = []
 var _rehydrating := false
 

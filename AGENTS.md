@@ -111,6 +111,32 @@ any action based on the reported failure.
   visible in the code itself, not just in whoever's memory of the
   investigation.
 
+## Describing record fields
+
+Every field on a Base or Reference resource (`project/GodotBryo/Types/Resource/`)
+carries a `##` doc comment that says, in this order:
+
+1. **Where it comes from.** A field read from the ESM starts with its real
+   subrecord name and, where it helps, the offset or flag: `## MODL: the
+   skeleton NIF.`, `## ACBS flag 0x01 (Female).` A field that is not an ESM
+   field says so first, then why it was added and what it is for: `## Not an
+   NPC_ field. NPC_ records name no BPTD, ...`
+2. **Whether it is read.** `Read`; `Read; resolved into \`race\``; `Not read`;
+   `Set` (filled by code rather than from the record). A subrecord that real
+   data never carries says so, with the census count: `Present on no ACHR or
+   ACRE in FalloutNV.esm; not read.`
+3. **Whether it is used.** Name the consumer (`used by EsmHumanoidActor to
+   choose male or female body parts`), or say `not used yet` and, briefly,
+   what would use it. A field whose value is always the default says so
+   (`always false`, `not read yet, so always 0`).
+
+A runtime-only field states that instead of a source (`Runtime state with no
+ESM source.`), and a field whose name could be mistaken for something else
+points to the real one (`Not the actor's health, which is ActorValues'
+Health.`). Keep each description current when a field starts being read or
+used: a stale "not used yet" is as wrong as a missing one. See `npc_base.gd`
+and `actor_reference.gd` for the pattern.
+
 ## Tech stack
 
 - **Godot 4.7.1**, pinned. Use the native standalone Linux binary at
