@@ -357,6 +357,7 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	result.rotation = Vector3.ZERO
 	result.scale = 1.0
 	_populate_reference_inventory(result)
+	_populate_actor_values(result)
 	_populate_terminal_lock(result)
 	return result
 
@@ -572,6 +573,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
 	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
 	_populate_reference_inventory(result)
+	_populate_actor_values(result)
 	if result is ActorReference:
 		var actor: ActorReference = result
 		actor.spawn_cell_form_id = cell_id
@@ -627,6 +629,11 @@ func _populate_terminal_lock(reference: EsmReference) -> void:
 	var base := terminal.base as TerminalBase
 	terminal.is_locked = not base.is_unlocked
 	terminal.lock_level = base.hacking_difficulty
+
+## Gives an actor or creature reference its ActorValues.
+func _populate_actor_values(reference: EsmReference) -> void:
+	if reference is ActorReference or reference is CreatureReference:
+		reference.get_actor_values()
 
 ## CNTO is the authored seed for an owner inventory. The live inventory is
 ## kept on the owner reference as typed item references and is not rebuilt

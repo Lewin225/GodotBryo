@@ -16,8 +16,23 @@ extends Resource
 ## Damage modifiers (DamageAV, RestoreAV), by code; always <= 0.
 @export var damage: Dictionary = {}
 
-## The actor these values belong to. Runtime only.
-var owner: EsmReference = null
+## Every actor value's current value by script name, for inspection. Not
+## saved.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var current_values: Dictionary:
+	get:
+		var values := {}
+		for code in ActorValue.COUNT:
+			values[ActorValue.NAMES[code]] = get_current(code)
+		return values
+
+## The actor these values belong to. Runtime only; held weakly, since the
+## actor holds these values.
+var owner: EsmReference:
+	get:
+		return _owner.get_ref() if _owner != null else null
+	set(value):
+		_owner = weakref(value) if value != null else null
+var _owner: WeakRef = null
 
 func get_base(code: int) -> float:
 	if base_overrides.has(code):

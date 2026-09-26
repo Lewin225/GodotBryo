@@ -27,7 +27,10 @@ func _ready() -> void:
 	# Doc Mitchell (NPC_ 0x104C0C): DATA base health 50, SPECIAL 4 6 4 6 7 5 4,
 	# level 1, DNAM Medicine 33.
 	var doc: ActorReference = esm_server.create_reference_for_base(0x104C0C)
+	check(doc.actor_values != null and doc.actor_values.owner == doc, "a created actor reference has its ActorValues")
 	var doc_values := doc.get_actor_values()
+	check(doc_values.current_values["Health"] == 65.0 and doc_values.current_values.size() == ActorValue.COUNT,
+			"current_values lists every actor value by name")
 	check(doc_values.get_base(ActorValue.ENDURANCE) == 4 and doc_values.get_base(ActorValue.INTELLIGENCE) == 7, "SPECIAL from NPC_ DATA")
 	check(doc_values.get_base(ActorValue.MEDICINE) == 33, "skills from NPC_ DNAM")
 	check(doc_values.get_level() == 1, "level from ACBS")
@@ -69,7 +72,8 @@ func _ready() -> void:
 				break
 	check(templated != null, "found an NPC_ taking stats from an NPC_ template with different DATA")
 	if templated != null:
-		var from_template: ActorValues = esm_server.create_reference_for_base(templated.form_id).get_actor_values()
+		var templated_reference: EsmReference = esm_server.create_reference_for_base(templated.form_id)
+		var from_template: ActorValues = templated_reference.get_actor_values()
 		check(from_template.get_stats() == template.actor_stats, "templated stats come from the template (%s -> %s)" % [templated.editor_id, template.editor_id])
 
 	# Modifier layers.

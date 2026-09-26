@@ -63,7 +63,8 @@ background parse completes — the reader opens on its own `Thread` in `_ready()
 so nothing blocks startup.
 
 **Actor stats.** `NpcBase.actor_stats` and `CreatureBase.actor_stats` are an `ActorStats`
-read from ACBS, DATA, DNAM (NPC_ only) and AIDT. `get_game_setting()` reads a GMST by
+read from ACBS, DATA, DNAM (NPC_ only) and AIDT. Every actor and creature reference is
+created with its `ActorValues`. `get_game_setting()` reads a GMST by
 editor ID on first use; FalloutNV.esm omits settings left at their engine default, which
 `ActorValue.DEFAULT_SETTINGS` supplies.
 
