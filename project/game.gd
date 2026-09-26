@@ -22,8 +22,6 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 @export var game_time_manager: GameTimeManager
 @export var weather_manager: WeatherManager
 @export var celestial_controller: CelestialController
-@export var terminal_session: TerminalSession
-@export var message_box: MessageBox
 @export var cell_label: Label
 var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redundant ESM lookups every frame while WorldStreamer is active
 @export var sun: DirectionalLight3D
@@ -66,7 +64,6 @@ func _enter_tree() -> void:
 	terrain_streamer.configure(_shared_esm)
 
 func _ready() -> void:
-	ScriptServer.message_box = message_box
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.

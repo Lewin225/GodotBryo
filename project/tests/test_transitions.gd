@@ -53,6 +53,19 @@ func _ready() -> void:
 	check(script_server.is_reference_loaded(doc) and doc.script_instance != null, "Doc Mitchell's script is loaded with his house")
 	check(doc.script_instance != null and doc.script_instance.get_local("PlayerLeft") == 0, "DocMitchellREF.PlayerLeft starts at 0")
 
+	# Player-facing UI lives on the player.
+	check(script_server.message_box == player.message_box and player.message_box != null, "ShowMessage presents on the player's message box")
+	var terminal := TerminalReference.new()
+	terminal.base = esm_server.get_base(0x00166B56)
+	script_server.activate(terminal, player_ref)
+	check(player_ref.using == terminal and player.terminal_session.visible, "using a terminal opens the player's terminal session")
+	check(not player.is_physics_processing() and not player.is_processing_unhandled_input(), "the body takes no input while the terminal is open")
+	player.terminal_session.close_session()
+	check(player_ref.using == null and terminal.used_by == null, "closing the session ends the use")
+	check(player.is_physics_processing() and player.is_processing_unhandled_input(), "input returns when the session closes")
+
+	await _check_locks_and_terminal_scripts(esm_server, script_server, player, player_ref)
+
 	# The body writes its position to the reference.
 	player.global_position += Vector3(0.5, 0, 0)
 	await get_tree().physics_frame
@@ -128,6 +141,76 @@ func _ready() -> void:
 	check(bool(reply.get("ok", false)), "coc is accepted")
 	check(await _await_space(coordinator, saloon) and player_ref.current_space_form_id == saloon, "coc loads the saloon around the player")
 	_finish()
+
+## Hacking, password notes, lockpicking and terminal item scripts, driven
+## through the player's own UI.
+func _check_locks_and_terminal_scripts(esm_server, script_server, player: PlayerController, player_ref: ActorReference) -> void:
+	var average: TerminalReference = null
+	var keyed: TerminalReference = null
+	var unhackable: TerminalReference = null
+	for row: Dictionary in esm_server.get_record_index():
+		if String(row.get("record_type", "")) != "TERM":
+			continue
+		var terminal := esm_server.create_reference_for_base(int(row["form_id"])) as TerminalReference
+		if terminal == null or not terminal.is_locked:
+			continue
+		var note: int = (terminal.base as TerminalBase).password_note_form_id
+		if terminal.lock_level == 2 and note == 0 and average == null:
+			average = terminal
+		elif terminal.lock_level < 5 and note != 0 and keyed == null:
+			keyed = terminal
+		elif terminal.lock_level == 5 and note == 0 and unhackable == null:
+			unhackable = terminal
+	check(average != null and keyed != null and unhackable != null, "locked terminals of each kind exist")
+
+	script_server.activate(average, player_ref)
+	check(player.unlock_session.visible and not player.terminal_session.visible and player_ref.using == average, "a locked terminal opens the hacking screen")
+	player.unlock_session.cancel()
+	check(average.is_locked and player_ref.using == null and player.is_processing_unhandled_input(), "cancelling leaves it locked and ends the use")
+	script_server.activate(average, player_ref)
+	player.unlock_session._slider.value = player.unlock_session._slider.max_value
+	check(not average.is_locked and player.terminal_session.visible and player_ref.using == average, "sliding to the end unlocks it and opens its menu")
+	player.terminal_session.close_session()
+	check(player_ref.using == null, "closing the menu ends the use")
+
+	player_ref.contents.add_item((keyed.base as TerminalBase).password_note_form_id)
+	script_server.activate(keyed, player_ref)
+	check(not keyed.is_locked and player.terminal_session.visible and not player.unlock_session.visible, "carrying the password note opens a locked terminal directly")
+	player.terminal_session.close_session()
+
+	script_server.activate(unhackable, player_ref)
+	check(unhackable.is_locked and player_ref.using == null and not player.unlock_session.visible, "a level-5 terminal without its note does nothing")
+
+	var door: DoorReference = null
+	for candidate: DoorReference in esm_server.get_all_xtel_door_references():
+		if candidate.is_locked and candidate.lock_key == null and candidate.lock_level < 255:
+			door = candidate
+			break
+	script_server.activate(door, player_ref)
+	check(player.unlock_session.visible and player_ref.using == door, "a pickable locked door opens the lockpick screen")
+	player.unlock_session._slider.value = player.unlock_session._slider.max_value
+	check(not door.is_locked and player_ref.using == null and not player.unlock_session.visible, "sliding to the end unlocks the door and ends the use")
+	script_server.lock(door)
+
+	# Lucky38MrHouseTerminal05: one menu item runs `Lucky38MrHouseElevatorDoorREF.unlock`.
+	var elevator: EsmReference = esm_server.find_reference_by_editor_id("Lucky38MrHouseElevatorDoorREF")
+	var house_terminal := esm_server.create_reference_for_base(0x00164B0F) as TerminalReference
+	house_terminal.is_locked = false
+	script_server.lock(elevator)
+	script_server.activate(house_terminal, player_ref)
+	var session := player.terminal_session
+	if session._view == TerminalSession.View.WELCOME:
+		session._select_current()
+	var chosen := -1
+	for i in session._choices.item_count:
+		if String(session._choices.get_item_metadata(i).get("script_source", "")).to_lower().contains("elevatordoorref.unlock"):
+			chosen = i
+	check(chosen >= 0, "Mr. House's terminal lists the elevator unlock item")
+	if chosen >= 0:
+		session._choices.select(chosen)
+		session._select_current()
+		check(not elevator.is_locked, "choosing it runs its result script and unlocks the elevator door")
+	session.close_session()
 
 func _finish() -> void:
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

@@ -31,6 +31,16 @@ extends EsmBase
 ## remain explicit fields on each item.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var menu_items: Array[TerminalMenuItem] = []
 
-## Using a terminal: the actor becomes its single user.
+## A locked terminal unlocks for an activator carrying its password note.
+## Without it, a level-5 terminal does nothing; any other locked terminal is
+## used for hacking. Otherwise the actor becomes the terminal's single user.
 func activate(ref: EsmReference, activator: EsmReference) -> void:
-	ScriptServer.begin_use(activator, ref)
+	var terminal := ref as TerminalReference
+	if terminal == null:
+		return
+	if terminal.is_locked:
+		if carries(activator, password_note_form_id):
+			ScriptServer.unlock(terminal)
+		elif terminal.lock_level >= 5:
+			return
+	ScriptServer.begin_use(activator, terminal)

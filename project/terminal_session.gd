@@ -1,9 +1,15 @@
 class_name TerminalSession
 extends CanvasLayer
 
-## Player-facing TERM session owned by Game. EsmTerminalNode supplies
-## immutable base-record data; this node alone owns
-## navigation, UI and the temporary player-input suspension.
+## Player-facing TERM session: shows a TerminalReference's base-record menu
+## and owns navigation, the UI and the mouse while open. It does not touch the
+## player; whoever opens it reacts to `closed`.
+
+## The session was closed (Exit, Escape, or close_session()).
+signal closed
+## A menu item was chosen: its terminal data, including "script_source" (the
+## item's result script, empty when it has none).
+signal item_chosen(item: Dictionary)
 
 enum View { WELCOME, MENU, RESULT, NOTE }
 
@@ -20,7 +26,6 @@ var _terminal_stack: Array[Dictionary] = []
 var _view: View = View.WELCOME
 var _pending_note_form_id: int = 0
 var _pending_submenu_form_id: int = 0
-var _player: Node = null
 var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
 func _ready() -> void:
@@ -30,25 +35,25 @@ func _ready() -> void:
 	_back.pressed.connect(_go_back)
 	_exit.pressed.connect(close_session)
 
-func open_session(terminal: Node, esm: EsmReader, player: Node) -> void:
+## Opens `terminal`'s menu. Returns false when its base has no terminal data.
+func open_session(terminal: TerminalReference, esm: EsmReader) -> bool:
 	var terminal_data: Dictionary = {}
-	if terminal is EsmTerminalNode:
-		var reference := (terminal as EsmTerminalNode).reference
-		if reference != null and reference.base != null:
-			terminal_data = esm.get_terminal_data(reference.base.form_id)
+	if terminal != null and terminal.base != null:
+		terminal_data = esm.get_terminal_data(terminal.base.form_id)
 	if terminal_data.is_empty():
 		push_warning("TerminalSession: activated TERM has no parsed terminal data")
-		return
+		return false
 	_esm = esm
 	_terminal_stack = [terminal_data]
-	_player = player
-	_suspend_player_input()
+	_previous_mouse_mode = Input.mouse_mode
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	visible = true
 	var welcome: String = String(terminal_data.get("welcome_text", ""))
 	if welcome.is_empty():
 		_show_menu()
 	else:
 		_show_welcome(welcome)
+	return true
 
 func _show_welcome(text: String) -> void:
 	_view = View.WELCOME
@@ -68,10 +73,12 @@ func _show_menu() -> void:
 	var items: Array = _current_terminal().get("items", [])
 	for item_variant in items:
 		var item: Dictionary = item_variant
-		var unavailable: bool = int(item.get("condition_count", 0)) > 0 or not String(item.get("script_source", "")).is_empty()
+		# Item conditions are not evaluated yet; items that have them stay
+		# listed but unavailable rather than shown when the game might hide them.
+		var unavailable: bool = int(item.get("condition_count", 0)) > 0
 		var label: String = String(item.get("text", ""))
 		if unavailable:
-			label += "  [unavailable]"
+			label += "  [conditions not evaluated]"
 		var index: int = _choices.add_item(label)
 		_choices.set_item_metadata(index, item)
 		_choices.set_item_disabled(index, unavailable)
@@ -79,7 +86,7 @@ func _show_menu() -> void:
 	_select.visible = true
 	_select.text = "Open"
 	_back.visible = _terminal_stack.size() > 1
-	_status.text = "Choices with conditions or inline menu scripts are visible but unavailable in this browsing-only pass."
+	_status.text = ""
 	if not items.is_empty():
 		_choices.select(0)
 
@@ -119,6 +126,7 @@ func _select_current() -> void:
 			if selected.is_empty():
 				return
 			var item: Dictionary = _choices.get_item_metadata(selected[0])
+			item_chosen.emit(item)
 			_show_result(item)
 		View.RESULT:
 			if _pending_note_form_id != 0:
@@ -153,28 +161,13 @@ func _terminal_title() -> String:
 	var title: String = String(terminal.get("full_name", ""))
 	return title if not title.is_empty() else String(terminal.get("editor_id", "Terminal"))
 
-func _suspend_player_input() -> void:
-	if _player == null:
-		return
-	_player.set_physics_process(false)
-	_player.set_process_input(false)
-	_player.set_process_unhandled_input(false)
-	_player.set_process_unhandled_key_input(false)
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
 func close_session() -> void:
 	if not visible:
 		return
 	visible = false
-	if _player != null:
-		_player.set_physics_process(true)
-		_player.set_process_input(true)
-		_player.set_process_unhandled_input(true)
-		_player.set_process_unhandled_key_input(true)
 	Input.mouse_mode = _previous_mouse_mode
-	_player = null
 	_terminal_stack.clear()
+	closed.emit()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.pressed or event.echo:

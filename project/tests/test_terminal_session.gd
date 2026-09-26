@@ -13,16 +13,15 @@ func check(ok: bool, message: String) -> void:
 func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
-	var player := Node.new()
-	add_child(player)
 	var session := SESSION_SCENE.instantiate() as TerminalSession
 	add_child(session)
 	await get_tree().process_frame
+	var closed_count := [0]
+	session.closed.connect(func() -> void: closed_count[0] += 1)
 
 	var note_terminal := _typed_terminal(0x166B56) # VHDStealthSuitTerminal
-	session.open_session(note_terminal, esm, player)
+	check(session.open_session(note_terminal, esm), "a terminal reference opens a session")
 	check(session.visible, "opening a terminal shows the session overlay")
-	check(not player.is_physics_processing(), "opening a terminal suspends player physics input")
 	check(session._choices.item_count == 3, "empty welcome text opens the real menu directly")
 	session._select_current()
 	check(session._view == TerminalSession.View.RESULT, "selecting an item shows its real result page")
@@ -33,10 +32,12 @@ func _ready() -> void:
 	session._go_back()
 	check(session._view == TerminalSession.View.MENU, "Back from NOTE restores its terminal menu")
 	session.close_session()
-	check(player.is_physics_processing(), "exiting restores player physics input")
+	check(not session.visible and closed_count[0] == 1, "closing hides the session and emits closed once")
+	session.close_session()
+	check(closed_count[0] == 1, "closing an already-closed session emits nothing")
 
 	var submenu_terminal := _typed_terminal(0x17B7A0) # P04CompanionFireTerminal
-	session.open_session(submenu_terminal, esm, player)
+	session.open_session(submenu_terminal, esm)
 	check(session._view == TerminalSession.View.WELCOME, "non-empty DESC opens a welcome page first")
 	session._select_current()
 	session._select_current()
@@ -45,27 +46,20 @@ func _ready() -> void:
 	check(session._view == TerminalSession.View.WELCOME and session._terminal_stack.size() == 2, "TNAM opens the authored submenu by FormID")
 	session.close_session()
 
-	var typed_terminal := _typed_terminal(0x166B56) # VHDStealthSuitTerminal
-	session.open_session(typed_terminal, esm, player)
-	check(session.visible and session._choices.item_count == 3, "typed EsmTerminalNode opens the same terminal session")
-	session.close_session()
-	typed_terminal.free()
+	check(not session.open_session(TerminalReference.new(), esm) and not session.visible, "a terminal with no base opens nothing")
 
 	session.queue_free()
-	player.queue_free()
 	_finish()
 
-## TerminalSession takes base-record data from the typed node's reference; the
-## v0 TerminalNode path it used to also accept is gone.
-func _typed_terminal(base_form_id: int) -> EsmTerminalNode:
+## A TerminalReference on a TERM base, with no node: the session reads the
+## menu from the reference's base.
+func _typed_terminal(base_form_id: int) -> TerminalReference:
 	var base := TerminalBase.new()
 	base.form_id = base_form_id
 	var reference := TerminalReference.new()
 	reference.base = base
 	reference.base_form_id = base_form_id
-	var node := EsmTerminalNode.new()
-	node.configure(reference)
-	return node
+	return reference
 
 func _finish() -> void:
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

@@ -36,7 +36,7 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 	if door == null:
 		return
 	if door.is_locked:
-		if door.lock_key != null and _carries(activator, door.lock_key.form_id):
+		if door.lock_key != null and carries(activator, door.lock_key.form_id):
 			ScriptServer.unlock(door)
 		elif door.lock_level >= 255:
 			return
@@ -47,9 +47,3 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 		ScriptServer.move_reference(activator, door.teleport.get_destination_space_form_id(), door.teleport.position, door.teleport.rotation)
 	else:
 		door.is_open = not door.is_open
-
-static func _carries(activator: EsmReference, item_form_id: int) -> bool:
-	if activator == null or not "contents" in activator:
-		return false
-	var inventory: Inventory = activator.get("contents")
-	return inventory != null and inventory.has_item(item_form_id)

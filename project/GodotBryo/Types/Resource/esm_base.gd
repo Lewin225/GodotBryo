@@ -53,3 +53,10 @@ func all_subrecord_data(tag: String) -> Array[PackedByteArray]:
 ## (move_reference, begin_use, lock, unlock) to do the work.
 func activate(_ref: EsmReference, _activator: EsmReference) -> void:
 	pass
+
+## Whether `actor` has an item with this base FormID in its inventory.
+static func carries(actor: EsmReference, item_form_id: int) -> bool:
+	if actor == null or item_form_id == 0 or not "contents" in actor:
+		return false
+	var inventory: Inventory = actor.get("contents")
+	return inventory != null and inventory.has_item(item_form_id)

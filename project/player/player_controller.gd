@@ -112,6 +112,14 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var collision_shape: CollisionShape3D
 @export var camera: Camera3D
 @export var interact_ray: InteractRay
+## Player-facing UI. The message box presents ScriptServer's ShowMessage; the
+## terminal session opens while the possessed actor uses an unlocked terminal;
+## the unlock session while it uses a locked terminal or door.
+@export var message_box: MessageBox
+@export var terminal_session: TerminalSession
+@export var unlock_session: UnlockSession
+
+const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 
 @export_group("Actor")
 ## Visual actor owned by this controller. The controller supplies movement
@@ -684,17 +692,100 @@ func _update_camera_transform(delta: float) -> void:
 var possessed: ActorReference = null
 ## While frozen the body neither moves nor writes to `possessed`.
 var frozen := false
+## While a UI has focus the body neither moves nor takes look/interact input.
+var _input_suspended := false
 
 ## Takes control of `actor`: scripts' `player` becomes its reference, and
 ## body-level commands act on this body.
 func possess(actor: ActorReference) -> void:
+	if possessed != null and possessed.using_changed.is_connected(_on_using_changed):
+		possessed.using_changed.disconnect(_on_using_changed)
 	possessed = actor
+	if possessed != null:
+		possessed.using_changed.connect(_on_using_changed)
 	ScriptServer.player_reference = actor
 	ScriptServer.player_node = self
+	ScriptServer.message_box = message_box
+	_connect_ui()
+
+func _connect_ui() -> void:
+	if terminal_session != null and not terminal_session.closed.is_connected(_on_terminal_closed):
+		terminal_session.closed.connect(_on_terminal_closed)
+		terminal_session.item_chosen.connect(_on_terminal_item_chosen)
+	if unlock_session != null and not unlock_session.succeeded.is_connected(_on_unlock_succeeded):
+		unlock_session.succeeded.connect(_on_unlock_succeeded)
+		unlock_session.cancelled.connect(_on_unlock_cancelled)
+
+## Shows the UI for what the possessed actor started using, and closes it when
+## the use ends another way.
+func _on_using_changed(_previous: EsmReference, current: EsmReference) -> void:
+	if current == null:
+		if terminal_session != null and terminal_session.visible:
+			terminal_session.close_session()
+		if unlock_session != null and unlock_session.visible:
+			unlock_session.cancel()
+		return
+	if current is TerminalReference:
+		if current.is_locked:
+			_open_unlock("Hack", LOCK_LEVEL_NAMES[clampi(current.lock_level, 0, 4)])
+		else:
+			_open_terminal(current)
+	elif current is DoorReference and current.is_locked:
+		_open_unlock("Lockpick", LOCK_LEVEL_NAMES[clampi(current.lock_level / 25, 0, 4)])
+
+func _open_terminal(terminal: TerminalReference) -> void:
+	if terminal_session != null and terminal_session.open_session(terminal, EsmServer.reader):
+		_set_input_suspended(true)
+	else:
+		ScriptServer.end_use(possessed)
+
+func _open_unlock(title: String, detail: String) -> void:
+	if unlock_session == null:
+		ScriptServer.end_use(possessed)
+		return
+	unlock_session.open(title, detail)
+	_set_input_suspended(true)
+
+## A picked lock unlocks and ends the use; a hacked terminal unlocks and opens.
+func _on_unlock_succeeded() -> void:
+	var target := possessed.using if possessed != null else null
+	if target == null:
+		_set_input_suspended(false)
+		return
+	ScriptServer.unlock(target)
+	if target is TerminalReference:
+		_open_terminal(target)
+	else:
+		_set_input_suspended(false)
+		ScriptServer.end_use(possessed)
+
+func _on_unlock_cancelled() -> void:
+	_set_input_suspended(false)
+	if possessed != null and possessed.using != null:
+		ScriptServer.end_use(possessed)
+
+## Closing the terminal ends the actor's use of it.
+func _on_terminal_closed() -> void:
+	_set_input_suspended(false)
+	if possessed != null and possessed.using is TerminalReference:
+		ScriptServer.end_use(possessed)
+
+## A chosen menu item runs its result script on the terminal, with the
+## possessed actor as the activator.
+func _on_terminal_item_chosen(item: Dictionary) -> void:
+	if possessed != null:
+		ScriptServer.run_result_script(String(item.get("script_source", "")), possessed.using, possessed)
+
+## Stops movement and look/interact input while a UI has focus.
+func _set_input_suspended(suspended: bool) -> void:
+	_input_suspended = suspended
+	set_physics_process(not frozen and not _input_suspended)
+	set_process_unhandled_input(not suspended)
+	velocity = Vector3.ZERO
 
 func set_frozen(value: bool) -> void:
 	frozen = value
-	set_physics_process(not value)
+	set_physics_process(not frozen and not _input_suspended)
 	velocity = Vector3.ZERO
 
 ## Moves the body to a Godot-space position and yaw, with no leftover motion

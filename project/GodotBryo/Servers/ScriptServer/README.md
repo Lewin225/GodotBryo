@@ -19,8 +19,9 @@ ScriptServer.get_pending_move(reference) -> Dictionary
 ScriptServer.apply_pending_moves()                       # also run every frame
 ScriptServer.begin_use(actor, target, marker := -1) -> bool
 ScriptServer.end_use(actor)
-ScriptServer.lock(reference, level := -1)
+ScriptServer.lock(reference, level := -1)             # doors and terminals
 ScriptServer.unlock(reference)
+ScriptServer.run_result_script(source, subject, action_ref := null) -> Variant
 ScriptServer.dispatch_event(reference, block_type, action_ref := null) -> Variant
 ScriptServer.has_block_for(reference, block_type, action_ref := null) -> bool
 ScriptServer.get_script_instance(reference) -> ScriptInstance   # created on first use
@@ -68,6 +69,16 @@ through XTEL or toggle open; terminals, containers and furniture start being use
 The target's loaded node then plays it (`EsmNode.on_activated()`). Script `Activate`
 performs the built-in activation, or runs `OnActivate` when its second argument is 1;
 its activator is the first argument, or the dispatch's action reference.
+
+**Result scripts.** `run_result_script()` runs a bare statement list with no
+Begin/End (terminal menu items; later dialogue and packages). `subject` is the implicit
+reference of its calls, `action_ref` the activator. It has its own locals, declared in
+its source and fresh on every run.
+
+**Locks.** A door with XLOC, or a terminal whose base is not flagged unlocked, starts
+locked. Activating one with its key (door) or password note (terminal) unlocks it;
+level 255 (door) or 5 (terminal) without it does nothing; otherwise the activator starts
+using it — lockpicking or hacking.
 
 **Use.** `begin_use()` / `end_use()` set `ActorReference.using` / `using_marker` and
 the target's side together: `used_by` for single-user references, one

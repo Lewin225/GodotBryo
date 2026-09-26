@@ -36,6 +36,9 @@ var _loaded_game_mode: Dictionary = {} # the loaded ones with GameMode/MenuMode
 var _instances: Dictionary = {} # EsmReference -> true: every reference whose script has run
 var _last_button_pressed: int = -1
 var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
+var _result_script_cache: Dictionary = {} # result script source -> ScriptInterpreter
+
+const _DECLARATION_TYPES := ["int", "short", "long", "float", "ref"]
 
 func _ready() -> void:
 	# Runs after default-priority nodes' _process each frame. Physics bodies
@@ -200,19 +203,18 @@ func end_use(actor: EsmReference) -> void:
 	user.using_marker = -1
 	user.using_changed.emit(target, null)
 
-## Locks a door at `level` (0-100 Very Easy to Very Hard, 255 requires the key).
+## Locks a door or terminal, at `level` when given: 0-100 for doors (255
+## requires the key), 0-5 for terminals (5 cannot be hacked).
 func lock(reference: EsmReference, level := -1) -> void:
-	var door := reference as DoorReference
-	if door == null:
+	if not (reference is DoorReference or reference is TerminalReference):
 		return
 	if level >= 0:
-		door.lock_level = level
-	door.is_locked = true
+		reference.lock_level = level
+	reference.is_locked = true
 
 func unlock(reference: EsmReference) -> void:
-	var door := reference as DoorReference
-	if door != null:
-		door.is_locked = false
+	if reference is DoorReference or reference is TerminalReference:
+		reference.is_locked = false
 
 func _free_furniture_slot(furniture: FurnitureReference, marker: int) -> int:
 	var markers := (furniture.base as FurnitureBase).get_active_markers() if furniture.base is FurnitureBase else PackedInt32Array()
@@ -247,6 +249,32 @@ func set_reference_loaded(reference: EsmReference, loaded: bool) -> void:
 ## Whether a reference with a script is in a loaded CELL.
 func is_reference_loaded(reference: EsmReference) -> bool:
 	return _loaded.has(reference)
+
+## Runs a result script: a bare statement list with no Begin/End, as on
+## terminal menu items, dialogue and packages. `subject` is the implicit
+## reference of its calls and `action_ref` the activator. A result script has
+## its own locals, declared in its source and fresh on every run; it reads and
+## writes other references' variables only as `SomeREF.var`.
+func run_result_script(source: String, subject: EsmReference, action_ref: EsmReference = null) -> Variant:
+	if source.strip_edges().is_empty():
+		return null
+	var interpreter: ScriptInterpreter = _result_script_cache.get(source)
+	if interpreter == null:
+		var declarations := PackedStringArray()
+		var statements := PackedStringArray()
+		for line in source.split("\n"):
+			var words := line.strip_edges().split(" ", false)
+			if not words.is_empty() and _DECLARATION_TYPES.has(words[0].to_lower()):
+				declarations.append(line)
+			else:
+				statements.append(line)
+		var wrapped := "scn ResultScript\n%s\nbegin GameMode\n%s\nend\n" % ["\n".join(declarations), "\n".join(statements)]
+		interpreter = ScriptInterpreter.new(ScriptParser.new(ScriptLexer.new(wrapped).tokenize()).parse(), function_registry)
+		_result_script_cache[source] = interpreter
+	var ctx := _context(subject, ScriptInstance.new(), action_ref)
+	for local in interpreter.program["declarations"]:
+		ctx.set_local(String(local["name"]), 0)
+	return interpreter.run_block("GameMode", ctx)
 
 ## Runs one console statement through the production lexer, parser and
 ## interpreter. With a target reference the statement runs as that

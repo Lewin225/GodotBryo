@@ -10,9 +10,7 @@
 [ext_resource type="Script" uid="uid://yyehjc6bd74g" path="res://environment_debug_tab.gd" id="6_environmentdebug"]
 [ext_resource type="Script" uid="uid://b226q0m1uis4a" path="res://inventory_debug_tab.gd" id="8_inventorydebug"]
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
-[ext_resource type="PackedScene" uid="uid://cwo34unl5x2h5" path="res://terminal_session.tscn" id="10_terminalsession"]
 [ext_resource type="Script" uid="uid://covubnj8iytnr" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
-[ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="11_messagebox"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
 [ext_resource type="Environment" uid="uid://wj0h7rqlbjcp" path="res://exterior_environment.tres" id="12_hb5m1"]
 [ext_resource type="Script" uid="uid://cjcg4wkk27esg" path="res://player_debug_tab.gd" id="12_playerdebug"]
@@ -61,7 +59,7 @@ func _on_tab_container_tab_changed(tab: int) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
-[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "terminal_session", "message_box", "cell_label", "sun", "world_environment", "player")]
+[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
 world_streamer = NodePath("WorldStreamerV2")
@@ -69,8 +67,6 @@ terrain_streamer = NodePath("TerrainStreamer")
 game_time_manager = NodePath("GameTimeManager")
 weather_manager = NodePath("WeatherManager")
 celestial_controller = NodePath("CelestialController")
-terminal_session = NodePath("TerminalSession")
-message_box = NodePath("MessageBox")
 cell_label = NodePath("DebugHud/CellLabel")
 sun = NodePath("Sun")
 world_environment = NodePath("WorldEnvironment")
@@ -110,12 +106,6 @@ script = ExtResource("14_weathermanager")
 
 [node name="CelestialController" type="Node" parent="." unique_id=573048276]
 script = ExtResource("15_celestialcontroller")
-
-[node name="TerminalSession" parent="." unique_id=481378737 instance=ExtResource("10_terminalsession")]
-visible = false
-
-[node name="MessageBox" parent="." unique_id=782194631 instance=ExtResource("11_messagebox")]
-visible = false
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=488718266]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)

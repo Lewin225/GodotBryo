@@ -196,7 +196,12 @@ tools/                      — gitignored, holds the native Godot binary
 - **`Character`** — `player/player.tscn`, a `PlayerController`. It possesses
   an `ActorReference`, writes its position and heading to it every physics
   frame (unless frozen), and activates what its `InteractRay` targets through
-  `ScriptServer.activate()` on the `interact` action.
+  `ScriptServer.activate()` on the `interact` action. It carries the player's
+  UI: `MessageBox` (registered as `ScriptServer.message_box` on possession),
+  `TerminalSession` (opened while the possessed actor uses an unlocked
+  terminal; chosen items run their result scripts) and `UnlockSession`, a
+  placeholder slide-to-unlock screen for lockpicking doors and hacking
+  terminals.
 - **`Debug Tools`** (`Window`, hidden by default, toggled with the **Home**
   key) — a `TabContainer` of in-game debug panels, see below.
 - **`DebugHud`** (`CanvasLayer`) — always-on `CellLabel` (current cell name +
