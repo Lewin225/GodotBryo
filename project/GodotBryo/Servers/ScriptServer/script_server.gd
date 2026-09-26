@@ -29,6 +29,9 @@ var message_box: MessageBox = null:
 			message_box.button_clicked.connect(_on_message_box_button_clicked)
 
 var function_registry := ScriptFunctionRegistry.new()
+## The game's global variables (GLOB), seeded from the ESM on first use. World
+## state: a save stores this resource.
+var globals := GlobalVariables.new()
 
 var _interpreter_cache: Dictionary = {} # SCPT FormID -> ScriptInterpreter
 var _loaded: Dictionary = {} # EsmReference -> true: every loaded reference with a script

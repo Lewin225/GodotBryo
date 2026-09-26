@@ -53,6 +53,7 @@ var _placed_reference_ids := PackedInt64Array() # sorted REFR/ACHR/ACRE FormIDs
 var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
 var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
+var _global_by_editor_id: Dictionary = {} # lowercased GLOB EDID -> FormID
 ## References whose cell has changed since they were built, by current CELL:
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
@@ -113,6 +114,7 @@ func _process(_delta: float) -> void:
 	_placed_reference_cells = _load_result.get("placed_reference_cells", PackedInt64Array())
 	_reference_by_editor_id = _load_result.get("reference_by_editor_id", {})
 	_quest_by_editor_id = _load_result.get("quest_by_editor_id", {})
+	_global_by_editor_id = _load_result.get("global_by_editor_id", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -144,6 +146,7 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 		cells[i] = pairs[i * 2 + 1]
 	var by_editor_id := {}
 	var quests := {}
+	var globals := {}
 	for row: Dictionary in record_index:
 		var record_type := String(row.get("record_type", ""))
 		var editor_id := String(row.get("editor_id", ""))
@@ -153,7 +156,10 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 			by_editor_id[editor_id.to_lower()] = int(row["form_id"])
 		elif record_type == "QUST":
 			quests[editor_id.to_lower()] = int(row["form_id"])
-	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id, "quest_by_editor_id": quests}
+		elif record_type == "GLOB":
+			globals[editor_id.to_lower()] = int(row["form_id"])
+	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id,
+			"quest_by_editor_id": quests, "global_by_editor_id": globals}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
 ## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
@@ -291,6 +297,13 @@ func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 func find_quest_by_editor_id(editor_id: String) -> EsmBase:
 	var form_id := int(_quest_by_editor_id.get(editor_id.to_lower(), 0))
 	return get_base(form_id) if form_id != 0 else null
+
+## The GLOB record with this editor ID as {"form_id", "editor_id", "type"
+## ("s" short, "l" long, "f" float), "value" (its authored FLTV)}, or {} when
+## there is none. Case-insensitive, from an in-memory index.
+func find_global_by_editor_id(editor_id: String) -> Dictionary:
+	var form_id := int(_global_by_editor_id.get(editor_id.to_lower(), 0))
+	return reader.get_global_variable(form_id) if form_id != 0 and reader != null else {}
 
 ## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
 func get_filing_cell_form_id(refr_form_id: int) -> int:

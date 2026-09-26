@@ -186,6 +186,26 @@ func _test_script_server() -> void:
 
 	await _test_moves_and_names(esm_server, server)
 	_test_quests_and_messages(esm_server, server)
+	_test_globals(server)
+
+## Global variables (GLOB): read, written, typed, and not confused with locals.
+func _test_globals(server) -> void:
+	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+		var program := ScriptParser.new(ScriptLexer.new(source).tokenize()).parse()
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+	var ctx := ScriptExecutionContext.new(null)
+	run.call("begin GameMode\nset z to CGHealTimer\nend", ctx)
+	check(ctx.get_local("z") == 120, "a script reads a global's authored value (CGHealTimer = 120)")
+	run.call("begin GameMode\nset CGHealTimer to 7.9\nend", ScriptExecutionContext.new(null))
+	check(server.globals.get_global("CGHealTimer") == 7, "writing a short global stores an int")
+	check(server.globals.values.has("cghealtimer"), "the written value is held in GlobalVariables")
+	var declared := ScriptExecutionContext.new(null)
+	run.call("float CGHealTimer\nbegin GameMode\nset CGHealTimer to 3\nend", declared)
+	check(declared.get_local("CGHealTimer") == 3 and server.globals.get_global("CGHealTimer") == 7,
+			"a script that declares a local with a global's name writes its local")
+	check(not server.globals.has_global("GSBrokenSMGMsg") and not server.globals.has_global("GSBrokenSMGMsg"), "a non-global name is not a global (cached)")
+	server.globals.set_global("CGHealTimer", 120)
+
 
 ## Quest variables, per-reference message buttons, and the Lucky 38 elevator.
 func _test_quests_and_messages(esm_server, server) -> void:

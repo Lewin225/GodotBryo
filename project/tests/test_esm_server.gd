@@ -338,7 +338,17 @@ func _check_reference_index(server, index: Array) -> void:
 			quests += 1
 	_check(server._quest_by_editor_id.size() == quests, "every QUST is indexed by editor ID (%d)" % quests)
 	_check_quest_bases(server, index)
+	var global_count := 0
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) == "GLOB":
+			global_count += 1
+	_check(server._global_by_editor_id.size() == global_count and global_count == 218, "every GLOB is indexed by editor ID (%d)" % global_count)
+	var heal_timer: Dictionary = server.find_global_by_editor_id("cghealtimer")
+	_check(String(heal_timer.get("type", "")) == "s" and is_equal_approx(float(heal_timer.get("value", 0.0)), 120.0),
+			"CGHealTimer resolves case-insensitively as a short global of 120")
+	_check(server.find_global_by_editor_id("NoSuchGlobal").is_empty(), "an unknown global resolves to {}")
 	var repcon: EsmBase = server.find_quest_by_editor_id("repconhqfreeform")
+
 	_check(repcon != null and repcon.record_type == "QUST" and repcon.editor_id.to_lower() == "repconhqfreeform" and repcon.script_form_id != 0,
 			"RepconHQFreeform resolves, case-insensitively, to its QUST record (REPCONHQFreeform) with a script")
 

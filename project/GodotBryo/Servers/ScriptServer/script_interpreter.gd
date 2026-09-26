@@ -11,10 +11,13 @@ extends RefCounted
 
 var program: Dictionary
 var function_registry: ScriptFunctionRegistry
+var _declared: Dictionary = {} # lowercased names of the script's declared variables
 
 func _init(parsed_program: Dictionary, registry: ScriptFunctionRegistry) -> void:
 	program = parsed_program
 	function_registry = registry
+	for declaration in program.get("declarations", []):
+		_declared[String(declaration["name"]).to_lower()] = true
 
 func has_block(block_type: String) -> bool:
 	for block in program["blocks"]:
@@ -78,7 +81,10 @@ func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 
 func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> void:
 	if not target.contains("."):
-		ctx.set_local(target, value)
+		# A name the script does not declare may be a global variable.
+		var server = function_registry.script_server
+		if _declared.has(target.to_lower()) or ctx.has_local(target) or server == null or not server.globals.set_global(target, value):
+			ctx.set_local(target, value)
 		return
 	# `OtherREF.var`: a variable of another reference's script.
 	var dot := target.find(".")
@@ -95,12 +101,17 @@ func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 		"var":
 			return ctx.get_local(String(expr["name"]))
 		"name":
-			# A bare name in source: a reference editor ID, a MESG editor ID
-			# for ShowMessage, and so on. Names the context can resolve become
-			# references; the rest stay as text for the called function.
+			# A bare name in source: a reference editor ID, a global variable,
+			# a MESG editor ID for ShowMessage, and so on. References and
+			# globals resolve to their value; the rest stay as text for the
+			# called function.
 			var raw_name := String(expr["name"])
 			var named := ctx.resolve_reference_name(raw_name)
-			return named if named != null else raw_name
+			if named != null:
+				return named
+			var server = function_registry.script_server
+			var global: Variant = server.globals.get_global(raw_name) if server != null else null
+			return global if global != null else raw_name
 		"ref_var":
 			var instance := _instance_of(String(expr["reference"]), ctx)
 			var value: Variant = instance.get_local(String(expr["name"])) if instance != null else null
