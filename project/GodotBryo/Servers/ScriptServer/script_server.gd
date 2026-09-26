@@ -35,6 +35,10 @@ var _loaded: Dictionary = {} # EsmReference -> true: every loaded reference with
 var _loaded_game_mode: Dictionary = {} # the loaded ones with GameMode/MenuMode
 var _instances: Dictionary = {} # EsmReference -> true: every reference whose script has run
 var _last_button_pressed: int = -1
+## The reference whose script showed the open message box; only its
+## GetButtonPressed sees the button clicked.
+var _message_owner: EsmReference = null
+
 var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
 var _result_script_cache: Dictionary = {} # result script source -> ScriptInterpreter
 
@@ -225,6 +229,38 @@ func _free_furniture_slot(furniture: FurnitureReference, marker: int) -> int:
 		return slot if slot >= 0 and furniture.occupants[slot] == null else -1
 	return furniture.occupants.find(null)
 
+## A quest's script variables: its QuestState's ScriptInstance, created with
+## the declared locals at 0 on first use. Null when the quest has no script.
+func get_quest_instance(quest: EsmBase) -> ScriptInstance:
+	var state := _quest_state(quest)
+	if state == null or quest.script_form_id == 0:
+		return null
+	if state.script_instance == null:
+		var interpreter := _get_or_parse(quest.script_form_id)
+		if interpreter == null:
+			return null
+		var instance := ScriptInstance.new()
+		instance.script_form_id = quest.script_form_id
+		for local in interpreter.program["declarations"]:
+			instance.set_local(String(local["name"]), 0)
+		state.script_instance = instance
+	return state.script_instance
+
+func _quest_state(quest: EsmBase) -> QuestState:
+	var quest_server := get_node_or_null("/root/QuestServer")
+	return quest_server.get_quest_state(quest) if quest_server != null else null
+
+## Runs `block_type` blocks of a quest's script, with the quest's variables and
+## no calling reference.
+func run_quest_block(quest: EsmBase, block_type: String) -> Variant:
+	var instance := get_quest_instance(quest)
+	if instance == null:
+		return null
+	var interpreter := _get_or_parse(instance.script_form_id)
+	if interpreter == null:
+		return null
+	return interpreter.run_block(block_type, _context(null, instance, null))
+
 ## Marks a reference's cell loaded or unloaded. Loading runs its OnLoad block
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.
 func set_reference_loaded(reference: EsmReference, loaded: bool) -> void:
@@ -349,17 +385,23 @@ func _get_or_parse(script_form_id: int) -> ScriptInterpreter:
 	_interpreter_cache[script_form_id] = interpreter
 	return interpreter
 
-func _handle_show_message(msg: Dictionary, _ctx: ScriptExecutionContext) -> int:
+func _handle_show_message(msg: Dictionary, ctx: ScriptExecutionContext) -> int:
+	_message_owner = ctx.calling_reference
+	_last_button_pressed = -1
 	if message_box != null:
 		message_box.display_message(msg)
 		return 1
 	push_warning("ScriptServer: ShowMessage called but no MessageBox is set")
 	return 0
 
-## Returns the last MessageBox button clicked and clears it.
-func _handle_get_button_pressed(_ctx: ScriptExecutionContext) -> int:
+## The button clicked on the message box this script's reference showed, once;
+## -1 until then, and always -1 for any other reference.
+func _handle_get_button_pressed(ctx: ScriptExecutionContext) -> int:
+	if ctx.calling_reference != _message_owner or _last_button_pressed < 0:
+		return -1
 	var pressed := _last_button_pressed
 	_last_button_pressed = -1
+	_message_owner = null
 	return pressed
 
 func _on_message_box_button_clicked(button_idx: int) -> void:

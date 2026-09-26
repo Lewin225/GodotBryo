@@ -23,6 +23,7 @@ TextureServer="*res://GodotBryo/Servers/TextureServer/texture_server.gd"
 NifServer="*res://GodotBryo/Servers/NifServer/nif_server.gd"
 EsmServer="*res://GodotBryo/Servers/EsmServer/esm_server.gd"
 ScriptServer="*res://GodotBryo/Servers/ScriptServer/script_server.gd"
+QuestServer="*res://GodotBryo/Servers/QuestServer/quest_server.gd"
 NpcSimulationServer="*res://GodotBryo/Servers/NpcSimulationServer/nav_npc_simulation_server.gd"
 
 [display]

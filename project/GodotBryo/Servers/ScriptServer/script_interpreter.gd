@@ -86,7 +86,7 @@ func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> voi
 	if instance != null:
 		instance.set_local(target.substr(dot + 1), value)
 	else:
-		push_warning("ScriptInterpreter: '%s' names no reference with a script, assignment dropped" % target)
+		push_warning("ScriptInterpreter: '%s' names no reference or quest with a script, assignment dropped" % target)
 
 func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 	match String(expr["kind"]):
@@ -170,9 +170,16 @@ func _resolve_reference(ref_name: String, ctx: ScriptExecutionContext) -> EsmRef
 		return local
 	return ctx.resolve_reference_name(ref_name)
 
-## The ScriptInstance of the reference `ref_name` names, or null.
+## The ScriptInstance behind `ref_name.var`: the named reference's script, or
+## else the named quest's script. Null when neither exists.
 func _instance_of(ref_name: String, ctx: ScriptExecutionContext) -> ScriptInstance:
-	var reference := _resolve_reference(ref_name, ctx)
-	if reference == null or function_registry.script_server == null:
+	var server = function_registry.script_server
+	if server == null:
 		return null
-	return function_registry.script_server.get_script_instance(reference)
+	var reference := _resolve_reference(ref_name, ctx)
+	if reference != null:
+		return server.get_script_instance(reference)
+	var esm_server := EsmReference.get_esm_server()
+	if esm_server == null or not esm_server.is_ready():
+		return null
+	return server.get_quest_instance(esm_server.find_quest_by_editor_id(ref_name))

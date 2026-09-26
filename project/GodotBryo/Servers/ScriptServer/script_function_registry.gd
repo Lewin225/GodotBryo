@@ -156,6 +156,47 @@ func _register_defaults() -> void:
 
 	register("GetActionRef", func(_a, ctx: ScriptExecutionContext):
 		return ctx.action_ref)
+
+	register("GetSelf", func(_a, ctx: ScriptExecutionContext):
+		return ctx.calling_reference)
+
+	# Quests, named by editor ID: `GetStage Quest`, `GetStageDone Quest Stage`,
+	# `SetStage Quest Stage`, `StartQuest Quest`, `StopQuest Quest`,
+	# `GetQuestRunning Quest`, `SetQuestDelay Quest Seconds`.
+	register("GetStage", func(a: Array, _c):
+		var quests := _quest_server()
+		return quests.get_stage(_quest(a, 0)) if quests != null else 0)
+	register("GetStageDone", func(a: Array, _c):
+		var quests := _quest_server()
+		return 1 if quests != null and quests.is_stage_done(_quest(a, 0), int(_number(a, 1))) else 0)
+	register("SetStage", func(a: Array, _c):
+		var quests := _quest_server()
+		var quest := _quest(a, 0)
+		if quests == null or quest == null:
+			return 0
+		quests.set_stage(quest, int(_number(a, 1)))
+		return 1)
+	register("StartQuest", func(a: Array, _c):
+		var quests := _quest_server()
+		if quests == null or _quest(a, 0) == null:
+			return 0
+		quests.start_quest(_quest(a, 0))
+		return 1)
+	register("StopQuest", func(a: Array, _c):
+		var quests := _quest_server()
+		if quests == null or _quest(a, 0) == null:
+			return 0
+		quests.stop_quest(_quest(a, 0))
+		return 1)
+	register("GetQuestRunning", func(a: Array, _c):
+		var quests := _quest_server()
+		return 1 if quests != null and quests.is_running(_quest(a, 0)) else 0)
+	register("SetQuestDelay", func(a: Array, _c):
+		var quests := _quest_server()
+		if quests == null or _quest(a, 0) == null:
+			return 0
+		quests.set_script_delay(_quest(a, 0), _number(a, 1))
+		return 1)
 		
 
 	register("Unlock", func(_a, ctx: ScriptExecutionContext):
@@ -229,3 +270,15 @@ func _position(reference: EsmReference, space_form_id: int, args: Array) -> void
 	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
 	var rotation := Vector3(reference.rotation.x, reference.rotation.y, deg_to_rad(_number(args, 3)))
 	script_server.move_reference(reference, space_form_id, position, rotation)
+
+## The QUST named by argument `index` (its editor ID), or null.
+static func _quest(args: Array, index: int) -> EsmBase:
+	var esm_server := EsmReference.get_esm_server()
+	if index >= args.size() or esm_server == null or not esm_server.is_ready():
+		return null
+	return esm_server.find_quest_by_editor_id(str(args[index]))
+
+## The QuestServer autoload, or null where it does not exist.
+static func _quest_server() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("QuestServer") if tree != null else null

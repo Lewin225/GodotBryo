@@ -4,7 +4,7 @@ extends Resource
 
 ## The runtime state of one quest: what an EsmReference is to a placed base,
 ## this is to a QUST record, which has no placements. One canonical instance
-## per quest, from EsmServer.get_quest_state().
+## per quest, from QuestServer.get_quest_state().
 
 ## QUST FormID; persisted identity.
 @export var quest_form_id: int = 0
@@ -17,3 +17,12 @@ extends Resource
 @export var stage: int = 0
 ## Stages set so far, as {stage: true}.
 @export var stages_done: Dictionary = {}
+## Whether the quest is running: its script's GameMode block runs every
+## script_delay seconds.
+@export var running: bool = false
+## Seconds between runs of the quest script; negative uses the QUST record's
+## delay (or the engine default when that is 0). Set by SetQuestDelay.
+@export var script_delay: float = -1.0
+## Set when a stage whose log entry completes or fails the quest is reached.
+@export var completed: bool = false
+@export var failed: bool = false

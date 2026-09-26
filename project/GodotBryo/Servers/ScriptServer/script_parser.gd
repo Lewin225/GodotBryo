@@ -35,6 +35,12 @@ extends RefCounted
 ## 0 from calling a nonexistent function named that.
 const KNOWN_ARITIES := {
 	"getactionref": 0,
+	"getbuttonpressed": 0,
+	"getcurrenttime": 0,
+	"getself": 0,
+	"getstage": 1,
+	"getstagedone": 2,
+	"getquestrunning": 1,
 	"isactionref": 1,
 	"getsecondspassed": 0,
 	"gamedayspassed": 0,

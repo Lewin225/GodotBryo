@@ -95,6 +95,7 @@ func _ready() -> void:
 	weather_manager.configure(typed_esm)
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
+	QuestServer.begin_game()
 	var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
 	if start is Dictionary:
 		push_error("game.gd: " + String(start["error"]))

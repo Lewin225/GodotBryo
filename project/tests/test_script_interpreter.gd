@@ -185,6 +185,46 @@ func _test_script_server() -> void:
 	check(not server.is_reference_loaded(trigger), "an unloaded reference stops running GameMode")
 
 	await _test_moves_and_names(esm_server, server)
+	_test_quests_and_messages(esm_server, server)
+
+## Quest variables, per-reference message buttons, and the Lucky 38 elevator.
+func _test_quests_and_messages(esm_server, server) -> void:
+	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+		var program := ScriptParser.new(ScriptLexer.new("begin GameMode\n%s\nend" % source).tokenize()).parse()
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+	var ctx := ScriptExecutionContext.new(null)
+	run.call("set RepconHQFreeform.WarningActive to 1\nset z to RepconHQFreeform.WarningActive", ctx)
+	var quest: EsmBase = esm_server.find_quest_by_editor_id("RepconHQFreeform")
+	check(server.get_quest_instance(quest) != null and server.get_quest_instance(quest).get_local("WarningActive") == 1, "a quest variable is written to the quest's script")
+	check(ctx.get_local("z") == 1, "and reads back")
+
+	var shower := ActivatorReference.new()
+	var other := ActivatorReference.new()
+	server._handle_show_message({}, ScriptExecutionContext.new(shower))
+	server._on_message_box_button_clicked(4)
+	check(server._handle_get_button_pressed(ScriptExecutionContext.new(other)) == -1, "another reference's GetButtonPressed does not see the click")
+	check(server._handle_get_button_pressed(ScriptExecutionContext.new(shower)) == 4, "the reference that showed the message gets the button")
+	check(server._handle_get_button_pressed(ScriptExecutionContext.new(shower)) == -1, "once")
+
+	# The Lucky 38 elevator: OnActivate shows the floor menu, GameMode moves the
+	# player on the chosen button (4 = Casino).
+	var player_ref: ActorReference = esm_server.get_player_reference()
+	var elevator: EsmReference = esm_server.find_reference_by_editor_id("Lucky38ElevatorDoorBaseREF")
+	var casino: EsmReference = esm_server.find_reference_by_editor_id("Lucky38CasinoFloorMarker")
+	server.player_reference = player_ref
+	server.activate(elevator, player_ref)
+	check(server._message_owner != elevator, "at a fresh game the casino elevator shows nothing (gated on VMQ02 stage 10)")
+	run.call("SetStage VMQ02 10", ScriptExecutionContext.new(null))
+	check(get_node("/root/QuestServer").get_stage(esm_server.find_quest_by_editor_id("VMQ02")) == 10, "SetStage sets a quest's stage")
+	server.activate(elevator, player_ref)
+	check(server._message_owner == elevator, "once VMQ02 reaches stage 10, activating the elevator shows its floor menu")
+	server._on_message_box_button_clicked(4)
+	server.dispatch_event(elevator, "GameMode")
+	var move: Dictionary = server.get_pending_move(player_ref)
+	check(casino != null and int(move.get("space_form_id", 0)) == casino.current_space_form_id and move.get("position") == casino.position,
+			"choosing Casino moves the player to Lucky38CasinoFloorMarker")
+	server._pending_moves.erase(player_ref)
+	server.player_reference = null
 
 ## MoveTo / PositionCell / queued moves, and editor-ID names in scripts.
 func _test_moves_and_names(esm_server, server) -> void:

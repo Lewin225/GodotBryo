@@ -22,6 +22,8 @@ ScriptServer.end_use(actor)
 ScriptServer.lock(reference, level := -1)             # doors and terminals
 ScriptServer.unlock(reference)
 ScriptServer.run_result_script(source, subject, action_ref := null) -> Variant
+ScriptServer.get_quest_instance(quest: EsmBase) -> ScriptInstance
+ScriptServer.run_quest_block(quest: EsmBase, block_type) -> Variant
 ScriptServer.dispatch_event(reference, block_type, action_ref := null) -> Variant
 ScriptServer.has_block_for(reference, block_type, action_ref := null) -> bool
 ScriptServer.get_script_instance(reference) -> ScriptInstance   # created on first use
@@ -96,6 +98,16 @@ loaded or not. Other names stay as text for functions that take editor IDs of ot
 types (ShowMessage's MESG). `SomeREF.var` reads and writes a variable of that reference's
 own `ScriptInstance`.
 
+**Quests.** Quest state and stages belong to `QuestServer`. Here: `QuestEditorID.var`
+reads and writes the quest script's variables (its `QuestState.script_instance`, created
+on first use by `get_quest_instance()`), and `run_quest_block()` runs a quest script's
+block with those variables and no calling reference. A name prefix resolves as a
+reference first, then as a quest.
+
+**Message boxes.** `ShowMessage` records the calling reference; `GetButtonPressed`
+returns the clicked button to that reference only, once, and -1 to every other
+reference. Many loaded scripts poll `GetButtonPressed` every frame.
+
 **Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
 find it with `EsmNode.node_for(reference)` and do nothing when the reference
 is not physicalised.
@@ -105,6 +117,15 @@ the scene that owns the loaders: `place_at_me_handler(args, calling_reference)`,
 `center_on_cell_handler(args)`, plus `game_time_manager` for time functions.
 
 ---
+
+## Known gaps
+
+- **Calls inside expressions parse only for functions in `ScriptParser.KNOWN_ARITIES`.**
+  Any other identifier in expression position becomes a bare name, silently:
+  `set Button to GetButtonPressed` stored the text "GetButtonPressed" until it was added,
+  and a condition calling an unlisted function can evaluate truthy by accident. A full
+  GECK function signature table (name and parameter count) would close this for every
+  script.
 
 ## Unverified behaviour
 

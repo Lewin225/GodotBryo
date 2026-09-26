@@ -53,7 +53,6 @@ var _placed_reference_ids := PackedInt64Array() # sorted REFR/ACHR/ACRE FormIDs
 var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
 var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
-var _quest_states: Dictionary = {} # QUST FormID -> QuestState
 ## References whose cell has changed since they were built, by current CELL:
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
@@ -292,18 +291,6 @@ func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 func find_quest_by_editor_id(editor_id: String) -> EsmBase:
 	var form_id := int(_quest_by_editor_id.get(editor_id.to_lower(), 0))
 	return get_base(form_id) if form_id != 0 else null
-
-## The runtime state of a quest: one QuestState per QUST, the same instance on
-## every call, created on first use. Null for a record that is not a QUST.
-func get_quest_state(quest: EsmBase) -> QuestState:
-	if quest == null or quest.record_type != "QUST":
-		return null
-	if not _quest_states.has(quest.form_id):
-		var state := QuestState.new()
-		state.quest_form_id = quest.form_id
-		state.quest = quest
-		_quest_states[quest.form_id] = state
-	return _quest_states[quest.form_id]
 
 ## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
 func get_filing_cell_form_id(refr_form_id: int) -> int:
