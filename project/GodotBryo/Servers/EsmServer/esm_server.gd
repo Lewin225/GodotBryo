@@ -21,7 +21,7 @@ const TYPE_TO_BASE := {
 	"KEYM": "KeyBase", "MISC": "MiscBase", "DOOR": "DoorBase", "SCOL": "StaticCollectionBase",
 	"LIGH": "LightBase", "CONT": "ContainerBase", "ACTI": "ActivatorBase", "FURN": "FurnitureBase",
 	"TACT": "TalkingActivatorBase", "MSTT": "MovableStaticBase", "TERM": "TerminalBase",
-	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase"
+	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase", "QUST": "QuestBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -675,6 +675,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result.script_form_id = _u32(_subrecord(raw, "SCRI"))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
+	elif result is QuestBase:
+		_populate_quest(result as QuestBase, raw)
 	elif result is PackageBase:
 		_populate_package(result as PackageBase, raw)
 	elif result is WeaponBase:
@@ -974,6 +976,44 @@ func _all_subrecords(raw: Dictionary, tag: String) -> Array[PackedByteArray]:
 		if String(subrecord.get("type", "")) == tag:
 			result.append(subrecord.get("data", PackedByteArray()))
 	return result
+
+## QUST DATA and stages. Subrecords are read in order: INDX opens a stage,
+## QSDT a log entry of it; CTDA, CNAM and SCTX belong to the current entry.
+## QOBJ starts the objectives, which end the stages.
+func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
+	var data := _subrecord(raw, "DATA")
+	result.flags = _u8(data)
+	result.starts_enabled = (result.flags & 0x01) != 0
+	result.priority = _u8(data, 1) if data.size() >= 2 else 0
+	result.script_delay = _f32(data, 4) if data.size() >= 8 else 0.0
+	result.stages.clear()
+	var stage: QuestStage = null
+	var entry: QuestLogEntry = null
+	for sub: Dictionary in raw.get("subrecords", []):
+		var tag := String(sub.get("type", ""))
+		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
+		match tag:
+			"QOBJ":
+				break
+			"INDX":
+				stage = QuestStage.new()
+				stage.index = _i16(bytes)
+				result.stages.append(stage)
+				entry = null
+			"QSDT":
+				if stage != null:
+					entry = QuestLogEntry.new()
+					entry.flags = _u8(bytes)
+					stage.log_entries.append(entry)
+			"CTDA":
+				if entry != null:
+					entry.condition_count += 1
+			"CNAM":
+				if entry != null:
+					entry.log_text = _string(bytes)
+			"SCTX":
+				if entry != null:
+					entry.script_source = bytes.get_string_from_ascii()
 
 func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 	result.chance_none = _u8(_subrecord(raw, "LVLD"))

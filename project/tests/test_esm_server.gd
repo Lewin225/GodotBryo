@@ -250,6 +250,28 @@ func _check_relocated_references(server) -> void:
 	_check(not server.get_persistent_references_for_worldspace(wasteland).has(persistent), "a relocated persistent reference leaves the persistent list")
 	_check(server.get_references_in_cell(cell_b).count(persistent) == 1, "and is listed under its current grid CELL")
 
+## Every QUST resolves as a QuestBase whose DATA and stages match the census.
+func _check_quest_bases(server, index: Array) -> void:
+	var counts := {"quests": 0, "enabled": 0, "stages": 0, "entries": 0, "scripts": 0, "conditioned": 0, "complete": 0, "fail": 0}
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "QUST":
+			continue
+		var quest := server.get_base(int(row["form_id"])) as QuestBase
+		if quest == null:
+			continue
+		counts["quests"] += 1
+		counts["enabled"] += int(quest.starts_enabled)
+		counts["stages"] += quest.stages.size()
+		for stage in quest.stages:
+			for entry in stage.log_entries:
+				counts["entries"] += 1
+				counts["scripts"] += int(not entry.script_source.is_empty())
+				counts["conditioned"] += int(entry.condition_count > 0)
+				counts["complete"] += int((entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0)
+				counts["fail"] += int((entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0)
+	_check(counts == {"quests": 436, "enabled": 281, "stages": 1028, "entries": 969, "scripts": 737, "conditioned": 20, "complete": 150, "fail": 126},
+			"every QUST resolves as a QuestBase matching the census (%s)" % [counts])
+
 ## Every base record carrying SCRI exposes it, across every scripted type.
 func _check_base_scripts(server, index: Array) -> void:
 	var expected := {"NPC_": 1046, "ACTI": 992, "CCRD": 270, "CREA": 260, "MISC": 178, "DOOR": 136, "CONT": 124,
@@ -315,6 +337,7 @@ func _check_reference_index(server, index: Array) -> void:
 		if String(row.get("record_type", "")) == "QUST":
 			quests += 1
 	_check(server._quest_by_editor_id.size() == quests, "every QUST is indexed by editor ID (%d)" % quests)
+	_check_quest_bases(server, index)
 	var repcon: EsmBase = server.find_quest_by_editor_id("repconhqfreeform")
 	var repcon_state: QuestState = server.get_quest_state(repcon)
 	_check(repcon_state != null and repcon_state.quest == repcon and server.get_quest_state(repcon) == repcon_state and repcon_state.stage == 0,
