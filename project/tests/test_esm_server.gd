@@ -810,6 +810,14 @@ func _check_open_door_full_visual_state(server) -> void:
 		get_node("/root/ScriptServer").default_activate(reference, null)
 		_check(not reference.is_open and player.current_animation == "Close" and player.is_playing(),
 			"first activation of an authored-open gate plays Close")
+		player.stop()
+		var picker := ActorReference.new()
+		reference.is_locked = true
+		get_node("/root/ScriptServer").default_activate(reference, picker)
+		_check(not player.is_playing() and not reference.is_open and picker.using == reference,
+			"activating it locked starts lockpicking and plays nothing")
+		get_node("/root/ScriptServer").end_use(picker)
+		reference.is_locked = false
 	host.queue_free()
 
 func _check_misc_physicaliser(server) -> void:
