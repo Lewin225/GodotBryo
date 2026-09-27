@@ -227,6 +227,7 @@ func _request_visual() -> void:
 	# Reuse it rather than appending a second copy after reopening the scene.
 	if get_node_or_null(visual_name) != null:
 		_active_visual_detail = visual_detail
+		_apply_external_emittance(get_node(visual_name) as Node3D)
 		return
 	var model_path := _model_path()
 	if model_path.is_empty():
@@ -248,6 +249,7 @@ func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
 		return
 	if tree == null:
 		return
+	_apply_external_emittance(tree)
 	tree.name = _visual_node_name(detail)
 	add_generated_child(tree)
 	_apply_containing_stream_state(tree)
@@ -259,6 +261,44 @@ func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
 	visual_detail_applied.emit(detail)
 	if detail == VisualDetail.FULL:
 		_on_nif_visual_ready(tree)
+
+## The NIF template only marks shapes with External_Emittance. XEMI belongs
+## to this placement, so never mutate the material shared by other copies.
+func _apply_external_emittance(visual: Node3D) -> void:
+	if reference == null or not ("emittance_form_id" in reference):
+		return
+	var emittance_form_id := int(reference.get("emittance_form_id"))
+	if emittance_form_id == 0:
+		return
+	var esm_server := get_tree().root.get_node_or_null("EsmServer")
+	if esm_server == null or esm_server.reader == null:
+		return
+	var emittance_data: Dictionary = esm_server.reader.get_emittance_data(emittance_form_id)
+	if not emittance_data.has("color"):
+		return
+	# EsmReader exposes the authored Gamebryo-linear RGB. StandardMaterial3D
+	# colours are sRGB-facing, like EsmLightNode's Light3D colour property.
+	var authored_color: Color = emittance_data["color"]
+	var color := authored_color.linear_to_srgb()
+	for node in visual.find_children("*", "MeshInstance3D", true, false):
+		var instance := node as MeshInstance3D
+		if not bool(instance.get_meta("nif_external_emittance", false)) or instance.mesh == null:
+			continue
+		if int(instance.get_meta("nif_external_emittance_applied_form_id", 0)) == emittance_form_id:
+			continue
+		var source := instance.mesh.surface_get_material(0) as StandardMaterial3D
+		if source == null:
+			continue
+		var tinted := source.duplicate() as StandardMaterial3D
+		var albedo := tinted.albedo_color
+		albedo.r = color.r
+		albedo.g = color.g
+		albedo.b = color.b
+		tinted.albedo_color = albedo
+		tinted.emission_enabled = true
+		tinted.emission = color
+		instance.set_surface_override_material(0, tinted)
+		instance.set_meta("nif_external_emittance_applied_form_id", emittance_form_id)
 
 func _visual_node_name(detail: VisualDetail) -> String:
 	return "NifVisual" if detail == VisualDetail.FULL else "NifLodVisual"

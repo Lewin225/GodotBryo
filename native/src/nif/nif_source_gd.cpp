@@ -77,6 +77,11 @@ Array NifSource::get_nodes() const {
 		d["texture_slots"] = slots;
 		d["texture_set_block_index"] = n.texture_set_block_index;
 		d["shader_type"] = String(n.shader_type.c_str());
+		d["has_shader_flags"] = n.has_shader_flags;
+		if (n.has_shader_flags) {
+			d["shader_flags1"] = static_cast<int64_t>(n.shader_flags1);
+			d["shader_flags2"] = static_cast<int64_t>(n.shader_flags2);
+		}
 		d["texture_convention"] = String(n.texture_convention.c_str());
 		d["has_alpha_property"] = n.has_alpha_property;
 		if (n.has_alpha_property) {

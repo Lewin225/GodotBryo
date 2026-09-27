@@ -252,6 +252,11 @@ struct SceneNode {
 	// were a shader set returns nothing -- the screen renders solid white.
 	std::string texture_convention;
 	std::string shader_type; // shader property block type, empty when none
+	// Raw BSShaderProperty flags. Keep both words intact: the FO3/FNV bit names
+	// are documented, but translating every bit into Godot behaviour is separate.
+	bool has_shader_flags = false;
+	uint32_t shader_flags1 = 0;
+	uint32_t shader_flags2 = 0;
 
 	// NiProperty blocks this node references, by BLOCK INDEX -- the identity
 	// nif_server_v2.md 7.3 needs. Property blocks are shared: ~34% of

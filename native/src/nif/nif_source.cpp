@@ -1009,6 +1009,11 @@ Document load(const uint8_t *data, size_t size) {
 			if (shader != nullptr) {
 				out.shader_type = header.GetBlockTypeStringById(nif.GetBlockID(shader));
 			}
+			if (const auto *bs_shader = dynamic_cast<nifly::BSShaderProperty *>(shader)) {
+				out.has_shader_flags = true;
+				out.shader_flags1 = bs_shader->shaderFlags1;
+				out.shader_flags2 = bs_shader->shaderFlags2;
+			}
 
 			// Resolution order matches nifly's own GetTextureSlot: a real
 			// BSShaderTextureSet first, then the effect-shader inline paths,

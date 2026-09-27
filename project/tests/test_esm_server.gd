@@ -60,6 +60,8 @@ func _ready() -> void:
 			break
 	_check(found_actor, "an ACHR resolves as ActorReference")
 	_check_authored_reference_cache(server, index)
+	_check_xemi_reference_fields(server)
+	await _check_xemi_visual_tint(server)
 	_check_reference_location(server)
 	_check_door_links_and_locks(server)
 	_check_reference_index(server, index)
@@ -103,6 +105,76 @@ func _check_authored_reference_cache(server, index: Array) -> void:
 			cached = true
 			break
 		_check(cached, "a real %s reference is available for cache validation" % record_type)
+
+## FalloutNV.esm's XEMI census finds this subrecord only on these five REFR
+## base types. The native placement already carries its raw FormID; the typed
+## reference must preserve the same value, including the Goodsprings beam.
+func _check_xemi_reference_fields(server) -> void:
+	var cases := [
+		[0x0014AF3E, ActivatorReference],
+		[0x0013DD64, DoorReference],
+		[0x0014BD54, LightReference],
+		[0x0014EA0F, MovableStaticReference],
+		[0x0016B5EB, StaticReference],
+	]
+	for entry in cases:
+		var refr_form_id: int = int(entry[0])
+		var placement: Dictionary = server.reader.get_reference_placement(refr_form_id)
+		var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
+		_check(emittance_form_id != 0, "REFR %08X has authored XEMI" % refr_form_id)
+		var reference: EsmReference = server.get_reference("authored:%08X" % refr_form_id)
+		_check(reference != null and reference.get_script() == entry[1],
+			"REFR %08X resolves to its XEMI-capable reference type" % refr_form_id)
+		if reference != null:
+			_check(int(reference.get("emittance_form_id")) == emittance_form_id,
+				"REFR %08X preserves its XEMI FormID" % refr_form_id)
+	_check(int(server.reader.get_reference_placement(0x0016B5EB).get("emittance_form_id", 0)) == 0x00171CDF,
+		"Goodsprings beam links its authored REGN emittance source")
+
+
+func _check_xemi_visual_tint(server) -> void:
+	var cases := [
+		[0x00103E26, "NVCraftsmanRmWallGlassB:10", "NVCraftsmanRmWallGlassB:7"],
+		[0x001062B5, "IndFXLightRays01:0", ""],
+		[0x0016B5EB, "FXLightBeamBrtW02:1", "EditorMarker:0"],
+	]
+	for entry in cases:
+		var reference: EsmReference = server.get_reference("authored:%08X" % int(entry[0]))
+		var node := _physicalise_in_tree(reference)
+		var visual := await _await_nif_visual(node) if node != null else null
+		_check(visual != null, "REFR %08X receives its XEMI visual" % int(entry[0]))
+		if visual == null:
+			if node != null:
+				node.queue_free()
+			continue
+		var emittance_form_id := int(reference.get("emittance_form_id"))
+		var authored_color: Color = server.reader.get_emittance_data(emittance_form_id).get("color", Color.WHITE)
+		var color := authored_color.linear_to_srgb()
+		var found_marked := false
+		var found_unmarked := String(entry[2]).is_empty()
+		for child in visual.find_children("*", "MeshInstance3D", true, false):
+			var instance := child as MeshInstance3D
+			var authored_name := String(instance.get_meta("nif_name", ""))
+			if authored_name == String(entry[1]):
+				found_marked = true
+				var override := instance.get_surface_override_material(0) as StandardMaterial3D
+				var shared := instance.mesh.surface_get_material(0) as StandardMaterial3D
+				_check(override != null and override != shared,
+					"%s has a placement-local material" % authored_name)
+				if override != null and shared != null:
+					var expected_albedo := Color(color.r, color.g, color.b, shared.albedo_color.a)
+					_check(override.albedo_color.is_equal_approx(expected_albedo) and override.emission_enabled
+						and override.emission.is_equal_approx(color),
+						"%s uses XEMI for albedo and emission without changing alpha" % authored_name)
+					_check(shared.albedo_color.is_equal_approx(Color(1, 1, 1, shared.albedo_color.a)),
+						"%s leaves the cached material untinted" % authored_name)
+			elif authored_name == String(entry[2]):
+				found_unmarked = true
+				_check(instance.get_surface_override_material(0) == null,
+					"%s has no XEMI override" % authored_name)
+		_check(found_marked and found_unmarked, "REFR %08X targets only authored shapes" % int(entry[0]))
+		node.queue_free()
+
 
 ## Exhaustive shipped-master validation for the typed PACK path. The native
 ## package_census diagnostic establishes the complete byte-shape census; this

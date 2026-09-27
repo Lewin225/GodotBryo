@@ -23,6 +23,12 @@ const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/text
 ## no consumer applies an axis correction afterwards.
 const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
+# Provisional StandardMaterial3D stand-in for additive XEMI light shafts.
+# These distances and the alpha scale are visual tuning, not NIF fields.
+const LIGHT_SHAFT_SOFT_CLIP_METERS := 1.0
+const LIGHT_SHAFT_NEAR_FADE_METERS := 1.5
+const LIGHT_SHAFT_ALPHA_SCALE := 0.2
+
 # BSDismemberBodyPartType names are format labels, not actor policy. They make
 # the split tree inspectable while the raw integer remains the programmatic
 # identity (including unknown values such as 65533 and 65535).
@@ -719,6 +725,10 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, _make_material(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
 	mi.mesh = mesh
+	# XEMI is placement data, so NifServer only identifies which authored
+	# shapes consume it. The delivered tree's owner supplies the actual tint.
+	mi.set_meta("nif_external_emittance",
+		bool(nd.get("has_shader_flags", false)) and (int(nd.get("shader_flags1", 0)) & 0x20000000) != 0)
 
 	if nd.has("skin"):
 		# Named binds, skeleton deliberately unset: 86% of skinned NIFs carry a
@@ -744,6 +754,8 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 static func _make_material(nd: Dictionary, has_vertex_colors: bool, textures: Dictionary) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.set_meta("nif_shader_type", String(nd["shader_type"]))
+	if bool(nd.get("has_shader_flags", false)):
+		_apply_shader_depth(mat, int(nd["shader_flags1"]), int(nd["shader_flags2"]))
 
 	if has_vertex_colors:
 		mat.vertex_color_use_as_albedo = true
@@ -799,16 +811,52 @@ static func _make_material(nd: Dictionary, has_vertex_colors: bool, textures: Di
 	# exists to prevent.
 	if String(nd["shader_type"]) == "BSShaderNoLightingProperty":
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		# The light-ray/beam shapes use additive NoLighting plus external
+		# emittance. Do not apply this to every unlit shape: the boarded-window
+		# glow plane has no alpha blend, and the beam's editor marker has no XEMI.
+		if bool(nd.get("has_shader_flags", false)) \
+				and (int(nd.get("shader_flags1", 0)) & 0x20000000) != 0 \
+				and blend_enabled and String(nd.get("alpha_blend_func", "")) == "add":
+			mat.proximity_fade_enabled = true
+			mat.proximity_fade_distance = LIGHT_SHAFT_SOFT_CLIP_METERS
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+			mat.distance_fade_min_distance = 0.0
+			mat.distance_fade_max_distance = LIGHT_SHAFT_NEAR_FADE_METERS
+			var shaft_color := mat.albedo_color
+			shaft_color.a *= LIGHT_SHAFT_ALPHA_SCALE
+			mat.albedo_color = shaft_color
 	return mat
 
 
+## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Keep the raw
+## words on the material for inspection; only the two depth bits have a direct
+## BaseMaterial3D mapping here. Disabling depth testing also disables writes
+## in Godot, even if the authored write bit happens to be set.
+static func _apply_shader_depth(mat: StandardMaterial3D, flags1: int, flags2: int) -> void:
+	mat.set_meta("nif_shader_flags1", flags1)
+	mat.set_meta("nif_shader_flags2", flags2)
+	var depth_test := (flags1 & 0x80000000) != 0
+	var depth_write := (flags2 & 0x1) != 0
+	if not depth_test:
+		mat.set_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST, true)
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if depth_write else BaseMaterial3D.DEPTH_DRAW_DISABLED
+
+
 ## NiAlphaProperty -> Godot transparency. Blend and test are separate bits and
-## a shape can set either or both; blend takes precedence when both are on,
-## since scissoring a blended gradient throws away the gradient.
+## a shape can set either or both. StandardMaterial3D cannot combine authored
+## blending with authored alpha testing; try alpha scissor for the dual-bit
+## case, using the authored cutoff so discarded pixels cannot occlude each
+## other when depth writing is enabled. This drops the authored edge blending.
 static func _apply_alpha(mat: StandardMaterial3D, nd: Dictionary,
 		blend_enabled: bool, test_enabled: bool) -> void:
 	mat.set_meta("nif_alpha_blend_func", String(nd["alpha_blend_func"]))
-	if blend_enabled:
+	if blend_enabled and test_enabled:
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		# NiAlphaProperty's GREATER 0 still rejects fully transparent pixels.
+		# Godot's cutoff of 0 rejects none, so use the smallest 8-bit step.
+		mat.alpha_scissor_threshold = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
+	elif blend_enabled:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		# Light shafts and glow overlays ship src=SRC_ALPHA dst=ONE and are
 		# genuinely additive; grime decals ship ZERO/SRC_COLOR and multiply.

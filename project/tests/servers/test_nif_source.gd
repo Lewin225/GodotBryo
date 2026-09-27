@@ -30,6 +30,7 @@ const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
 const TRANSFORM_SHAPE := "meshes/architecture/freeside/ramshacklebusdoor02.nif"
 const BSPLINE := "meshes/dlc05/creatures/alien/locomotion/forwardwalk.kf"
+const WATER_TANK := "meshes/architecture/goodsprings/NV_WaterTank.NIF"
 
 var failures := 0
 
@@ -586,6 +587,24 @@ func test_corpus_parses() -> void:
 	])
 
 
+func test_shader_flags() -> void:
+	print("--- raw FO3/FNV shader flags ---")
+	var src := _load(WATER_TANK)
+	if src == null:
+		return
+	var tank := _by_name(src, "DieselTankNV:2")
+	check(not tank.is_empty(), "water tank's third shape is present")
+	if tank.is_empty():
+		return
+	check(bool(tank.get("has_shader_flags", false)), "BSShaderProperty flags are present")
+	check(int(tank.get("shader_flags1", 0)) == 0x82000101,
+		"flags1 preserves unsigned high bit and authored bits")
+	check(int(tank.get("shader_flags2", 0)) == 0x1,
+		"flags2 preserves authored depth-write bit")
+	check(bool(tank.get("alpha_blend_enabled", false)) and not bool(tank.get("alpha_test_enabled", true)),
+		"third shape blends without alpha testing")
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_d1_block_types()
@@ -599,6 +618,7 @@ func _ready() -> void:
 	test_d9_interpolators()
 	test_d10_controller_chain_and_text_keys()
 	test_node_transform_units()
+	test_shader_flags()
 	test_corpus_parses()
 
 	print("=======================")

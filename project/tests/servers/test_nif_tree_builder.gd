@@ -20,6 +20,14 @@ const DOC_MITCHELL_GATE := "meshes/clutter/fence/NV_FencePickBurntGate01.NIF"
 const UPPERBODY := "meshes/characters/_male/upperbody.nif"
 const DISMEMBER_MIXED := "meshes/armor/bigbattle/crangerbattlearmor.nif"
 const DISMEMBER_VISUAL := "meshes/armor/1950stylecasual01/m/outfit.nif"
+const WATER_TANK := "meshes/architecture/goodsprings/NV_WaterTank.NIF"
+const CREOSOTE_BUSH := "meshes/clutter/creosotebush/creosotebushsm.nif"
+const JOSHUA_TREE := "meshes/landscape/trees/treejoshbnv.nif"
+const DRINKING_GLASS := "meshes/animobjects/aodrinkingglass.nif"
+const VAULT_WINDOW := "meshes/dungeons/vault/accessories/vwindow01.nif"
+const DOC_MITCHELL_WINDOW := "meshes/dungeons/NV_CraftsmanHomesInterior/NVCraftsmanRmWallGlassB.nif"
+const INDUSTRIAL_RAYS := "meshes/effects/ambient/industrial/IndFXLightRays01.nif"
+const GOODSPRINGS_BEAM := "meshes/effects/ambient/FXLightBeamBrtW02.nif"
 
 var failures := 0
 
@@ -847,6 +855,125 @@ func write_previews() -> void:
 		root.queue_free()
 
 
+func test_shader_depth_flags() -> void:
+	print("--- FO3/FNV shader depth flags ---")
+	var raw: Dictionary = ArchiveServer.read(WATER_TANK)
+	if not bool(raw["found"]):
+		check(false, "read water tank NIF")
+		return
+	var src := NifSource.new()
+	if not src.load(PackedByteArray(raw["data"])):
+		check(false, "parse water tank NIF")
+		return
+	var third: Dictionary = {}
+	for nd in src.get_nodes():
+		if String(nd["name"]) == "DieselTankNV:2":
+			third = nd
+			break
+	check(not third.is_empty(), "third water tank shape found")
+	if third.is_empty():
+		return
+	var mat: StandardMaterial3D = NifTreeBuilderScript._make_material(third, false, {})
+	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
+		"third shape retains authored alpha blending")
+	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+		"third shape writes depth despite alpha blending")
+	check(not mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+		"third shape keeps depth testing enabled")
+	check(int(mat.get_meta("nif_shader_flags1", 0)) == 0x82000101 and
+		int(mat.get_meta("nif_shader_flags2", 0)) == 0x1,
+		"both raw shader flag words remain inspectable on material")
+	var no_depth := third.duplicate()
+	no_depth["shader_flags1"] = 0
+	no_depth["shader_flags2"] = 0
+	var no_depth_mat: StandardMaterial3D = NifTreeBuilderScript._make_material(no_depth, false, {})
+	check(no_depth_mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+		"cleared authored test bit disables depth testing")
+	check(no_depth_mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED,
+		"cleared authored write bit disables depth writing")
+
+
+func test_external_emittance_shapes() -> void:
+	print("--- per-shape External_Emittance marker ---")
+	var cases := [
+		[DOC_MITCHELL_WINDOW, "NVCraftsmanRmWallGlassB:10", "NVCraftsmanRmWallGlassB:7", false],
+		[INDUSTRIAL_RAYS, "IndFXLightRays01:0", "", true],
+		[GOODSPRINGS_BEAM, "FXLightBeamBrtW02:1", "EditorMarker:0", true],
+	]
+	for entry in cases:
+		var root := await _build(String(entry[0]))
+		check(root != null, "%s builds" % String(entry[0]))
+		if root == null:
+			continue
+		var marked := _find_authored_node(root, String(entry[1])) as MeshInstance3D
+		check(marked != null and bool(marked.get_meta("nif_external_emittance", false)),
+			"%s is marked for placement XEMI" % String(entry[1]))
+		if marked != null:
+			var mat := marked.mesh.surface_get_material(0) as StandardMaterial3D
+			var is_shaft: bool = bool(entry[3])
+			check(mat.proximity_fade_enabled == is_shaft and
+				mat.distance_fade_mode == (BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+					if is_shaft else BaseMaterial3D.DISTANCE_FADE_DISABLED),
+				"%s uses soft clip and near fade only for additive rays" % String(entry[1]))
+			if is_shaft:
+				check(is_equal_approx(mat.proximity_fade_distance, 1.0) and
+					is_equal_approx(mat.distance_fade_max_distance, 1.5) and
+					is_equal_approx(mat.albedo_color.a, 0.2) and
+					mat.cull_mode == BaseMaterial3D.CULL_DISABLED,
+					"%s has shaft fades, 20%% alpha and two-sided faces" % String(entry[1]))
+		if not String(entry[2]).is_empty():
+			var unmarked := _find_authored_node(root, String(entry[2])) as MeshInstance3D
+			check(unmarked != null and not bool(unmarked.get_meta("nif_external_emittance", false)),
+				"%s is not marked for placement XEMI" % String(entry[2]))
+			if unmarked != null:
+				var unmarked_mat := unmarked.mesh.surface_get_material(0) as StandardMaterial3D
+				check(not unmarked_mat.proximity_fade_enabled and
+					unmarked_mat.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED,
+					"%s has no light-shaft fade" % String(entry[2]))
+		root.queue_free()
+
+
+func test_dual_alpha_scissor() -> void:
+	print("--- dual-bit NiAlphaProperty maps to authored alpha scissor ---")
+	var cases := [
+		[CREOSOTE_BUSH, "Box06:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 200.0 / 255.0],
+		[JOSHUA_TREE, "TreeJoshB_1:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 100.0 / 255.0],
+		[DRINKING_GLASS, "Liquid", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 1.0 / 255.0],
+		[VAULT_WINDOW, "VWindow01:0", BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0],
+	]
+	for entry in cases:
+		var path := String(entry[0])
+		var shape_name := String(entry[1])
+		var raw: Dictionary = ArchiveServer.read(path)
+		if not bool(raw["found"]):
+			check(false, "read %s" % path)
+			continue
+		var src := NifSource.new()
+		if not src.load(PackedByteArray(raw["data"])):
+			check(false, "parse %s" % path)
+			continue
+		var shape: Dictionary = {}
+		for nd in src.get_nodes():
+			if String(nd["name"]) == shape_name:
+				shape = nd
+				break
+		check(not shape.is_empty(), "%s has shape %s" % [path, shape_name])
+		if shape.is_empty():
+			continue
+		var expected_mode: int = int(entry[2])
+		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
+		check(bool(shape["alpha_test_enabled"]) == (expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR),
+			"%s authored test bit matches expected mode" % shape_name)
+		var mat: StandardMaterial3D = NifTreeBuilderScript._make_material(shape, false, {})
+		check(mat.transparency == expected_mode,
+			"%s selects expected transparency mode" % shape_name)
+		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+			check(is_equal_approx(mat.alpha_scissor_threshold, float(entry[3])),
+				"%s uses expected alpha-test cutoff" % shape_name)
+		check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+			"%s keeps authored depth-write flag" % shape_name)
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	await test_static_tree()
@@ -864,6 +991,9 @@ func _ready() -> void:
 	await test_ragdoll()
 	await test_billboard()
 	await test_prefer_static()
+	test_shader_depth_flags()
+	await test_external_emittance_shapes()
+	test_dual_alpha_scissor()
 	await write_previews()
 
 	print("=======================")

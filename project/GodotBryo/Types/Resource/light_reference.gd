@@ -2,6 +2,8 @@
 class_name LightReference
 extends EsmReference
 
-## LIGH references have no LIGH-specific placement payload beyond the common
-## REFR identity and transform. The authored light definition is reached via
-## `base`, which is a LightBase after EsmServer rehydration.
+## XEMI: the LIGH or REGN whose colour tints this placement's shapes flagged
+## External_Emittance; 0 when absent. Read; used by EsmNode to tint those
+## shapes' materials per placement.
+## Distinct from the placed light's own LIGH base.
+@export var emittance_form_id: int = 0

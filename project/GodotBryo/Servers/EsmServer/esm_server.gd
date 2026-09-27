@@ -615,7 +615,8 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 			(result as FurnitureReference).activation_flags = _u32(activation)
 		if result is ContainerReference:
 			result.is_open = false
-	if result is StaticReference or result is MovableStaticReference:
+	if result is StaticReference or result is MovableStaticReference \
+			or result is ActivatorReference or result is DoorReference or result is LightReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
 	_populate_terminal_lock(result)
 	_authored_reference_cache[id] = result

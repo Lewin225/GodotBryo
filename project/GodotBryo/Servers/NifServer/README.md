@@ -143,6 +143,22 @@ work, and NifServer offers no entry point for it.
 | `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
 
+**Shader flags.** `NifSource.get_nodes()` exposes the two raw FO3/FNV
+`BSShaderProperty` flag words (`shader_flags1` and `shader_flags2`, guarded by
+`has_shader_flags`). NifTreeBuilder preserves both on the material as metadata
+and maps only `ZBuffer_Test` and `ZBuffer_Write` to Godot depth state. Other
+named bits remain available for later, separately verified mappings. Godot's
+ordinary alpha-blend mode still does not cast shadows; depth writing alone
+does not change that.
+
+`NiAlphaProperty` with both blend and test enabled currently uses Godot alpha
+scissor at the authored test threshold as an explicit approximation:
+`StandardMaterial3D` cannot combine both authored operations, so the authored
+edge blending is lost. An authored threshold of zero uses a minimal nonzero
+cutoff to reject fully transparent pixels. Blend-only shapes (including the
+checked `VWindow01:0` pane) remain blended;
+test-only shapes remain alpha-scissored at their authored thresholds.
+
 **Already converted.** Positions are metres, the tree is Y-up and Godot-forward, triangle winding is
 Godot's. No consumer applies an axis correction, a unit scale or a winding flip afterwards.
 `apply_root_basis := false` exists for a caller that has already oriented its own parent.
