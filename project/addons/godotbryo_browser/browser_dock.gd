@@ -1,7 +1,10 @@
 @tool
 extends VBoxContainer
 
-const BASE_TYPES := ["ACTI", "ALCH", "AMMO", "ARMA", "ARMO", "BOOK", "CCRD", "CLAS", "CMNY", "CONT", "CREA", "DOOR", "EYES", "FLST", "FURN", "HAIR", "KEYM", "LIGH", "LVLI", "MISC", "MSTT", "NPC_", "PACK", "RACE", "SCOL", "STAT", "TACT", "TERM", "WEAP"]
+const BASE_TYPES := ["ACTI", "ALCH", "AMMO", "ARMA", "ARMO", "BOOK", "CCRD", "CLAS", "CMNY", "CONT", "CREA", "DOOR", "EYES", "FLST", "FURN", "HAIR", "KEYM", "LIGH", "LVLI", "MISC", "MSTT", "NPC_", "PACK", "QUST", "RACE", "SCOL", "STAT", "TACT", "TERM", "WEAP"]
+## Record types with no placements: they are inspected, never found as
+## references or opened as a scene.
+const UNPLACEABLE_TYPES := ["QUST"]
 const CardScript := preload("res://addons/godotbryo_browser/base_card.gd")
 const ReferenceCardScript := preload("res://addons/godotbryo_browser/reference_card.gd")
 const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_physicaliser.gd")
@@ -182,7 +185,7 @@ func _is_meaningful_full_name(full_name: String, record_type: String) -> bool:
 	return not value.is_empty() and (type_name.is_empty() or value.to_lower() != type_name.to_lower())
 
 func _activate_card(card) -> void:
-	selected_card = card; find_button.disabled = false
+	selected_card = card; find_button.disabled = String(card.row.get("record_type", "")) in UNPLACEABLE_TYPES
 	var resource: EsmBase = server.get_base(int(card.row.get("form_id", 0))) if server != null else null
 	card.set_resource(resource)
 	if preview_button != null:
@@ -195,6 +198,9 @@ func _context_card(card, screen_position: Vector2i) -> void:
 	context_menu.clear()
 	if card.has_method("get_reference_id"):
 		context_menu.add_item("Open As Scene", 2)
+	elif String(card.row.get("record_type", "")) in UNPLACEABLE_TYPES:
+		find_button.disabled = true
+		return
 	else:
 		find_button.disabled = false
 		context_menu.add_item("Find References", 1)
