@@ -12,7 +12,7 @@ would own something only one caller asks for.
 
 A server earns its place when two callers need the same primitive and neither
 owns the format it comes from. That is the case TextureServer exists for:
-NifServer's material builder and terrain both want textures, and a texture path
+NifServer's material builder, UI and terrain all want textures, and a texture path
 means something without a NIF in the picture.
 
 Meshes have one consumer. NifServer asks for them while building a tree, and a

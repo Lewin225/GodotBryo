@@ -19,7 +19,7 @@
 [ext_resource type="Script" uid="uid://cpmim1j54oxtd" path="res://gamebryo/celestial_controller.gd" id="15_celestialcontroller"]
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
 [ext_resource type="Script" uid="uid://co1xkw48mmlyi" path="res://editing_debug_tab.gd" id="17_editingdebug"]
-[ext_resource type="Script" path="res://transition_coordinator.gd" id="18_transitioncoordinator"]
+[ext_resource type="Script" uid="uid://siydwj4v3b3h" path="res://transition_coordinator.gd" id="18_transitioncoordinator"]
 [ext_resource type="Script" path="res://quests_debug_tab.gd" id="19_questsdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
@@ -31,6 +31,8 @@ dof_blur_far_transition = 2000.0
 dof_blur_amount = 0.02
 auto_exposure_min_sensitivity = 200.0
 auto_exposure_max_sensitivity = 400.0
+
+[sub_resource type="Compositor" id="Compositor_i2p71"]
 
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Control
@@ -52,7 +54,14 @@ script/source = "extends ColorRect
 
 
 func _on_tab_container_tab_changed(tab: int) -> void:
-	visible = (tab >= 0)
+	if $\"../TabContainer/Editing/Margin/VBox/ShowBackgroundOnTabScren\".button_pressed:
+		visible = (tab >= 0)
+	else:
+		visible = false
+
+
+func _on_show_background_on_tab_scren_toggled(toggled_on: bool) -> void:
+	visible = toggled_on
 "
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_463cl"]
@@ -65,6 +74,7 @@ script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
 world_streamer = NodePath("WorldStreamerV2")
 terrain_streamer = NodePath("TerrainStreamer")
+transition_coordinator = NodePath("TransitionCoordinator")
 game_time_manager = NodePath("GameTimeManager")
 weather_manager = NodePath("WeatherManager")
 celestial_controller = NodePath("CelestialController")
@@ -72,18 +82,10 @@ cell_label = NodePath("DebugHud/CellLabel")
 sun = NodePath("Sun")
 world_environment = NodePath("WorldEnvironment")
 player = NodePath("Character")
-transition_coordinator = NodePath("TransitionCoordinator")
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
 handle_mouse_capture = true
-
-[node name="TransitionCoordinator" type="Node" parent="." node_paths=PackedStringArray("player", "cell_streamer", "world_streamer", "terrain_streamer")]
-script = ExtResource("18_transitioncoordinator")
-player = NodePath("../Character")
-cell_streamer = NodePath("../CellStreamerV2")
-world_streamer = NodePath("../WorldStreamerV2")
-terrain_streamer = NodePath("../TerrainStreamer")
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")
@@ -98,6 +100,13 @@ spawn_reference_types = 3
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_terrainstreamer")
 terrain3d_debug_dump_grid = Vector2i(-18, 0)
+
+[node name="TransitionCoordinator" type="Node" parent="." unique_id=356150429 node_paths=PackedStringArray("player", "cell_streamer", "world_streamer", "terrain_streamer")]
+script = ExtResource("18_transitioncoordinator")
+player = NodePath("../Character")
+cell_streamer = NodePath("../CellStreamerV2")
+world_streamer = NodePath("../WorldStreamerV2")
+terrain_streamer = NodePath("../TerrainStreamer")
 
 [node name="GameTimeManager" type="Node" parent="." unique_id=391827164]
 script = ExtResource("13_gametimemanager")
@@ -120,6 +129,7 @@ directional_shadow_max_distance = 256.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
+compositor = SubResource("Compositor_i2p71")
 
 [node name="Debug Tools" type="Control" parent="." unique_id=1820856525]
 layout_mode = 3
@@ -142,7 +152,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.4392157)
+color = Color(0, 0, 0, 0.5921569)
 script = SubResource("GDScript_x5p1p")
 
 [node name="TabContainer" type="TabContainer" parent="Debug Tools" unique_id=645294600]
@@ -153,7 +163,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 4
+current_tab = 9
 drag_to_rearrange_enabled = true
 deselect_enabled = true
 tab_0/title = "Script Engine"
@@ -654,6 +664,7 @@ fit_content = true
 scroll_active = false
 
 [node name="World Streaming" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1916369332]
+visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
@@ -1669,7 +1680,6 @@ metadata/_tab_index = 8
 metadata/_tab_name = "Time and Date"
 
 [node name="Editing" type="Control" parent="Debug Tools/TabContainer" unique_id=2147483010]
-visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("17_editingdebug")
@@ -1701,6 +1711,12 @@ text = "Editing"
 layout_mode = 2
 tooltip_text = "Show CK/GECK editor marker meshes. This is visual-only; their authored collision remains active."
 text = "Show Editor Markers"
+
+[node name="ShowBackgroundOnTabScren" type="CheckBox" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=1130591219]
+layout_mode = 2
+tooltip_text = "Show CK/GECK editor marker meshes. This is visual-only; their authored collision remains active."
+button_pressed = true
+text = "Show Background on this screen"
 
 [node name="Hint" type="Label" parent="Debug Tools/TabContainer/Editing/Margin/VBox" unique_id=2147483015]
 layout_mode = 2
@@ -1829,3 +1845,4 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]
+[connection signal="toggled" from="Debug Tools/TabContainer/Editing/Margin/VBox/ShowBackgroundOnTabScren" to="Debug Tools/Background" method="_on_show_background_on_tab_scren_toggled"]

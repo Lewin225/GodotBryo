@@ -278,4 +278,4 @@ func _apply_fog(hour: float, rb: float, re: float, sb: float, se: float) -> void
 	var fog_strength := lerpf(NIGHT_FOG_LIGHT, 1.0, day_frac)
 	_exterior_env.fog_light_color = _base_fog_light_color * fog_strength
 	#_exterior_env.volumetric_fog_enabled = true
-	_exterior_env.volumetric_fog_density = lerpf(0.01, 0.0002, day_frac)
+	_exterior_env.volumetric_fog_density = fog_strength * 0.005 #lerpf(0.01, 0.003, day_frac)

@@ -4,10 +4,10 @@
 [ext_resource type="Script" uid="uid://csqpmnbpusioc" path="res://GodotBryo/Types/Node/esm_humanoid_actor.gd" id="2_qjkh3"]
 [ext_resource type="Script" uid="uid://bqx2mbelqbts1" path="res://player/crosshair.gd" id="3_crosshair"]
 [ext_resource type="Script" uid="uid://c1a8lyyotsrcs" path="res://player/interact_ray.gd" id="4_interactray"]
-[ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 [ext_resource type="PackedScene" uid="uid://cwo34unl5x2h5" path="res://terminal_session.tscn" id="20_terminalsession"]
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="21_messagebox"]
 [ext_resource type="PackedScene" path="res://unlock_session.tscn" id="22_unlocksession"]
+[ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 margin = 0.06
@@ -55,6 +55,7 @@ metadata/_custom_type_script = "uid://csqpmnbpusioc"
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
 top_level = true
+current = true
 far = 6000.0
 
 [node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
@@ -73,6 +74,9 @@ spot_angle = 37.76
 
 [node name="ReflectionProbe" type="ReflectionProbe" parent="Camera3D" unique_id=584686752]
 update_mode = 1
+max_distance = 100.0
+size = Vector3(50, 50, 50)
+ambient_mode = 0
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=98712345]
 
@@ -137,14 +141,13 @@ top_level = true
 [node name="Camera3D" type="Camera3D" parent="Isometric_Cam_Root" unique_id=733539594]
 transform = Transform3D(0.7071068, 0.5, -0.5, 0, 0.70710677, 0.70710677, 0.7071068, -0.5, 0.5, -25.33264, 36.446133, 25.33264)
 projection = 1
-current = true
 size = 15.0
 near = 0.01
 far = 200.0
 script = ExtResource("61_p5tca")
 
-[node name="TerminalSession" parent="." instance=ExtResource("20_terminalsession")]
+[node name="TerminalSession" parent="." unique_id=911412782 instance=ExtResource("20_terminalsession")]
 
-[node name="MessageBox" parent="." instance=ExtResource("21_messagebox")]
+[node name="MessageBox" parent="." unique_id=1440197462 instance=ExtResource("21_messagebox")]
 
-[node name="UnlockSession" parent="." instance=ExtResource("22_unlocksession")]
+[node name="UnlockSession" parent="." unique_id=1618015456 instance=ExtResource("22_unlocksession")]
