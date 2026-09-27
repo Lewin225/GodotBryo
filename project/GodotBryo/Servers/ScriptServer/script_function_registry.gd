@@ -207,6 +207,18 @@ func _register_defaults() -> void:
 		quests.set_script_delay(_quest(a, 0), _number(a, 1))
 		return 1)
 
+	# Quest objectives, by QOBJ index: `SetObjectiveDisplayed Quest Index Flag`,
+	# `SetObjectiveCompleted Quest Index Flag` (Flag 1 sets, 0 clears),
+	# `GetObjectiveDisplayed Quest Index`, `GetObjectiveCompleted Quest Index`.
+	register("GetObjectiveDisplayed", func(a: Array, _c):
+		return _read_objective(a, "is_objective_displayed"))
+	register("GetObjectiveCompleted", func(a: Array, _c):
+		return _read_objective(a, "is_objective_completed"))
+	register("SetObjectiveDisplayed", func(a: Array, _c):
+		return _change_objective(a, "set_objective_displayed", "SetObjectiveDisplayed"))
+	register("SetObjectiveCompleted", func(a: Array, _c):
+		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
+
 	# Actor values of the calling actor, named by script name (`GetAV Health`).
 	register(["GetActorValue", "GetAV"], func(a: Array, ctx: ScriptExecutionContext):
 		return _read_actor_value(a, ctx, "get_current"))
@@ -338,6 +350,35 @@ static func _quest(args: Array, index: int) -> EsmBase:
 	if index >= args.size() or esm_server == null or not esm_server.is_ready():
 		return null
 	return esm_server.find_quest_by_editor_id(str(args[index]))
+
+## 1 when QuestServer's `method` (is_objective_displayed,
+## is_objective_completed) is true for the quest and objective index named by
+## the first two arguments, else 0.
+static func _read_objective(args: Array, method: String) -> int:
+	var quests := _quest_server()
+	var quest := _quest(args, 0)
+	if quests == null or quest == null or not _is_number(args, 1):
+		return 0
+	return 1 if quests.call(method, quest, int(_number(args, 1))) else 0
+
+## Applies QuestServer's `method` (set_objective_displayed,
+## set_objective_completed) to the quest and objective index named by the
+## first two arguments: the third argument sets when nonzero, clears when 0.
+## Without a third argument nothing changes. 1 when applied, else 0.
+static func _change_objective(args: Array, method: String, name: String) -> int:
+	var quests := _quest_server()
+	var quest := _quest(args, 0)
+	if quests == null or quest == null or not _is_number(args, 1):
+		return 0
+	if not _is_number(args, 2):
+		push_warning("ScriptFunctionRegistry: %s %s %s without a flag changes nothing"
+				% [name, quest.editor_id, str(args[1])])
+		return 0
+	return 1 if quests.call(method, quest, int(_number(args, 1)), _number(args, 2) != 0.0) else 0
+
+## Whether argument `index` exists and is a number.
+static func _is_number(args: Array, index: int) -> bool:
+	return index < args.size() and (args[index] is int or args[index] is float)
 
 ## The QuestServer autoload, or null where it does not exist.
 static func _quest_server() -> Node:

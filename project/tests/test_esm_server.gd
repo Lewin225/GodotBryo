@@ -343,6 +343,56 @@ func _check_quest_bases(server, index: Array) -> void:
 				counts["fail"] += int((entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0)
 	_check(counts == {"quests": 436, "enabled": 281, "stages": 1028, "entries": 969, "scripts": 737, "conditioned": 20, "complete": 150, "fail": 126},
 			"every QUST resolves as a QuestBase matching the census (%s)" % [counts])
+	_check_quest_objectives(server, index)
+
+## Every QUST's objectives match native/tools/quest_objective_census, and
+## VMQ01's match its record.
+func _check_quest_objectives(server, index: Array) -> void:
+	var counts := {"quests": 0, "objectives": 0, "empty_text": 0, "with_targets": 0, "targets": 0,
+		"flag_01": 0, "other_flags": 0, "conditioned": 0, "conditions": 0, "duplicate_indexes": 0}
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "QUST":
+			continue
+		var quest := server.get_base(int(row["form_id"])) as QuestBase
+		if quest == null or quest.objectives.is_empty():
+			continue
+		counts["quests"] += 1
+		var seen := {}
+		for objective in quest.objectives:
+			counts["objectives"] += 1
+			counts["empty_text"] += int(objective.text.is_empty())
+			counts["with_targets"] += int(not objective.targets.is_empty())
+			counts["duplicate_indexes"] += int(seen.has(objective.index))
+			seen[objective.index] = true
+			for target in objective.targets:
+				counts["targets"] += 1
+				counts["flag_01"] += int(target.flags == QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
+				counts["other_flags"] += int(target.flags > QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
+				counts["conditioned"] += int(target.condition_count > 0)
+				counts["conditions"] += target.condition_count
+	_check(counts == {"quests": 125, "objectives": 1045, "empty_text": 17, "with_targets": 892, "targets": 1469,
+			"flag_01": 105, "other_flags": 1, "conditioned": 772, "conditions": 1229, "duplicate_indexes": 0},
+			"every QUST's objectives match the census (%s)" % [counts])
+
+	var vmq01 := server.find_quest_by_editor_id("VMQ01") as QuestBase
+	var indexes: Array[int] = []
+	for objective in vmq01.objectives:
+		indexes.append(objective.index)
+	_check(indexes == [20, 10, 30, 40, 50, 60, 25, 45, 34, 36, 46, 38], "VMQ01's 12 objectives in authored order (%s)" % [indexes])
+	var first := vmq01.objectives[0]
+	_check(first.text == "(Optional) Ask around the saloon in Goodsprings for information about your attackers."
+			and first.targets.size() == 1 and first.targets[0].reference_form_id == 0x00104C6D
+			and first.targets[0].flags == 1 and first.targets[0].condition_count == 0,
+			"VMQ01 objective 20: NNAM text and one ACHR target, flag 0x01, no conditions")
+	var novac := vmq01.get_objective(40)
+	var shape: Array = []
+	for target in novac.targets:
+		shape.append([target.reference_form_id, target.flags, target.condition_count])
+	_check(novac.text == "Head to Novac through Nipton. Ask around Novac about your attackers."
+			and shape == [[0x0009289B, 1, 2], [0x000CDF13, 0, 1], [0x00177D36, 1, 2]],
+			"VMQ01 objective 40: three REFR targets with their flags and CTDA counts (%s)" % [shape])
+	_check(vmq01.get_objective(10).targets.is_empty() and vmq01.get_objective(15) == null,
+			"VMQ01 objective 10 has no targets; 15 is not defined")
 
 ## Every base record carrying SCRI exposes it, across every scripted type.
 func _check_base_scripts(server, index: Array) -> void:

@@ -102,7 +102,11 @@ own `ScriptInstance`.
 reads and writes the quest script's variables (its `QuestState.script_instance`, created
 on first use by `get_quest_instance()`), and `run_quest_block()` runs a quest script's
 block with those variables and no calling reference. A name prefix resolves as a
-reference first, then as a quest.
+reference first, then as a quest. `SetObjectiveDisplayed Quest Index Flag` and
+`SetObjectiveCompleted Quest Index Flag` set the objective's state when Flag is nonzero and
+clear it when 0; without Flag they change nothing and warn. `GetObjectiveDisplayed Quest
+Index` and `GetObjectiveCompleted Quest Index` return 1 or 0. Both go through
+`QuestServer`, which refuses an index the quest does not define.
 
 **Message boxes.** `ShowMessage` records the calling reference; `GetButtonPressed`
 returns the clicked button to that reference only, once, and -1 to every other
@@ -167,6 +171,11 @@ Each is a reason to test before building on it.
 | Human Health = base health + EnduranceMult × (Endurance + EnduranceOffset) + LevelMult × (level − 1), with `fAVDHealth*` for the player and `fAVDNPCHealth*` for NPCs | `ActorValue._health` | Nexus Mods forum, "Equal base health for all humans" (forums.nexusmods.com/topic/7329951); Fallout wiki for the player; the level-1 player's 200 at Endurance 5 confirmed in the original | console `GetBaseAV Health` on Doc Mitchell (expects 65) |
 | Creature skill actor values (Barter–Unarmed) are 0; CREA DATA's combat/magic/stealth skills are not mapped onto them | `ActorValue.derive_base` | no source | console `GetAV Guns` on a creature |
 | Templates from a leveled list (LVLN/LVLC: 587 NPC_, 429 CREA with Use Stats) fall back to the record's own stats | `ActorValues.get_stats` | leveled template resolution not implemented | an NPC_ templated from an LVLN, e.g. a generic Powder Ganger |
+| Completing an objective does not display it, and hiding one does not uncomplete it; the two flags are independent | `QuestServer.set_objective_completed` / `set_objective_displayed` | conservative default; no source | console `SetObjectiveCompleted VMQ01 10 1` on a new game, then check the Pip-Boy and `GetObjectiveDisplayed VMQ01 10` |
+| `SetObjective*` without a flag changes nothing | registry `_change_objective` | conservative default; every one of 4785 shipped calls passes a flag | console `SetObjectiveDisplayed VMQ01 10` on a new game |
+| A flag other than 0 or 1 sets (one shipped call: `SetObjectiveDisplayed VMQHouse4 50 2`) | registry `_change_objective` | treated as nonzero = set; no source | console `SetObjectiveDisplayed VMQ01 10 2`, then `GetObjectiveDisplayed VMQ01 10` |
+| An objective index the QUST does not define reads 0 and cannot be set (62 shipped calls name one) | `QuestServer._objective_state` | conservative default; the original may keep state for any index | console `SetObjectiveCompleted VMQ01 15 1`, then `GetObjectiveCompleted VMQ01 15` |
+| Setting or completing an objective does not depend on the quest running or its stage | `QuestServer.set_objective_*` | no check in scripts suggests otherwise; not verified | console `SetObjectiveDisplayed` on a quest that is not running, then the Pip-Boy |
 | Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
 
 ## Files

@@ -26,3 +26,10 @@ extends Resource
 ## Set when a stage whose log entry completes or fails the quest is reached.
 @export var completed: bool = false
 @export var failed: bool = false
+## Objectives shown in the Pip-Boy, as {QOBJ index: true}. Only indexes the
+## QUST defines; set and cleared by QuestServer (SetObjectiveDisplayed).
+@export var objectives_displayed: Dictionary[int, bool] = {}
+## Objectives completed, as {QOBJ index: true}. Only indexes the QUST defines;
+## set and cleared by QuestServer (SetObjectiveCompleted). Independent of
+## objectives_displayed.
+@export var objectives_completed: Dictionary[int, bool] = {}

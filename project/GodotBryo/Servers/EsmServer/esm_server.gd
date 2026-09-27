@@ -1014,9 +1014,11 @@ func _all_subrecords(raw: Dictionary, tag: String) -> Array[PackedByteArray]:
 			result.append(subrecord.get("data", PackedByteArray()))
 	return result
 
-## QUST DATA and stages. Subrecords are read in order: INDX opens a stage,
-## QSDT a log entry of it; CTDA, CNAM and SCTX belong to the current entry.
-## QOBJ starts the objectives, which end the stages.
+## QUST DATA, stages and objectives. Subrecords are read in order. Before the
+## first QOBJ, INDX opens a stage and QSDT a log entry of it; CTDA, CNAM and
+## SCTX belong to the current entry. From the first QOBJ on, QOBJ opens an
+## objective, NNAM is its text, QSTA opens a target of it and CTDA belongs to
+## the current target.
 func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 	var data := _subrecord(raw, "DATA")
 	result.flags = _u8(data)
@@ -1024,14 +1026,33 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 	result.priority = _u8(data, 1) if data.size() >= 2 else 0
 	result.script_delay = _f32(data, 4) if data.size() >= 8 else 0.0
 	result.stages.clear()
+	result.objectives.clear()
 	var stage: QuestStage = null
 	var entry: QuestLogEntry = null
+	var objective: QuestObjective = null
+	var target: QuestObjectiveTarget = null
 	for sub: Dictionary in raw.get("subrecords", []):
 		var tag := String(sub.get("type", ""))
 		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
+		if objective != null or tag == "QOBJ":
+			match tag:
+				"QOBJ":
+					objective = QuestObjective.new()
+					objective.index = _i32(bytes)
+					result.objectives.append(objective)
+					target = null
+				"NNAM":
+					objective.text = _string(bytes)
+				"QSTA":
+					target = QuestObjectiveTarget.new()
+					target.reference_form_id = _u32(bytes)
+					target.flags = _u8(bytes, 4)
+					objective.targets.append(target)
+				"CTDA":
+					if target != null:
+						target.condition_count += 1
+			continue
 		match tag:
-			"QOBJ":
-				break
 			"INDX":
 				stage = QuestStage.new()
 				stage.index = _i16(bytes)

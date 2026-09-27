@@ -92,5 +92,63 @@ func _ready() -> void:
 	script_server.run_debug_line("StopQuest RepconHQFreeform")
 	check(not quests.is_running(repcon), "StopQuest")
 
+	_check_objectives(esm_server, quests, script_server)
+
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Objective state on VMQ01, which defines objectives 10, 20, 25, 30, 34, 36,
+## 38, 40, 45, 46, 50 and 60 (not 15, which one shipped INFO completes).
+func _check_objectives(esm_server, quests, script_server) -> void:
+	var vmq01: QuestBase = esm_server.find_quest_by_editor_id("VMQ01")
+	var state: QuestState = quests.get_quest_state(vmq01)
+	check(not quests.is_objective_displayed(vmq01, 10) and not quests.is_objective_completed(vmq01, 10)
+			and script_server.run_debug_line("GetObjectiveDisplayed VMQ01 10").get("result") == 0,
+			"an objective starts neither displayed nor completed")
+
+	# QuestServer methods.
+	check(quests.set_objective_displayed(vmq01, 20, true) and state.objectives_displayed == {20: true},
+			"set_objective_displayed records the index on the QuestState")
+	check(quests.set_objective_completed(vmq01, 20, true) and quests.is_objective_displayed(vmq01, 20)
+			and state.objectives_completed == {20: true}, "set_objective_completed records it and leaves it displayed")
+	check(quests.set_objective_displayed(vmq01, 20, false) and not quests.is_objective_displayed(vmq01, 20)
+			and quests.is_objective_completed(vmq01, 20), "clearing displayed leaves it completed")
+	quests.set_objective_completed(vmq01, 20, false)
+	check(state.objectives_displayed.is_empty() and state.objectives_completed.is_empty(), "clearing both leaves no state")
+
+	# Script functions.
+	script_server.run_debug_line("SetObjectiveDisplayed VMQ01 10 1")
+	check(script_server.run_debug_line("GetObjectiveDisplayed VMQ01 10").get("result") == 1
+			and script_server.run_debug_line("GetObjectiveCompleted VMQ01 10").get("result") == 0,
+			"SetObjectiveDisplayed VMQ01 10 1 displays objective 10 only")
+	var line := "if GetObjectiveDisplayed VMQ01 10 == 1 && GetObjectiveCompleted VMQ01 10 == 0\nSetObjectiveCompleted VMQ01 10 1\nendif"
+	script_server.run_debug_line(line)
+	check(quests.is_objective_completed(vmq01, 10) and script_server.run_debug_line("GetObjectiveCompleted VMQ01 10").get("result") == 1,
+			"the getters take two arguments inside an expression, and SetObjectiveCompleted completes it")
+	check(script_server.run_debug_line("GetObjectiveDisplayed VMQ01 10").get("result") == 1, "completing leaves it displayed")
+	script_server.run_debug_line("SetObjectiveDisplayed VMQ01 10 0")
+	script_server.run_debug_line("SetObjectiveCompleted VMQ01 10 0")
+	check(not quests.is_objective_displayed(vmq01, 10) and not quests.is_objective_completed(vmq01, 10), "flag 0 clears both")
+	script_server.run_debug_line("SetObjectiveDisplayed VMQ01 50 2")
+	check(quests.is_objective_displayed(vmq01, 50), "a nonzero flag other than 1 sets (VMQHouse4 50 2 is shipped)")
+	script_server.run_debug_line("SetObjectiveCompleted VMQ01 50")
+	check(not quests.is_objective_completed(vmq01, 50)
+			and script_server.run_debug_line("SetObjectiveCompleted VMQ01 50").get("result") == 0,
+			"without a flag nothing changes")
+
+	# An index the quest does not define.
+	check(not quests.set_objective_completed(vmq01, 15, true) and not state.objectives_completed.has(15),
+			"an undefined objective index is refused and not recorded")
+	check(script_server.run_debug_line("SetObjectiveDisplayed VMQ01 15 1").get("result") == 0
+			and script_server.run_debug_line("GetObjectiveDisplayed VMQ01 15").get("result") == 0
+			and not state.objectives_displayed.has(15), "from scripts too: it reads 0 and cannot be set")
+	check(script_server.run_debug_line("GetObjectiveDisplayed NoSuchQuest 10").get("result") == 0,
+			"an unknown quest reads 0")
+
+	# The state survives a save.
+	quests.set_objective_completed(vmq01, 60, true)
+	var path := "user://test_quest_state_objectives.tres"
+	var saved := ResourceSaver.save(state, path)
+	var loaded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as QuestState
+	check(saved == OK and loaded != null and loaded.objectives_displayed == {50: true} and loaded.objectives_completed == {60: true},
+			"objective state saves and loads with the QuestState")

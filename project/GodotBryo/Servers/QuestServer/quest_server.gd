@@ -14,7 +14,7 @@ const DEFAULT_SCRIPT_DELAY := 5.0
 
 var _states: Dictionary = {} # QUST FormID -> QuestState
 var _elapsed: Dictionary = {} # QUST FormID -> seconds since its script last ran
-
+var _warned_objectives: Dictionary = {} # "QUST FormID:index" -> true, one warning each
 ## Starts every quest flagged to run from the start of a new game.
 func begin_game() -> void:
 	for row: Dictionary in EsmServer.get_record_index():
@@ -97,6 +97,58 @@ func set_stage(quest: EsmBase, stage: int) -> void:
 			state.failed = true
 		ScriptServer.run_result_script(entry.script_source, null)
 		break
+
+## Whether the objective is displayed. False for an index the quest does not
+## define, with one warning per quest and index.
+func is_objective_displayed(quest: EsmBase, index: int) -> bool:
+	var state := _objective_state(quest, index)
+	return state != null and state.objectives_displayed.has(index)
+
+## Whether the objective is completed. False for an index the quest does not
+## define, with one warning per quest and index.
+func is_objective_completed(quest: EsmBase, index: int) -> bool:
+	var state := _objective_state(quest, index)
+	return state != null and state.objectives_completed.has(index)
+
+## Displays (true) or hides (false) the objective. Does not change whether it
+## is completed. Returns false and changes nothing for an index the quest does
+## not define, with one warning per quest and index.
+func set_objective_displayed(quest: EsmBase, index: int, displayed: bool) -> bool:
+	var state := _objective_state(quest, index)
+	if state == null:
+		return false
+	if displayed:
+		state.objectives_displayed[index] = true
+	else:
+		state.objectives_displayed.erase(index)
+	return true
+
+## Completes (true) or uncompletes (false) the objective. Does not change
+## whether it is displayed. Returns false and changes nothing for an index the
+## quest does not define, with one warning per quest and index.
+func set_objective_completed(quest: EsmBase, index: int, completed: bool) -> bool:
+	var state := _objective_state(quest, index)
+	if state == null:
+		return false
+	if completed:
+		state.objectives_completed[index] = true
+	else:
+		state.objectives_completed.erase(index)
+	return true
+
+## The quest's state when the quest defines objective `index`, else null. An
+## undefined index on a QUST warns once per quest and index.
+func _objective_state(quest: EsmBase, index: int) -> QuestState:
+	if not quest is QuestBase:
+		return null
+	if (quest as QuestBase).get_objective(index) == null:
+		var key := "%d:%d" % [quest.form_id, index]
+		if not _warned_objectives.has(key):
+			_warned_objectives[key] = true
+			push_warning("QuestServer: %s (0x%08X) has no objective %d; it reads as not displayed or completed and cannot be set"
+					% [quest.editor_id, quest.form_id, index])
+		return null
+	return get_quest_state(quest)
 
 ## Runs each running quest's script GameMode block once its delay has passed.
 func _process(delta: float) -> void:
