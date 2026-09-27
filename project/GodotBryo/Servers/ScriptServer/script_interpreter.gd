@@ -92,7 +92,7 @@ func _assign(target: String, value: Variant, ctx: ScriptExecutionContext) -> voi
 	if instance != null:
 		instance.set_local(target.substr(dot + 1), value)
 	else:
-		push_warning("ScriptInterpreter: '%s' names no reference or quest with a script, assignment dropped" % target)
+		push_warning("ScriptInterpreter: '%s' names no reference or quest with a script, assignment dropped (in %s)" % [target, ctx.describe()])
 
 func _eval(expr: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 	match String(expr["kind"]):

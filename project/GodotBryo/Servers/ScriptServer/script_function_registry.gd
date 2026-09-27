@@ -7,7 +7,7 @@ extends RefCounted
 
 var _functions := {} # lowercased name -> Callable
 var _canonical_names: Array[String] = [] # Original registered names for autocomplete/reflection
-var _warned_missing := {} # name -> true, so a hot GameMode loop doesn't spam the log every frame
+var _warned_missing := {} # "name|SCPT" -> true: one warning per function per script, not every frame
 
 ## ESM reader for record lookups such as ShowMessage's MESG. Null until set.
 var esm: EsmReader = null
@@ -47,9 +47,12 @@ func call_function(name: String, args: Array, ctx: ScriptExecutionContext) -> Va
 	var lower := name.to_lower()
 	if _functions.has(lower):
 		return _functions[lower].call(args, ctx)
-	if not _warned_missing.has(lower):
-		_warned_missing[lower] = true
-		push_warning("ScriptFunctionRegistry: unimplemented script function '%s' -- evaluates to 0/false" % name)
+	# Once per function per script, so every script calling it is listed.
+	var warn_key := "%s|%d" % [lower, ctx.instance.script_form_id if ctx != null and ctx.instance != null else 0]
+	if not _warned_missing.has(warn_key):
+		_warned_missing[warn_key] = true
+		push_warning("ScriptFunctionRegistry: unimplemented script function '%s' in %s -- evaluates to 0/false"
+				% [name, ctx.describe() if ctx != null else "an unknown script"])
 	return 0
 
 func _register_defaults() -> void:
