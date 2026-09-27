@@ -20,6 +20,7 @@
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
 [ext_resource type="Script" uid="uid://co1xkw48mmlyi" path="res://editing_debug_tab.gd" id="17_editingdebug"]
 [ext_resource type="Script" path="res://transition_coordinator.gd" id="18_transitioncoordinator"]
+[ext_resource type="Script" path="res://quests_debug_tab.gd" id="19_questsdebug"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 auto_exposure_enabled = true
@@ -1705,6 +1706,106 @@ text = "Show Editor Markers"
 layout_mode = 2
 text = "Editor markers are hidden by default. NifServer identifies them once for every runtime consumer."
 autowrap_mode = 2
+
+[node name="Quests" type="Control" parent="Debug Tools/TabContainer"]
+visible = false
+custom_maximum_size = Vector2(1920, 1080)
+layout_mode = 2
+script = ExtResource("19_questsdebug")
+metadata/_tab_index = 10
+metadata/_tab_name = "Quests"
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Quests"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 30
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Summary" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="FilterRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Filter" type="LineEdit" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Filter by editor ID or name..."
+clear_button_enabled = true
+
+[node name="Show" type="OptionButton" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow"]
+layout_mode = 2
+selected = 0
+item_count = 5
+popup/item_0/text = "All"
+popup/item_0/id = 0
+popup/item_1/text = "Granted"
+popup/item_1/id = 1
+popup/item_2/text = "Running"
+popup/item_2/id = 2
+popup/item_3/text = "Completed"
+popup/item_3/id = 3
+popup/item_4/text = "Failed"
+popup/item_4/id = 4
+
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="QuestList" type="ItemList" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SetActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+layout_mode = 2
+text = "Set Active"
+
+[node name="ClearActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+layout_mode = 2
+text = "Clear Active"
+
+[node name="ShowScript" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+layout_mode = 2
+text = "Show Script"
+
+[node name="Objectives" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+
+[node name="Stages" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

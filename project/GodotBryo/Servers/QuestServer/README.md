@@ -14,6 +14,7 @@ QUST, not on any actor.
 ```gdscript
 QuestServer.begin_game()                            # start the start-enabled quests
 QuestServer.get_quest_state(quest) -> QuestState     # one per QUST, created on first use
+QuestServer.get_quest_states() -> Array[QuestState]  # every state created so far
 QuestServer.start_quest(quest) / stop_quest(quest) / is_running(quest) -> bool
 QuestServer.is_completed(quest) -> bool
 QuestServer.complete_quest(quest) / fail_quest(quest)            # running is unchanged

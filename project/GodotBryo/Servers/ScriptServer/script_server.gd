@@ -336,29 +336,47 @@ func run_debug_line(line: String, target: EsmReference = null) -> Dictionary:
 		return { "ok": false, "message": String(result["error"]) }
 	return { "ok": true, "result": result, "message": "OK" }
 
-## Snapshot of every reference whose script has run, for the Scripting tab.
+## Snapshot of every script with variables, for the Script Engine tab: each
+## reference whose script has run (`reference` set, `quest` null), then each
+## quest whose script variables exist (`quest` set, `reference` null).
 func get_debug_instances() -> Array:
 	var out: Array = []
 	for reference: EsmReference in _instances:
 		var instance := reference.script_instance
 		if instance == null:
 			continue
-		var interpreter := _get_or_parse(instance.script_form_id)
-		var block_names: PackedStringArray = []
-		if interpreter != null:
-			for block in interpreter.program["blocks"]:
-				block_names.append(String(block["blocktype"]))
-		out.append({
-			"reference": reference,
-			"name": reference.instance_id,
-			"loaded": _loaded.has(reference),
-			"script_form_id": instance.script_form_id,
-			"script_name": String(interpreter.program.get("script_name", "")) if interpreter != null else "",
-			"blocks": block_names,
-			"locals": instance.locals.duplicate(),
-			"source_text": String(function_registry.esm.get_script_data(instance.script_form_id).get("source_text", "")) if function_registry.esm != null else "",
-		})
+		var entry := _debug_entry(instance)
+		entry["reference"] = reference
+		entry["quest"] = null
+		entry["name"] = reference.instance_id
+		entry["loaded"] = _loaded.has(reference)
+		out.append(entry)
+	var quest_server := get_node_or_null("/root/QuestServer")
+	if quest_server != null:
+		for state: QuestState in quest_server.get_quest_states():
+			if state.script_instance == null or state.quest == null:
+				continue
+			var entry := _debug_entry(state.script_instance)
+			entry["reference"] = null
+			entry["quest"] = state.quest
+			entry["name"] = state.quest.editor_id
+			entry["loaded"] = state.running
+			out.append(entry)
 	return out
+
+func _debug_entry(instance: ScriptInstance) -> Dictionary:
+	var interpreter := _get_or_parse(instance.script_form_id)
+	var block_names: PackedStringArray = []
+	if interpreter != null:
+		for block in interpreter.program["blocks"]:
+			block_names.append(String(block["blocktype"]))
+	return {
+		"script_form_id": instance.script_form_id,
+		"script_name": String(interpreter.program.get("script_name", "")) if interpreter != null else "",
+		"blocks": block_names,
+		"locals": instance.locals.duplicate(),
+		"source_text": String(function_registry.esm.get_script_data(instance.script_form_id).get("source_text", "")) if function_registry.esm != null else "",
+	}
 
 func get_debug_usage() -> Dictionary:
 	var local_slots := 0

@@ -47,6 +47,12 @@ func get_quest_state(quest: EsmBase) -> QuestState:
 		_states[quest.form_id] = state
 	return _states[quest.form_id]
 
+## Every QuestState created so far (a quest gets one on first use).
+func get_quest_states() -> Array[QuestState]:
+	var out: Array[QuestState] = []
+	out.assign(_states.values())
+	return out
+
 func start_quest(quest: EsmBase) -> void:
 	var state := get_quest_state(quest)
 	if state != null and not state.running:

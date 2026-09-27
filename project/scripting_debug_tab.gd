@@ -18,6 +18,8 @@ extends Control
 var _engine: Node
 var _instances: Array = []
 var _selected_reference: EsmReference = null
+## The selected entry's reference or, for a quest script, its QuestBase.
+var _selected_key: Object = null
 
 # Command history state
 var _history: Array[String] = []
@@ -297,12 +299,16 @@ func _refresh() -> void:
 	if _engine == null:
 		_usage.text = "ScriptServer not found"
 		return
-	var previous := _selected_reference
 	_instances = _engine.get_debug_instances()
 	_instances_list.clear()
 	for entry in _instances:
-		_instances_list.add_item("%s  —  %s%s" % [entry["name"], entry["script_name"], "" if entry["loaded"] else "  (unloaded)"])
-		if entry["reference"] == previous:
+		var state := ""
+		if entry["quest"] != null:
+			state = "  (quest)" if entry["loaded"] else "  (quest, stopped)"
+		elif not entry["loaded"]:
+			state = "  (unloaded)"
+		_instances_list.add_item("%s  —  %s%s" % [entry["name"], entry["script_name"], state])
+		if _entry_key(entry) == _selected_key and _selected_key != null:
 			_instances_list.select(_instances_list.item_count - 1)
 	var usage: Dictionary = _engine.get_debug_usage()
 	_usage.text = "[color=#61afef]●[/color] [b]%d[/b] script instance(s) ([b]%d[/b] loaded)   •   [color=#98c379]●[/color] [b]%d[/b] cached script(s)   •   [color=#e5c07b]●[/color] [b]%d[/b] local slot(s) ([color=#e5c07b]%d[/color] non-zero)" % [
@@ -313,25 +319,39 @@ func _refresh() -> void:
 func _select_instance(index: int) -> void:
 	if index < 0 or index >= _instances.size():
 		return
+	_selected_key = _entry_key(_instances[index])
 	_selected_reference = _instances[index]["reference"]
 	_show_selected()
 
 
+## Selects a quest's script, as the Quests tab's Show Script does.
+func select_quest(quest: QuestBase) -> void:
+	_selected_key = quest
+	_selected_reference = null
+	_refresh()
+	_show_selected()
+
+
+## An entry's identity: its reference, or its quest for a quest script.
+static func _entry_key(entry: Dictionary) -> Object:
+	return entry["reference"] if entry["reference"] != null else entry["quest"]
+
+
 func _show_selected() -> void:
-	if _selected_reference == null:
-		_details.text = "[color=#7f848e]Select a scripted reference. Console commands run with no calling reference if none is selected.[/color]"
+	if _selected_key == null:
+		_details.text = "[color=#7f848e]Select a scripted reference or quest. Console commands run with no calling reference unless a reference is selected.[/color]"
 		_locals.text = ""
 		_source.text = ""
 		return
 	for entry in _instances:
-		if entry["reference"] != _selected_reference:
+		if _entry_key(entry) != _selected_key:
 			continue
 		var block_badges: PackedStringArray = []
 		for b in entry.get("blocks", []):
 			block_badges.append("[color=#61afef][%s][/color]" % b)
-		_details.text = "[b]📜 %s[/b] [color=#98c379](0x%08X)[/color]   •   [b]Reference:[/b] [color=#e5c07b]%s[/color]   •   [b]Blocks:[/b] %s" % [
+		_details.text = "[b]📜 %s[/b] [color=#98c379](0x%08X)[/color]   •   [b]%s:[/b] [color=#e5c07b]%s[/color]   •   [b]Blocks:[/b] %s" % [
 			entry["script_name"], int(entry["script_form_id"]),
-			entry["name"], " ".join(block_badges) if not block_badges.is_empty() else "[color=#7f848e](none)[/color]"
+			"Quest" if entry["quest"] != null else "Reference", entry["name"], " ".join(block_badges) if not block_badges.is_empty() else "[color=#7f848e](none)[/color]"
 		]
 
 		var locals_dict: Dictionary = entry.get("locals", {})

@@ -340,11 +340,17 @@ Toggle with **Home** while the game is running (`game.tscn`'s `Debug Tools`
 - **Envrioment** (`project/environment_debug_tab.gd`) — the current
   interior cell's real `CELL.XCLL` ambient-lighting data side by side with
   what's actually applied to the live `WorldEnvironment`.
-- **Scripting / Quest / Inventory / CellLoader** — placeholder tabs, not yet
-  wired up. A planned "ESMReader" tab (mesh/texture/material resource-cache
-  hit/miss stats, currently exposed only via `GamebryoMeshResolver.
-  get_cache_stats()`) is scoped for one of these, not the World Streaming
-  tab — keep that separation when adding to either.
+- **Script Engine** (`project/scripting_debug_tab.gd`) — a script console,
+  and every script with variables (references whose script has run, and
+  quests whose script variables exist) with its source, blocks and locals.
+- **Quests** (`project/quests_debug_tab.gd`) — every QUST with its
+  `QuestServer` state (running, stage, objectives, completed/failed), filtered
+  by status; sets the active quest in place of the Pip-Boy, and Show Script
+  opens the quest's script in the Script Engine tab. "Granted" means at least
+  one objective is displayed.
+- A planned "ESMReader" tab (mesh/texture/material resource-cache hit/miss
+  stats, currently exposed only via `GamebryoMeshResolver.get_cache_stats()`)
+  belongs in its own tab, not the World Streaming tab.
 
 All of these tabs are scene-authored in `game.tscn` (real `Label`/`SpinBox`/
 `ItemList` nodes with fixed names) — their scripts only do `@onready $Path`

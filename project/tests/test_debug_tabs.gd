@@ -192,9 +192,66 @@ func _ready() -> void:
 		check(player.noclip == false, "'tcl' command toggles player noclip back to false")
 		script_server.player_node = null
 
+	await _check_quests_tab(game_node)
 	game_node.free()
 
 	_finish()
+
+
+## The Quests tab lists every QUST, filters granted quests, sets the active
+## quest, and Show Script selects the quest's script in the Script Engine tab.
+func _check_quests_tab(game_node: Node) -> void:
+	var esm_server: Node = get_node("/root/EsmServer")
+	if not esm_server.is_ready():
+		await esm_server.esm_ready
+	var source_tabs: Node = game_node.get_node("Debug Tools/TabContainer")
+	var quests_tab: Control = source_tabs.get_node_or_null("Quests")
+	check(quests_tab != null, "Quests tab exists in game.tscn")
+	if quests_tab == null:
+		return
+	var engine_tab: Control = source_tabs.get_node("Scripting")
+	var tabs := TabContainer.new()
+	add_child(tabs)
+	for tab in [engine_tab, quests_tab]:
+		tab.owner = null
+		tab.get_parent().remove_child(tab)
+		tabs.add_child(tab)
+	tabs.current_tab = tabs.get_tab_idx_from_control(quests_tab)
+	await get_tree().process_frame
+	quests_tab._refresh()
+	var quest_count := 0
+	for row: Dictionary in esm_server.get_record_index():
+		quest_count += int(String(row.get("record_type", "")) == "QUST")
+	check(quests_tab._quests.size() == quest_count and quests_tab._list.item_count == quest_count,
+			"the Quests tab lists every QUST (%d)" % quest_count)
+
+	var vmq01: QuestBase = esm_server.find_quest_by_editor_id("VMQ01")
+	QuestServer.set_objective_displayed(vmq01, vmq01.objectives[0].index, true)
+	quests_tab._show.select(quests_tab._show.get_item_index(quests_tab.Show.GRANTED))
+	quests_tab._refresh()
+	check(quests_tab._listed.has(vmq01) and quests_tab._listed.size() == _granted_count(),
+			"Granted lists quests with a displayed objective (%d)" % quests_tab._listed.size())
+	quests_tab._on_quest_selected(quests_tab._listed.find(vmq01))
+	quests_tab._set_active.pressed.emit()
+	check(QuestServer.active_quest == vmq01, "Set Active makes the selected quest the active quest")
+	quests_tab._clear_active.pressed.emit()
+	check(QuestServer.active_quest == null, "Clear Active clears it")
+
+	check(not quests_tab._show_script.disabled, "Show Script is available for a quest with a script")
+	quests_tab._show_script.pressed.emit()
+	check(tabs.current_tab == tabs.get_tab_idx_from_control(engine_tab), "Show Script switches to the Script Engine tab")
+	var selected: PackedInt32Array = engine_tab._instances_list.get_selected_items()
+	check(selected.size() == 1 and engine_tab._instances[selected[0]]["quest"] == vmq01 and engine_tab._source.text.contains("VMQ01"),
+			"and selects VMQ01's script, with its source")
+	QuestServer.set_objective_displayed(vmq01, vmq01.objectives[0].index, false)
+	tabs.queue_free()
+
+
+func _granted_count() -> int:
+	var count := 0
+	for state: QuestState in QuestServer.get_quest_states():
+		count += int(not state.objectives_displayed.is_empty())
+	return count
 
 
 func _finish() -> void:
