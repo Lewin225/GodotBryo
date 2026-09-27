@@ -32,10 +32,13 @@ var get_button_pressed_handler: Callable
 func _init() -> void:
 	_register_defaults()
 
-func register(name: String, fn: Callable) -> void:
-	_functions[name.to_lower()] = fn
-	if not _canonical_names.has(name):
-		_canonical_names.append(name)
+## Registers `fn` under a name, or an Array of names: the full name and its
+## short aliases (`["GetActorValue", "GetAV"]`). Names are case-insensitive.
+func register(names: Variant, fn: Callable) -> void:
+	for name: String in (names if names is Array else [names]):
+		_functions[name.to_lower()] = fn
+		if not _canonical_names.has(name):
+			_canonical_names.append(name)
 
 func is_registered(name: String) -> bool:
 	return _functions.has(name.to_lower())
@@ -205,26 +208,22 @@ func _register_defaults() -> void:
 		return 1)
 
 	# Actor values of the calling actor, named by script name (`GetAV Health`).
-	# Each has a long and a short name.
-	for names: Array in [["GetActorValue", "GetAV"], ["GetBaseActorValue", "GetBaseAV"], ["GetPermanentActorValue", "GetPermAV"]]:
-		var getter: String = {"GetActorValue": "get_current", "GetBaseActorValue": "get_base", "GetPermanentActorValue": "get_permanent"}[names[0]]
-		for name: String in names:
-			register(name, func(a: Array, ctx: ScriptExecutionContext):
-				var values := _actor_values(ctx)
-				var code := _actor_value_code(a, 0)
-				return values.call(getter, code) if values != null and code >= 0 else 0)
-	for names: Array in [["SetActorValue", "SetAV"], ["ModActorValue", "ModAV"], ["ForceActorValue", "ForceAV"],
-			["DamageActorValue", "DamageAV"], ["RestoreActorValue", "RestoreAV"]]:
-		var setter: String = {"SetActorValue": "set_base", "ModActorValue": "modify", "ForceActorValue": "force",
-				"DamageActorValue": "damage_value", "RestoreActorValue": "restore_value"}[names[0]]
-		for name: String in names:
-			register(name, func(a: Array, ctx: ScriptExecutionContext):
-				var values := _actor_values(ctx)
-				var code := _actor_value_code(a, 0)
-				if values == null or code < 0:
-					return 0
-				values.call(setter, code, _number(a, 1))
-				return 1)
+	register(["GetActorValue", "GetAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _read_actor_value(a, ctx, "get_current"))
+	register(["GetBaseActorValue", "GetBaseAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _read_actor_value(a, ctx, "get_base"))
+	register(["GetPermanentActorValue", "GetPermAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _read_actor_value(a, ctx, "get_permanent"))
+	register(["SetActorValue", "SetAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _change_actor_value(a, ctx, "set_base"))
+	register(["ModActorValue", "ModAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _change_actor_value(a, ctx, "modify"))
+	register(["ForceActorValue", "ForceAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _change_actor_value(a, ctx, "force"))
+	register(["DamageActorValue", "DamageAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _change_actor_value(a, ctx, "damage_value"))
+	register(["RestoreActorValue", "RestoreAV"], func(a: Array, ctx: ScriptExecutionContext):
+		return _change_actor_value(a, ctx, "restore_value"))
 	register("GetHealthPercentage", func(_a, ctx: ScriptExecutionContext):
 		var values := _actor_values(ctx)
 		return values.health_percentage() if values != null else 0.0)
@@ -250,8 +249,7 @@ func _register_defaults() -> void:
 			push_warning("ScriptFunctionRegistry: CenterOnCell unavailable -- no cell-transition handler")
 			return 0
 		return center_on_cell_handler.call(a)
-	register("CenterOnCell", center_on_cell)
-	register("COC", center_on_cell)
+	register(["CenterOnCell", "COC"], center_on_cell)
 
 	# Toggles noclip on the calling reference's node, or on the player's body
 	# when there is no calling reference.
@@ -261,9 +259,7 @@ func _register_defaults() -> void:
 			target.noclip = !target.noclip
 			return 1 if target.noclip else 0
 		return 0
-	register("tcl", toggle_collision)
-	register("TCL", toggle_collision)
-	register("ToggleCollision", toggle_collision)
+	register(["ToggleCollision", "TCL"], toggle_collision)
 
 	register("ShowMessage", func(a: Array, ctx: ScriptExecutionContext):
 		# Real argument shape: either an EditorID string (e.g. GSBrokenSMGMsg)
@@ -308,6 +304,24 @@ func _position(ref: EsmReference, space_form_id: int, args: Array) -> void:
 ## The calling reference's actor values, or null when it is not an actor.
 static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:
 	return ctx.calling_reference.get_actor_values() if ctx.calling_reference != null else null
+
+## `method` (get_current, get_base, get_permanent) of the actor value named by
+## the first argument, on the calling actor; 0 for a non-actor.
+static func _read_actor_value(args: Array, ctx: ScriptExecutionContext, method: String) -> float:
+	var values := _actor_values(ctx)
+	var code := _actor_value_code(args, 0)
+	return values.call(method, code) if values != null and code >= 0 else 0.0
+
+## Applies `method` (set_base, modify, force, damage_value, restore_value)
+## with the second argument to the actor value named by the first. 1 when
+## applied, 0 for a non-actor or an unknown actor value.
+static func _change_actor_value(args: Array, ctx: ScriptExecutionContext, method: String) -> int:
+	var values := _actor_values(ctx)
+	var code := _actor_value_code(args, 0)
+	if values == null or code < 0:
+		return 0
+	values.call(method, code, _number(args, 1))
+	return 1
 
 ## The actor value code an argument names, or -1.
 static func _actor_value_code(args: Array, index: int) -> int:
