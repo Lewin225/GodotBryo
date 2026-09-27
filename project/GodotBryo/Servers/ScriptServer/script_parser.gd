@@ -8,19 +8,15 @@ extends RefCounted
 ## mesh_resolver.gd's raw geometry entries use the same convention), not a
 ## class hierarchy -- there's no behavior on these nodes, only shape.
 ##
-## Real, honest scope limit (not fixed this pass -- the design doc's own
-## "488 functions, not all up front" call applies here too): GECK's own call
-## syntax is `[ref.]FuncName arg1 arg2 ...` with NO parens/commas required
-## and no arity table shipped in the data, so a call's own argument count is
-## only knowable in general by knowing the function (there are ~488 of
-## them). This parser only knows the arity of the handful of functions
-## KNOWN_ARITIES lists (the same small set script_function_registry.gd
-## actually implements). A bare call STATEMENT (line "FuncName arg1 arg2" on
-## its own) greedily consumes every identifier/number/string atom to
-## end-of-line as an argument -- right for the overwhelmingly common
-## "one call per line" real-script shape, real deliberate approximation
-## (logged via push_warning if it runs out of expected tokens, never
-## silently wrong).
+## GECK call syntax is `[ref.]FuncName arg1 arg2 ...` with no parens or
+## commas, and the data ships no arity table, so a call inside an expression
+## consumes as many arguments as its function takes: KNOWN_ARITIES for the
+## non-condition functions used in expressions and a few aliases, then
+## ScriptConditionFunctions.ARITIES (every FNV condition function, from
+## xEdit). An expression call to a function in neither table consumes no
+## arguments, and any it had are parsed as whatever follows. A bare call
+## STATEMENT (`FuncName arg1 arg2` on its own line) consumes every atom to
+## the end of the line as an argument.
 ##
 ## An unprefixed, undeclared identifier reached as an expression PRIMARY
 ## (an if/set operand, or an argument to some other call -- see
@@ -77,6 +73,7 @@ const _BINOP_PRECEDENCE := {
 
 var _tokens: Array
 var _pos: int = 0
+var _script_name := "" # from the `scn` line, for warnings
 var _declared_names: Dictionary = {} # lowercased local variable name -> true, accumulated as declarations are parsed
 
 func _init(tokens: Array) -> void:
@@ -92,6 +89,7 @@ func parse() -> Dictionary:
 	if _ident_is(_peek(), "scn") or _ident_is(_peek(), "scriptname"):
 		_advance()
 		result["script_name"] = str(_advance()["value"])
+		_script_name = result["script_name"]
 	_skip_newlines()
 
 	while not _at_eof():
@@ -163,8 +161,11 @@ func _parse_statement() -> Dictionary:
 			return _parse_if()
 		if lower == "set":
 			return _parse_set()
+		if lower == "return":
+			_advance()
+			return { "kind": "return" }
 		if lower in _RESERVED_KEYWORDS:
-			push_warning("ScriptParser: stray '%s' with no matching open block at line %d -- skipped" % [tok["value"], tok["line"]])
+			push_warning("ScriptParser: stray '%s' with no matching open block at line %d of %s -- skipped" % [tok["value"], tok["line"], _script_name])
 			_advance()
 			return { "kind": "noop" }
 	return _parse_call_statement()
@@ -312,7 +313,7 @@ func _parse_primary() -> Dictionary:
 func _parse_ident_primary() -> Dictionary:
 	var call_node := _parse_call_head()
 	var lower_name := String(call_node["name"]).to_lower()
-	var arity: int = KNOWN_ARITIES.get(lower_name, -1)
+	var arity: int = KNOWN_ARITIES.get(lower_name, ScriptConditionFunctions.ARITIES.get(lower_name, -1))
 	if arity == -1:
 		# An identifier reached as an expression PRIMARY (an if/set operand,
 		# or an argument to some other call) -- distinct from one reached as
@@ -333,10 +334,12 @@ func _parse_ident_primary() -> Dictionary:
 		if _declared_names.has(String(call_node["name"]).to_lower()):
 			return { "kind": "var", "name": call_node["name"] }
 		return { "kind": "name", "name": call_node["name"] }
+	# Trailing arguments may be omitted (HasPerk's second, PlaceAtMe's last
+	# three): stop at the end of the line or at an operator that is not the
+	# start of an argument.
 	var args := []
 	for i in range(arity):
-		if _at_newline() or _at_eof():
-			push_warning("ScriptParser: expected %d arg(s) for %s, ran out of tokens" % [arity, call_node["name"]])
+		if _at_newline() or _at_eof() or _at_non_argument_operator():
 			break
 		args.append(_parse_primary())
 	call_node["args"] = args
@@ -354,6 +357,12 @@ func _advance() -> Dictionary:
 	if tok["kind"] != ScriptLexer.Kind.EOF_:
 		_pos += 1
 	return tok
+
+## An operator that cannot begin an argument: anything but `(` or a
+## leading `-`.
+func _at_non_argument_operator() -> bool:
+	var tok := _peek()
+	return tok["kind"] == ScriptLexer.Kind.OP and tok["value"] != "(" and tok["value"] != "-"
 
 func _at_eof() -> bool:
 	return _peek()["kind"] == ScriptLexer.Kind.EOF_

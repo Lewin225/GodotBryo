@@ -37,11 +37,15 @@ func has_block_for(block_type: String, ctx: ScriptExecutionContext, subject: Var
 ## the parameter names `subject`: `Begin OnActivate Player` runs when the
 ## player's reference is the activator, `Begin MenuMode 1001` when subject is
 ## 1001.
+## `Return` ends the run: no further statement or matching block runs.
 func run_block(block_type: String, ctx: ScriptExecutionContext, subject: Variant = null) -> Variant:
 	var result: Variant = null
+	ctx.returned = false
 	for block in program["blocks"]:
 		if String(block["blocktype"]).to_lower() == block_type.to_lower() and _block_accepts(block, ctx, subject):
 			result = _exec_stmts(block["stmts"], ctx)
+			if ctx.returned:
+				break
 	return result
 
 func _block_accepts(block: Dictionary, ctx: ScriptExecutionContext, subject: Variant) -> bool:
@@ -60,6 +64,8 @@ func _exec_stmts(stmts: Array, ctx: ScriptExecutionContext) -> Variant:
 	var result: Variant = null
 	for stmt in stmts:
 		result = _exec_stmt(stmt, ctx)
+		if ctx.returned:
+			break
 	return result
 
 func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> Variant:
@@ -75,6 +81,8 @@ func _exec_stmt(stmt: Dictionary, ctx: ScriptExecutionContext) -> Variant:
 			return _exec_stmts(stmt.get("else_stmts", []), ctx)
 		"call":
 			return _eval(stmt, ctx) # bare call statement -- evaluated for its side effect only
+		"return":
+			ctx.returned = true
 		"noop":
 			pass # a stray reserved keyword the parser skipped -- see script_parser.gd's own doc comment on _RESERVED_KEYWORDS
 	return null

@@ -108,6 +108,9 @@ reference first, then as a quest.
 returns the clicked button to that reference only, once, and -1 to every other
 reference. Many loaded scripts poll `GetButtonPressed` every frame.
 
+**Return.** `Return` ends the run: no later statement of the block, and no later block of
+the same type, runs.
+
 **Elapsed time.** `GetSecondsPassed` returns the real seconds since the calling script
 last ran (0 on its first run), tracked per `ScriptInstance` in the runtime-only
 `last_run_msec`. Every run through `dispatch_event` or `run_quest_block` restarts
@@ -137,12 +140,17 @@ the scene that owns the loaders: `place_at_me_handler(args, calling_reference)`,
 
 ## Known gaps
 
-- **Calls inside expressions parse only for functions in `ScriptParser.KNOWN_ARITIES`.**
-  Any other identifier in expression position becomes a bare name, silently:
-  `set Button to GetButtonPressed` stored the text "GetButtonPressed" until it was added,
-  and a condition calling an unlisted function can evaluate truthy by accident. A full
-  GECK function signature table (name and parameter count) would close this for every
-  script.
+- **A call inside an expression takes its argument count from a table.** Every FNV condition
+  function is covered (`ScriptConditionFunctions.ARITIES`, 338 entries from xEdit), plus
+  `ScriptParser.KNOWN_ARITIES` for non-condition functions and aliases. A function in
+  neither table consumes no arguments inside an expression, and its arguments are parsed as
+  whatever follows. Trailing arguments may be omitted (`HasPerk` with one argument, the
+  optional three of `PlaceAtMe`), so argument collection also stops at an operator.
+- **Mismatched `if` structure is resolved by guesswork.** About 40 shipped scripts have a
+  stray `endif`, `elseif` or `else` (79 in all), e.g. VCassTimerRegionBarkScript's inner
+  `If … Else` is never closed before the outer `ElseIf`. The parser skips each stray
+  keyword with a warning naming the script and line. What the original compiler did with
+  them is only recorded in the compiled SCDA, which is not decoded.
 
 ## Unverified behaviour
 

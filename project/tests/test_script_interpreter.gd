@@ -187,6 +187,35 @@ func _test_script_server() -> void:
 	_test_moves_and_names(esm_server, server)
 	_test_quests_and_messages(esm_server, server)
 	_test_globals(server)
+	_test_parsing_and_return(server)
+
+## Condition functions take their arguments inside expressions, trailing
+## arguments may be omitted, and Return ends the run.
+func _test_parsing_and_return(server) -> void:
+	var parse := func(source: String) -> Dictionary:
+		return ScriptParser.new(ScriptLexer.new(source).tokenize()).parse()
+	var program: Dictionary = parse.call("begin GameMode\nif GetReputation RepNVNCR 1 > 5\nset a to 1\nendif\nend")
+	var branch: Dictionary = program["blocks"][0]["stmts"][0]["branches"][0]
+	var cond: Dictionary = branch["cond"]
+	check(cond["kind"] == "binop" and cond["op"] == ">" and cond["left"]["kind"] == "call" and (cond["left"]["args"] as Array).size() == 2,
+			"a condition function consumes its arguments inside an expression (GetReputation RepNVNCR 1 > 5)")
+	check((branch["stmts"] as Array).size() == 1 and branch["stmts"][0]["kind"] == "set",
+			"its arguments no longer spill into the if body as statements")
+	program = parse.call("begin GameMode\nif HasPerk SomePerk == 1\nset a to 1\nendif\nend")
+	cond = program["blocks"][0]["stmts"][0]["branches"][0]["cond"]
+	check(cond["kind"] == "binop" and cond["op"] == "==" and (cond["left"]["args"] as Array).size() == 1,
+			"an omitted trailing argument leaves the following operator alone (HasPerk SomePerk == 1)")
+	program = parse.call("begin GameMode\nset a to GetPCMiscStat \"Times Addicted\"\nend")
+	var misc: Dictionary = program["blocks"][0]["stmts"][0]["expr"]
+	check(misc["kind"] == "call" and misc["args"][0]["value"] == "Times Addicted", "a quoted argument belongs to its call")
+
+	var ctx := ScriptExecutionContext.new(null)
+	var interpreter := ScriptInterpreter.new(parse.call("short a\nshort b\nbegin GameMode\nset a to 1\nif a\nreturn\nendif\nset a to 2\nend\nbegin GameMode\nset b to 1\nend"), server.function_registry)
+	interpreter.run_block("GameMode", ctx)
+	check(ctx.get_local("a") == 1 and not ctx.has_local("b"), "Return ends the run: no later statement or block runs")
+	var again := ScriptExecutionContext.new(null)
+	ScriptInterpreter.new(parse.call("short a\nbegin GameMode\nset a to 0\nif a\nreturn\nendif\nset a to 2\nend"), server.function_registry).run_block("GameMode", again)
+	check(again.get_local("a") == 2, "a Return not reached does nothing")
 
 ## Global variables (GLOB): read, written, typed, and not confused with locals.
 func _test_globals(server) -> void:

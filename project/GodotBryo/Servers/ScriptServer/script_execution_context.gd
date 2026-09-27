@@ -19,6 +19,8 @@ var instance: ScriptInstance = null
 ## Real seconds since this script last ran, as GetSecondsPassed returns; 0 on
 ## its first run.
 var seconds_passed: float = 0.0
+## Set by a `Return` statement: the rest of this run is skipped.
+var returned: bool = false
 
 func _init(ref: EsmReference = null, script_instance: ScriptInstance = null) -> void:
 	calling_reference = ref

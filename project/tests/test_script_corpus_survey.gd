@@ -63,13 +63,10 @@ func _ready() -> void:
 
 		var blocks: Array = program["blocks"]
 		total_blocks += blocks.size()
-		# Naive substring check -- doesn't account for comments, so a script
-		# whose ENTIRE body is commented out (real, confirmed case:
-		# L38SecretDoorSCRIPT's whole BEGIN OnActivate block is `;`-prefixed
-		# line by line in the actual game data) is a false positive here,
-		# not a parser bug. Left naive deliberately -- this list is a
-		# by-hand spot-check starting point, not a pass/fail signal.
-		if blocks.is_empty() and source.to_lower().find("begin") != -1:
+		# A `begin` outside comments with no parsed block is a parser failure.
+		# All 15 hits of the old raw-text check were scripts whose whole body
+		# is commented out (L38SecretDoorSCRIPT and others).
+		if blocks.is_empty() and _has_uncommented_begin(source):
 			zero_block_despite_begin.append(String(data.get("editor_id", "0x%X" % form_id)))
 
 		for block in blocks:
@@ -97,7 +94,7 @@ func _ready() -> void:
 	_print_top(known_function_counts, 20)
 
 	print("\n--- unknown (unimplemented) function calls (top 30 -- real prioritization data) ---")
-	_print_top(unknown_function_counts, 30)
+	_print_top(unknown_function_counts, 60)
 
 	get_tree().quit(0)
 
@@ -132,6 +129,13 @@ func _count_call(call_expr: Dictionary, registry: ScriptFunctionRegistry, known:
 		known[call_name] = known.get(call_name, 0) + 1
 	else:
 		unknown[call_name] = unknown.get(call_name, 0) + 1
+
+func _has_uncommented_begin(source: String) -> bool:
+	for line in source.split("\n"):
+		var code := line.get_slice(";", 0).strip_edges().to_lower()
+		if code.begins_with("begin"):
+			return true
+	return false
 
 func _print_top(counts: Dictionary, n: int) -> void:
 	var keys := counts.keys()
