@@ -215,9 +215,18 @@ func _rehydrate_and_start() -> void:
 		return
 
 	_startup_complete = true
+	_build_primitive_volume()
 	_on_reference_ready()
 	if _should_request_nif():
 		_request_visual()
+
+## Adds an EsmPrimitiveVolume for the reference's XPRM primitive, once.
+func _build_primitive_volume() -> void:
+	if reference.primitive_type == EsmReference.PrimitiveType.NONE or get_node_or_null("PrimitiveVolume") != null:
+		return
+	var volume := EsmPrimitiveVolume.new()
+	volume.configure(reference)
+	add_child(volume)
 
 ## Starts the desired exact NIF request. The full/LOD choice is the only
 ## difference; NifServer owns all parsing, caching and callback pacing.

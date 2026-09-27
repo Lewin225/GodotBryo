@@ -72,6 +72,14 @@ The target's loaded node then plays it (`EsmNode.on_activated()`). Script `Activ
 performs the built-in activation, or runs `OnActivate` when its second argument is 1;
 its activator is the first argument, or the dispatch's action reference.
 
+**Triggers.** A placed reference with an XPRM primitive gets an `EsmPrimitiveVolume`
+(Area3D) when loaded, whatever its base or script. When its base has a script, the volume
+dispatches `OnTriggerEnter` and `OnTriggerLeave` once per actor and `OnTrigger` every
+physics frame an actor is inside, with that actor's reference as the action ref (so
+`Begin OnTriggerEnter Player` and `IsActionRef player` work). The player's body stands for
+the possessed reference; other bodies for their EsmNode's actor reference. Bodies that are
+not actors are ignored.
+
 **Result scripts.** `run_result_script()` runs a bare statement list with no
 Begin/End (terminal menu items; later dialogue and packages). `subject` is the implicit
 reference of its calls, `action_ref` the activator. It has its own locals, declared in
@@ -175,6 +183,9 @@ Each is a reason to test before building on it.
 | `ResetQuest` clears stage, stages done, objectives, completion and script variables, and leaves the quest running | `QuestServer.reset_quest` | inferred from the name; no source | console `ResetQuest` on a quest with a set stage and a script variable, then `GetStage` and `ShowQuestVars` |
 | `CompleteAllObjectives` completes only; it does not display objectives | `QuestServer.complete_all_objectives` | conservative default, like `SetObjectiveCompleted` | Pip-Boy after console `CompleteAllObjectives` on a quest with hidden objectives |
 | Record header flag 0x400 on item records is the Quest Item flag | `EsmBase.RECORD_FLAG_QUEST_ITEM` | xEdit; the three Van Graff items scripts clear with `SetQuestObject ... 0` all carry it | whether a flagged item can be dropped in the original |
+| XPRM bounds are half-extents (a sphere's radius in X) | `EsmPrimitiveVolume.configure` | xEdit displays them doubled | the vigor tester trigger (REFR 00104C16, 3.1 x 1.3 x 1.4 m half-extents) against where stage 60 fires in the original |
+| Only actors fire triggers, not items or other physics objects | `EsmPrimitiveVolume.actor_reference_for` | no source | a trigger script with an OnTriggerEnter block and a dropped item |
+| `OnTrigger` runs every physics frame while an actor is inside | `EsmPrimitiveVolume._physics_process` | GECK wiki, recalled | a trigger script counting OnTrigger runs |
 | Completing an objective does not display it, and hiding one does not uncomplete it; the two flags are independent | `QuestServer.set_objective_completed` / `set_objective_displayed` | conservative default; no source | console `SetObjectiveCompleted VMQ01 10 1` on a new game, then check the Pip-Boy and `GetObjectiveDisplayed VMQ01 10` |
 | `SetObjective*` without a flag changes nothing | registry `_change_objective` | conservative default; every one of 4785 shipped calls passes a flag | console `SetObjectiveDisplayed VMQ01 10` on a new game |
 | A flag other than 0 or 1 sets (one shipped call: `SetObjectiveDisplayed VMQHouse4 50 2`) | registry `_change_objective` | treated as nonzero = set; no source | console `SetObjectiveDisplayed VMQ01 10 2`, then `GetObjectiveDisplayed VMQ01 10` |

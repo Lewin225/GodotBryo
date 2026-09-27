@@ -101,6 +101,16 @@ struct ReferencePlacement {
 	// field, not a property of the shared STAT base record.
 	uint32_t emittance_form_id = 0;
 
+	// REFR.XPRM (Primitive): a box/sphere/portal-box volume placed with the
+	// reference -- triggers, acoustic spaces, sound emitters, room portals.
+	// 5677 REFRs in FalloutNV.esm carry one (always 32 bytes). Type is xEdit's
+	// enum: 0 None, 1 Box, 2 Sphere, 3 Portal Box. Bounds are converted
+	// Gamebryo units -> meters; xEdit displays them doubled, which suggests
+	// half-extents (a box's half size, a sphere's radius in X), unverified.
+	uint32_t primitive_type = 0;
+	float primitive_bounds[3] = { 0.0f, 0.0f, 0.0f };
+	float primitive_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
 	float position[3] = { 0.0f, 0.0f, 0.0f };
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;

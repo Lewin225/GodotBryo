@@ -585,6 +585,9 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.scale = float(placement.get("scale", 1.0))
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
 	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
+	result.primitive_type = int(placement.get("primitive_type", 0)) as EsmReference.PrimitiveType
+	result.primitive_bounds = placement.get("primitive_bounds", Vector3.ZERO)
+	result.primitive_color = placement.get("primitive_color", Color(0, 0, 0, 0))
 	_populate_reference_inventory(result)
 	_populate_actor_values(result)
 	if result is ActorReference:

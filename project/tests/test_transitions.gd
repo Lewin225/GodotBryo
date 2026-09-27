@@ -66,6 +66,8 @@ func _ready() -> void:
 
 	_check_locks_and_terminal_scripts(esm_server, script_server, player, player_ref)
 
+	await _check_trigger_volume(esm_server, player, player_ref)
+
 	# A granted quest is announced on the player's HUD.
 	var quest_server: Node = get_node("/root/QuestServer")
 	var vms20: QuestBase = esm_server.find_quest_by_editor_id("VMS20")
@@ -149,6 +151,31 @@ func _ready() -> void:
 	check(bool(reply.get("ok", false)), "coc is accepted")
 	check(await _await_space(coordinator, saloon) and player_ref.current_space_form_id == saloon, "coc loads the saloon around the player")
 	_finish()
+
+## The vigor tester's trigger (REFR 00104C16, VCG01VigorTesterTriggerSCRIPT):
+## a Box primitive whose OnTriggerEnter Player sets VCG01 stage 60.
+func _check_trigger_volume(esm_server, player: PlayerController, player_ref: ActorReference) -> void:
+	var trigger: EsmReference = esm_server.get_reference("authored:00104C16")
+	check(trigger != null and trigger.primitive_type == EsmReference.PrimitiveType.BOX and trigger.primitive_bounds.x > 0.0,
+			"the vigor tester trigger carries a Box primitive (%s)" % (trigger.primitive_bounds if trigger != null else "missing"))
+	var node := EsmNode.node_for(trigger)
+	var volume: EsmPrimitiveVolume = node.get_node_or_null("PrimitiveVolume") if node != null else null
+	check(volume != null, "its loaded node has a PrimitiveVolume")
+	if volume == null:
+		return
+	var quests: Node = get_node("/root/QuestServer")
+	var vcg01: QuestBase = esm_server.find_quest_by_editor_id("VCG01")
+	check(not quests.is_stage_done(vcg01, 60), "VCG01 stage 60 is not done before entering")
+	var start := player.global_position
+	player.place_body(volume.global_position, 0.0)
+	for i in 4:
+		await get_tree().physics_frame
+	check(quests.is_stage_done(vcg01, 60), "walking into the trigger runs OnTriggerEnter Player: VCG01 stage 60")
+	check(volume._occupants.has(player_ref), "the trigger counts the player's actor as inside")
+	player.place_body(start, 0.0)
+	for i in 4:
+		await get_tree().physics_frame
+	check(volume._occupants.is_empty(), "leaving the trigger removes the player")
 
 ## Hacking, password notes, lockpicking and terminal item scripts, driven
 ## through the player's own UI.

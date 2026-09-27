@@ -67,6 +67,11 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["scale"] = pl.scale;
 	d["script_form_id"] = static_cast<int64_t>(pl.script_form_id);
 	d["emittance_form_id"] = static_cast<int64_t>(pl.emittance_form_id);
+	d["primitive_type"] = static_cast<int64_t>(pl.primitive_type);
+	if (pl.primitive_type != 0) {
+		d["primitive_bounds"] = Vector3(pl.primitive_bounds[0], pl.primitive_bounds[1], pl.primitive_bounds[2]);
+		d["primitive_color"] = Color(pl.primitive_color[0], pl.primitive_color[1], pl.primitive_color[2], pl.primitive_color[3]);
+	}
 	// phases/2/12-distant-object-lod.md: real per-REFR gate for whether the
 	// game renders a distant-LOD variant of this placement at all -- always
 	// false for SCOL parts (get_scol_parts()), which have no REFR record of
