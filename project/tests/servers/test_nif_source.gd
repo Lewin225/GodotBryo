@@ -580,8 +580,11 @@ func test_corpus_parses() -> void:
 	check(ok == files, "all %d parsed, 0 failures (got %d)" % [files, ok])
 	check(av > 140000, "%d NiAVObject blocks" % av)
 	check(types.size() == 18, "exactly 18 NiAVObject block types corpus-wide (got %d)" % types.size())
-	check(kf_files == 5014, "5,014 shipped KFs in the catalog (got %d)" % kf_files)
-	check(kf_single_sequence == 4981, "4,981 KFs have one sequence (got %d)" % kf_single_sequence)
+	# The catalog lists each path once, from its winning archive. Counting every
+	# BSA entry instead gives 5,014 KFs (4,981 single-sequence): 249 entries are
+	# copies of 178 paths shadowed by a higher-priority archive.
+	check(kf_files == 4765, "4,765 distinct shipped KFs in the catalog (got %d)" % kf_files)
+	check(kf_single_sequence == 4732, "4,732 KFs have one sequence (got %d)" % kf_single_sequence)
 	check(kf_multi_sequence == 33, "33 KFs have multiple sequences (got %d; e.g. %s)" % [
 		kf_multi_sequence, ", ".join(multi_sequence_examples),
 	])
