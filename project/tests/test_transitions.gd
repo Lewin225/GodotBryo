@@ -66,6 +66,14 @@ func _ready() -> void:
 
 	_check_locks_and_terminal_scripts(esm_server, script_server, player, player_ref)
 
+	# A granted quest is announced on the player's HUD.
+	var quest_server: Node = get_node("/root/QuestServer")
+	var vms20: QuestBase = esm_server.find_quest_by_editor_id("VMS20")
+	quest_server.set_objective_displayed(vms20, vms20.objectives[0].index, true)
+	check(player.quest_notice.visible and player.quest_notice.text == "Quest Added: %s" % vms20.full_name,
+			"granting a quest shows 'Quest Added' on the HUD (%s)" % player.quest_notice.text)
+	quest_server.set_objective_displayed(vms20, vms20.objectives[0].index, false)
+
 	# The body writes its position to the reference.
 	player.global_position += Vector3(0.5, 0, 0)
 	await get_tree().physics_frame

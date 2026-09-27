@@ -96,6 +96,9 @@ func _ready() -> void:
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
 	QuestServer.begin_game()
+	# VCG00 plays the intro and hands over to VCG01 (Ain't That a Kick in the
+	# Head); the player starts with VCG01 as the active quest.
+	QuestServer.active_quest = EsmServer.find_quest_by_editor_id("VCG01")
 	var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
 	if start is Dictionary:
 		push_error("game.gd: " + String(start["error"]))

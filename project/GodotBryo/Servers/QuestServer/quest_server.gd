@@ -4,6 +4,9 @@ extends Node
 ## running, their stages, and when their scripts run. Autoloaded as
 ## QuestServer. Quests are world state, shared by every actor and player.
 
+## Emitted when a quest is granted: its first objective is displayed (none
+## was displayed before).
+signal quest_granted(quest: QuestBase)
 ## Emitted when the player's active quest changes; `quest` is null when cleared.
 signal active_quest_changed(quest: QuestBase)
 
@@ -170,7 +173,10 @@ func set_objective_displayed(quest: EsmBase, index: int, displayed: bool) -> boo
 	if state == null:
 		return false
 	if displayed:
+		var granted := state.objectives_displayed.is_empty()
 		state.objectives_displayed[index] = true
+		if granted:
+			quest_granted.emit(quest)
 	else:
 		state.objectives_displayed.erase(index)
 	return true

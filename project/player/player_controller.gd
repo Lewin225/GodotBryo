@@ -118,6 +118,8 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var message_box: MessageBox
 @export var terminal_session: TerminalSession
 @export var unlock_session: UnlockSession
+## HUD label announcing a newly granted quest.
+@export var quest_notice: Label
 
 const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 
@@ -179,8 +181,17 @@ func toggle_noclip() -> bool:
 	return noclip
 
 
+## Seconds a "Quest Added" notice stays on screen.
+const QUEST_NOTICE_SECONDS := 4.0
+var _quest_notice_generation := 0
+
 func _ready() -> void:
 	slide_on_ceiling = false
+	var quest_server := get_tree().root.get_node_or_null("QuestServer")
+	if quest_server != null and not quest_server.quest_granted.is_connected(_on_quest_granted):
+		quest_server.quest_granted.connect(_on_quest_granted)
+	if quest_notice != null:
+		quest_notice.hide()
 	floor_max_angle = deg_to_rad(max_floor_angle)
 
 	if capture_mouse_on_start and handle_mouse_capture:
@@ -708,6 +719,19 @@ func possess(actor_reference: ActorReference) -> void:
 	ScriptServer.player_node = self
 	ScriptServer.message_box = message_box
 	_connect_ui()
+
+## Shows "Quest Added: <name>" for QUEST_NOTICE_SECONDS; a newer notice
+## replaces an older one.
+func _on_quest_granted(quest: QuestBase) -> void:
+	if quest_notice == null:
+		return
+	quest_notice.text = "Quest Added: %s" % (quest.full_name if not quest.full_name.is_empty() else quest.editor_id)
+	quest_notice.show()
+	_quest_notice_generation += 1
+	var generation := _quest_notice_generation
+	await get_tree().create_timer(QUEST_NOTICE_SECONDS).timeout
+	if generation == _quest_notice_generation and quest_notice != null:
+		quest_notice.hide()
 
 func _connect_ui() -> void:
 	if terminal_session != null and not terminal_session.closed.is_connected(_on_terminal_closed):

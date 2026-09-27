@@ -141,6 +141,18 @@ func _check_quest_state_functions(esm_server, quests, script_server) -> void:
 	check(quests.active_quest == vms20 and changed == [vms20], "SetActiveQuest sets the active quest and signals it")
 	quests.active_quest = null
 
+	var vcg01: QuestBase = esm_server.find_quest_by_editor_id("VCG01")
+	check(vcg01.full_name == "Ain't That a Kick in the Head", "VCG01 is Ain't That a Kick in the Head (%s)" % vcg01.full_name)
+	var granted := []
+	quests.quest_granted.connect(func(quest): granted.append(quest))
+	var first: int = vcg01.objectives[0].index
+	var second: int = vcg01.objectives[1].index
+	quests.set_objective_displayed(vcg01, first, true)
+	quests.set_objective_displayed(vcg01, second, true)
+	check(granted == [vcg01], "displaying a quest's first objective grants it, once")
+	quests.set_objective_displayed(vcg01, first, false)
+	quests.set_objective_displayed(vcg01, second, false)
+
 	var rifle: EsmBase = esm_server.find_base_by_editor_id("VFSWeapLaserRifleVanGraff")
 	check(rifle is WeaponBase and (rifle.record_flags & EsmBase.RECORD_FLAG_QUEST_ITEM) != 0 and quests.is_quest_object(rifle),
 			"VFSWeapLaserRifleVanGraff is authored as a quest item (record flag 0x400)")

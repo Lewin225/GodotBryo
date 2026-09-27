@@ -35,6 +35,11 @@ QuestServer.set_objective_completed(quest, index, completed) -> bool   # false: 
 
 `quest` is the QUST record, `QuestBase` (`EsmServer.find_quest_by_editor_id`).
 
+**Granted.** A quest is granted when its first objective is displayed (none was
+displayed before); `quest_granted(quest)` is emitted then. The player's HUD shows
+"Quest Added: <name>" for it. That this is when the original announces a quest is inferred,
+not verified.
+
 **Active quest.** `active_quest` is the quest the player has selected, as the Pip-Boy's
 active quest; no shipped script sets it. Assigning it emits `active_quest_changed`.
 
