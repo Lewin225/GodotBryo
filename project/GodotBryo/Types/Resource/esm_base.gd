@@ -6,6 +6,15 @@ extends Resource
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var form_id: int = 0
 ## EDID. Read; used to find records by editor ID and for display.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var editor_id: String = ""
+## Record header flag 0x400 on item records (xEdit: Quest Item). In
+## FalloutNV.esm 252 item bases carry it (MISC 179, KEYM 52, ARMO 9, WEAP 8,
+## ALCH 3, BOOK 1), among them the three Van Graff items scripts clear with
+## `SetQuestObject ... 0`. On other record types the bit means something else.
+const RECORD_FLAG_QUEST_ITEM := 0x400
+
+## Record header flags. Read; used by QuestServer for an item's authored
+## quest-item state (RECORD_FLAG_QUEST_ITEM).
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var record_flags: int = 0
 ## Record header type tag (NPC_, DOOR, ...). Read; used by EsmServer to pick
 ## the Base and Reference classes and by type checks such as QUST.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var record_type: String = ""

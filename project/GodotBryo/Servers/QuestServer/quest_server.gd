@@ -4,10 +4,8 @@ extends Node
 ## running, their stages, and when their scripts run. Autoloaded as
 ## QuestServer. Quests are world state, shared by every actor and player.
 
-## Whether a stage flagged to complete the quest has been set.
-func is_completed(quest: EsmBase) -> bool:
-	var state := get_quest_state(quest)
-	return state != null and state.completed
+## Emitted when the player's active quest changes; `quest` is null when cleared.
+signal active_quest_changed(quest: QuestBase)
 
 ## Seconds between runs of a quest script whose QUST record gives no delay.
 const DEFAULT_SCRIPT_DELAY := 5.0
@@ -15,6 +13,19 @@ const DEFAULT_SCRIPT_DELAY := 5.0
 var _states: Dictionary = {} # QUST FormID -> QuestState
 var _elapsed: Dictionary = {} # QUST FormID -> seconds since its script last ran
 var _warned_objectives: Dictionary = {} # "QUST FormID:index" -> true, one warning each
+## Items whose quest-item state a script set (SetQuestObject), by base FormID:
+## base FormID -> bool. Items not listed use their authored record flag.
+var _quest_objects: Dictionary = {}
+
+## The quest the player has selected as active (the Pip-Boy's active quest), or
+## null. Not set by any shipped script; set by the player's UI.
+var active_quest: QuestBase = null:
+	set(value):
+		if value == active_quest:
+			return
+		active_quest = value
+		active_quest_changed.emit(value)
+
 ## Starts every quest flagged to run from the start of a new game.
 func begin_game() -> void:
 	for row: Dictionary in EsmServer.get_record_index():
@@ -51,6 +62,41 @@ func stop_quest(quest: EsmBase) -> void:
 func is_running(quest: EsmBase) -> bool:
 	var state := get_quest_state(quest)
 	return state != null and state.running
+
+## Whether the quest is completed: by CompleteQuest, or by a stage whose log
+## entry completes it.
+func is_completed(quest: EsmBase) -> bool:
+	var state := get_quest_state(quest)
+	return state != null and state.completed
+
+## Marks the quest completed. Whether it keeps running is not changed.
+func complete_quest(quest: EsmBase) -> void:
+	var state := get_quest_state(quest)
+	if state != null:
+		state.completed = true
+
+## Marks the quest failed. Whether it keeps running is not changed.
+func fail_quest(quest: EsmBase) -> void:
+	var state := get_quest_state(quest)
+	if state != null:
+		state.failed = true
+
+## Returns the quest to its state before any stage was set: stage 0, no
+## stages done, no objectives displayed or completed, not completed or failed,
+## script variables discarded (recreated at 0 on next use), authored script
+## delay. Whether it is running is not changed.
+func reset_quest(quest: EsmBase) -> void:
+	var state := get_quest_state(quest)
+	if state == null:
+		return
+	state.stage = 0
+	state.stages_done.clear()
+	state.objectives_displayed.clear()
+	state.objectives_completed.clear()
+	state.completed = false
+	state.failed = false
+	state.script_instance = null
+	state.script_delay = -1.0
 
 ## Seconds between runs of the quest's script.
 func get_script_delay(quest: EsmBase) -> float:
@@ -135,6 +181,30 @@ func set_objective_completed(quest: EsmBase, index: int, completed: bool) -> boo
 	else:
 		state.objectives_completed.erase(index)
 	return true
+
+## Completes every objective the quest defines. Whether each is displayed is
+## not changed.
+func complete_all_objectives(quest: EsmBase) -> void:
+	var state := get_quest_state(quest)
+	if state == null:
+		return
+	for objective in (quest as QuestBase).objectives:
+		state.objectives_completed[objective.index] = true
+
+## Whether `item` is a quest item: the state SetQuestObject last gave it, else
+## its authored record flag (EsmBase.RECORD_FLAG_QUEST_ITEM).
+func is_quest_object(item: EsmBase) -> bool:
+	if item == null:
+		return false
+	if _quest_objects.has(item.form_id):
+		return bool(_quest_objects[item.form_id])
+	return (item.record_flags & EsmBase.RECORD_FLAG_QUEST_ITEM) != 0
+
+## Makes `item` a quest item (true) or not (false), overriding its authored
+## record flag.
+func set_quest_object(item: EsmBase, is_quest_item: bool) -> void:
+	if item != null:
+		_quest_objects[item.form_id] = is_quest_item
 
 ## The quest's state when the quest defines objective `index`, else null. An
 ## undefined index on a QUST warns once per quest and index.

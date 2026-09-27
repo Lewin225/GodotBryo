@@ -675,6 +675,7 @@ Dictionary EsmReader::get_record_data(int64_t form_id) const {
 		if (!record) return out;
 		out["form_id"] = static_cast<int64_t>(record->form_id);
 		out["record_type"] = String(record->type.c_str());
+		out["record_flags"] = static_cast<int64_t>(record->flags);
 		Array subrecords;
 		const auto data = file_.read_record_data(*record);
 		for (const auto &sub : esm::EsmFile::parse_subrecords(data)) {

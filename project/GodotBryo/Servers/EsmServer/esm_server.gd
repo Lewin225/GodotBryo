@@ -54,6 +54,7 @@ var _placed_reference_cells := PackedInt64Array() # filing CELL, same order
 var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID -> FormID
 var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
 var _global_by_editor_id: Dictionary = {} # lowercased GLOB EDID -> FormID
+var _base_by_editor_id: Dictionary = {} # lowercased EDID of any non-placement record -> FormID
 var _game_setting_by_editor_id: Dictionary = {} # lowercased GMST EDID -> FormID
 var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 ## References whose cell has changed since they were built, by current CELL:
@@ -117,6 +118,7 @@ func _process(_delta: float) -> void:
 	_reference_by_editor_id = _load_result.get("reference_by_editor_id", {})
 	_quest_by_editor_id = _load_result.get("quest_by_editor_id", {})
 	_global_by_editor_id = _load_result.get("global_by_editor_id", {})
+	_base_by_editor_id = _load_result.get("base_by_editor_id", {})
 	_game_setting_by_editor_id = _load_result.get("game_setting_by_editor_id", {})
 	state = "ready"
 	esm_ready.emit()
@@ -152,6 +154,7 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 	var by_editor_id := {}
 	var quests := {}
 	var globals := {}
+	var bases := {}
 	var game_settings := {}
 	for row: Dictionary in record_index:
 		var record_type := String(row.get("record_type", ""))
@@ -160,14 +163,16 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 			continue
 		if record_type == "REFR" or record_type == "ACHR" or record_type == "ACRE":
 			by_editor_id[editor_id.to_lower()] = int(row["form_id"])
-		elif record_type == "QUST":
+			continue
+		bases[editor_id.to_lower()] = int(row["form_id"])
+		if record_type == "QUST":
 			quests[editor_id.to_lower()] = int(row["form_id"])
 		elif record_type == "GLOB":
 			globals[editor_id.to_lower()] = int(row["form_id"])
 		elif record_type == "GMST":
 			game_settings[editor_id.to_lower()] = int(row["form_id"])
 	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id,
-			"quest_by_editor_id": quests, "global_by_editor_id": globals,
+			"quest_by_editor_id": quests, "global_by_editor_id": globals, "base_by_editor_id": bases,
 			"game_setting_by_editor_id": game_settings}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
@@ -305,6 +310,12 @@ func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 ## `QuestEditorID.var`.
 func find_quest_by_editor_id(editor_id: String) -> EsmBase:
 	var form_id := int(_quest_by_editor_id.get(editor_id.to_lower(), 0))
+	return get_base(form_id) if form_id != 0 else null
+
+## The non-placement record (a base, QUST, GLOB, ...) with this editor ID, or
+## null. Case-insensitive, from an in-memory index.
+func find_base_by_editor_id(editor_id: String) -> EsmBase:
+	var form_id := int(_base_by_editor_id.get(editor_id.to_lower(), 0))
 	return get_base(form_id) if form_id != 0 else null
 
 ## The GLOB record with this editor ID as {"form_id", "editor_id", "type"
@@ -709,6 +720,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result.editor_id = _string(_subrecord(raw, "EDID"))
 	result.full_name = _string(_subrecord(raw, "FULL"))
 	result.script_form_id = _u32(_subrecord(raw, "SCRI"))
+	result.record_flags = int(raw.get("record_flags", 0))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
 	elif result is QuestBase:

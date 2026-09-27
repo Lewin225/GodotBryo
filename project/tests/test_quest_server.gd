@@ -93,12 +93,63 @@ func _ready() -> void:
 	check(not quests.is_running(repcon), "StopQuest")
 
 	_check_objectives(esm_server, quests, script_server)
+	_check_quest_state_functions(esm_server, quests, script_server)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
 ## Objective state on VMQ01, which defines objectives 10, 20, 25, 30, 34, 36,
 ## 38, 40, 45, 46, 50 and 60 (not 15, which one shipped INFO completes).
+## CompleteQuest, FailQuest, CompleteAllObjectives, ResetQuest, SetActiveQuest
+## and SetQuestObject, on quests and items shipped scripts call them on.
+func _check_quest_state_functions(esm_server, quests, script_server) -> void:
+	var vms03: QuestBase = esm_server.find_quest_by_editor_id("VMS03")
+	var was_running: bool = quests.is_running(vms03)
+	script_server.run_debug_line("CompleteQuest VMS03")
+	check(quests.is_completed(vms03) and quests.is_running(vms03) == was_running, "CompleteQuest completes the quest and leaves whether it runs alone")
+	var pimp: QuestBase = esm_server.find_quest_by_editor_id("VFSAtomicPimp")
+	script_server.run_debug_line("FailQuest VFSAtomicPimp")
+	check(quests.get_quest_state(pimp).failed, "FailQuest fails the quest")
+
+	var vms20: QuestBase = esm_server.find_quest_by_editor_id("VMS20")
+	check(vms20 != null and not vms20.objectives.is_empty(), "VMS20 has objectives (%d)" % (vms20.objectives.size() if vms20 != null else 0))
+	var first_index: int = vms20.objectives[0].index
+	quests.set_objective_displayed(vms20, first_index, true)
+	script_server.run_debug_line("CompleteAllObjectives VMS20")
+	var all_completed := true
+	for objective in vms20.objectives:
+		all_completed = all_completed and quests.is_objective_completed(vms20, objective.index)
+	check(all_completed, "CompleteAllObjectives completes every objective VMS20 defines")
+	var displayed_count: int = quests.get_quest_state(vms20).objectives_displayed.size()
+	check(displayed_count == 1, "and changes no objective's displayed state (%d displayed)" % displayed_count)
+
+	var radio: QuestBase = esm_server.find_quest_by_editor_id("VEFR01NCRGood2EmergencyRadio")
+	var radio_state: QuestState = quests.get_quest_state(radio)
+	quests.start_quest(radio)
+	quests.set_stage(radio, 10)
+	radio_state.completed = true
+	if not radio.objectives.is_empty():
+		quests.set_objective_displayed(radio, radio.objectives[0].index, true)
+	script_server.run_debug_line("ResetQuest VEFR01NCRGood2EmergencyRadio")
+	check(radio_state.stage == 0 and radio_state.stages_done.is_empty() and radio_state.objectives_displayed.is_empty()
+			and not radio_state.completed and radio_state.running, "ResetQuest clears stages, objectives and completion, and leaves it running")
+	quests.stop_quest(radio)
+
+	var changed := []
+	quests.active_quest_changed.connect(func(quest): changed.append(quest))
+	script_server.run_debug_line("SetActiveQuest VMS20")
+	check(quests.active_quest == vms20 and changed == [vms20], "SetActiveQuest sets the active quest and signals it")
+	quests.active_quest = null
+
+	var rifle: EsmBase = esm_server.find_base_by_editor_id("VFSWeapLaserRifleVanGraff")
+	check(rifle is WeaponBase and (rifle.record_flags & EsmBase.RECORD_FLAG_QUEST_ITEM) != 0 and quests.is_quest_object(rifle),
+			"VFSWeapLaserRifleVanGraff is authored as a quest item (record flag 0x400)")
+	script_server.run_debug_line("SetQuestObject VFSWeapLaserRifleVanGraff 0")
+	check(not quests.is_quest_object(rifle), "SetQuestObject 0 makes it an ordinary item")
+	script_server.run_debug_line("SetQuestObject VFSWeapLaserRifleVanGraff 1")
+	check(quests.is_quest_object(rifle), "SetQuestObject 1 makes it a quest item again")
+	check(not quests.is_quest_object(esm_server.find_base_by_editor_id("WeapNV9mmPistol")), "an unflagged weapon is not a quest item")
+
 func _check_objectives(esm_server, quests, script_server) -> void:
 	var vmq01: QuestBase = esm_server.find_quest_by_editor_id("VMQ01")
 	var state: QuestState = quests.get_quest_state(vmq01)

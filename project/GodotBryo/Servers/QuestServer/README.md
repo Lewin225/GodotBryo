@@ -16,6 +16,11 @@ QuestServer.begin_game()                            # start the start-enabled qu
 QuestServer.get_quest_state(quest) -> QuestState     # one per QUST, created on first use
 QuestServer.start_quest(quest) / stop_quest(quest) / is_running(quest) -> bool
 QuestServer.is_completed(quest) -> bool
+QuestServer.complete_quest(quest) / fail_quest(quest)            # running is unchanged
+QuestServer.reset_quest(quest)                                    # clears stages, objectives, completion, variables
+QuestServer.complete_all_objectives(quest)
+QuestServer.active_quest: QuestBase                               # the player's selected quest; active_quest_changed
+QuestServer.is_quest_object(item) -> bool / set_quest_object(item, is_quest_item)
 QuestServer.get_script_delay(quest) -> float
 QuestServer.set_script_delay(quest, seconds)
 QuestServer.get_stage(quest) -> int
@@ -28,6 +33,13 @@ QuestServer.set_objective_completed(quest, index, completed) -> bool   # false: 
 ```
 
 `quest` is the QUST record, `QuestBase` (`EsmServer.find_quest_by_editor_id`).
+
+**Active quest.** `active_quest` is the quest the player has selected, as the Pip-Boy's
+active quest; no shipped script sets it. Assigning it emits `active_quest_changed`.
+
+**Quest items.** `is_quest_object()` reports an item base's quest-item state: what
+`SetQuestObject` last set, else its record header flag 0x400 (`EsmBase.RECORD_FLAG_QUEST_ITEM`,
+on 252 item bases in FalloutNV.esm). Neither this nor `active_quest` is saved yet.
 
 **State.** `QuestState` holds the quest's script variables (`script_instance`, created by
 `ScriptServer` on first use), `stage`, `stages_done`, `running`, a `script_delay`

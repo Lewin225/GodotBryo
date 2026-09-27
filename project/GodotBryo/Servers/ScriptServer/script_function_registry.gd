@@ -207,6 +207,33 @@ func _register_defaults() -> void:
 		quests.set_script_delay(_quest(a, 0), _number(a, 1))
 		return 1)
 
+	# Quest state: `CompleteQuest Quest`, `FailQuest Quest`, `ResetQuest Quest`,
+	# `CompleteAllObjectives Quest`, `SetActiveQuest Quest`.
+	register("CompleteQuest", func(a: Array, _c):
+		return _apply_to_quest(a, "complete_quest"))
+	register("FailQuest", func(a: Array, _c):
+		return _apply_to_quest(a, "fail_quest"))
+	register("ResetQuest", func(a: Array, _c):
+		return _apply_to_quest(a, "reset_quest"))
+	register("CompleteAllObjectives", func(a: Array, _c):
+		return _apply_to_quest(a, "complete_all_objectives"))
+	register("SetActiveQuest", func(a: Array, _c):
+		var quests := _quest_server()
+		var quest := _quest(a, 0)
+		if quests == null or quest == null:
+			return 0
+		quests.active_quest = quest
+		return 1)
+	# `SetQuestObject Item Flag`: 1 makes the item a quest item, 0 does not.
+	register("SetQuestObject", func(a: Array, _c):
+		var quests := _quest_server()
+		var esm_server := EsmReference.get_esm_server()
+		var item: EsmBase = esm_server.find_base_by_editor_id(str(a[0])) if not a.is_empty() and esm_server != null and esm_server.is_ready() else null
+		if quests == null or item == null or not _is_number(a, 1):
+			return 0
+		quests.set_quest_object(item, _number(a, 1) != 0.0)
+		return 1)
+
 	# Quest objectives, by QOBJ index: `SetObjectiveDisplayed Quest Index Flag`,
 	# `SetObjectiveCompleted Quest Index Flag` (Flag 1 sets, 0 clears),
 	# `GetObjectiveDisplayed Quest Index`, `GetObjectiveCompleted Quest Index`.
@@ -350,6 +377,16 @@ static func _quest(args: Array, index: int) -> EsmBase:
 	if index >= args.size() or esm_server == null or not esm_server.is_ready():
 		return null
 	return esm_server.find_quest_by_editor_id(str(args[index]))
+
+## Calls QuestServer's `method` on the quest named by the first argument. 1
+## when the quest exists, else 0.
+static func _apply_to_quest(args: Array, method: String) -> int:
+	var quests := _quest_server()
+	var quest := _quest(args, 0)
+	if quests == null or quest == null:
+		return 0
+	quests.call(method, quest)
+	return 1
 
 ## 1 when QuestServer's `method` (is_objective_displayed,
 ## is_objective_completed) is true for the quest and objective index named by

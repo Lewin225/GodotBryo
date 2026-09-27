@@ -134,8 +134,9 @@ public:
 
 	// General typed-resource source access: returns the record identity and
 	// each raw subrecord without interpreting fields that are still being
-	// verified. { "form_id": int, "record_type": String, "subrecords":
-	// Array[{ "type": String, "data": PackedByteArray }] }.
+	// verified. { "form_id": int, "record_type": String, "record_flags": int
+	// (the record header flags), "subrecords": Array[{ "type": String,
+	// "data": PackedByteArray }] }.
 	Dictionary get_record_data(int64_t form_id) const;
 	// Editor-facing record index: one lightweight entry per record, with no
 	// raw payload. Intended for the ESM browser/resource provider.
