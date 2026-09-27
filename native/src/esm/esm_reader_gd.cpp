@@ -288,7 +288,9 @@ Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
 			std::string edid, title, text;
 			PackedStringArray buttons;
 			uint32_t flags = 0;
-			float display_time = 2.0f;
+			// Seconds a notification stays up. TNAM is a uint32 of whole seconds
+			// (xEdit; 289 of 1144 MESG carry one, 1-15). Without it, 5 s.
+			float display_time = 5.0f;
 			for (const auto &s : subs) {
 				if (s.type == "EDID") {
 					edid = s.as_string();
@@ -301,7 +303,7 @@ Dictionary EsmReader::get_message_by_editor_id(const String &editor_id) const {
 				} else if (s.type == "DNAM" && s.size >= 4) {
 					flags = *reinterpret_cast<const uint32_t*>(s.data);
 				} else if (s.type == "TNAM" && s.size >= 4) {
-					display_time = *reinterpret_cast<const float*>(s.data);
+					display_time = static_cast<float>(*reinterpret_cast<const uint32_t*>(s.data));
 				}
 			}
 			if (edid == target) {
@@ -339,7 +341,9 @@ Dictionary EsmReader::get_message_by_form_id(int64_t form_id) const {
 			std::string edid, title, text;
 			PackedStringArray buttons;
 			uint32_t flags = 0;
-			float display_time = 2.0f;
+			// Seconds a notification stays up. TNAM is a uint32 of whole seconds
+			// (xEdit; 289 of 1144 MESG carry one, 1-15). Without it, 5 s.
+			float display_time = 5.0f;
 			for (const auto &s : subs) {
 				if (s.type == "EDID") {
 					edid = s.as_string();
@@ -352,7 +356,7 @@ Dictionary EsmReader::get_message_by_form_id(int64_t form_id) const {
 				} else if (s.type == "DNAM" && s.size >= 4) {
 					flags = *reinterpret_cast<const uint32_t*>(s.data);
 				} else if (s.type == "TNAM" && s.size >= 4) {
-					display_time = *reinterpret_cast<const float*>(s.data);
+					display_time = static_cast<float>(*reinterpret_cast<const uint32_t*>(s.data));
 				}
 			}
 			found["form_id"] = static_cast<int64_t>(r.form_id);

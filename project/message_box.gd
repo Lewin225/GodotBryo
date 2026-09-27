@@ -21,6 +21,8 @@ var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 var _is_dialog_active: bool = false
 var _button_nodes: Array[Button] = []
 var _toast_tween: Tween = null
+## Notifications waiting for the current one to fade: [{text, display_time}].
+var _toast_queue: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -61,6 +63,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
+
+## Seconds a notification stays up when its MESG has no TNAM display time.
+const DEFAULT_DISPLAY_TIME := 5.0
 
 ## Displays a parsed MESG record dictionary:
 ## { "form_id": int, "editor_id": String, "title": String, "text": String,
@@ -130,24 +135,32 @@ func _on_button_pressed(index: int) -> void:
 	button_clicked.emit(index)
 
 
+## Queues a notification; notifications show one after another, each for its
+## display time.
 func _show_toast_notification(msg: Dictionary) -> void:
 	var text: String = String(msg.get("text", ""))
 	if text.strip_edges().is_empty():
 		text = String(msg.get("title", ""))
 	if text.strip_edges().is_empty():
 		return
+	_toast_queue.append({
+		"text": text,
+		"display_time": maxf(float(msg.get("display_time", DEFAULT_DISPLAY_TIME)), 1.0),
+	})
+	if _toast_tween == null or not _toast_tween.is_valid():
+		_show_next_toast()
 
-	var display_time: float = maxf(float(msg.get("display_time", 2.5)), 1.0)
-
-	_toast_label.text = text
+func _show_next_toast() -> void:
+	if _toast_queue.is_empty():
+		_toast_root.visible = false
+		_toast_tween = null
+		return
+	var toast: Dictionary = _toast_queue.pop_front()
+	_toast_label.text = String(toast["text"])
 	_toast_root.visible = true
-
-	if _toast_tween != null and _toast_tween.is_valid():
-		_toast_tween.kill()
-
 	_toast_panel.modulate.a = 0.0
 	_toast_tween = create_tween()
 	_toast_tween.tween_property(_toast_panel, "modulate:a", 1.0, 0.2)
-	_toast_tween.tween_interval(display_time)
+	_toast_tween.tween_interval(float(toast["display_time"]))
 	_toast_tween.tween_property(_toast_panel, "modulate:a", 0.0, 0.4)
-	_toast_tween.tween_callback(func() -> void: _toast_root.visible = false)
+	_toast_tween.tween_callback(_show_next_toast)

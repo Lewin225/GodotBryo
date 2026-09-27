@@ -57,6 +57,12 @@ func _ready() -> void:
 	check(msg_box._toast_root.visible == true, "Toast notification root is visible")
 	check(msg_box._toast_label.text == "...", "Toast notification label displays message text")
 
+	# Notifications queue: a second one waits for the first to fade.
+	msg_box.display_message({"text": "second", "is_message_box": false, "display_time": 1.0})
+	check(msg_box._toast_label.text == "..." and msg_box._toast_queue.size() == 1, "a second notification waits behind the first")
+	msg_box._toast_tween.custom_step(60.0)
+	check(msg_box._toast_label.text == "second" and msg_box._toast_queue.is_empty(), "and shows once the first has faded")
+
 	msg_box.free()
 	script_engine.message_box = null
 	_finish()

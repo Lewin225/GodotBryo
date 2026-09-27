@@ -37,6 +37,10 @@ func _ready() -> void:
 	check(bool(ww_msg.get("is_message_box", true)) == false, "WildWastelandMessage is_message_box is false")
 	check(ww_msg.get("text", "") == "...", "WildWastelandMessage text is '...'")
 	check(float(ww_msg.get("display_time", 0.0)) > 0.0, "WildWastelandMessage has positive display_time")
+	# TNAM is whole seconds (uint32): VCGTutorialJump is authored for 10.
+	var jump_msg: Dictionary = esm.get_message_by_editor_id("VCGTutorialJump")
+	check(is_equal_approx(float(jump_msg.get("display_time", 0.0)), 10.0),
+			"VCGTutorialJump shows for its TNAM 10 seconds (got %s)" % str(jump_msg.get("display_time")))
 
 	# 4. Test lookup by FormID
 	var form_id: int = int(smg_msg.get("form_id", 0))
