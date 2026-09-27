@@ -25,6 +25,7 @@ func test_archive(archive_name: String, sample_count: int) -> void:
 
 	# Extract a spread of sample_count entries across the archive (not just
 	# the first few) to exercise both compressed and uncompressed records.
+	@warning_ignore("integer_division")
 	var step: int = max(1, entries.size() / sample_count)
 	var extracted_ok := 0
 	var extracted_total := 0

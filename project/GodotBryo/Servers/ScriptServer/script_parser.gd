@@ -224,16 +224,16 @@ func _parse_set() -> Dictionary:
 ## Real per-line shape (see this file's own top doc comment for the arity
 ## caveat).
 func _parse_call_statement() -> Dictionary:
-	var call := _parse_call_head()
+	var call_node := _parse_call_head()
 	var args := []
 	while not _at_newline() and not _at_eof():
 		if _peek()["kind"] == ScriptLexer.Kind.OP and _peek()["value"] == ",":
 			_advance()
 			continue
 		args.append(_parse_expr_atom_for_call_arg())
-	call["args"] = args
-	call["kind"] = "call"
-	return call
+	call_node["args"] = args
+	call_node["kind"] = "call"
+	return call_node
 
 ## Parses `[Ident "."] Ident` -- either a plain name or a reference-prefixed
 ## one -- returning { "reference": String or "", "name": String }.
@@ -310,8 +310,8 @@ func _parse_primary() -> Dictionary:
 	return { "kind": "literal", "value": 0 }
 
 func _parse_ident_primary() -> Dictionary:
-	var call := _parse_call_head()
-	var lower_name := String(call["name"]).to_lower()
+	var call_node := _parse_call_head()
+	var lower_name := String(call_node["name"]).to_lower()
 	var arity: int = KNOWN_ARITIES.get(lower_name, -1)
 	if arity == -1:
 		# An identifier reached as an expression PRIMARY (an if/set operand,
@@ -328,20 +328,20 @@ func _parse_ident_primary() -> Dictionary:
 		# itself, not a swallowed 0. A declared local still reads its own
 		# value, per the language's real variable-declaration rule (design
 		# doc's Variables section).
-		if String(call["reference"]) != "":
-			return { "kind": "ref_var", "reference": call["reference"], "name": call["name"] }
-		if _declared_names.has(String(call["name"]).to_lower()):
-			return { "kind": "var", "name": call["name"] }
-		return { "kind": "name", "name": call["name"] }
+		if String(call_node["reference"]) != "":
+			return { "kind": "ref_var", "reference": call_node["reference"], "name": call_node["name"] }
+		if _declared_names.has(String(call_node["name"]).to_lower()):
+			return { "kind": "var", "name": call_node["name"] }
+		return { "kind": "name", "name": call_node["name"] }
 	var args := []
 	for i in range(arity):
 		if _at_newline() or _at_eof():
-			push_warning("ScriptParser: expected %d arg(s) for %s, ran out of tokens" % [arity, call["name"]])
+			push_warning("ScriptParser: expected %d arg(s) for %s, ran out of tokens" % [arity, call_node["name"]])
 			break
 		args.append(_parse_primary())
-	call["args"] = args
-	call["kind"] = "call"
-	return call
+	call_node["args"] = args
+	call_node["kind"] = "call"
+	return call_node
 
 func _peek(offset: int = 0) -> Dictionary:
 	var i: int = _pos + offset

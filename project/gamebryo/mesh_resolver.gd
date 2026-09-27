@@ -1514,7 +1514,7 @@ func _print_equipment_timing(stage: String, model_path: String, start_usec: int)
 ## MODL/BIPL models follow the authored Weapon bone (with a compatibility
 ## fallback for skeleton variants without that node) while retaining every
 ## transform authored in the NIF.
-func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmBase, model_field: String, weapon = null) -> bool:
+func _populate_weapon_model(parent: Node3D, skeleton: Skeleton3D, nif: NifReader, model_path: String, source: EsmBase, model_field: String, _weapon = null) -> bool:
 	var metadata := {
 		"gamebryo_equipment": true,
 		"gamebryo_equipment_form_id": source.form_id,
@@ -1664,6 +1664,7 @@ func _apply_tri_morph_targets(base_mesh: ArrayMesh, tri: TriReader) -> ArrayMesh
 func _build_skinned_mesh_from_raw(e: Dictionary, skin: Dictionary) -> ArrayMesh:
 	var base := _build_mesh_from_raw(e)
 	var pos_flat: PackedFloat32Array = e["positions"]
+	@warning_ignore("integer_division")
 	var vert_count := pos_flat.size() / 3
 	var bone_indices: PackedInt32Array = skin["bone_indices"]
 	var bone_weights: PackedFloat32Array = skin["bone_weights"]
@@ -2262,6 +2263,7 @@ func populate_locomotion_tree(parent: Node3D, skeleton: Skeleton3D, player: Anim
 	push_error("GamebryoMeshResolver: populate_locomotion_tree() is deprecated; use the hand-authored actor AnimationTree")
 	return null
 	# Historical implementation retained below for source archaeology only.
+	@warning_ignore("unreachable_code")
 	for required in [cardinal_clips.get("forward", ""), cardinal_clips.get("backward", ""), cardinal_clips.get("left", ""), cardinal_clips.get("right", ""), idle_clip, upper_body_clip]:
 		if not player.has_animation(String(required)):
 			return null
@@ -2725,18 +2727,22 @@ func _build_mesh_from_raw(e: Dictionary) -> ArrayMesh:
 	var colors: PackedColorArray = e["colors"]
 
 	var verts := PackedVector3Array()
+	@warning_ignore("integer_division")
 	verts.resize(pos_flat.size() / 3)
 	for i in range(verts.size()):
 		verts[i] = Vector3(pos_flat[i * 3], pos_flat[i * 3 + 1], pos_flat[i * 3 + 2])
 
 	var normals := PackedVector3Array()
 	if norm_flat.size() == pos_flat.size():
+		@warning_ignore("integer_division")
 		normals.resize(norm_flat.size() / 3)
 		for i in range(normals.size()):
 			normals[i] = Vector3(norm_flat[i * 3], norm_flat[i * 3 + 1], norm_flat[i * 3 + 2])
 
 	var uvs := PackedVector2Array()
+	@warning_ignore("integer_division")
 	if uv_flat.size() == (pos_flat.size() / 3) * 2:
+		@warning_ignore("integer_division")
 		uvs.resize(uv_flat.size() / 2)
 		for i in range(uvs.size()):
 			uvs[i] = Vector2(uv_flat[i * 2], uv_flat[i * 2 + 1])
@@ -3003,6 +3009,7 @@ func _resolve_raw_fallback_bbox(nif: NifReader) -> Array:
 			continue
 		var local_aabb := AABB()
 		local_aabb.position = Vector3(pos_flat[0], pos_flat[1], pos_flat[2])
+		@warning_ignore("integer_division")
 		for v in range(pos_flat.size() / 3):
 			local_aabb = local_aabb.expand(Vector3(pos_flat[v * 3], pos_flat[v * 3 + 1], pos_flat[v * 3 + 2]))
 		var world_aabb: AABB = nif.get_transform(i) * local_aabb
@@ -3089,6 +3096,7 @@ func _expand_triangles(positions: PackedFloat32Array, indices: PackedInt32Array)
 
 func _flat_to_vector3(positions: PackedFloat32Array) -> PackedVector3Array:
 	var out := PackedVector3Array()
+	@warning_ignore("integer_division")
 	out.resize(positions.size() / 3)
 	for i in range(out.size()):
 		out[i] = Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2])
@@ -3096,8 +3104,8 @@ func _flat_to_vector3(positions: PackedFloat32Array) -> PackedVector3Array:
 
 func _basis_aligned_to_y(dir: Vector3) -> Basis:
 	var y := dir.normalized()
-	var reference := Vector3.RIGHT if absf(y.dot(Vector3.UP)) > 0.99 else Vector3.UP
-	var x := reference.cross(y).normalized()
+	var ref_axis := Vector3.RIGHT if absf(y.dot(Vector3.UP)) > 0.99 else Vector3.UP
+	var x := ref_axis.cross(y).normalized()
 	var z := x.cross(y).normalized()
 	return Basis(x, y, z)
 

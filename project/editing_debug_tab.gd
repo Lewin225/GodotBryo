@@ -16,16 +16,16 @@ func _ready() -> void:
 	_sync_from_nif_server()
 
 
-func _on_show_editor_markers_toggled(visible: bool) -> void:
+func _on_show_editor_markers_toggled(shown: bool) -> void:
 	if _nif_server == null or not _nif_server.has_method("set_editor_objects_visible"):
 		push_warning("Editing debug tab: NifServer editor-object policy is unavailable")
 		_sync_from_nif_server()
 		return
-	_nif_server.set_editor_objects_visible(visible)
+	_nif_server.set_editor_objects_visible(shown)
 
 
-func _on_editor_object_visibility_changed(visible: bool) -> void:
-	_show_editor_markers.set_pressed_no_signal(visible)
+func _on_editor_object_visibility_changed(shown: bool) -> void:
+	_show_editor_markers.set_pressed_no_signal(shown)
 
 
 func _sync_from_nif_server() -> void:

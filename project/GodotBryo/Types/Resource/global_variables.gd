@@ -30,7 +30,10 @@ func set_global(name: String, value: Variant) -> bool:
 	if not _resolve(key):
 		return false
 	var number := float(value) if (value is int or value is float) else 0.0
-	values[key] = number if _types.get(key, "f") == "f" else int(number)
+	if _types.get(key, "f") == "f":
+		values[key] = number
+	else:
+		values[key] = int(number)
 	return true
 
 ## Ensures `key` is in `values` if it is a global; false when it is not.
@@ -49,5 +52,8 @@ func _resolve(key: String) -> bool:
 	_types[key] = String(record.get("type", "f"))
 	if not values.has(key):
 		var authored := float(record.get("value", 0.0))
-		values[key] = authored if _types[key] == "f" else int(authored)
+		if _types[key] == "f":
+			values[key] = authored
+		else:
+			values[key] = int(authored)
 	return true

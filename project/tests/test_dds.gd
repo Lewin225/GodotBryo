@@ -34,18 +34,22 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	var idx_flat := nif.get_indices(index)
 
 	var verts := PackedVector3Array()
+	@warning_ignore("integer_division")
 	verts.resize(pos_flat.size() / 3)
 	for i in range(verts.size()):
 		verts[i] = Vector3(pos_flat[i * 3], pos_flat[i * 3 + 1], pos_flat[i * 3 + 2])
 
 	var normals := PackedVector3Array()
 	if norm_flat.size() == pos_flat.size():
+		@warning_ignore("integer_division")
 		normals.resize(norm_flat.size() / 3)
 		for i in range(normals.size()):
 			normals[i] = Vector3(norm_flat[i * 3], norm_flat[i * 3 + 1], norm_flat[i * 3 + 2])
 
 	var uvs := PackedVector2Array()
+	@warning_ignore("integer_division")
 	if uv_flat.size() == (pos_flat.size() / 3) * 2:
+		@warning_ignore("integer_division")
 		uvs.resize(uv_flat.size() / 2)
 		for i in range(uvs.size()):
 			uvs[i] = Vector2(uv_flat[i * 2], uv_flat[i * 2 + 1])

@@ -88,7 +88,7 @@ func _refresh() -> void:
 		var count := int(entry.get("count", 1))
 		var unit_wt := float(entry.get("weight", 0.0))
 		var unit_val := int(entry.get("value", 0))
-		var name := _resolve_item_name(entry)
+		var item_name := _resolve_item_name(entry)
 		var hex_id := "0x%08X" % base_id
 
 		total_count += count
@@ -98,7 +98,7 @@ func _refresh() -> void:
 
 		# Filter search
 		if not filter_text.is_empty():
-			if name.to_lower().find(filter_text) == -1 and hex_id.to_lower().find(filter_text) == -1:
+			if item_name.to_lower().find(filter_text) == -1 and hex_id.to_lower().find(filter_text) == -1:
 				continue
 
 		var item := _tree.create_item(root)
@@ -106,7 +106,7 @@ func _refresh() -> void:
 		item.set_text(0, str(count))
 		item.set_text_alignment(0, HORIZONTAL_ALIGNMENT_CENTER)
 
-		item.set_text(1, name)
+		item.set_text(1, item_name)
 		item.set_custom_color(1, Color("#e5c07b"))
 
 		item.set_text(2, hex_id)

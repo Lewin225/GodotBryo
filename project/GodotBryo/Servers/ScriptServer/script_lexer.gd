@@ -145,5 +145,7 @@ func _read_number_or_ident() -> Dictionary:
 	var raw := _text.substr(start, _pos - start)
 	if has_letter or raw == "" or raw == ".":
 		return { "kind": Kind.IDENT, "value": raw, "line": start_line }
-	var value: Variant = float(raw) if is_float else int(raw)
+	var value: Variant = int(raw)
+	if is_float:
+		value = float(raw)
 	return { "kind": Kind.NUMBER, "value": value, "line": start_line }

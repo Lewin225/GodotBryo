@@ -655,6 +655,7 @@ static func _make_dismember_partition_node(nd: Dictionary, textures: Dictionary)
 	var partitions: Array = skin.get("dismember_partitions", [])
 	var triangle_partitions: PackedInt32Array = skin.get("dismember_triangle_partitions", PackedInt32Array())
 	var indices: PackedInt32Array = nd["indices"]
+	@warning_ignore("integer_division")
 	var triangle_count := indices.size() / 3
 	if indices.size() % 3 != 0 or triangle_partitions.size() != triangle_count:
 		push_warning("NifTreeBuilder: BSDismember partition map does not cover the source triangle list; keeping '%s' unsplit" % String(nd.get("name", "")))

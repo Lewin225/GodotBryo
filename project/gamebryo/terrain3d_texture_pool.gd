@@ -269,6 +269,7 @@ func _normalize_texture(tex: Texture2D, debug_name: String = "") -> Texture2D:
 	var sample_sum := 0.0
 	var sample_min := 1.0
 	var sample_count := 0
+	@warning_ignore("integer_division")
 	var step := maxi(img.get_width() / 16, 1)
 	for y in range(0, img.get_height(), step):
 		for x in range(0, img.get_width(), step):

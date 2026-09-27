@@ -310,16 +310,16 @@ func _build_portals(space_form_id: int) -> void:
 		if is_source or is_destination:
 			here.append({"portal": portal, "is_source": is_source, "is_destination": is_destination})
 
-	var scale := 1.0
+	var size_scale := 1.0
 	var bounds: Dictionary = simulation.navmesh.get_space_bounds(space_form_id)
 	if bool(bounds.get("found", false)):
 		var bounds_min: Vector3 = bounds["min"]
 		var bounds_max: Vector3 = bounds["max"]
-		scale = clampf(maxf(bounds_max.x - bounds_min.x, bounds_max.y - bounds_min.y) * 0.0015, 1.0, 24.0)
+		size_scale = clampf(maxf(bounds_max.x - bounds_min.x, bounds_max.y - bounds_min.y) * 0.0015, 1.0, 24.0)
 
 	# Roughly door-shaped at scale 1: a metre wide, two tall, shallow.
 	var box := BoxMesh.new()
-	box.size = Vector3(1.0, 2.0, 0.35) * scale
+	box.size = Vector3(1.0, 2.0, 0.35) * size_scale
 	var box_material := StandardMaterial3D.new()
 	box_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	box_material.vertex_color_use_as_albedo = true
@@ -398,6 +398,7 @@ func _route_between_random_actors() -> void:
 	var from_actor := grounded[randi() % grounded.size()]
 	var to_actor := grounded[randi() % grounded.size()]
 	if from_actor == to_actor:
+		@warning_ignore("integer_division")
 		to_actor = grounded[(grounded.find(from_actor) + grounded.size() / 2) % grounded.size()]
 	var from_position: Vector3 = simulation.get_ground_position(from_actor)
 	var to_position: Vector3 = simulation.get_ground_position(to_actor)
@@ -565,7 +566,7 @@ func _process(delta: float) -> void:
 	var leg: Dictionary = legs[leg_index]
 	var waypoints: PackedVector3Array = leg["waypoints"]
 	var waypoint_index: int = walker["waypoint_index"]
-	var position: Vector3 = walker["position"]
+	var walker_position: Vector3 = walker["position"]
 	var budget := walk_speed * delta
 
 	while budget > 0.0:
@@ -578,12 +579,12 @@ func _process(delta: float) -> void:
 			walker["waypoint_index"] = 0
 			if leg_index + 1 >= legs.size():
 				walker["finished"] = true
-				walker["position"] = position
+				walker["position"] = walker_position
 				_refresh_status()
 				return
 			var next_leg: Dictionary = legs[leg_index + 1]
 			var next_waypoints: PackedVector3Array = next_leg["waypoints"]
-			walker["position"] = next_waypoints[0] if next_waypoints.size() > 0 else position
+			walker["position"] = next_waypoints[0] if next_waypoints.size() > 0 else walker_position
 			walker["space"] = int(next_leg["space_form_id"])
 			if exit_portal != null:
 				_show_space_by_id(int(next_leg["space_form_id"]))
@@ -594,17 +595,17 @@ func _process(delta: float) -> void:
 			return
 
 		var target: Vector3 = waypoints[waypoint_index + 1]
-		var to_target := target - position
+		var to_target := target - walker_position
 		var distance := to_target.length()
 		if distance <= budget:
-			position = target
+			walker_position = target
 			waypoint_index += 1
 			budget -= distance
 		else:
-			position += to_target / distance * budget
+			walker_position += to_target / distance * budget
 			budget = 0.0
 
-	walker["position"] = position
+	walker["position"] = walker_position
 	walker["waypoint_index"] = waypoint_index
 	_update_walker_marker()
 
@@ -613,14 +614,14 @@ func _update_walker_marker() -> void:
 		walker_marker.visible = false
 		return
 	walker_marker.visible = true
-	var position: Vector3 = walker["position"]
-	var converted := _to_godot(position)
+	var walker_position: Vector3 = walker["position"]
+	var converted := _to_godot(walker_position)
 	var marker_radius: float = current_space_stats.get("marker_radius", 0.5)
-	var scale := maxf(marker_radius, 0.5)
-	walker_marker.scale = Vector3.ONE * scale
-	walker_marker.global_position = converted + Vector3(0.0, scale, 0.0)
+	var marker_scale := maxf(marker_radius, 0.5)
+	walker_marker.scale = Vector3.ONE * marker_scale
+	walker_marker.global_position = converted + Vector3(0.0, marker_scale, 0.0)
 	if camera_follows_walker:
-		var offset := Vector3(0.0, scale * 26.0, scale * 26.0)
+		var offset := Vector3(0.0, marker_scale * 26.0, marker_scale * 26.0)
 		# A door transition moves the NPC to an unrelated coordinate space, so
 		# easing toward it would spend seconds flying through empty space. Snap
 		# on the frame the space changes, ease only while walking within one.
@@ -744,7 +745,7 @@ func _update_batch_walkers(delta: float) -> void:
 		var w: Dictionary = walkers[i]
 		var waypoints: PackedVector3Array = w["waypoints"]
 		var budget: float = float(w["speed"]) * delta
-		var position: Vector3 = w["position"]
+		var walker_position: Vector3 = w["position"]
 		var index: int = w["index"]
 		var direction: int = w["direction"]
 		while budget > 0.0:
@@ -756,19 +757,19 @@ func _update_batch_walkers(delta: float) -> void:
 				if next_index < 0 or next_index >= waypoints.size():
 					break
 			var target: Vector3 = waypoints[next_index]
-			var to_target := target - position
+			var to_target := target - walker_position
 			var distance := to_target.length()
 			if distance <= budget:
-				position = target
+				walker_position = target
 				index = next_index
 				budget -= distance
 			else:
-				position += to_target / distance * budget
+				walker_position += to_target / distance * budget
 				budget = 0.0
-		w["position"] = position
+		w["position"] = walker_position
 		w["index"] = index
 		w["direction"] = direction
-		batch_walkers.multimesh.set_instance_transform(i, Transform3D(Basis.IDENTITY, _to_godot(position) + Vector3(0.0, lift, 0.0)))
+		batch_walkers.multimesh.set_instance_transform(i, Transform3D(Basis.IDENTITY, _to_godot(walker_position) + Vector3(0.0, lift, 0.0)))
 
 func _draw_batch_paths() -> void:
 	var mesh := ImmediateMesh.new()

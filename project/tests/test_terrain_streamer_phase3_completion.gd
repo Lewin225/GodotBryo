@@ -28,12 +28,12 @@ func _ready() -> void:
 
 	var deadline := Time.get_ticks_msec() + 180000
 	while Time.get_ticks_msec() < deadline:
-		var diagnostics := streamer.get_diagnostics()
-		if bool(diagnostics.catalogue_ready) and int(diagnostics.total_regions) > 0 \
-				and int(diagnostics.committed_regions) == int(diagnostics.total_regions) \
-				and int(diagnostics.queued_regions) == 0 \
-				and int(diagnostics.preparing_regions) == 0 \
-				and int(diagnostics.prepared_regions) == 0:
+		var progress := streamer.get_diagnostics()
+		if bool(progress.catalogue_ready) and int(progress.total_regions) > 0 \
+				and int(progress.committed_regions) == int(progress.total_regions) \
+				and int(progress.queued_regions) == 0 \
+				and int(progress.preparing_regions) == 0 \
+				and int(progress.prepared_regions) == 0:
 			break
 		await get_tree().process_frame
 

@@ -8,9 +8,9 @@ var _body: GamebryoRigidBody
 var _drag_camera: Camera3D = null
 var _drag_started_msec := 0
 
-func configure_item(data: Dictionary, form_id: int) -> void:
+func configure_item(data: Dictionary, item_form_id: int) -> void:
 	item_data = data.duplicate()
-	base_form_id = form_id
+	base_form_id = item_form_id
 
 func attach_rigid_body(body: GamebryoRigidBody) -> void:
 	_body = body

@@ -109,7 +109,6 @@ func test_concurrent_reads() -> void:
 
 	for p in _probe_paths:
 		var r: Dictionary = ArchiveServer.read(p)
-		check(bool(r["found"]), "serial read found %s (%d bytes)" % [p, PackedByteArray(r["data"]).size()]) if false else null
 		_serial[p] = _digest(PackedByteArray(r["data"]))
 
 	var before: Dictionary = ArchiveServer.get_stats()

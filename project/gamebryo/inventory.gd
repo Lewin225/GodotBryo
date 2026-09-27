@@ -182,24 +182,24 @@ func serialize_state() -> Dictionary:
 	for item in items:
 		if item == null or item.item_reference == null:
 			continue
-		var reference := item.item_reference
+		var item_ref := item.item_reference
 		var state: Dictionary = {
-			"base_form_id": reference.base_form_id,
-			"reference_instance_id": reference.instance_id,
+			"base_form_id": item_ref.base_form_id,
+			"reference_instance_id": item_ref.instance_id,
 			"item_instance_id": item.instance_id,
 			"count": item.count,
 			"is_equipped": item.is_equipped,
 			"owner_form_id": item.owner_form_id,
 			"health_percent": item.health_percent,
 		}
-		if reference is WeaponReference:
+		if item_ref is WeaponReference:
 			state["reference_type"] = "WeaponReference"
-			state["condition"] = (reference as WeaponReference).condition
-			state["loaded_ammo_form_id"] = (reference as WeaponReference).loaded_ammo_form_id
-			state["loaded_ammo_count"] = (reference as WeaponReference).loaded_ammo_count
-		elif reference is ArmorReference:
+			state["condition"] = (item_ref as WeaponReference).condition
+			state["loaded_ammo_form_id"] = (item_ref as WeaponReference).loaded_ammo_form_id
+			state["loaded_ammo_count"] = (item_ref as WeaponReference).loaded_ammo_count
+		elif item_ref is ArmorReference:
 			state["reference_type"] = "ArmorReference"
-			state["condition"] = (reference as ArmorReference).condition
+			state["condition"] = (item_ref as ArmorReference).condition
 		saved.append(state)
 	return {"version": 1, "items": saved}
 
@@ -218,10 +218,10 @@ func restore_state(state: Dictionary, reference_factory: Callable) -> bool:
 		var form_id := int(data.get("base_form_id", 0))
 		if form_id == 0:
 			continue
-		var reference = reference_factory.call(form_id, String(data.get("reference_instance_id", "")))
-		if not reference is EsmReference:
+		var item_ref = reference_factory.call(form_id, String(data.get("reference_instance_id", "")))
+		if not item_ref is EsmReference:
 			continue
-		var typed_reference: EsmReference = reference
+		var typed_reference: EsmReference = item_ref
 		if typed_reference is WeaponReference:
 			var weapon := typed_reference as WeaponReference
 			weapon.condition = float(data.get("condition", -1.0))
@@ -243,10 +243,10 @@ func restore_state(state: Dictionary, reference_factory: Callable) -> bool:
 	return true
 
 func _make_compatibility_reference(form_id: int) -> EsmReference:
-	var reference := EsmReference.new()
-	reference.base_form_id = form_id
-	reference.instance_id = _new_instance_id(form_id) + ":ref"
-	return reference
+	var item_ref := EsmReference.new()
+	item_ref.base_form_id = form_id
+	item_ref.instance_id = _new_instance_id(form_id) + ":ref"
+	return item_ref
 
 func _new_instance_id(form_id: int) -> String:
 	var result := "inventory:%08X:%d" % [form_id, _next_instance_id]

@@ -140,7 +140,10 @@ func _open_submenu(form_id: int) -> void:
 		_status.text = "Submenu TERM 0x%X could not be read." % form_id
 		return
 	_terminal_stack.append(submenu)
-	_show_welcome(String(submenu.get("welcome_text", ""))) if not String(submenu.get("welcome_text", "")).is_empty() else _show_menu()
+	if not String(submenu.get("welcome_text", "")).is_empty():
+		_show_welcome(String(submenu.get("welcome_text", "")))
+	else:
+		_show_menu()
 
 func _go_back() -> void:
 	match _view:

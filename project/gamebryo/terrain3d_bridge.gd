@@ -137,7 +137,7 @@ static func create_terrain(parent: Node, debug_level: Terrain3D.DebugLevel = Ter
 	terrain.debug_level = debug_level
 	terrain.vertex_spacing = VERTEX_SPACING
 	parent.add_child(terrain)
-	terrain.region_size = REGION_SIZE
+	terrain.region_size = REGION_SIZE as Terrain3D.RegionSize
 	return terrain
 
 ## The real world position to pass as import_images()'s global_position for cell
@@ -501,6 +501,7 @@ static func _computed_normal(heights: PackedFloat32Array, row: int, col: int) ->
 	return dx.cross(dz).normalized()
 
 static func _floor_div(a: int, b: int) -> int:
+	@warning_ignore("integer_division")
 	var q := a / b # GDScript int division truncates toward zero, not floor -- correct below
 	var r := a % b
 	if r != 0 and ((r < 0) != (b < 0)):

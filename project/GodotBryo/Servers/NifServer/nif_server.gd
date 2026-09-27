@@ -185,8 +185,8 @@ static func canonical(nif_path: String) -> String:
 ## display name. `VisibilityEditorMarker` is OpenMW's second documented
 ## Gamebryo marker primitive spelling.
 static func is_editor_object_name(authored_name: String) -> bool:
-	var name := authored_name.to_lower()
-	return name.begins_with("editormarker") or name.begins_with("visibilityeditormarker")
+	var name_str := authored_name.to_lower()
+	return name_str.begins_with("editormarker") or name_str.begins_with("visibilityeditormarker")
 
 
 ## OpenMW's ESM4 renderer treats a standalone model whose basename starts with
@@ -234,11 +234,11 @@ func lod_companion_path(nif_path: String) -> String:
 ## hierarchical instead, with `nif_not_flattened_because` on the root saying
 ## which. A caller placing scenery does not know in advance whether a given SCOL
 ## animates, and should not have to.
-func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
+func request(nif_path: String, requesting_node: Node, on_complete: Callable, prefer_static := false) -> void:
 	_stats["request_count"] += 1
-	var waiter := { "kind": "tree", "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
-	if not _valid_callback(owner, on_complete):
-		push_error("NifServer: on_complete must be a method on `owner` (nif_server_v2.md section 3.2); request for '%s' refused" % nif_path)
+	var waiter := { "kind": "tree", "owner": requesting_node, "cb": on_complete, "prefer_static": prefer_static }
+	if not _valid_callback(requesting_node, on_complete):
+		push_error("NifServer: on_complete must be a method on `requesting_node` (nif_server_v2.md section 3.2); request for '%s' refused" % nif_path)
 		return
 	if _shutting_down or _archive_server == null:
 		_deliver(waiter, null)
@@ -272,11 +272,11 @@ func request(nif_path: String, owner: Node, on_complete: Callable, prefer_static
 ## and receives an immutable shared AnimationLibrary or null. Its tracks retain
 ## bare escaped authored targets because the KF may address a composed rig
 ## (skeleton, weapon, and animobjects), none of which NifServer may guess.
-func request_kf(kf_path: String, owner: Node, on_complete: Callable) -> void:
+func request_kf(kf_path: String, requesting_node: Node, on_complete: Callable) -> void:
 	_stats["kf_request_count"] += 1
-	var waiter := { "kind": "kf", "owner": owner, "cb": on_complete }
-	if not _valid_callback(owner, on_complete):
-		push_error("NifServer: on_complete must be a method on `owner`; KF request for '%s' refused" % kf_path)
+	var waiter := { "kind": "kf", "owner": requesting_node, "cb": on_complete }
+	if not _valid_callback(requesting_node, on_complete):
+		push_error("NifServer: on_complete must be a method on `requesting_node`; KF request for '%s' refused" % kf_path)
 		return
 	if _shutting_down or _archive_server == null:
 		_deliver_kf(waiter, null)
@@ -307,11 +307,11 @@ func request_kf(kf_path: String, owner: Node, on_complete: Callable) -> void:
 ## to the full path, which would make distant streaming parse full detail.
 
 ## Exception to the honext return policy, this getting it's own functon
-func request_lod(nif_path: String, owner: Node, on_complete: Callable, prefer_static := false) -> void:
+func request_lod(nif_path: String, requesting_node: Node, on_complete: Callable, prefer_static := false) -> void:
 	_stats["lod_request_count"] += 1
-	var waiter := { "kind": "tree", "owner": owner, "cb": on_complete, "prefer_static": prefer_static }
-	if not _valid_callback(owner, on_complete):
-		push_error("NifServer: on_complete must be a method on `owner`; LOD request for '%s' refused" % nif_path)
+	var waiter := { "kind": "tree", "owner": requesting_node, "cb": on_complete, "prefer_static": prefer_static }
+	if not _valid_callback(requesting_node, on_complete):
+		push_error("NifServer: on_complete must be a method on `requesting_node`; LOD request for '%s' refused" % nif_path)
 		return
 	if _shutting_down or _archive_server == null:
 		_deliver(waiter, null)
@@ -321,7 +321,7 @@ func request_lod(nif_path: String, owner: Node, on_complete: Callable, prefer_st
 		_stats["lod_missing_count"] += 1
 		_deliver(waiter, null)
 		return
-	request(lod_path, owner, on_complete, prefer_static)
+	request(lod_path, requesting_node, on_complete, prefer_static)
 
 ## Returns active data about the server state for profilling
 func get_stats() -> Dictionary:
@@ -704,12 +704,12 @@ func _process(_delta: float) -> void:
 		if build_time_budget_usec > 0 and _stats["builds_this_frame"] > 0 \
 				and Time.get_ticks_usec() - started >= build_time_budget_usec:
 			return
-		var ready: Dictionary = _ready_build_queue.pop_front()
+		var ready_build: Dictionary = _ready_build_queue.pop_front()
 		_stats["builds_this_frame"] += 1
 		var build_started_usec := Time.get_ticks_usec()
 		var build_frame := Engine.get_process_frames()
-		_finish_build(ready)
-		var ready_entry: Dictionary = ready["entry"]
+		_finish_build(ready_build)
+		var ready_entry: Dictionary = ready_build["entry"]
 		_profile_construction("ready build dispatch", String(ready_entry["key"]),
 			build_frame, Time.get_ticks_usec() - build_started_usec)
 
@@ -774,8 +774,8 @@ func _resolve_textures_for_build(entry: Dictionary, src: NifSource) -> void:
 	_ready_build_queue.append({"entry": entry, "textures": textures})
 
 
-func _finish_build(ready: Dictionary) -> void:
-	var entry: Dictionary = ready["entry"]
+func _finish_build(ready_build: Dictionary) -> void:
+	var entry: Dictionary = ready_build["entry"]
 	var waiter: Dictionary = entry["waiter"]
 	if not _owner_alive(waiter):
 		_stats["owner_gone_count"] += 1
@@ -797,7 +797,7 @@ func _finish_build(ready: Dictionary) -> void:
 	# A miss means a tree was actually constructed, not merely that this waiter
 	# reached the asynchronous texture phase before another waiter made one.
 	_stats["tree_cache_misses"] += 1
-	var textures: Dictionary = ready["textures"]
+	var textures: Dictionary = ready_build["textures"]
 	var root: Node3D = NifTreeBuilderScript.build_from_textures(src, textures,
 		true, prefer_static, construction_profiling_enabled)
 	if root == null:
@@ -839,12 +839,12 @@ func _finish_build(ready: Dictionary) -> void:
 func _deliver_template(entry: Dictionary, template: Node3D, stage: String) -> void:
 	var duplicate_started_usec := Time.get_ticks_usec()
 	var duplicate_frame := Engine.get_process_frames()
-	var duplicate := _duplicate(template)
+	var copy := _duplicate(template)
 	_profile_construction(stage, String(entry["key"]), duplicate_frame,
 		Time.get_ticks_usec() - duplicate_started_usec)
 	var delivery_started_usec := Time.get_ticks_usec()
 	var delivery_frame := Engine.get_process_frames()
-	_deliver(entry["waiter"], duplicate)
+	_deliver(entry["waiter"], copy)
 	_profile_construction("delivery callback", String(entry["key"]), delivery_frame,
 		Time.get_ticks_usec() - delivery_started_usec)
 
@@ -852,13 +852,13 @@ func _deliver_template(entry: Dictionary, template: Node3D, stage: String) -> vo
 ## The liveness check below only means anything if the callable is bound to the
 ## owner: a closure capturing it stays valid after the owner is freed, and the
 ## result would be handed to something already gone.
-static func _valid_callback(owner: Node, on_complete: Callable) -> bool:
-	return owner != null and on_complete.is_valid() and on_complete.get_object() == owner
+static func _valid_callback(owner_node: Node, on_complete: Callable) -> bool:
+	return owner_node != null and on_complete.is_valid() and on_complete.get_object() == owner_node
 
 
 func _owner_alive(waiter: Dictionary) -> bool:
-	var owner = waiter.get("owner")
-	return owner != null and is_instance_valid(owner)
+	var owner_node = waiter.get("owner")
+	return owner_node != null and is_instance_valid(owner_node)
 
 
 ## Invoked exactly once per request (section 3.2). A result with no live taker

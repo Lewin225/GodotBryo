@@ -135,7 +135,7 @@ func debug_add_inventory_item(base_form_id: int) -> bool:
 			return true
 	return false
 
-func debug_drop_inventory_item(base_form_id: int) -> bool:
+func debug_drop_inventory_item(_base_form_id: int) -> bool:
 	push_warning("Drop inventory item is unavailable while the legacy registry is detached from CellStreamerV2")
 	return false
 

@@ -65,25 +65,25 @@ func build_bsa_order() -> void:
 
 	bsa_order = ordered
 
-func get_reader(name: String) -> BsaReader:
-	if bsa_readers.has(name):
-		return bsa_readers[name]
+func get_reader(archive_name: String) -> BsaReader:
+	if bsa_readers.has(archive_name):
+		return bsa_readers[archive_name]
 	var r := BsaReader.new()
-	if not r.open(DATA_DIR + name):
-		bsa_readers[name] = null
+	if not r.open(DATA_DIR + archive_name):
+		bsa_readers[archive_name] = null
 		return null
-	bsa_readers[name] = r
+	bsa_readers[archive_name] = r
 	return r
 
 # Returns {bsa: String, data: PackedByteArray} or {} if not found in any archive.
 func resolve(rel_path: String) -> Dictionary:
-	for name in bsa_order:
-		var r := get_reader(name)
+	for archive_name in bsa_order:
+		var r := get_reader(archive_name)
 		if r == null:
 			continue
 		var data := r.extract(rel_path)
 		if data.size() > 0:
-			return { "bsa": name, "data": data }
+			return { "bsa": archive_name, "data": data }
 	return {}
 
 func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
@@ -93,18 +93,22 @@ func build_submesh(nif: NifReader, index: int) -> ArrayMesh:
 	var idx_flat := nif.get_indices(index)
 
 	var verts := PackedVector3Array()
+	@warning_ignore("integer_division")
 	verts.resize(pos_flat.size() / 3)
 	for i in range(verts.size()):
 		verts[i] = Vector3(pos_flat[i * 3], pos_flat[i * 3 + 1], pos_flat[i * 3 + 2])
 
 	var normals := PackedVector3Array()
 	if norm_flat.size() == pos_flat.size():
+		@warning_ignore("integer_division")
 		normals.resize(norm_flat.size() / 3)
 		for i in range(normals.size()):
 			normals[i] = Vector3(norm_flat[i * 3], norm_flat[i * 3 + 1], norm_flat[i * 3 + 2])
 
 	var uvs := PackedVector2Array()
+	@warning_ignore("integer_division")
 	if uv_flat.size() == (pos_flat.size() / 3) * 2:
+		@warning_ignore("integer_division")
 		uvs.resize(uv_flat.size() / 2)
 		for i in range(uvs.size()):
 			uvs[i] = Vector2(uv_flat[i * 2], uv_flat[i * 2 + 1])
@@ -167,7 +171,7 @@ func resolve_object(esm: EsmReader, editor_id: String) -> Dictionary:
 
 	return { "nif": nif, "count": count, "images": images, "mesh_bsa": mesh_found["bsa"] }
 
-func render_object(result: Dictionary, out_name: String) -> void:
+func render_object(result: Dictionary, _out_name: String) -> void:
 	var nif: NifReader = result["nif"]
 	var count: int = result["count"]
 	var images: Dictionary = result["images"]

@@ -15,7 +15,6 @@ func check(condition: bool, message: String) -> void:
 func _ready() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened real master")
-	var resolver := GamebryoMeshResolver.new(DATA_DIR)
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id("WastelandNV")
 	var camera := Camera3D.new()
 	add_child(camera)

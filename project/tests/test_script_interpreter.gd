@@ -184,15 +184,15 @@ func _test_script_server() -> void:
 	server.set_reference_loaded(trigger, false)
 	check(not server.is_reference_loaded(trigger), "an unloaded reference stops running GameMode")
 
-	await _test_moves_and_names(esm_server, server)
+	_test_moves_and_names(esm_server, server)
 	_test_quests_and_messages(esm_server, server)
 	_test_globals(server)
 
 ## Global variables (GLOB): read, written, typed, and not confused with locals.
 func _test_globals(server) -> void:
-	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+	var run := func(source: String, run_ctx: ScriptExecutionContext) -> void:
 		var program := ScriptParser.new(ScriptLexer.new(source).tokenize()).parse()
-		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", run_ctx)
 	var ctx := ScriptExecutionContext.new(null)
 	run.call("begin GameMode\nset z to CGHealTimer\nend", ctx)
 	check(ctx.get_local("z") == 120, "a script reads a global's authored value (CGHealTimer = 120)")
@@ -219,9 +219,9 @@ func _test_globals(server) -> void:
 
 ## Quest variables, per-reference message buttons, and the Lucky 38 elevator.
 func _test_quests_and_messages(esm_server, server) -> void:
-	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+	var run := func(source: String, run_ctx: ScriptExecutionContext) -> void:
 		var program := ScriptParser.new(ScriptLexer.new("begin GameMode\n%s\nend" % source).tokenize()).parse()
-		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", run_ctx)
 	var ctx := ScriptExecutionContext.new(null)
 	run.call("set RepconHQFreeform.WarningActive to 1\nset z to RepconHQFreeform.WarningActive", ctx)
 	var quest: EsmBase = esm_server.find_quest_by_editor_id("RepconHQFreeform")
@@ -269,9 +269,9 @@ func _test_moves_and_names(esm_server, server) -> void:
 	var events: Array = []
 	var on_teleport := func(reference, old_space, new_space): if reference == doc: events.append([old_space, new_space])
 	server.reference_teleported.connect(on_teleport)
-	var run := func(source: String, ctx: ScriptExecutionContext) -> void:
+	var run := func(source: String, run_ctx: ScriptExecutionContext) -> void:
 		var program := ScriptParser.new(ScriptLexer.new("begin GameMode\n%s\nend" % source).tokenize()).parse()
-		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", ctx)
+		ScriptInterpreter.new(program, server.function_registry).run_block("GameMode", run_ctx)
 
 	# MoveTo on a reference with no node: queued, then applied.
 	run.call("MoveTo REPHQ2ndTeleport1 0 0 70", ScriptExecutionContext.new(doc))

@@ -5,6 +5,7 @@ extends EsmReference
 enum SimulationMode { LOW_LEVEL, PHYSICAL_LEASED }
 
 ## Emitted when this actor starts or stops using a reference.
+@warning_ignore("unused_signal")
 signal using_changed(previous: EsmReference, current: EsmReference)
 
 ## The reference this actor is using (terminal, container, furniture, a door

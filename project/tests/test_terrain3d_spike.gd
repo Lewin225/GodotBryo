@@ -60,7 +60,7 @@ func _ready() -> void:
 	var terrain := Terrain3D.new()
 	terrain.vertex_spacing = VERTEX_SPACING
 	add_child(terrain) # triggers _initialize() -> terrain.data becomes valid
-	terrain.region_size = REGION_SIZE
+	terrain.region_size = REGION_SIZE as Terrain3D.RegionSize
 	check(terrain.data != null, "Terrain3D.data initialized after entering the tree")
 	if terrain.data == null:
 		finish()

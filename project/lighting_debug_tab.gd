@@ -120,7 +120,7 @@ func _on_solo_light_toggled(_enabled: bool) -> void:
 func _on_ligh_linear_color_toggled(_enabled: bool) -> void:
 	push_warning("LIGH colour encoding is controlled by EsmLightNode; legacy registry toggle is unavailable")
 
-func _on_xemi_emission_changed(value: float) -> void:
+func _on_xemi_emission_changed(_value: float) -> void:
 	push_warning("XEMI emission override is unavailable on CellStreamerV2")
 
 func _apply_xemi_emission_energy(node: Node, value: float) -> void:
@@ -131,9 +131,9 @@ func _apply_xemi_emission_energy_recursive(node: Node, value: float) -> void:
 	if node == null:
 		return
 	if node is MeshInstance3D and bool(node.get_meta("gamebryo_xemi_emission", false)):
-		var material := node.material_override as ShaderMaterial
-		if material != null:
-			material.set_shader_parameter("emission_energy", value)
+		var shader_material := node.material_override as ShaderMaterial
+		if shader_material != null:
+			shader_material.set_shader_parameter("emission_energy", value)
 	for child in node.get_children():
 		_apply_xemi_emission_energy_recursive(child, value)
 
@@ -142,11 +142,11 @@ func _xemi_emission_readback(node: Node) -> Dictionary:
 	if node == null:
 		return result
 	if node is MeshInstance3D and bool(node.get_meta("gamebryo_xemi_emission", false)):
-		var material := node.material_override as ShaderMaterial
-		if material != null:
+		var shader_material := node.material_override as ShaderMaterial
+		if shader_material != null:
 			result["count"] = int(result["count"]) + 1
-			var tint: Color = material.get_shader_parameter("emittance_tint")
-			var energy := float(material.get_shader_parameter("emission_energy"))
+			var tint: Color = shader_material.get_shader_parameter("emittance_tint")
+			var energy := float(shader_material.get_shader_parameter("emission_energy"))
 			result["peak"] = maxf(float(result["peak"]), maxf(tint.r, maxf(tint.g, tint.b)) * energy)
 	for child in node.get_children():
 		var child_result := _xemi_emission_readback(child)

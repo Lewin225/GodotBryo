@@ -125,7 +125,8 @@ func test_d3_texture_slots() -> void:
 		if slots.is_empty():
 			continue
 		sets += 1
-		check(slots.size() == 6, "texture set declares 6 slots (got %d)" % slots.size()) if sets == 1 else null
+		if sets == 1:
+			check(slots.size() == 6, "texture set declares 6 slots (got %d)" % slots.size())
 		if String(slots[0]) != "":
 			slot0 += 1
 		if String(slots[1]) != "":
@@ -182,7 +183,8 @@ func test_d5_property_identity() -> void:
 	for n in src.get_nodes():
 		var idxs: PackedInt32Array = n["property_block_indices"]
 		var types: PackedStringArray = n["property_types"]
-		check(idxs.size() == types.size(), "property indices and types are parallel") if refs.is_empty() and idxs.size() > 0 else null
+		if refs.is_empty() and idxs.size() > 0:
+			check(idxs.size() == types.size(), "property indices and types are parallel")
 		var seen := {}
 		for i in idxs.size():
 			refs[idxs[i]] = int(refs.get(idxs[i], 0)) + 1

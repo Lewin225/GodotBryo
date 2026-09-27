@@ -151,7 +151,9 @@ func _current_cell_aabb() -> Variant:
 		var bounds: AABB = mesh_instance.global_transform * mesh_instance.mesh.get_aabb()
 		combined = bounds if not have else combined.merge(bounds)
 		have = true
-	return combined if have else null
+	if have:
+		return combined
+	return null
 
 func _mesh_instances(node: Node) -> Array:
 	var out: Array = []

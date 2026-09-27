@@ -87,11 +87,11 @@ func _ready() -> void:
 
 	for i in range(balls.size()):
 		var ball: RigidBody3D = balls[i]
-		var exp: Vector3 = expected[i]
+		var expected_point: Vector3 = expected[i]
 		var actual := ball.global_position
-		var horiz_err := Vector2(actual.x - exp.x, actual.z - exp.z).length()
-		var vert_err := absf(actual.y - (exp.y + 0.1)) # +ball radius resting on flat ground
-		print("  drop ", i, ": expected~=", exp, " actual=", actual, " horiz_err=", horiz_err, " vert_err=", vert_err)
+		var horiz_err := Vector2(actual.x - expected_point.x, actual.z - expected_point.z).length()
+		var vert_err := absf(actual.y - (expected_point.y + 0.1)) # +ball radius resting on flat ground
+		print("  drop ", i, ": expected~=", expected_point, " actual=", actual, " horiz_err=", horiz_err, " vert_err=", vert_err)
 		check(horiz_err < 0.5, "drop %d: settled within 0.5m horizontally of its drop column" % i)
 		check(vert_err < 1.0, "drop %d: settled within 1m of expected terrain height" % i)
 

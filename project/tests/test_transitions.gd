@@ -64,7 +64,7 @@ func _ready() -> void:
 	check(player_ref.using == null and terminal.used_by == null, "closing the session ends the use")
 	check(player.is_physics_processing() and player.is_processing_unhandled_input(), "input returns when the session closes")
 
-	await _check_locks_and_terminal_scripts(esm_server, script_server, player, player_ref)
+	_check_locks_and_terminal_scripts(esm_server, script_server, player, player_ref)
 
 	# The body writes its position to the reference.
 	player.global_position += Vector3(0.5, 0, 0)

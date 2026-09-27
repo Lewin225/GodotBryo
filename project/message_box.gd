@@ -10,6 +10,7 @@ signal button_clicked(button_index: int)
 @onready var _title_label: Label = $DialogRoot/Panel/Margin/VBox/Title
 @onready var _body_label: RichTextLabel = $DialogRoot/Panel/Margin/VBox/Body
 @onready var _buttons_container: VBoxContainer = $DialogRoot/Panel/Margin/VBox/ButtonsScroll/Buttons
+@warning_ignore("unused_private_class_variable")
 @onready var _buttons_scroll: ScrollContainer = $DialogRoot/Panel/Margin/VBox/ButtonsScroll
 
 @onready var _toast_root: Control = $ToastRoot

@@ -187,9 +187,9 @@ func _instance_of(ref_name: String, ctx: ScriptExecutionContext) -> ScriptInstan
 	var server = function_registry.script_server
 	if server == null:
 		return null
-	var reference := _resolve_reference(ref_name, ctx)
-	if reference != null:
-		return server.get_script_instance(reference)
+	var ref := _resolve_reference(ref_name, ctx)
+	if ref != null:
+		return server.get_script_instance(ref)
 	var esm_server := EsmReference.get_esm_server()
 	if esm_server == null or not esm_server.is_ready():
 		return null

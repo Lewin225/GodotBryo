@@ -7,6 +7,7 @@ extends Resource
 signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
 ## Emitted when ScriptServer applies a move of this reference (a teleport, as
 ## opposed to movement synced from a physics body).
+@warning_ignore("unused_signal")
 signal teleported(old_space_form_id: int, new_space_form_id: int)
 
 ## NAME's base record, resolved. Set by EsmServer; used for everything the

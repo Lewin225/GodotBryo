@@ -87,8 +87,8 @@ func _ready() -> void:
 	check(streamer._logical_slots == wasteland_slots and map_hash(streamer.terrain.data.get_region(sample_location).get_map(Terrain3DRegion.TYPE_HEIGHT)) == wasteland_hash,
 		"retained maps and logical texture mappings are byte-identical on return")
 	var return_generation := streamer.get_generation()
-	var ready := await streamer.await_ready_for(int(wasteland.form_id), Vector2i(-17, 0), return_generation)
-	check(ready == TerrainStreamer.ReadyStatus.READY, "retained terrain restores collision-safe readiness")
+	var ready_result := await streamer.await_ready_for(int(wasteland.form_id), Vector2i(-17, 0), return_generation)
+	check(ready_result == TerrainStreamer.ReadyStatus.READY, "retained terrain restores collision-safe readiness")
 	for unused in range(20):
 		await get_tree().process_frame
 	check(streamer.diagnostic_staging_ms.size() == wasteland_staging_count and streamer.diagnostic_publication_ms.size() == wasteland_publication_count,

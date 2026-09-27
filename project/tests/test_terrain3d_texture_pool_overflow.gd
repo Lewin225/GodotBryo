@@ -55,7 +55,6 @@ func _ready() -> void:
 func _check_real_data_fits_budget() -> void:
 	var esm := EsmReader.new()
 	check(esm.open(DATA_DIR + "FalloutNV.esm"), "opened FalloutNV.esm")
-	var resolver := GamebryoMeshResolver.new()
 	var wrld: Dictionary = esm.find_worldspace_by_editor_id(WORLDSPACE_EDITOR_ID)
 	var wrld_id := int(wrld.get("form_id", 0))
 

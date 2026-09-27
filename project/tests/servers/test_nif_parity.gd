@@ -82,6 +82,7 @@ func _ready() -> void:
 		var li := 0
 		for i in legacy.get_submesh_count():
 			# The legacy reader returns a flat float stream, 3 per vertex.
+			@warning_ignore("integer_division")
 			lv += (legacy.get_positions(i) as PackedFloat32Array).size() / 3
 			li += (legacy.get_indices(i) as PackedInt32Array).size()
 		var sv := 0

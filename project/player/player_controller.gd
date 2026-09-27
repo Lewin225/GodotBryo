@@ -169,6 +169,7 @@ var _current_roll_lean: float = 0.0
 var _current_pitch_lean: float = 0.0
 var _current_bridge_dip: float = 0.0
 var _noise_seed: float = 0.0
+@warning_ignore("unused_private_class_variable")
 var _click_shake_index: int = 0
 const CLICK_SHAKE_PATTERN: Array[float] = [0.5, 1.0, 2.0, 3.0, 4.0]
 
@@ -697,13 +698,13 @@ var _input_suspended := false
 
 ## Takes control of `actor`: scripts' `player` becomes its reference, and
 ## body-level commands act on this body.
-func possess(actor: ActorReference) -> void:
+func possess(actor_reference: ActorReference) -> void:
 	if possessed != null and possessed.using_changed.is_connected(_on_using_changed):
 		possessed.using_changed.disconnect(_on_using_changed)
-	possessed = actor
+	possessed = actor_reference
 	if possessed != null:
 		possessed.using_changed.connect(_on_using_changed)
-	ScriptServer.player_reference = actor
+	ScriptServer.player_reference = actor_reference
 	ScriptServer.player_node = self
 	ScriptServer.message_box = message_box
 	_connect_ui()

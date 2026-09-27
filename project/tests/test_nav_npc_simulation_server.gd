@@ -67,6 +67,7 @@ func _ready() -> void:
 	var probe_point: Vector3 = probe_info["center"]
 	var agree := true
 	var checked := 0
+	@warning_ignore("integer_division")
 	for i in range(0, records.size(), max(1, records.size() / 24)):
 		var info: Dictionary = navmesh.get_record_info(records[i])
 		var point: Vector3 = info["center"]
@@ -89,6 +90,7 @@ func _ready() -> void:
 
 	# --- authored bounds are present on every record, so there is no fallback path ---
 	var all_have_bounds := true
+	@warning_ignore("integer_division")
 	for i in range(0, records.size(), max(1, records.size() / 50)):
 		var info: Dictionary = navmesh.get_record_info(records[i])
 		var bounds_min: Vector3 = info["bounds_min"]
@@ -107,6 +109,7 @@ func _ready() -> void:
 
 	# --- a real route across the largest space ---
 	var from_info: Dictionary = navmesh.get_record_info(records[0])
+	@warning_ignore("integer_division")
 	var to_info: Dictionary = navmesh.get_record_info(records[records.size() / 2])
 	var route: Dictionary = navmesh.find_route(biggest_space, from_info["center"], to_info["center"], 60.0, true)
 	_check(bool(route.get("found", false)), "found a route across the largest space")
@@ -117,9 +120,10 @@ func _ready() -> void:
 		# Every waypoint must itself be on the navmesh -- a route that leaves the
 		# mesh is exactly the failure this whole layer exists to prevent.
 		var all_on_mesh := true
+		@warning_ignore("integer_division")
 		for i in range(0, waypoints.size(), max(1, waypoints.size() / 20)):
-			var snapped: Dictionary = navmesh.snap(biggest_space, waypoints[i], 2.0, true)
-			if not bool(snapped.get("found", false)):
+			var snap_result: Dictionary = navmesh.snap(biggest_space, waypoints[i], 2.0, true)
+			if not bool(snap_result.get("found", false)):
 				all_on_mesh = false
 		_check(all_on_mesh, "every sampled route waypoint lies on the navmesh")
 
@@ -134,6 +138,7 @@ func _ready() -> void:
 		for i in range(1, waypoints.size()):
 			spacings.append((waypoints[i] as Vector3).distance_to(waypoints[i - 1]))
 		spacings.sort()
+		@warning_ignore("integer_division")
 		var median_spacing: float = spacings[spacings.size() / 2] if not spacings.is_empty() else 0.0
 		# Dense, regular spacing is the signature of the projection pass having
 		# run; the raw funnel output is sparse and irregular.
@@ -170,6 +175,7 @@ func _ready() -> void:
 		var floating := 0
 		var checked_heights := 0
 		var worst_drop := 0.0
+		@warning_ignore("integer_division")
 		for i in range(0, waypoints.size(), max(1, waypoints.size() / 30)):
 			var probe: Vector3 = waypoints[i]
 			var surface: Dictionary = navmesh.snap(biggest_space, probe, 40.0, true)
@@ -278,9 +284,10 @@ func _ready() -> void:
 					if not bool(leg["has_navmesh"]):
 						continue
 					var leg_points: PackedVector3Array = leg["waypoints"]
+					@warning_ignore("integer_division")
 					for i in range(0, leg_points.size(), max(1, leg_points.size() / 8)):
-						var snapped: Dictionary = navmesh.snap(int(leg["space_form_id"]), leg_points[i], 4.0, true)
-						if not bool(snapped.get("found", false)):
+						var snap_result: Dictionary = navmesh.snap(int(leg["space_form_id"]), leg_points[i], 4.0, true)
+						if not bool(snap_result.get("found", false)):
 							walkable_legs_on_mesh = false
 				_check(walkable_legs_on_mesh, "every waypoint of every navmeshed leg lies on that leg's own navmesh")
 
@@ -374,10 +381,12 @@ func _ready() -> void:
 	# One bulk call must equal the sum of the per-record calls, or the viewer is
 	# drawing something different from what the queries actually see.
 	var per_record_total := 0
+	@warning_ignore("integer_division")
 	for i in range(0, records.size(), max(1, records.size() / 12)):
 		per_record_total += navmesh.get_record_triangle_points(records[i]).size()
 	_check(per_record_total > 0, "per-record triangle points are non-empty")
 	var ids_within_space := true
+	@warning_ignore("integer_division")
 	for i in range(0, record_ids.size(), max(1, record_ids.size() / 200)):
 		if not records.has(record_ids[i]):
 			ids_within_space = false
@@ -392,6 +401,7 @@ func _ready() -> void:
 		# Every triangle must fall inside the bounds the viewer frames the camera
 		# with, or the camera frames the wrong thing.
 		var all_inside := true
+		@warning_ignore("integer_division")
 		for i in range(0, points.size(), max(1, points.size() / 500)):
 			var p: Vector3 = points[i]
 			if p.x < low.x - 1.0 or p.x > high.x + 1.0 or p.y < low.y - 1.0 or p.y > high.y + 1.0 or p.z < low.z - 1.0 or p.z > high.z + 1.0:

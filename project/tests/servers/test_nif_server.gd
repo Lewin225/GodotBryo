@@ -6,6 +6,7 @@ extends Node
 ##
 ## Tree CONTENT is covered by test_nif_tree_builder; this is about delivery.
 
+const NifServerScript := preload("res://GodotBryo/Servers/NifServer/nif_server.gd")
 const BARRACKS := "meshes/architecture/barracks/barracks01.nif"
 const BOTTLE := "meshes/clutter/junk/milkbottle01.nif"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
@@ -74,9 +75,9 @@ func test_canonical_paths() -> void:
 	]
 	var keys := {}
 	for f in forms:
-		keys[NifServer.canonical(f)] = true
+		keys[NifServerScript.canonical(f)] = true
 	check(keys.size() == 1, "%d spellings resolve to one cache identity (got %d)" % [forms.size(), keys.size()])
-	check(NifServer.canonical("") == "", "an empty path stays empty and is refused")
+	check(NifServerScript.canonical("") == "", "an empty path stays empty and is refused")
 
 
 func test_delivery_and_cache() -> void:
@@ -155,7 +156,7 @@ func test_kf_delivery_and_cache() -> void:
 	NifServer.purge_all()
 	NifServer.reset_stats()
 	_received_kf.clear()
-	var key := NifServer.canonical(MTFORWARD)
+	var key := NifServerScript.canonical(MTFORWARD)
 	var disk_path := NifServer._kf_cache_path(key)
 	if FileAccess.file_exists(disk_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(disk_path))

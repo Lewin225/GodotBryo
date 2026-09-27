@@ -9,6 +9,7 @@ extends Node
 ## legacy resolver, which the public entry points would hide behind the cache.
 ## carried over intact from mesh_resolver.
 
+const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
 const DATA_DIR := "../fresh_nv_copy/Data/" ## relative to the project dir (the process CWD)
 
 var failures := 0
@@ -68,8 +69,8 @@ func test_dxt1_alpha_variant() -> void:
 	check(alpha.get_data().size() > plain.get_data().size(),
 		"decompressed variant is larger (%d vs %d bytes)" % [alpha.get_data().size(), plain.get_data().size()])
 
-	var k_plain := TextureServer.cache_key(_dxt1, false)
-	var k_alpha := TextureServer.cache_key(_dxt1, true)
+	var k_plain := TextureServerScript.cache_key(_dxt1, false)
+	var k_alpha := TextureServerScript.cache_key(_dxt1, true)
 	check(k_plain != k_alpha, "variant cache keys differ ('%s' vs '%s')" % [k_plain, k_alpha])
 	check(k_alpha.ends_with("#rgba"), "alpha-safe key carries the '#rgba' suffix")
 

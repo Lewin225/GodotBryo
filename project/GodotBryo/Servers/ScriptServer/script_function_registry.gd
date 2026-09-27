@@ -224,7 +224,7 @@ func _register_defaults() -> void:
 				return 1)
 	register("GetHealthPercentage", func(_a, ctx: ScriptExecutionContext):
 		var values := _actor_values(ctx)
-		return values.health_percentage() if values != null else 0)
+		return values.health_percentage() if values != null else 0.0)
 	register("GetLevel", func(_a, ctx: ScriptExecutionContext):
 		var values := _actor_values(ctx)
 		return values.get_level() if values != null else 0)
@@ -297,10 +297,10 @@ static func _number(args: Array, index: int) -> float:
 
 ## Queues PositionCell/PositionWorld's move: x y z in Gamebryo units, zRot in
 ## degrees.
-func _position(reference: EsmReference, space_form_id: int, args: Array) -> void:
+func _position(ref: EsmReference, space_form_id: int, args: Array) -> void:
 	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
-	var rotation := Vector3(reference.rotation.x, reference.rotation.y, deg_to_rad(_number(args, 3)))
-	script_server.move_reference(reference, space_form_id, position, rotation)
+	var rotation := Vector3(ref.rotation.x, ref.rotation.y, deg_to_rad(_number(args, 3)))
+	script_server.move_reference(ref, space_form_id, position, rotation)
 
 ## The calling reference's actor values, or null when it is not an actor.
 static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:

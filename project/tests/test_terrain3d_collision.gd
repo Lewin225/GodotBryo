@@ -65,7 +65,7 @@ func _ready() -> void:
 	var terrain := Terrain3D.new()
 	terrain.vertex_spacing = VERTEX_SPACING
 	add_child(terrain)
-	terrain.region_size = REGION_SIZE
+	terrain.region_size = REGION_SIZE as Terrain3D.RegionSize
 	if terrain.data == null:
 		check(false, "Terrain3D.data initialized")
 		finish()
@@ -119,11 +119,11 @@ func _ready() -> void:
 
 	for i in range(balls.size()):
 		var ball: RigidBody3D = balls[i]
-		var exp: Vector3 = expected[i]
+		var expected_point: Vector3 = expected[i]
 		var actual := ball.global_position
-		var horiz_err := Vector2(actual.x - exp.x, actual.z - exp.z).length()
-		var vert_err := absf(actual.y - (exp.y + 0.1)) # +ball radius resting on flat ground
-		print("  drop ", i, ": expected~=", exp, " actual=", actual, " horiz_err=", horiz_err, " vert_err=", vert_err)
+		var horiz_err := Vector2(actual.x - expected_point.x, actual.z - expected_point.z).length()
+		var vert_err := absf(actual.y - (expected_point.y + 0.1)) # +ball radius resting on flat ground
+		print("  drop ", i, ": expected~=", expected_point, " actual=", actual, " horiz_err=", horiz_err, " vert_err=", vert_err)
 		# Horizontal tolerance is looser than test_terrain_collision.gd's 0.5m:
 		# real measurement here (not assumption) found a tiny 0.1m-radius sphere
 		# genuinely rolls up to ~0.9m down real local slope before settling on

@@ -32,8 +32,8 @@ func _ready() -> void:
 	for row in index:
 		if String(row.get("record_type", "")) != "ACHR": continue
 		var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
-		var name := _u32(_subrecord(raw, "NAME"))
-		if name == 0: continue
+		var name_form_id := _u32(_subrecord(raw, "NAME"))
+		if name_form_id == 0: continue
 		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
 		if reference is ActorReference:
 			found_actor = true
@@ -72,15 +72,15 @@ func _ready() -> void:
 	_check_armor_slot_conflicts()
 	await _check_door_resources(server, index)
 	await _check_open_door_full_visual_state(server)
-	await _check_item_resources(server, index)
+	_check_item_resources(server, index)
 	await _check_static_resource(server, index)
 	await _check_lod_visual_handover(server)
 	_check_persistent_imposter_policy(server)
-	await _check_interactive_resources(server, index)
+	_check_interactive_resources(server, index)
 	await _check_collection_and_movable_resources(server, index)
-	await _check_talking_activator_and_terminal_resources(server, index)
-	await _check_dropped_item_resources(server, index)
-	await _check_leveled_item_resources(server, index)
+	_check_talking_activator_and_terminal_resources(server, index)
+	_check_dropped_item_resources(server, index)
+	_check_leveled_item_resources(server, index)
 	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	_check_relocated_references(server)
@@ -536,6 +536,7 @@ func _check_package_bases(server, index: Array) -> void:
 		var raw_idles := _all_subrecords(raw, "IDLA")
 		var idle_count := 0
 		for idle_data in raw_idles:
+			@warning_ignore("integer_division")
 			idle_count += idle_data.size() / 4
 		if package.idle_animation_form_ids.size() != idle_count:
 			errors.append("0x%08X IDLA count differs" % form_id)

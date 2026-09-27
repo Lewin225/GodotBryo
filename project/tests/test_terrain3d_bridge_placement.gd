@@ -68,7 +68,6 @@ func _ready() -> void:
 	old_terrain.position = old_cell_origin
 	add_child(old_terrain)
 
-	var resolver := GamebryoMeshResolver.new()
 	var terrain := Terrain3DBridge.create_terrain(self)
 	check(terrain.data != null, "Terrain3D.data initialized")
 	var pool := Terrain3DTexturePool.new(terrain)

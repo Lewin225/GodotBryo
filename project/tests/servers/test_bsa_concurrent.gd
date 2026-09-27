@@ -44,6 +44,7 @@ func build_baseline(archive: String, sample: int) -> void:
 
 	# Spread the sample across the archive so both compressed and
 	# uncompressed records are covered.
+	@warning_ignore("integer_division")
 	var step: int = maxi(1, entries.size() / sample)
 	_paths = PackedStringArray()
 	var i := 0
@@ -62,7 +63,7 @@ func build_baseline(archive: String, sample: int) -> void:
 
 # --- concurrent comparison -------------------------------------------------
 
-func _task(task_index: int) -> void:
+func _task(_task_index: int) -> void:
 	var mine := {}
 	for p in _paths:
 		mine[p] = _digest(_shared.extract(p))
@@ -187,14 +188,14 @@ func test_zero_length() -> void:
 	print("--- zero-length entries across the shipped archives ---")
 	var found := ""
 	var scanned := 0
-	for name in ["Fallout - Misc.bsa", "Update.bsa", "Fallout - Meshes.bsa", "Fallout - Textures.bsa"]:
+	for archive_name in ["Fallout - Misc.bsa", "Update.bsa", "Fallout - Meshes.bsa", "Fallout - Textures.bsa"]:
 		var r := BsaReader.new()
-		if not r.open(DATA_DIR + name):
+		if not r.open(DATA_DIR + archive_name):
 			continue
 		scanned += 1
 		for e in r.list_entries():
 			if r.extract(String(e)).size() == 0:
-				found = name + " :: " + String(e)
+				found = archive_name + " :: " + String(e)
 				break
 		if not found.is_empty():
 			break

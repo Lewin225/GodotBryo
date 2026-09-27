@@ -593,7 +593,9 @@ func _take_next_region() -> Variant:
 		return far[0]
 	if not near.is_empty():
 		return near[0]
-	return far[0] if not far.is_empty() else null
+	if not far.is_empty():
+		return far[0]
+	return null
 
 func _region_distance_cells(location: Vector2i, center: Variant) -> float:
 	if center == null:
@@ -775,6 +777,7 @@ func _cell_is_committed(coord: Vector2i) -> bool:
 	return not regions.is_empty() and regions.all(func(location: Vector2i) -> bool: return _committed_regions.has(location))
 
 static func _floor_div(value: int, divisor: int) -> int:
+	@warning_ignore("integer_division")
 	var quotient := value / divisor
 	var remainder := value % divisor
 	if remainder != 0 and ((remainder < 0) != (divisor < 0)):

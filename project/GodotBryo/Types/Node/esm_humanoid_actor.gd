@@ -864,8 +864,8 @@ func _animation_clip_name(source_path: String, sequence_index: int) -> String:
 	var relative := source_path.trim_prefix(_animation_root_path)
 	if relative.is_empty():
 		relative = source_path.get_file()
-	var name := relative.replace("/", "__")
-	return name if sequence_index == 0 else "%s__%d" % [name, sequence_index]
+	var clip_name := relative.replace("/", "__")
+	return clip_name if sequence_index == 0 else "%s__%d" % [clip_name, sequence_index]
 
 
 func _bind_external_skeleton_animation(raw_animation: Animation, body: Node3D,

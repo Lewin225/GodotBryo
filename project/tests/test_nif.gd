@@ -43,6 +43,7 @@ func parse_one(bsa: BsaReader, bsa_path: String, label: String) -> Dictionary:
 			any_indices = true
 		if tex != "":
 			any_tex = true
+		@warning_ignore("integer_division")
 		print("    [%d] %s  verts=%d  tris=%d  uvs=%d  normals=%d  tex='%s'" % [
 			i, reader.get_submesh_name(i), verts.size() / 3, idx.size() / 3,
 			reader.get_uvs(i).size() / 2, reader.get_normals(i).size() / 3, tex

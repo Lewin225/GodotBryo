@@ -72,19 +72,19 @@ func _emit_entry(entry: LeveledItemEntry, level: int, context: Dictionary, outpu
 		return
 	if server == null or not server.has_method("create_inventory_item_reference"):
 		return
-	var reference: EsmReference = server.create_inventory_item_reference(base.form_id, "")
-	if reference == null:
+	var item_ref: EsmReference = server.create_inventory_item_reference(base.form_id, "")
+	if item_ref == null:
 		return
 	var item := InventoryItem.new()
-	item.item_reference = reference
+	item.item_reference = item_ref
 	item.count = maxi(1, multiplier)
 	item.instance_id = "leveled:%08X:%d" % [base.form_id, output.size()]
 	item.owner_form_id = entry.owner_form_id
 	item.health_percent = entry.health_percent
-	if reference is WeaponReference and entry.health_percent >= 0.0:
-		(reference as WeaponReference).condition = entry.health_percent
-	elif reference is ArmorReference and entry.health_percent >= 0.0:
-		(reference as ArmorReference).condition = entry.health_percent
+	if item_ref is WeaponReference and entry.health_percent >= 0.0:
+		(item_ref as WeaponReference).condition = entry.health_percent
+	elif item_ref is ArmorReference and entry.health_percent >= 0.0:
+		(item_ref as ArmorReference).condition = entry.health_percent
 	item.compatibility_data["owner_form_id"] = entry.owner_form_id
 	item.compatibility_data["health_percent"] = entry.health_percent
 	output.append(item)

@@ -23,7 +23,7 @@ func _ready() -> void:
 	var terrain := Terrain3D.new()
 	terrain.vertex_spacing = Terrain3DBridge.VERTEX_SPACING
 	add_child(terrain)
-	terrain.region_size = Terrain3DBridge.REGION_SIZE
+	terrain.region_size = Terrain3DBridge.REGION_SIZE as Terrain3D.RegionSize
 	check(terrain.data != null, "Terrain3D initialized")
 	if terrain.data == null:
 		finish()

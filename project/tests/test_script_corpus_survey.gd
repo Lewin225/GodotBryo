@@ -127,11 +127,11 @@ func _count_functions_in_expr(expr: Dictionary, registry: ScriptFunctionRegistry
 				_count_functions_in_expr(a, registry, known, unknown)
 
 func _count_call(call_expr: Dictionary, registry: ScriptFunctionRegistry, known: Dictionary, unknown: Dictionary) -> void:
-	var name := String(call_expr["name"]).to_lower()
-	if registry.is_registered(name):
-		known[name] = known.get(name, 0) + 1
+	var call_name := String(call_expr["name"]).to_lower()
+	if registry.is_registered(call_name):
+		known[call_name] = known.get(call_name, 0) + 1
 	else:
-		unknown[name] = unknown.get(name, 0) + 1
+		unknown[call_name] = unknown.get(call_name, 0) + 1
 
 func _print_top(counts: Dictionary, n: int) -> void:
 	var keys := counts.keys()

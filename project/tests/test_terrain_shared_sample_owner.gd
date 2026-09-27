@@ -45,6 +45,7 @@ static func sample_owner_candidates(global_x: int, global_z: int) -> Array[Vecto
 	return candidates
 
 static func _floor_div(value: int, divisor: int) -> int:
+	@warning_ignore("integer_division")
 	var q := value / divisor
 	var r := value % divisor
 	if r != 0 and ((r < 0) != (divisor < 0)): q -= 1

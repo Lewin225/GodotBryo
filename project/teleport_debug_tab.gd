@@ -189,9 +189,8 @@ func _refresh_tree() -> void:
 	var selected_cat := CATEGORIES[selected_cat_idx] if selected_cat_idx >= 0 and selected_cat_idx < CATEGORIES.size() else "All"
 	var search_text := _search_filter.text.to_lower().strip_edges()
 
-	var count := 0
 	for preset in PRESETS:
-		var name: String = preset["name"]
+		var preset_name: String = preset["name"]
 		var edid: String = preset["edid"]
 		var cat: String = preset["cat"]
 
@@ -199,7 +198,7 @@ func _refresh_tree() -> void:
 			continue
 
 		if not search_text.is_empty():
-			var matches_name := name.to_lower().find(search_text) != -1
+			var matches_name := preset_name.to_lower().find(search_text) != -1
 			var matches_edid := edid.to_lower().find(search_text) != -1
 			var matches_cat := cat.to_lower().find(search_text) != -1
 			if not (matches_name or matches_edid or matches_cat):
@@ -208,7 +207,7 @@ func _refresh_tree() -> void:
 		var item := _preset_tree.create_item(root)
 		item.set_metadata(0, edid)
 
-		item.set_text(0, name)
+		item.set_text(0, preset_name)
 		item.set_custom_color(0, Color("#e5c07b"))
 
 		item.set_text(1, edid)
@@ -217,7 +216,6 @@ func _refresh_tree() -> void:
 		item.set_text(2, cat)
 		item.set_custom_color(2, Color("#c678dd"))
 
-		count += 1
 
 
 func _on_tree_item_selected() -> void:

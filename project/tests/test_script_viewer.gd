@@ -41,8 +41,8 @@ func _ready() -> void:
 
 	print("--- symbol validate/lookup (case-insensitive) ---")
 	viewer._found_calls_lower.clear()
-	for name in casing_variants:
-		viewer._found_calls_lower[String(name).to_lower()] = casing_variants[name]
+	for variant in casing_variants:
+		viewer._found_calls_lower[String(variant).to_lower()] = casing_variants[variant]
 
 	check(viewer._found_calls_lower.has("enable"), "lowercase lookup finds 'enable' regardless of source casing")
 	check(viewer._found_calls_lower["enable"] == true, "'enable' resolves known via case-insensitive lookup")

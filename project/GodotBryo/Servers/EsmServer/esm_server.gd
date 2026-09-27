@@ -142,7 +142,9 @@ func _open_reader_background() -> Dictionary:
 static func _build_reference_index(pairs: PackedInt64Array, record_index: Array) -> Dictionary:
 	var ids := PackedInt64Array()
 	var cells := PackedInt64Array()
+	@warning_ignore("integer_division")
 	ids.resize(pairs.size() / 2)
+	@warning_ignore("integer_division")
 	cells.resize(pairs.size() / 2)
 	for i in ids.size():
 		ids[i] = pairs[i * 2]
@@ -251,8 +253,8 @@ func get_base_type(form_id: int) -> Script:
 	var raw: Dictionary = reader.get_record_data(form_id) if reader != null else {}
 	if raw.is_empty():
 		return null
-	var name := String(TYPE_TO_BASE.get(String(raw.get("record_type", "")), "EsmBase"))
-	return load(ResourceRoot + _snake_case(name) + ".gd")
+	var script_name := String(TYPE_TO_BASE.get(String(raw.get("record_type", "")), "EsmBase"))
+	return load(ResourceRoot + _snake_case(script_name) + ".gd")
 
 func get_reference_type(refr_form_id: int) -> Script:
 	var raw: Dictionary = reader.get_record_data(refr_form_id) if reader != null else {}
@@ -260,8 +262,8 @@ func get_reference_type(refr_form_id: int) -> Script:
 		return null
 	var base_id := _u32(_subrecord(raw, "NAME"))
 	var base_raw: Dictionary = reader.get_record_data(base_id) if base_id != 0 else {}
-	var name := String(TYPE_TO_REFERENCE.get(String(base_raw.get("record_type", "")), "EsmReference"))
-	return load(ResourceRoot + _snake_case(name) + ".gd")
+	var script_name := String(TYPE_TO_REFERENCE.get(String(base_raw.get("record_type", "")), "EsmReference"))
+	return load(ResourceRoot + _snake_case(script_name) + ".gd")
 
 func get_reference(instance_id: String) -> EsmReference:
 	if _game_session != null:
@@ -557,8 +559,8 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	if _authored_reference_cache.has(id):
 		return _authored_reference_cache[id]
 	var type_tag := String(placement.get("base_type", ""))
-	var name := String(TYPE_TO_REFERENCE.get(type_tag, "EsmReference"))
-	var script = load(ResourceRoot + _snake_case(name) + ".gd")
+	var script_name := String(TYPE_TO_REFERENCE.get(type_tag, "EsmReference"))
+	var script = load(ResourceRoot + _snake_case(script_name) + ".gd")
 	if script == null:
 		return null
 	var result: EsmReference = script.new()
@@ -1195,7 +1197,7 @@ func _populate_package_general(result: PackageBase, data: PackedByteArray) -> vo
 	# Both forms encode the package type at offset four. The 12-byte FNV form
 	# then carries a padding byte, Fallout Behavior flags, type-specific flags,
 	# and two final unused bytes.
-	result.package_type = _u8(data, 4)
+	result.package_type = _u8(data, 4) as PackageBase.PackageType
 	if data.size() == 12:
 		result.fallout_behavior_flags_raw = _u16(data, 6)
 		result.type_specific_flags_raw = _u16(data, 8)
@@ -1281,12 +1283,12 @@ func _decode_package_type_specific_flags(package_type: int, raw_flags: int) -> P
 	result.unknown_mask = raw_flags & ~known_mask
 	return result
 
-func _package_location(owner: PackageBase, tag: String, data: PackedByteArray) -> PackageLocation:
+func _package_location(package: PackageBase, tag: String, data: PackedByteArray) -> PackageLocation:
 	if data.size() != 12:
-		owner.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 12" % [owner.form_id, tag, data.size()])
+		package.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 12" % [package.form_id, tag, data.size()])
 		return null
 	var location := PackageLocation.new()
-	location.location_type = _i32(data)
+	location.location_type = _i32(data) as PackageLocation.LocationType
 	location.location_value = _decode_package_location_value(location.location_type, _u32(data, 4))
 	location.radius = _i32(data, 8)
 	return location
@@ -1310,16 +1312,16 @@ func _decode_package_location_value(location_type: PackageLocation.LocationType,
 			result.object_base_form_id = raw_value
 		PackageLocation.LocationType.OBJECT_TYPE:
 			result.value_kind = PackageLocationValue.ValueKind.OBJECT_TYPE
-			result.object_type = raw_value
+			result.object_type = raw_value as PackageLocation.ObjectType
 		PackageLocation.LocationType.NEAR_LINKED_REFERENCE:
 			result.value_kind = PackageLocationValue.ValueKind.LINKED_REFERENCE
 		PackageLocation.LocationType.AT_PACKAGE_LOCATION:
 			result.value_kind = PackageLocationValue.ValueKind.PACKAGE_LOCATION
 	return result
 
-func _package_schedule(owner: PackageBase, data: PackedByteArray) -> PackageSchedule:
+func _package_schedule(package: PackageBase, data: PackedByteArray) -> PackageSchedule:
 	if data.size() != 8:
-		owner.diagnostics.append("PACK 0x%08X has PSDT with %d bytes; expected 8" % [owner.form_id, data.size()])
+		package.diagnostics.append("PACK 0x%08X has PSDT with %d bytes; expected 8" % [package.form_id, data.size()])
 		return null
 	var schedule := PackageSchedule.new()
 	schedule.month = _i8(data)
@@ -1329,20 +1331,20 @@ func _package_schedule(owner: PackageBase, data: PackedByteArray) -> PackageSche
 	schedule.duration_hours = _u32(data, 4)
 	return schedule
 
-func _package_target(owner: PackageBase, tag: String, data: PackedByteArray) -> PackageTarget:
+func _package_target(package: PackageBase, tag: String, data: PackedByteArray) -> PackageTarget:
 	if data.size() != 16:
-		owner.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 16" % [owner.form_id, tag, data.size()])
+		package.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 16" % [package.form_id, tag, data.size()])
 		return null
 	var target := PackageTarget.new()
-	target.target_type = _i32(data)
+	target.target_type = _i32(data) as PackageTarget.TargetType
 	target.target_value = _u32(data, 4)
 	target.count_or_distance = _i32(data, 8)
 	target.unknown = _f32(data, 12)
 	return target
 
-func _package_condition(owner: PackageBase, data: PackedByteArray) -> PackageCondition:
+func _package_condition(package: PackageBase, data: PackedByteArray) -> PackageCondition:
 	if data.size() != 20 and data.size() != 28:
-		owner.diagnostics.append("PACK 0x%08X has CTDA with %d bytes; expected 20 or 28" % [owner.form_id, data.size()])
+		package.diagnostics.append("PACK 0x%08X has CTDA with %d bytes; expected 20 or 28" % [package.form_id, data.size()])
 		return null
 	var condition := PackageCondition.new()
 	condition.type_flags = _u8(data)
@@ -1360,9 +1362,9 @@ func _package_condition(owner: PackageBase, data: PackedByteArray) -> PackageCon
 		condition.reference_form_id = _u32(data, 24)
 	return condition
 
-func _package_use_weapon_data(owner: PackageBase, data: PackedByteArray) -> PackageUseWeaponData:
+func _package_use_weapon_data(package: PackageBase, data: PackedByteArray) -> PackageUseWeaponData:
 	if data.size() != 24:
-		owner.diagnostics.append("PACK 0x%08X has PKW3 with %d bytes; expected 24" % [owner.form_id, data.size()])
+		package.diagnostics.append("PACK 0x%08X has PKW3 with %d bytes; expected 24" % [package.form_id, data.size()])
 		return null
 	var result := PackageUseWeaponData.new()
 	result.flags = _u32(data)
@@ -1379,9 +1381,9 @@ func _package_use_weapon_data(owner: PackageBase, data: PackedByteArray) -> Pack
 	result.pause_between_volleys_max = _f32(data, 16)
 	return result
 
-func _package_dialogue_data(owner: PackageBase, data: PackedByteArray) -> PackageDialogueData:
+func _package_dialogue_data(package: PackageBase, data: PackedByteArray) -> PackageDialogueData:
 	if data.size() != 24:
-		owner.diagnostics.append("PACK 0x%08X has PKDD with %d bytes; expected 24" % [owner.form_id, data.size()])
+		package.diagnostics.append("PACK 0x%08X has PKDD with %d bytes; expected 24" % [package.form_id, data.size()])
 		return null
 	var result := PackageDialogueData.new()
 	result.field_of_view = _f32(data)
@@ -1414,10 +1416,10 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 			local.raw_data = data.duplicate()
 			event.local_variables.append(local)
 		"SCVR":
-			var name := _string(data)
-			event.local_variable_names.append(name)
+			var local_name := _string(data)
+			event.local_variable_names.append(local_name)
 			if not event.local_variables.is_empty():
-				event.local_variables.back().name = name
+				event.local_variables.back().name = local_name
 		"SCRO": event.script_references.append(_u32(data))
 		"SCRV": event.script_local_reference_indices.append(_u32(data))
 
@@ -1520,10 +1522,10 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 	if current != null:
 		result.parts.append(current)
 
-func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, owner: BodyPartDataBase) -> void:
+func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, body_part_data: BodyPartDataBase) -> void:
 	part.raw_bpnd = data.duplicate()
 	if data.size() != 84:
-		owner.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [owner.form_id, data.size()])
+		body_part_data.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [body_part_data.form_id, data.size()])
 		return
 	part.damage_multiplier = _f32(data)
 	part.flags = _u8(data, 4)

@@ -155,15 +155,15 @@ func _refresh_texture_cache(diagnostics: Dictionary = {}) -> void:
 	var filter_text := _texture_filter.text.to_lower().strip_edges()
 	var root := _texture_tree.create_item()
 	for entry in entries:
-		var name := String(entry.get("name", ""))
+		var entry_name := String(entry.get("name", ""))
 		var slot := int(entry.get("slot", -1))
-		if not filter_text.is_empty() and name.to_lower().find(filter_text) == -1 and str(slot).find(filter_text) == -1:
+		if not filter_text.is_empty() and entry_name.to_lower().find(filter_text) == -1 and str(slot).find(filter_text) == -1:
 			continue
 		var item := _texture_tree.create_item(root)
 		item.set_text(0, str(slot))
 		item.set_text_alignment(0, HORIZONTAL_ALIGNMENT_CENTER)
 		item.set_custom_color(0, Color("#61afef"))
-		item.set_text(1, name)
+		item.set_text(1, entry_name)
 		item.set_custom_color(1, Color("#e5c07b"))
 
 

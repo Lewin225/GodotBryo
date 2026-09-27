@@ -25,16 +25,16 @@ const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 ## node's own @tool/runtime startup requests NifServer as appropriate. The
 ## desired visual tier is assigned before tree entry, so a distant VWD tile
 ## never first queues its full-detail model.
-func physicalise(reference: EsmReference, parent: Node3D = null, initial_visual_detail: int = EsmNode.VisualDetail.FULL) -> Node3D:
-	if reference == null:
+func physicalise(ref: EsmReference, parent: Node3D = null, initial_visual_detail: int = EsmNode.VisualDetail.FULL) -> Node3D:
+	if ref == null:
 		return null
-	var root: EsmNode = _make_node(reference)
-	root.configure(reference)
-	root.visual_detail = initial_visual_detail
-	root.name = _node_name(reference)
+	var root: EsmNode = _make_node(ref)
+	root.configure(ref)
+	root.visual_detail = initial_visual_detail as EsmNode.VisualDetail
+	root.name = _node_name(ref)
 	# NifServer returns a Godot-facing NIF tree. Convert the placement into that
 	# same frame by conjugation, avoiding a second axis correction on the NIF.
-	root.transform = placement_transform(reference.position, reference.rotation, reference.scale)
+	root.transform = placement_transform(ref.position, ref.rotation, ref.scale)
 	root.set_meta("gamebryo_placement_space", true)
 	# Humanoids have a multi-NIF body assembly rather than EsmNode's one-model
 	# lifecycle. A physicalised actor is a near, previewable instance, so start
@@ -58,65 +58,65 @@ func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:
 	var base: EsmBase = server.get_base(base_form_id)
 	if not base is StaticBase:
 		return null
-	var reference := StaticReference.new()
-	reference.base_form_id = base_form_id
-	reference.base = base
-	reference.instance_id = "scolpart:%08X:%d" % [base_form_id, index]
-	reference.position = part.get("position", Vector3.ZERO)
-	reference.rotation = part.get("rotation", Vector3.ZERO)
-	reference.scale = float(part.get("scale", 1.0))
-	return physicalise(reference)
+	var ref := StaticReference.new()
+	ref.base_form_id = base_form_id
+	ref.base = base
+	ref.instance_id = "scolpart:%08X:%d" % [base_form_id, index]
+	ref.position = part.get("position", Vector3.ZERO)
+	ref.rotation = part.get("rotation", Vector3.ZERO)
+	ref.scale = float(part.get("scale", 1.0))
+	return physicalise(ref)
 
-func _make_node(reference: EsmReference) -> EsmNode:
-	if reference is ActorReference and reference.base is NpcBase:
+func _make_node(ref: EsmReference) -> EsmNode:
+	if ref is ActorReference and ref.base is NpcBase:
 		return HumanoidActorScene.instantiate()
-	if reference is DoorReference:
+	if ref is DoorReference:
 		return DoorNodeScript.new()
-	if reference is LeveledItemReference:
+	if ref is LeveledItemReference:
 		return LeveledItemPreviewNodeScript.new()
-	if reference is MiscReference or reference is AlchemyReference \
-			or reference is AmmoReference or reference is KeyReference \
-			or reference is WeaponReference or reference is ArmorReference \
-			or reference is BookReference or reference is CaravanCardReference \
-			or reference is CaravanMoneyReference:
+	if ref is MiscReference or ref is AlchemyReference \
+			or ref is AmmoReference or ref is KeyReference \
+			or ref is WeaponReference or ref is ArmorReference \
+			or ref is BookReference or ref is CaravanCardReference \
+			or ref is CaravanMoneyReference:
 		return ItemNodeScript.new()
-	if reference is StaticReference:
+	if ref is StaticReference:
 		return StaticNodeScript.new()
-	if reference is LightReference:
+	if ref is LightReference:
 		return LightNodeScript.new()
-	if reference is ActivatorReference:
+	if ref is ActivatorReference:
 		return ActivatorNodeScript.new()
-	if reference is ContainerReference:
+	if ref is ContainerReference:
 		return ContainerNodeScript.new()
-	if reference is FurnitureReference:
+	if ref is FurnitureReference:
 		return FurnitureNodeScript.new()
-	if reference is StaticCollectionReference:
+	if ref is StaticCollectionReference:
 		return StaticCollectionNodeScript.new()
-	if reference is MovableStaticReference:
+	if ref is MovableStaticReference:
 		return MovableStaticNodeScript.new()
-	if reference is TalkingActivatorReference:
+	if ref is TalkingActivatorReference:
 		return TalkingActivatorNodeScript.new()
-	if reference is TerminalReference:
+	if ref is TerminalReference:
 		return TerminalNodeScript.new()
 	return EsmNode.new()
 
-func _node_name(reference: EsmReference) -> String:
-	var form_id := _reference_form_id(reference)
-	var type_name := String(reference.base.record_type) if reference.base != null else "REFR"
-	var label := String(reference.base.full_name).strip_edges() if reference.base != null else ""
-	if label.is_empty() and reference.base != null:
-		label = String(reference.base.editor_id).strip_edges()
+func _node_name(ref: EsmReference) -> String:
+	var form_id := _reference_form_id(ref)
+	var type_name := String(ref.base.record_type) if ref.base != null else "REFR"
+	var label := String(ref.base.full_name).strip_edges() if ref.base != null else ""
+	if label.is_empty() and ref.base != null:
+		label = String(ref.base.editor_id).strip_edges()
 	if label.is_empty():
 		label = type_name
 	label = label.validate_node_name()
-	var suffix := "%08X" % form_id if form_id != 0 else reference.instance_id.replace(":", "_")
+	var suffix := "%08X" % form_id if form_id != 0 else ref.instance_id.replace(":", "_")
 	return "%s_%s_%s" % [type_name, label, suffix]
 
-func _reference_form_id(reference: EsmReference) -> int:
-	var marker := reference.instance_id.find(":")
+func _reference_form_id(ref: EsmReference) -> int:
+	var marker := ref.instance_id.find(":")
 	if marker < 0:
 		return 0
-	return _parse_hex(reference.instance_id.substr(marker + 1))
+	return _parse_hex(ref.instance_id.substr(marker + 1))
 
 func _parse_hex(value: String) -> int:
 	var result := 0

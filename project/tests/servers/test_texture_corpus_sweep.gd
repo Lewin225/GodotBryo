@@ -164,7 +164,7 @@ func _report(total_s: float) -> void:
 	print("  peak static memory     %.1f MB (OS.get_static_memory_usage)" % (_peak_static_mem / 1048576.0))
 	if _peak_resident > 0:
 		print("  per resident texture   %.0f KB texture mem, %.0f KB static"
-			% [_peak_tex_mem / _peak_resident / 1024.0, _peak_static_mem / _peak_resident / 1024.0])
+			% [float(_peak_tex_mem) / _peak_resident / 1024.0, float(_peak_static_mem) / _peak_resident / 1024.0])
 	print("  decode failures        %d" % int(stats["decode_failure_count"]))
 	print("  uploads                %d" % int(stats["total_upload_count"]))
 	print("===========================")

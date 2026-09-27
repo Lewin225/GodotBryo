@@ -20,15 +20,15 @@ var instance: ScriptInstance = null
 ## its first run.
 var seconds_passed: float = 0.0
 
-func _init(reference: EsmReference = null, script_instance: ScriptInstance = null) -> void:
-	calling_reference = reference
+func _init(ref: EsmReference = null, script_instance: ScriptInstance = null) -> void:
+	calling_reference = ref
 	instance = script_instance if script_instance != null else ScriptInstance.new()
 
 ## A context for a call made on another reference (`OtherREF.Func`): that
 ## reference becomes the subject, while locals and the triggering references
 ## stay those of this dispatch.
-func with_subject(reference: EsmReference) -> ScriptExecutionContext:
-	var sub := ScriptExecutionContext.new(reference, instance)
+func with_subject(ref: EsmReference) -> ScriptExecutionContext:
+	var sub := ScriptExecutionContext.new(ref, instance)
 	sub.action_ref = action_ref
 	sub.player_reference = player_reference
 	sub.seconds_passed = seconds_passed

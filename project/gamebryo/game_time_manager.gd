@@ -94,8 +94,6 @@ func _process(delta: float) -> void:
 	_seconds_passed_accumulator += game_seconds
 	time_advanced.emit(game_seconds)
 
-	var prev_hour_int := _last_hour_int
-	var prev_day := game_day
 
 	game_hour += game_seconds / 3600.0
 	game_days_passed += game_seconds / 86400.0

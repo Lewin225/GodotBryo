@@ -298,8 +298,8 @@ func _process_tile_starts() -> void:
 	var center: Vector2i = center_value
 	_sort_tile_start_queues(center)
 	while budget > 0 and (not _load_queue.is_empty() or not _persistent_load_queue.is_empty()):
-		var regular_distance: float = INF if _load_queue.is_empty() else _load_queue[0].distance_squared_to(center)
-		var persistent_distance: float = INF if _persistent_load_queue.is_empty() else _persistent_load_queue[0].distance_squared_to(center)
+		var regular_distance: float = INF if _load_queue.is_empty() else float(_load_queue[0].distance_squared_to(center))
+		var persistent_distance: float = INF if _persistent_load_queue.is_empty() else float(_persistent_load_queue[0].distance_squared_to(center))
 		var start_persistent := persistent_distance < regular_distance
 		if not start_persistent:
 			var coord: Vector2i = _load_queue.pop_front()
@@ -372,10 +372,10 @@ func _begin_persistent_root() -> void:
 ## Persistent REFRs are worldspace-owned, but their authored positions still
 ## put them in a grid tile. Bucket them once, then give them the same near/LOD
 ## policy as ordinary CELL references without per-node camera processing.
-func _authored_grid_coord(position: Vector3) -> Vector2i:
+func _authored_grid_coord(world_position: Vector3) -> Vector2i:
 	return Vector2i(
-		floori(position.x / CELL_SIZE_METERS),
-		floori(position.y / CELL_SIZE_METERS)
+		floori(world_position.x / CELL_SIZE_METERS),
+		floori(world_position.y / CELL_SIZE_METERS)
 	)
 
 
@@ -453,9 +453,9 @@ func _process_population() -> void:
 		var is_persistent_job := not _persistent_population_jobs.is_empty()
 		if not is_tile_job and not is_persistent_job:
 			if _load_queue.is_empty() and _persistent_load_queue.is_empty() and not _persistent_imposter_queue.is_empty():
-				var center_value: Variant = _current_grid_coord()
-				if center_value != null:
-					_prioritize_persistent_imposters(center_value)
+				var imposter_center: Variant = _current_grid_coord()
+				if imposter_center != null:
+					_prioritize_persistent_imposters(imposter_center)
 				var imposter: EsmReference = _persistent_imposter_queue.pop_front()
 				if _persistent_imposter_root != null and is_instance_valid(_persistent_imposter_root):
 					_physicaliser.physicalise(imposter, _persistent_imposter_root, EsmNode.VisualDetail.FULL)
@@ -468,8 +468,8 @@ func _process_population() -> void:
 		var center: Vector2i = center_value
 		var tile_index := _closest_population_job_index(_tile_population_jobs, center)
 		var persistent_index := _closest_population_job_index(_persistent_population_jobs, center)
-		var tile_distance: float = INF if tile_index == -1 else Vector2i(_tile_population_jobs[tile_index].get("coord", Vector2i.ZERO)).distance_squared_to(center)
-		var persistent_distance: float = INF if persistent_index == -1 else Vector2i(_persistent_population_jobs[persistent_index].get("coord", Vector2i.ZERO)).distance_squared_to(center)
+		var tile_distance: float = INF if tile_index == -1 else float(Vector2i(_tile_population_jobs[tile_index].get("coord", Vector2i.ZERO)).distance_squared_to(center))
+		var persistent_distance: float = INF if persistent_index == -1 else float(Vector2i(_persistent_population_jobs[persistent_index].get("coord", Vector2i.ZERO)).distance_squared_to(center))
 		var use_persistent := persistent_distance < tile_distance
 		var job_index := persistent_index if use_persistent else tile_index
 		var job: Dictionary = _persistent_population_jobs[job_index] if use_persistent else _tile_population_jobs[job_index]
@@ -497,7 +497,7 @@ func _process_population() -> void:
 			_tile_population_jobs[job_index] = job
 		else:
 			_persistent_population_jobs[job_index] = job
-		var detail: EsmNode.VisualDetail = int(job["root"].get_meta("visual_detail", EsmNode.VisualDetail.FULL))
+		var detail: EsmNode.VisualDetail = int(job["root"].get_meta("visual_detail", EsmNode.VisualDetail.FULL)) as EsmNode.VisualDetail
 		if reference != null and _should_physicalise(reference, detail) and _belongs_to_root(reference, job["root"]) \
 				and EsmNode.node_for(reference) == null:
 			_physicaliser.physicalise(reference, job["root"], detail)
@@ -592,7 +592,7 @@ func _on_reference_arrived(reference: EsmReference) -> void:
 		return
 	if _is_script_loaded_here(reference):
 		ScriptServer.set_reference_loaded(reference, true)
-	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL))
+	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL)) as EsmNode.VisualDetail
 	if EsmNode.node_for(reference) == null and _should_physicalise(reference, detail):
 		_physicaliser.physicalise(reference, root, detail)
 

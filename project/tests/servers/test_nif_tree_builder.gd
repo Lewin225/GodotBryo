@@ -136,9 +136,10 @@ func test_static_tree() -> void:
 		if n.has_meta(NifNamesScript.META_NIF_NAME):
 			var authored := String(n.get_meta(NifNamesScript.META_NIF_NAME))
 			if authored != n.name:
+				if not escaped_found:
+					check(NifNamesScript.unescape(String(n.name)) == authored,
+						"'%s' round-trips from node name '%s'" % [authored, n.name])
 				escaped_found = true
-				check(NifNamesScript.unescape(String(n.name)) == authored,
-					"'%s' round-trips from node name '%s'" % [authored, n.name]) if not escaped_found else null
 		for c in n.get_children():
 			stack.append(c)
 	check(escaped_found, "at least one name needed escaping and round-trips")
@@ -308,6 +309,7 @@ func test_dismember_partitions() -> void:
 			var mesh := child as MeshInstance3D
 			var part_id := int(mesh.get_meta("nif_dismember_part_id", -1))
 			var index_count := (mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+			@warning_ignore("integer_division")
 			actual_triangles[part_id] = index_count / 3
 			check(String(mesh.get_meta("nif_dismember_source_shape", "")) == "limbcaps", "partition retains its source-shape identity")
 			check(int(mesh.get_meta("nif_dismember_partition_index", -1)) >= 0, "partition records its authored partition index")
@@ -474,8 +476,8 @@ func test_animation() -> void:
 ## True when any track in any clip addresses `node`.
 func _is_animated(player: AnimationPlayer, root: Node3D, node: Node) -> bool:
 	var wanted := root.get_path_to(node)
-	for name in player.get_animation_list():
-		var anim := player.get_animation(name)
+	for anim_name in player.get_animation_list():
+		var anim := player.get_animation(anim_name)
 		for t in anim.get_track_count():
 			if anim.track_get_path(t) == wanted:
 				return true
@@ -512,8 +514,8 @@ func test_vertex_colour_and_alpha() -> void:
 	# AO fade whose only pixels are per-vertex colour and alpha. Rendered
 	# without either flag it is a solid opaque white quad.
 	var fade: StandardMaterial3D = null
-	for name in by_name.keys():
-		var m: StandardMaterial3D = by_name[name]
+	for part_name in by_name.keys():
+		var m: StandardMaterial3D = by_name[part_name]
 		if m.albedo_texture == null:
 			fade = m
 			break
@@ -814,10 +816,10 @@ func test_prefer_static() -> void:
 		got.queue_free()
 
 
-func _set_owner_recursive(node: Node, owner: Node) -> void:
+func _set_owner_recursive(node: Node, scene_owner: Node) -> void:
 	for c in node.get_children():
-		c.owner = owner
-		_set_owner_recursive(c, owner)
+		c.owner = scene_owner
+		_set_owner_recursive(c, scene_owner)
 
 
 func write_previews() -> void:
@@ -838,19 +840,19 @@ func write_previews() -> void:
 		# node over 709 sibling subtrees, one per baked-in prop.
 		"villatest_scol": "meshes/scol/villatest.nif",
 	}
-	for name in cases.keys():
-		var root := await _build(String(cases[name]))
+	for case_name in cases.keys():
+		var root := await _build(String(cases[case_name]))
 		if root == null:
-			check(false, "built preview for %s" % name)
+			check(false, "built preview for %s" % case_name)
 			continue
-		root.name = name
+		root.name = case_name
 		_set_owner_recursive(root, root)
 		var packed := PackedScene.new()
 		var err := packed.pack(root)
 		if err != OK:
-			check(false, "packed %s (err %d)" % [name, err])
+			check(false, "packed %s (err %d)" % [case_name, err])
 			continue
-		var path := "%s/%s.tscn" % [PREVIEW_DIR, name]
+		var path := "%s/%s.tscn" % [PREVIEW_DIR, case_name]
 		check(ResourceSaver.save(packed, path) == OK, "wrote %s" % path)
 		root.queue_free()
 
