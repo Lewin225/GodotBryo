@@ -23,10 +23,11 @@ const FLAG_USE_GLOBAL := 0x04
 ## CTDA byte 0, top three bits. Read; values 0-5 only in FalloutNV.esm (==
 ## 57,475, != 3,108, > 841, >= 3,365, < 2,369, <= 847; the operator order is
 ## recalled). Used by ConditionEvaluator.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var comparison: Comparison = Comparison.EQUAL
+@export_custom(PROPERTY_HINT_ENUM, "==,!=,>,>=,<,<=", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var comparison: Comparison = Comparison.EQUAL
 ## CTDA byte 0, low five bits. Read; FLAG_OR on 2,898, FLAG_USE_GLOBAL on 59,
-## 0x10 once (meaning unknown), 0x02 never. Used by ConditionEvaluator.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
+## 0x10 once (meaning unknown), 0x02 (xEdit: Run On Target) and 0x08 never.
+## Used by ConditionEvaluator.
+@export_custom(PROPERTY_HINT_FLAGS, "Or:1,Run On Target:2,Use Global:4,Unknown 0x08:8,Unknown 0x10:16", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
 ## CTDA bytes 4-7 as a float: the value the function's result is compared
 ## with. Read; used by ConditionEvaluator unless FLAG_USE_GLOBAL is set.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var comparison_value: float = 0.0
