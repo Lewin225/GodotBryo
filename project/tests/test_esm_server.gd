@@ -462,6 +462,7 @@ func _check_reference_index(server, index: Array) -> void:
 	_check_quest_bases(server, index)
 	_check_owner_conditions(server, index)
 	_check_linked_references(server, index)
+	_check_condition_parameters(server, index)
 	var global_count := 0
 	for row: Dictionary in index:
 		if String(row.get("record_type", "")) == "GLOB":
@@ -1579,3 +1580,57 @@ func _check_linked_references(server, _index: Array) -> void:
 	var terminal: EsmReference = server.get_reference("authored:00143990")
 	_check(terminal != null and terminal.linked_reference_form_id == 0x0013DC47,
 			"a placed reference carries its XLKR linked reference (%s)" % ("0x%08X" % terminal.linked_reference_form_id if terminal != null else "missing"))
+
+
+## Every parsed condition (PACK, QUST, TERM) names a known function, and each
+## parameter resolves to the kind its xEdit type says: a reference, a base
+## resource, or an int. A FormID parameter naming nothing is counted.
+func _check_condition_parameters(server, index: Array) -> void:
+	var conditions: Array[Condition] = []
+	for row: Dictionary in index:
+		var type := String(row.get("record_type", ""))
+		if type != "PACK" and type != "QUST" and type != "TERM":
+			continue
+		var base: EsmBase = server.get_base(int(row["form_id"]))
+		if base is PackageBase:
+			conditions.append_array(base.conditions)
+		elif base is QuestBase:
+			conditions.append_array(base.conditions)
+			for stage: QuestStage in base.stages:
+				for entry: QuestLogEntry in stage.log_entries:
+					conditions.append_array(entry.conditions)
+			for objective: QuestObjective in base.objectives:
+				for target: QuestObjectiveTarget in objective.targets:
+					conditions.append_array(target.conditions)
+		elif base is TerminalBase:
+			for item: TerminalMenuItem in base.menu_items:
+				conditions.append_array(item.conditions)
+	var unknown := {}
+	var wrong_kind: Array[String] = []
+	var unresolved := 0
+	for condition in conditions:
+		var name := ScriptConditionFunctions.name_for_index(condition.function_index)
+		if name.is_empty():
+			unknown[condition.function_index] = true
+			continue
+		var types: Array = ScriptConditionFunctions.BY_INDEX[condition.function_index][1]
+		var values := ScriptConditionFunctions.resolve_parameters(condition)
+		for i in types.size():
+			var kind := String(types[i])
+			var value: Variant = values[i]
+			var raw: int = condition.parameter_1 if i == 0 else condition.parameter_2
+			if ScriptConditionFunctions.INTEGER_PARAMETERS.has(kind) or ScriptConditionFunctions.FORM_ID_PARAMETERS.has(kind):
+				if not value is int:
+					wrong_kind.append("%s %s" % [name, kind])
+			elif value == null:
+				unresolved += int(raw != 0)
+			elif ScriptConditionFunctions.REFERENCE_PARAMETERS.has(kind) and not value is EsmReference:
+				wrong_kind.append("%s %s" % [name, kind])
+			elif ScriptConditionFunctions.BASE_PARAMETERS.has(kind) and not value is EsmBase:
+				wrong_kind.append("%s %s" % [name, kind])
+	_check(unknown.is_empty() and wrong_kind.is_empty(),
+			"every PACK/QUST/TERM condition names a known function with parameters of its xEdit kind (%d conditions; unknown %s; wrong %s; %d FormID parameters name nothing)"
+			% [conditions.size(), unknown.keys(), wrong_kind.slice(0, 3), unresolved])
+	var get_stage: Variant = ScriptConditionFunctions.resolve_parameter("ptQuest", server.find_quest_by_editor_id("VCG01").form_id)
+	_check(get_stage is QuestBase and get_stage.editor_id == "VCG01", "a quest parameter resolves to its QuestBase")
+	_check(ScriptConditionFunctions.resolve_parameter("ptReference", 0x14) == server.get_player_reference(), "reference 0x14 resolves to the player's reference")

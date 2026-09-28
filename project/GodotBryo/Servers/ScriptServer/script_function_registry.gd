@@ -324,14 +324,14 @@ func _register_defaults() -> void:
 		var esm_server := EsmReference.get_esm_server()
 		if ctx.calling_reference == null or a.is_empty() or esm_server == null:
 			return 0
-		var cell: int = esm_server.find_form_id_by_editor_id(str(a[0]))
+		var cell: int = a[0] if a[0] is int else esm_server.find_form_id_by_editor_id(str(a[0]))
 		return 1 if cell != 0 and ctx.calling_reference.current_cell_form_id == cell else 0)
 	# `GetInWorldspace Worldspace`: true in that worldspace's exterior.
 	register("GetInWorldspace", func(a: Array, ctx: ScriptExecutionContext):
 		var esm_server := EsmReference.get_esm_server()
 		if ctx.calling_reference == null or a.is_empty() or esm_server == null:
 			return 0
-		var worldspace: int = esm_server.find_form_id_by_editor_id(str(a[0]))
+		var worldspace: int = a[0] if a[0] is int else esm_server.find_form_id_by_editor_id(str(a[0]))
 		return 1 if worldspace != 0 and ctx.calling_reference.current_space_form_id == worldspace else 0)
 	register("GetInSameCell", func(a: Array, ctx: ScriptExecutionContext):
 		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
@@ -473,7 +473,8 @@ const DISTANCE_OTHER_SPACE := 1.0e10
 static func _inventory_of(ref: EsmReference) -> Inventory:
 	return ref.get("contents") as Inventory if ref != null and "contents" in ref else null
 
-## The base record named by argument `index` (its editor ID), or null.
+## The base record at argument `index`: an EsmBase as a condition passes it,
+## or an editor ID as a script names it. Null when neither.
 static func _base_arg(args: Array, index: int) -> EsmBase:
 	if index >= args.size():
 		return null
@@ -524,17 +525,23 @@ static func _change_actor_value(args: Array, ctx: ScriptExecutionContext, method
 	values.call(method, code, _number(args, 1))
 	return 1
 
-## The actor value code an argument names, or -1.
+## The actor value code an argument gives: an int code as a condition passes
+## it, or a script name. -1 when neither.
 static func _actor_value_code(args: Array, index: int) -> int:
 	if index >= args.size():
 		return -1
+	if args[index] is int:
+		return args[index] if args[index] >= 0 and args[index] < ActorValue.COUNT else -1
 	var code := ActorValue.from_name(str(args[index]))
 	if code < 0:
 		push_warning("ScriptFunctionRegistry: unknown actor value '%s'" % str(args[index]))
 	return code
 
-## The QUST named by argument `index` (its editor ID), or null.
+## The QUST at argument `index`: a QuestBase as a condition passes it, or an
+## editor ID as a script names it. Null when neither.
 static func _quest(args: Array, index: int) -> EsmBase:
+	if index < args.size() and args[index] is QuestBase:
+		return args[index]
 	var esm_server := EsmReference.get_esm_server()
 	if index >= args.size() or esm_server == null or not esm_server.is_ready():
 		return null

@@ -1,6 +1,6 @@
 # Conditions (CTDA)
 
-**Status: stages A and B done; stage C next.**
+**Status: stages A-C done; stage D next.**
 
 Parse every CTDA into one shared typed resource on the record that owns it, and evaluate
 condition lists at runtime through the same function registry scripts use. First consumers:
