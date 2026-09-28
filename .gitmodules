@@ -8,3 +8,7 @@
 	path = native/terrain3d
 	url = https://github.com/Lewin225/Terrain3D.git
 	branch = godotbryo
+[submodule "native/SunshineClouds2"]
+	path = native/SunshineClouds2
+	url = https://github.com/Bonkahe/SunshineClouds2.git
+	branch = OverhaulSunshineClouds2.5

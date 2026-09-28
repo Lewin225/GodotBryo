@@ -35,7 +35,7 @@ window/vsync/vsync_mode=2
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg", "res://addons/script_viewer/plugin.cfg", "res://addons/godotbryo_browser/plugin.cfg")
+enabled=PackedStringArray("res://addons/SunshineClouds2/plugin.cfg", "res://addons/godotbryo_browser/plugin.cfg", "res://addons/script_viewer/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
 
 [input]
 

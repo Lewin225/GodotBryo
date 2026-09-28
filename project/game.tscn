@@ -12,15 +12,26 @@
 [ext_resource type="Script" uid="uid://8qk6xv17eu2o" path="res://scripting_debug_tab.gd" id="9_scriptingdebug"]
 [ext_resource type="Script" uid="uid://covubnj8iytnr" path="res://lighting_debug_tab.gd" id="11_lightingdebug"]
 [ext_resource type="Script" uid="uid://taroifohncal" path="res://teleport_debug_tab.gd" id="11_teleportdebug"]
+[ext_resource type="RDShaderFile" uid="uid://dx1y5cye1m1hu" path="res://addons/SunshineClouds2/SunshineCloudsCompute.glsl" id="11_xfvwf"]
+[ext_resource type="CompressedTexture3D" uid="uid://dei12lsgrjpyu" path="res://addons/SunshineClouds2/NoiseTextures/curl_noise_varied.tga" id="12_dhpj7"]
 [ext_resource type="Environment" uid="uid://wj0h7rqlbjcp" path="res://exterior_environment.tres" id="12_hb5m1"]
 [ext_resource type="Script" uid="uid://cjcg4wkk27esg" path="res://player_debug_tab.gd" id="12_playerdebug"]
+[ext_resource type="Texture2D" uid="uid://de2nsujnhdlg0" path="res://addons/SunshineClouds2/NoiseTextures/ExtraLargeScaleNoise.tres" id="13_7knny"]
 [ext_resource type="Script" uid="uid://d04cps1ytnu3t" path="res://gamebryo/game_time_manager.gd" id="13_gametimemanager"]
+[ext_resource type="Texture2D" uid="uid://g02m2ewpwusq" path="res://addons/SunshineClouds2/NoiseTextures/HeightGradient.tres" id="14_082n1"]
 [ext_resource type="Script" uid="uid://cvpr8mlgqt8kh" path="res://gamebryo/weather_manager.gd" id="14_weathermanager"]
 [ext_resource type="Script" uid="uid://cpmim1j54oxtd" path="res://gamebryo/celestial_controller.gd" id="15_celestialcontroller"]
+[ext_resource type="NoiseTexture3D" uid="uid://6ed3lvlpbqmg" path="res://addons/SunshineClouds2/NoiseTextures/LargeScaleNoise.tres" id="15_xex6t"]
+[ext_resource type="NoiseTexture3D" uid="uid://dxyewgt7o40m0" path="res://addons/SunshineClouds2/NoiseTextures/MediumScaleNoise.tres" id="16_aa0lp"]
 [ext_resource type="Script" uid="uid://3f5xaxkimmar" path="res://time_weather_debug_tab.gd" id="16_timeweatherdebug"]
 [ext_resource type="Script" uid="uid://co1xkw48mmlyi" path="res://editing_debug_tab.gd" id="17_editingdebug"]
+[ext_resource type="RDShaderFile" uid="uid://cpef10h5lggny" path="res://addons/SunshineClouds2/SunshineCloudsPostCompute.msaa.glsl" id="17_iu0sx"]
+[ext_resource type="RDShaderFile" uid="uid://crfpk8ta4qxsk" path="res://addons/SunshineClouds2/SunshineCloudsPreCompute.glsl" id="18_4v2jo"]
 [ext_resource type="Script" uid="uid://siydwj4v3b3h" path="res://transition_coordinator.gd" id="18_transitioncoordinator"]
-[ext_resource type="Script" path="res://quests_debug_tab.gd" id="19_questsdebug"]
+[ext_resource type="Script" uid="uid://dnblgqynq1t7l" path="res://addons/SunshineClouds2/SunshineClouds.gd" id="19_l1i01"]
+[ext_resource type="Script" uid="uid://bm7kppeppb6st" path="res://quests_debug_tab.gd" id="19_questsdebug"]
+[ext_resource type="NoiseTexture3D" uid="uid://bnck2kxeg5bkg" path="res://addons/SunshineClouds2/NoiseTextures/SmallScaleNoise.tres" id="20_r62pu"]
+[ext_resource type="Script" uid="uid://djusduuxf0voj" path="res://addons/SunshineClouds2/SunshineCloudsDriver.gd" id="32_dhpj7"]
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 auto_exposure_enabled = true
@@ -32,7 +43,39 @@ dof_blur_amount = 0.02
 auto_exposure_min_sensitivity = 200.0
 auto_exposure_max_sensitivity = 400.0
 
-[sub_resource type="Compositor" id="Compositor_i2p71"]
+[sub_resource type="CompositorEffect" id="CompositorEffect_7knny"]
+resource_local_to_scene = false
+resource_name = ""
+enabled = true
+effect_callback_type = 3
+access_resolved_color = true
+access_resolved_depth = true
+needs_motion_vectors = false
+needs_normal_roughness = false
+script = ExtResource("19_l1i01")
+clouds_coverage = 0.803
+lighting_density = 1.336
+use_environment_fog = 1.0
+cloud_ambient_tint = Color(0.4117647, 0.3882353, 0.34509805, 1)
+sampled_environment_fog_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
+ambient_occlusion_color = Color(0, 0, 0, 1)
+accumulation_decay = 0.8
+max_step_count = 100.0
+lod_bias = 1.343
+height_gradient = ExtResource("14_082n1")
+extra_large_noise_patterns = ExtResource("13_7knny")
+large_scale_noise = ExtResource("15_xex6t")
+medium_scale_noise = ExtResource("16_aa0lp")
+small_scale_noise = ExtResource("20_r62pu")
+curl_noise = ExtResource("12_dhpj7")
+pre_pass_compute_shader = ExtResource("18_4v2jo")
+compute_shader = ExtResource("11_xfvwf")
+post_pass_compute_shader = ExtResource("17_iu0sx")
+wind_direction = Vector3(1, 0, 1)
+directional_lights_data = Array[Vector4]([Vector4(-0.3535534, 0.7071068, 0.61237246, 12), Vector4(1, 1, 1, 0.6)])
+
+[sub_resource type="Compositor" id="Compositor_082n1"]
+compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_7knny")])
 
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Control
@@ -129,7 +172,7 @@ directional_shadow_max_distance = 256.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
-compositor = SubResource("Compositor_i2p71")
+compositor = SubResource("Compositor_082n1")
 
 [node name="Debug Tools" type="Control" parent="." unique_id=1820856525]
 layout_mode = 3
@@ -1723,7 +1766,7 @@ layout_mode = 2
 text = "Editor markers are hidden by default. NifServer identifies them once for every runtime consumer."
 autowrap_mode = 2
 
-[node name="Quests" type="Control" parent="Debug Tools/TabContainer"]
+[node name="Quests" type="Control" parent="Debug Tools/TabContainer" unique_id=2009131580]
 visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
@@ -1731,7 +1774,7 @@ script = ExtResource("19_questsdebug")
 metadata/_tab_index = 10
 metadata/_tab_name = "Quests"
 
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Quests"]
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Quests" unique_id=520372545]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -1743,27 +1786,27 @@ theme_override_constants/margin_top = 30
 theme_override_constants/margin_right = 15
 theme_override_constants/margin_bottom = 30
 
-[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin" unique_id=1164921900]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Summary" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+[node name="Summary" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox" unique_id=56873902]
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="FilterRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+[node name="FilterRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox" unique_id=2021105242]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Filter" type="LineEdit" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow"]
+[node name="Filter" type="LineEdit" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow" unique_id=343575085]
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Filter by editor ID or name..."
 clear_button_enabled = true
 
-[node name="Show" type="OptionButton" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow"]
+[node name="Show" type="OptionButton" parent="Debug Tools/TabContainer/Quests/Margin/VBox/FilterRow" unique_id=1921857424]
 layout_mode = 2
 selected = 0
 item_count = 5
@@ -1778,47 +1821,47 @@ popup/item_3/id = 3
 popup/item_4/text = "Failed"
 popup/item_4/id = 4
 
-[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox"]
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox" unique_id=1318239779]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="QuestList" type="ItemList" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit"]
+[node name="QuestList" type="ItemList" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit" unique_id=2039066178]
 custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 
-[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit"]
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit" unique_id=579401347]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right" unique_id=1571198169]
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right" unique_id=1873391890]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SetActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+[node name="SetActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons" unique_id=1608517549]
 layout_mode = 2
 text = "Set Active"
 
-[node name="ClearActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+[node name="ClearActive" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons" unique_id=916461193]
 layout_mode = 2
 text = "Clear Active"
 
-[node name="ShowScript" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons"]
+[node name="ShowScript" type="Button" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right/Buttons" unique_id=1029298956]
 layout_mode = 2
 text = "Show Script"
 
-[node name="Objectives" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+[node name="Objectives" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right" unique_id=273806187]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
 
-[node name="Stages" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right"]
+[node name="Stages" type="RichTextLabel" parent="Debug Tools/TabContainer/Quests/Margin/VBox/HSplit/Right" unique_id=1253836162]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -1843,6 +1886,16 @@ theme_override_font_sizes/font_size = 16
 text = "cell: —"
 horizontal_alignment = 2
 vertical_alignment = 1
+
+[node name="SunshineCloudsDriverGD" type="Node" parent="." unique_id=900350280 node_paths=PackedStringArray("tracked_directional_lights")]
+script = ExtResource("32_dhpj7")
+update_continuously = true
+clouds_resource = SubResource("CompositorEffect_7knny")
+ambience_sample_environment = ExtResource("12_hb5m1")
+tracked_directional_lights = [NodePath("../Sun")]
+tracked_directional_light_shadow_steps = Array[int]([12])
+directional_light_power_multiplier = 0.6
+metadata/_custom_type_script = "uid://djusduuxf0voj"
 
 [connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]
 [connection signal="toggled" from="Debug Tools/TabContainer/Editing/Margin/VBox/ShowBackgroundOnTabScren" to="Debug Tools/Background" method="_on_show_background_on_tab_scren_toggled"]
