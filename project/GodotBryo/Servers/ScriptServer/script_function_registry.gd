@@ -246,6 +246,129 @@ func _register_defaults() -> void:
 	register("SetObjectiveCompleted", func(a: Array, _c):
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
+	# Inventory of the calling reference (actor, creature or container). Items
+	# are named by base editor ID; a leveled list resolves when added.
+	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		var item := _base_arg(a, 0)
+		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
+	# `AddItem Item Count [HideMessage]`.
+	register("AddItem", func(a: Array, ctx: ScriptExecutionContext):
+		var esm_server := EsmReference.get_esm_server()
+		var item := _base_arg(a, 0)
+		if esm_server == null or item == null:
+			return 0
+		return 1 if esm_server.add_inventory_items(ctx.calling_reference, item, maxi(int(_number(a, 1)), 1)) > 0 else 0)
+	# `RemoveItem Item Count [HideMessage]`: removes up to Count, across stacks.
+	register("RemoveItem", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		var item := _base_arg(a, 0)
+		if inventory == null or item == null:
+			return 0
+		return 1 if _remove_items(inventory, item.form_id, maxi(int(_number(a, 1)), 1)) > 0 else 0)
+	# `RemoveAllItems [TargetContainer] [RetainOwnership]`: moves every item to
+	# the target's inventory, or removes them when there is no target.
+	register("RemoveAllItems", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		if inventory == null:
+			return 0
+		var target := _inventory_of(a[0] as EsmReference) if not a.is_empty() and a[0] is EsmReference else null
+		var moving := inventory.get_items()
+		inventory.clear()
+		if target != null:
+			for item in moving:
+				item.is_equipped = false
+				target.add_inventory_item(item)
+		return 1)
+	# `EquipItem Item [NoUnequip] [HideMessage]`: equips the item, adding one
+	# when the actor has none.
+	register("EquipItem", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		var item := _base_arg(a, 0)
+		var esm_server := EsmReference.get_esm_server()
+		if inventory == null or item == null:
+			return 0
+		var owned := _first_item(inventory, item.form_id)
+		if owned == null and esm_server != null and esm_server.add_inventory_items(ctx.calling_reference, item, 1) > 0:
+			owned = _first_item(inventory, item.form_id)
+		return 1 if owned != null and inventory.equip_item(owned) else 0)
+	# `UnequipItem Item [NoEquip] [HideMessage]`.
+	register("UnequipItem", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		var item := _base_arg(a, 0)
+		if inventory == null or item == null:
+			return 0
+		for owned in inventory.get_equipped_items():
+			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+				inventory.unequip_item(owned)
+		return 1)
+	register("GetEquipped", func(a: Array, ctx: ScriptExecutionContext):
+		var inventory := _inventory_of(ctx.calling_reference)
+		var item := _base_arg(a, 0)
+		if inventory == null or item == null:
+			return 0
+		for owned in inventory.get_equipped_items():
+			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+				return 1
+		return 0)
+
+	# Identity and location of the calling reference.
+	register("GetIsID", func(a: Array, ctx: ScriptExecutionContext):
+		var base := _base_arg(a, 0)
+		return 1 if ctx.calling_reference != null and base != null and ctx.calling_reference.base_form_id == base.form_id else 0)
+	register("GetIsReference", func(a: Array, ctx: ScriptExecutionContext):
+		return 1 if ctx.calling_reference != null and not a.is_empty() and a[0] is EsmReference and a[0] == ctx.calling_reference else 0)
+	# `GetInCell Cell`: the CELL itself, by editor ID.
+	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.is_empty() or esm == null:
+			return 0
+		var cell := int(esm.find_cell_by_editor_id(str(a[0])).get("form_id", 0))
+		return 1 if cell != 0 and ctx.calling_reference.current_cell_form_id == cell else 0)
+	# `GetInWorldspace Worldspace`: true in that worldspace's exterior.
+	register("GetInWorldspace", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.is_empty() or esm == null:
+			return 0
+		var worldspace := int(esm.find_worldspace_by_editor_id(str(a[0])).get("form_id", 0))
+		return 1 if worldspace != 0 and ctx.calling_reference.current_space_form_id == worldspace else 0)
+	register("GetInSameCell", func(a: Array, ctx: ScriptExecutionContext):
+		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
+		if ctx.calling_reference == null or other == null or ctx.calling_reference.current_cell_form_id == 0:
+			return 0
+		return 1 if ctx.calling_reference.current_cell_form_id == other.current_cell_form_id else 0)
+	# `GetDistance Ref`, in Gamebryo units; DISTANCE_OTHER_SPACE across spaces.
+	register("GetDistance", func(a: Array, ctx: ScriptExecutionContext):
+		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
+		if ctx.calling_reference == null or other == null:
+			return DISTANCE_OTHER_SPACE
+		if ctx.calling_reference.current_space_form_id != other.current_space_form_id or ctx.calling_reference.current_space_form_id == 0:
+			return DISTANCE_OTHER_SPACE
+		return ctx.calling_reference.position.distance_to(other.position) / GAMEBRYO_UNITS_TO_METERS)
+
+	# Locks and open state of the calling reference (doors, containers, terminals).
+	register("GetLocked", func(_a, ctx: ScriptExecutionContext):
+		return 1 if ctx.calling_reference != null and "is_locked" in ctx.calling_reference and ctx.calling_reference.get("is_locked") else 0)
+	# 1 open, 3 closed; 0 for a reference with no open state. Opening (2) and
+	# closing (4) are not tracked: the change is immediate.
+	register("GetOpenState", func(_a, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or not "is_open" in ctx.calling_reference:
+			return 0
+		return 1 if ctx.calling_reference.get("is_open") else 3)
+	# `SetOpenState Flag`: 1 opens, 0 closes; a loaded door plays the change.
+	register("SetOpenState", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or not "is_open" in ctx.calling_reference:
+			return 0
+		ctx.calling_reference.set("is_open", _number(a, 0) != 0.0)
+		var node := EsmNode.node_for(ctx.calling_reference)
+		if node != null:
+			node.on_activated(null)
+		return 1)
+	# The reference is not spawned again once its CELL next loads.
+	register("MarkForDelete", func(_a, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null:
+			return 0
+		ctx.calling_reference.marked_for_delete = true
+		return 1)
+
 	# Actor values of the calling actor, named by script name (`GetAV Health`).
 	register(["GetActorValue", "GetAV"], func(a: Array, ctx: ScriptExecutionContext):
 		return _read_actor_value(a, ctx, "get_current"))
@@ -339,6 +462,42 @@ func _position(ref: EsmReference, space_form_id: int, args: Array) -> void:
 	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
 	var rotation := Vector3(ref.rotation.x, ref.rotation.y, deg_to_rad(_number(args, 3)))
 	script_server.move_reference(ref, space_form_id, position, rotation)
+
+## GetDistance's result for references in different spaces (or unplaced).
+const DISTANCE_OTHER_SPACE := 1.0e10
+
+## A reference's live inventory (actor, creature, container), or null.
+static func _inventory_of(ref: EsmReference) -> Inventory:
+	return ref.get("contents") as Inventory if ref != null and "contents" in ref else null
+
+## The base record named by argument `index` (its editor ID), or null.
+static func _base_arg(args: Array, index: int) -> EsmBase:
+	if index >= args.size():
+		return null
+	if args[index] is EsmBase:
+		return args[index]
+	var esm_server := EsmReference.get_esm_server()
+	return esm_server.find_base_by_editor_id(str(args[index])) if esm_server != null and esm_server.is_ready() else null
+
+## The first inventory item of a base, or null.
+static func _first_item(inventory: Inventory, base_form_id: int) -> InventoryItem:
+	for item in inventory.get_items():
+		if item.item_reference != null and item.item_reference.base_form_id == base_form_id:
+			return item
+	return null
+
+## Removes up to `count` items of a base, across stacks. Returns how many.
+static func _remove_items(inventory: Inventory, base_form_id: int, count: int) -> int:
+	var removed := 0
+	for item in inventory.get_items():
+		if removed >= count:
+			break
+		if item.item_reference == null or item.item_reference.base_form_id != base_form_id:
+			continue
+		var take := mini(item.count, count - removed)
+		if inventory.remove_inventory_item(item, take):
+			removed += take
+	return removed
 
 ## The calling reference's actor values, or null when it is not an actor.
 static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:

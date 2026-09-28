@@ -652,6 +652,34 @@ func _populate_actor_values(reference: EsmReference) -> void:
 	if reference is ActorReference or reference is CreatureReference:
 		reference.get_actor_values()
 
+## Adds `count` of `item_base` to `owner`'s inventory as typed items, as a
+## script's AddItem does. A leveled list resolves `count` times at the owner's
+## level. Returns the number of items added; 0 when `owner` has no inventory.
+func add_inventory_items(owner: EsmReference, item_base: EsmBase, count: int) -> int:
+	var inventory: Inventory = owner.get("contents") if owner != null and "contents" in owner else null
+	if inventory == null or item_base == null or count <= 0:
+		return 0
+	var added := 0
+	if item_base is LeveledItemBase:
+		var resolver := LeveledItemResolver.new(self)
+		for i in count:
+			for resolved in resolver.resolve(item_base as LeveledItemBase, _owner_level(owner), {}):
+				if inventory.add_inventory_item(resolved):
+					added += resolved.count
+		return added
+	var item_reference := _create_inventory_item_reference(item_base, item_base.form_id, inventory.items.size())
+	if item_reference == null:
+		return 0
+	var item := InventoryItem.new()
+	item.item_reference = item_reference
+	item.count = count
+	return count if inventory.add_inventory_item(item) else 0
+
+## The level leveled lists resolve at for `owner`: an actor's level, else 1.
+static func _owner_level(owner: EsmReference) -> int:
+	var values: ActorValues = owner.get_actor_values() if owner != null else null
+	return values.get_level() if values != null else 1
+
 ## CNTO is the authored seed for an owner inventory. The live inventory is
 ## kept on the owner reference as typed item references and is not rebuilt
 ## from the base after the reference has been created.
@@ -665,7 +693,7 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		return
 	var item_index := 0
 	var resolver := LeveledItemResolver.new(self)
-	var level := int(reference.get("actor_level")) if reference.get("actor_level") != null else 1
+	var level := _owner_level(reference)
 	for item_data in owner_base.all_subrecord_data("CNTO"):
 		if item_data.size() < 8:
 			continue

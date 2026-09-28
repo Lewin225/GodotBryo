@@ -74,6 +74,11 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 ## Null when the base has no script or it has not run yet. Saved.
 @export var script_instance: ScriptInstance
 
+## Not an ESM field: set by MarkForDelete. The streamers do not spawn a marked
+## reference again; its current node, if any, stays until its CELL unloads.
+## Saved.
+@export var marked_for_delete: bool = false
+
 ## Runtime state with no ESM source: the actor using this reference, for
 ## references used by one actor at a time (terminals, containers, a door being
 ## lockpicked). Set only by ScriptServer.begin_use / end_use; not saved.

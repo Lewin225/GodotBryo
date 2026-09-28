@@ -236,7 +236,7 @@ func _belongs_to_cell(reference: EsmReference, cell_form_id: int) -> bool:
 
 func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
-	if reference == ScriptServer.player_reference:
+	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
 	if reference is ActorReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0

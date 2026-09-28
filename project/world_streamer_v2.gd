@@ -518,7 +518,7 @@ func _closest_population_job_index(jobs: Array[Dictionary], center: Vector2i) ->
 
 func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
-	if reference == ScriptServer.player_reference:
+	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
 	if reference is ActorReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0

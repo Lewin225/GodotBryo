@@ -72,6 +72,16 @@ The target's loaded node then plays it (`EsmNode.on_activated()`). Script `Activ
 performs the built-in activation, or runs `OnActivate` when its second argument is 1;
 its activator is the first argument, or the dispatch's action reference.
 
+**Inventory, identity, location.** `GetItemCount`, `AddItem`, `RemoveItem`, `RemoveAllItems`,
+`EquipItem`, `UnequipItem` and `GetEquipped` act on the calling reference's `contents`
+(actors, creatures, containers), naming items by base editor ID; `AddItem` goes through
+`EsmServer.add_inventory_items()`, which builds typed item references and resolves leveled
+lists. `GetIsID`, `GetIsReference`, `GetInCell`, `GetInWorldspace`, `GetInSameCell` and
+`GetDistance` (Gamebryo units) read the reference's base, cell, space and position.
+`GetLocked`, `GetOpenState` and `SetOpenState` read and set `is_locked` / `is_open`;
+`SetOpenState` lets a loaded door play the change. `MarkForDelete` sets
+`EsmReference.marked_for_delete`, which the streamers do not spawn again.
+
 **Triggers.** A placed reference with an XPRM primitive gets an `EsmPrimitiveVolume`
 (Area3D) when loaded, whatever its base or script. When its base has a script, the volume
 dispatches `OnTriggerEnter` and `OnTriggerLeave` once per actor and `OnTrigger` every
@@ -186,6 +196,12 @@ Each is a reason to test before building on it.
 | XPRM bounds are half-extents (a sphere's radius in X) | `EsmPrimitiveVolume.configure` | xEdit displays them doubled | the vigor tester trigger (REFR 00104C16, 3.1 x 1.3 x 1.4 m half-extents) against where stage 60 fires in the original |
 | Only actors fire triggers, not items or other physics objects | `EsmPrimitiveVolume.actor_reference_for` | no source | a trigger script with an OnTriggerEnter block and a dropped item |
 | `OnTrigger` runs every physics frame while an actor is inside | `EsmPrimitiveVolume._physics_process` | GECK wiki, recalled | a trigger script counting OnTrigger runs |
+| `EquipItem` adds the item when the actor has none | registry `EquipItem` | GECK wiki, recalled | console `EquipItem` of an item an NPC does not carry |
+| `RemoveAllItems` removes (or moves) every item, quest items and equipped items included | registry `RemoveAllItems` | no source | an NPC with a quest item after `RemoveAllItems` |
+| `AddItem` of a leveled list resolves it once per count, at the owner's level | `EsmServer.add_inventory_items` | no source | console `AddItem` of a leveled list with count 5 |
+| `GetOpenState` is 1 open, 2 opening, 3 closed, 4 closing; opening and closing are never reported | registry `GetOpenState` | GECK wiki, recalled; shipped scripts test `== 1 \|\| == 2` | `GetOpenState` while a door animates |
+| `GetDistance` across spaces returns a very large number (1e10 here) | registry `DISTANCE_OTHER_SPACE` | no source | console `GetDistance` to a reference in another cell |
+| `MarkForDelete` removes the reference only once its CELL unloads | `EsmReference.marked_for_delete`, streamer `_should_spawn` | GECK wiki, recalled | a `MarkForDelete` script on a placed reference, then leave and return |
 | Completing an objective does not display it, and hiding one does not uncomplete it; the two flags are independent | `QuestServer.set_objective_completed` / `set_objective_displayed` | conservative default; no source | console `SetObjectiveCompleted VMQ01 10 1` on a new game, then check the Pip-Boy and `GetObjectiveDisplayed VMQ01 10` |
 | `SetObjective*` without a flag changes nothing | registry `_change_objective` | conservative default; every one of 4785 shipped calls passes a flag | console `SetObjectiveDisplayed VMQ01 10` on a new game |
 | A flag other than 0 or 1 sets (one shipped call: `SetObjectiveDisplayed VMQHouse4 50 2`) | registry `_change_objective` | treated as nonzero = set; no source | console `SetObjectiveDisplayed VMQ01 10 2`, then `GetObjectiveDisplayed VMQ01 10` |

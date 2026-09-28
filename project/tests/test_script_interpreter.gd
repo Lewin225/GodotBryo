@@ -188,6 +188,69 @@ func _test_script_server() -> void:
 	_test_quests_and_messages(esm_server, server)
 	_test_globals(server)
 	_test_parsing_and_return(server)
+	_test_items_and_location(esm_server, server)
+
+## Inventory, identity, location and open-state functions on real references.
+func _test_items_and_location(esm_server, server) -> void:
+	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
+	var run := func(line: String, target: EsmReference) -> Variant:
+		return server.run_debug_line(line, target).get("result")
+	var start_count: int = run.call("GetItemCount Stimpak", doc)
+	run.call("AddItem Stimpak 3", doc)
+	check(run.call("GetItemCount Stimpak", doc) == start_count + 3, "AddItem / GetItemCount (Stimpak +3)")
+	run.call("RemoveItem Stimpak 2", doc)
+	check(run.call("GetItemCount Stimpak", doc) == start_count + 1, "RemoveItem removes the count asked for")
+	var added: EsmBase = doc.contents.get_items().back().item_reference.base
+	check(added is AlchemyBase, "added items are typed references (%s)" % added.get_class())
+
+	var leveled: LeveledItemBase = null
+	for row: Dictionary in esm_server.get_record_index():
+		if String(row.get("record_type", "")) == "LVLI":
+			leveled = esm_server.get_base(int(row["form_id"])) as LeveledItemBase
+			if leveled != null and not leveled.editor_id.is_empty() and not leveled.entries.is_empty():
+				break
+	var before: int = doc.contents.get_items().size()
+	server.run_debug_line("AddItem %s 1" % leveled.editor_id, doc)
+	var from_list: InventoryItem = doc.contents.get_items().back() if doc.contents.get_items().size() > before else null
+	check(from_list == null or not from_list.item_reference.base is LeveledItemBase,
+			"AddItem with a leveled list adds what it resolves to, never the list (%s)" % leveled.editor_id)
+
+	run.call("EquipItem Stimpak", doc)
+	check(run.call("GetEquipped Stimpak", doc) == 1, "EquipItem / GetEquipped")
+	run.call("UnequipItem Stimpak", doc)
+	check(run.call("GetEquipped Stimpak", doc) == 0, "UnequipItem")
+
+	var locker := ContainerReference.new()
+	locker.contents = Inventory.new()
+	var carried: int = doc.contents.get_items().size()
+	var removed_all: Dictionary = server.run_debug_line("RemoveAllItems", doc)
+	check(bool(removed_all.get("ok")) and doc.contents.get_items().is_empty(), "RemoveAllItems with no target empties the inventory (%d items)" % carried)
+	run.call("AddItem Stimpak 2", doc)
+	var moved := ScriptExecutionContext.new(doc)
+	server.function_registry.call_function("RemoveAllItems", [locker], moved)
+	check(doc.contents.get_items().is_empty() and locker.contents.get_item_count(esm_server.find_base_by_editor_id("Stimpak").form_id) == 2,
+			"RemoveAllItems Target moves every item to the target")
+
+	check(run.call("GetIsID DocMitchell", doc) == 1 and run.call("GetIsID Stimpak", doc) == 0, "GetIsID compares the base")
+	check(run.call("GetIsReference DocMitchellREF", doc) == 1 and run.call("GetIsReference player", doc) == 0, "GetIsReference")
+	check(run.call("GetInCell GSDocMitchellHouse", doc) == 1 and run.call("GetInCell GSProspectorSaloonInterior", doc) == 0, "GetInCell matches the CELL")
+	check(run.call("GetInWorldspace WastelandNV", doc) == 0, "an interior reference is in no worldspace")
+	var tester: EsmReference = esm_server.find_reference_by_editor_id("VCG01VigorTesterREF")
+	check(run.call("GetInSameCell VCG01VigorTesterREF", doc) == 1, "GetInSameCell")
+	var expected := doc.position.distance_to(tester.position) * 70.0
+	check(absf(float(run.call("GetDistance VCG01VigorTesterREF", doc)) - expected) < 1.0, "GetDistance in Gamebryo units (%.1f)" % expected)
+	check(float(run.call("GetDistance VictorREF", doc)) >= 1.0e9, "GetDistance across spaces is very large")
+
+	var door: DoorReference = esm_server.find_reference_by_editor_id("V21PlayerRoomDoorREF") as DoorReference
+	check(door != null and door.teleport == null, "V21PlayerRoomDoorREF is a non-teleport door")
+	run.call("SetOpenState 1", door)
+	check(door.is_open and run.call("GetOpenState", door) == 1, "SetOpenState 1 opens; GetOpenState 1")
+	run.call("SetOpenState 0", door)
+	check(not door.is_open and run.call("GetOpenState", door) == 3, "SetOpenState 0 closes; GetOpenState 3")
+	check(run.call("GetLocked", door) == int(door.is_locked), "GetLocked reads the lock")
+	run.call("MarkForDelete", door)
+	check(door.marked_for_delete, "MarkForDelete marks the reference")
+	door.marked_for_delete = false
 
 ## Condition functions take their arguments inside expressions, trailing
 ## arguments may be omitted, and Return ends the run.
