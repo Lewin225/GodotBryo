@@ -592,6 +592,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.scale = float(placement.get("scale", 1.0))
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
 	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
+	result.linked_reference_form_id = int(placement.get("linked_reference_form_id", 0))
 	result.primitive_type = int(placement.get("primitive_type", 0)) as EsmReference.PrimitiveType
 	result.primitive_bounds = placement.get("primitive_bounds", Vector3.ZERO)
 	result.primitive_color = placement.get("primitive_color", Color(0, 0, 0, 0))
@@ -958,9 +959,16 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 				item.item_flags = int(item_data.get("flags", 0))
 				item.display_note_form_id = int(item_data.get("note_form_id", 0))
 				item.submenu_terminal_form_id = int(item_data.get("submenu_form_id", 0))
-				item.condition_count = int(item_data.get("condition_count", 0))
 				item.script_source = String(item_data.get("script_source", ""))
 				terminal.menu_items.append(item)
+		# Each menu item starts at its ITXT; its CTDAs follow its other fields.
+		var item_index := -1
+		for sub: Dictionary in raw.get("subrecords", []):
+			var tag := String(sub.get("type", ""))
+			if tag == "ITXT":
+				item_index += 1
+			elif tag == "CTDA" and item_index >= 0 and item_index < terminal.menu_items.size():
+				_append_condition(terminal.menu_items[item_index].conditions, terminal, sub.get("data", PackedByteArray()))
 	else:
 		if _has_property(result, "model_path"):
 			result.set("model_path", _string(_subrecord(raw, "MODL")))
@@ -1075,6 +1083,7 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 	result.starts_enabled = (result.flags & 0x01) != 0
 	result.priority = _u8(data, 1) if data.size() >= 2 else 0
 	result.script_delay = _f32(data, 4) if data.size() >= 8 else 0.0
+	result.conditions.clear()
 	result.stages.clear()
 	result.objectives.clear()
 	var stage: QuestStage = null
@@ -1100,7 +1109,7 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 					objective.targets.append(target)
 				"CTDA":
 					if target != null:
-						target.condition_count += 1
+						_append_condition(target.conditions, result, bytes)
 			continue
 		match tag:
 			"INDX":
@@ -1115,7 +1124,9 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 					stage.log_entries.append(entry)
 			"CTDA":
 				if entry != null:
-					entry.condition_count += 1
+					_append_condition(entry.conditions, result, bytes)
+				elif stage == null:
+					_append_condition(result.conditions, result, bytes)
 			"CNAM":
 				if entry != null:
 					entry.log_text = _string(bytes)
@@ -1216,9 +1227,7 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 			"PTD2":
 				result.target_2 = _package_target(result, "PTD2", data)
 			"CTDA":
-				var condition := _package_condition(result, data)
-				if condition != null:
-					result.conditions.append(condition)
+				_append_condition(result.conditions, result, data)
 			"IDLA":
 				for offset in range(0, data.size() - 3, 4):
 					result.idle_animation_form_ids.append(_u32(data, offset))
@@ -1413,25 +1422,35 @@ func _package_target(package: PackageBase, tag: String, data: PackedByteArray) -
 	target.unknown = _f32(data, 12)
 	return target
 
-func _package_condition(package: PackageBase, data: PackedByteArray) -> PackageCondition:
-	if data.size() != 20 and data.size() != 28:
-		package.diagnostics.append("PACK 0x%08X has CTDA with %d bytes; expected 20 or 28" % [package.form_id, data.size()])
+## One CTDA as a Condition. 28-byte CTDAs carry Run On and Reference, the
+## 24-byte form Run On only, the 20-byte form neither. Null, with a diagnostic
+## on `owner`, for any other size.
+func _condition(owner: EsmBase, data: PackedByteArray) -> Condition:
+	if data.size() != 20 and data.size() != 24 and data.size() != 28:
+		owner.diagnostics.append("%s 0x%08X has CTDA with %d bytes; expected 20, 24 or 28" % [owner.record_type, owner.form_id, data.size()])
 		return null
-	var condition := PackageCondition.new()
-	condition.type_flags = _u8(data)
+	var condition := Condition.new()
+	var type := _u8(data)
+	condition.comparison = (type >> 5) as Condition.Comparison
+	condition.flags = type & 0x1F
 	condition.comparison_value = _f32(data, 4)
-	# The Condition Type bit which changes the comparison word into a GLOB
-	# FormID is xEdit's CTDA comparison-value union discriminator.
-	if (condition.type_flags & 0x04) != 0:
+	if condition.uses_global():
 		condition.comparison_global_form_id = _u32(data, 4)
-	condition.function_id = _u16(data, 8)
+	condition.function_index = _u16(data, 8)
 	condition.parameter_1 = _u32(data, 12)
 	condition.parameter_2 = _u32(data, 16)
-	if data.size() == 28:
+	if data.size() >= 24:
 		condition.has_run_on = true
 		condition.run_on = _u32(data, 20)
+	if data.size() >= 28:
 		condition.reference_form_id = _u32(data, 24)
 	return condition
+
+## Appends the Condition parsed from `data` to `conditions`, when it parses.
+func _append_condition(conditions: Array[Condition], owner: EsmBase, data: PackedByteArray) -> void:
+	var condition := _condition(owner, data)
+	if condition != null:
+		conditions.append(condition)
 
 func _package_use_weapon_data(package: PackageBase, data: PackedByteArray) -> PackageUseWeaponData:
 	if data.size() != 24:

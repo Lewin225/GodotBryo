@@ -41,7 +41,10 @@ enum PackageType {
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageSchedule", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var schedule: PackageSchedule
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageTarget", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var target_1: PackageTarget
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageTarget", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var target_2: PackageTarget
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "PackageCondition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[PackageCondition] = []
+## CTDA conditions choosing whether the package runs, in authored order.
+## Read; 2992 on 1814 PACK records in FalloutNV.esm. Not used yet (package
+## selection is not implemented).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
 
 ## PACK's Idle Animation block. The non-FormID IDLC/IDLF/IDLT words retain
 ## their subrecord names until their behavior is independently verified.

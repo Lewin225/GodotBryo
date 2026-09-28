@@ -495,6 +495,7 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 
 	uint32_t base_form_id = 0;
 	uint32_t emittance_form_id = 0;
+	uint32_t linked_reference_form_id = 0;
 	uint32_t primitive_type = 0;
 	float primitive_bounds[3] = { 0.0f, 0.0f, 0.0f };
 	float primitive_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -519,6 +520,9 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 		} else if (s.type == "XEMI" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			emittance_form_id = sr.read_u32();
+		} else if (s.type == "XLKR" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			linked_reference_form_id = sr.read_u32();
 		} else if (s.type == "XPRM" && s.size >= 32) {
 			util::ByteReader sr(s.data, s.size);
 			// Bounds: Gamebryo units -> meters, like DATA's position.
@@ -561,6 +565,7 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 	pl.refr_form_id = child.form_id;
 	pl.base_form_id = base_form_id;
 	pl.emittance_form_id = emittance_form_id;
+	pl.linked_reference_form_id = linked_reference_form_id;
 	pl.primitive_type = primitive_type;
 	std::memcpy(pl.primitive_bounds, primitive_bounds, sizeof(primitive_bounds));
 	std::memcpy(pl.primitive_color, primitive_color, sizeof(primitive_color));
@@ -615,11 +620,15 @@ std::optional<ReferencePlacement> EsmFile::placement_from_actor(const RecordInfo
 	float rotation[3] = { 0.0f, 0.0f, 0.0f };
 	float scale = 1.0f;
 	bool has_data = false;
+	uint32_t linked_reference_form_id = 0;
 
 	for (const auto &s : subs) {
 		if (s.type == "NAME" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			base_form_id = sr.read_u32();
+		} else if (s.type == "XLKR" && s.size >= 4) {
+			util::ByteReader sr(s.data, s.size);
+			linked_reference_form_id = sr.read_u32();
 		} else if (s.type == "DATA" && s.size >= 24) {
 			util::ByteReader sr(s.data, s.size);
 			// Position, not rotation/scale: Gamebryo units -> meters (units.h).
@@ -643,6 +652,7 @@ std::optional<ReferencePlacement> EsmFile::placement_from_actor(const RecordInfo
 	ReferencePlacement pl;
 	pl.refr_form_id = child.form_id;
 	pl.base_form_id = base_form_id;
+	pl.linked_reference_form_id = linked_reference_form_id;
 	std::memcpy(pl.position, position, sizeof(position));
 	std::memcpy(pl.rotation, rotation, sizeof(rotation));
 	pl.scale = scale;

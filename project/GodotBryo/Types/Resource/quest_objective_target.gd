@@ -18,7 +18,7 @@ const FLAG_COMPASS_MARKER_IGNORES_LOCKS := 0x01
 ## one defined flag. QSTA bytes 5-7 are nonzero on almost every target and are
 ## not read. Not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
-## Number of CTDA conditions after this QSTA, before the next QSTA or QOBJ.
-## Read as a count; the conditions are not decoded or evaluated. 772 of 1469
-## targets have conditions. Not used yet.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var condition_count: int = 0
+## CTDA conditions after this QSTA, before the next QSTA or QOBJ, in authored
+## order. Read; 772 of 1469 targets have conditions (1229 in all). Not used
+## yet; compass and map markers would show only targets whose conditions pass.
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []

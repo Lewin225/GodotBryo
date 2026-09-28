@@ -52,6 +52,11 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 ## undocumented); used by EsmNode to select the begin-only visibility policy
 ## for persistent skyline stand-ins.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var has_xsrf_or_xsrd: bool = false
+## XLKR: the placed reference this one is linked to (e.g. the door a terminal
+## controls), as its FormID; 0 when absent. Read, on REFR, ACHR and ACRE; used
+## by ConditionEvaluator for Condition.RunOn.LINKED_REFERENCE (130 conditions,
+## 115 of them on terminals).
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var linked_reference_form_id: int = 0
 ## XPRM: the primitive volume placed with this reference -- triggers,
 ## acoustic spaces, sound emitters, room portals. Read; 5677 REFRs in
 ## FalloutNV.esm carry one (Box 2436, Sphere 130, Portal Box 3111). Used by

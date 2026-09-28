@@ -14,7 +14,9 @@ extends Resource
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var display_note_form_id: int = 0
 ## TERM menu-item TNAM Sub Menu TERM FormID.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var submenu_terminal_form_id: int = 0
-## Number of CTDA conditions attached to this item.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var condition_count: int = 0
+## CTDA conditions of this menu item (after its ITXT, in authored order).
+## Read; TERM holds 405 in FalloutNV.esm. Used by TerminalSession, which shows
+## an item with conditions as unavailable (they are not evaluated yet).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
 ## Placeholder embedded menu-item script source; execution belongs to the script engine.
 @export_multiline var script_source: String = ""

@@ -67,6 +67,7 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	d["scale"] = pl.scale;
 	d["script_form_id"] = static_cast<int64_t>(pl.script_form_id);
 	d["emittance_form_id"] = static_cast<int64_t>(pl.emittance_form_id);
+	d["linked_reference_form_id"] = static_cast<int64_t>(pl.linked_reference_form_id);
 	d["primitive_type"] = static_cast<int64_t>(pl.primitive_type);
 	if (pl.primitive_type != 0) {
 		d["primitive_bounds"] = Vector3(pl.primitive_bounds[0], pl.primitive_bounds[1], pl.primitive_bounds[2]);

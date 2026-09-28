@@ -15,6 +15,9 @@ extends EsmBase
 ## DATA bytes 4-7: seconds between runs of the quest script's GameMode block;
 ## 0 means the engine default.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_delay: float = 0.0
+## CTDA conditions on the quest itself (before its first stage), in authored
+## order. Read; not used yet.
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
 ## Stages in authored order.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var stages: Array[QuestStage] = []
 ## QOBJ objectives with their NNAM text and QSTA targets, in authored order

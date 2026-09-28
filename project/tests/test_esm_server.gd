@@ -338,7 +338,7 @@ func _check_quest_bases(server, index: Array) -> void:
 			for entry in stage.log_entries:
 				counts["entries"] += 1
 				counts["scripts"] += int(not entry.script_source.is_empty())
-				counts["conditioned"] += int(entry.condition_count > 0)
+				counts["conditioned"] += int(not entry.conditions.is_empty())
 				counts["complete"] += int((entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0)
 				counts["fail"] += int((entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0)
 	_check(counts == {"quests": 436, "enabled": 281, "stages": 1028, "entries": 969, "scripts": 737, "conditioned": 20, "complete": 150, "fail": 126},
@@ -368,8 +368,8 @@ func _check_quest_objectives(server, index: Array) -> void:
 				counts["targets"] += 1
 				counts["flag_01"] += int(target.flags == QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
 				counts["other_flags"] += int(target.flags > QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
-				counts["conditioned"] += int(target.condition_count > 0)
-				counts["conditions"] += target.condition_count
+				counts["conditioned"] += int(not target.conditions.is_empty())
+				counts["conditions"] += target.conditions.size()
 	_check(counts == {"quests": 125, "objectives": 1045, "empty_text": 17, "with_targets": 892, "targets": 1469,
 			"flag_01": 105, "other_flags": 1, "conditioned": 772, "conditions": 1229, "duplicate_indexes": 0},
 			"every QUST's objectives match the census (%s)" % [counts])
@@ -382,12 +382,12 @@ func _check_quest_objectives(server, index: Array) -> void:
 	var first := vmq01.objectives[0]
 	_check(first.text == "(Optional) Ask around the saloon in Goodsprings for information about your attackers."
 			and first.targets.size() == 1 and first.targets[0].reference_form_id == 0x00104C6D
-			and first.targets[0].flags == 1 and first.targets[0].condition_count == 0,
+			and first.targets[0].flags == 1 and first.targets[0].conditions.is_empty(),
 			"VMQ01 objective 20: NNAM text and one ACHR target, flag 0x01, no conditions")
 	var novac := vmq01.get_objective(40)
 	var shape: Array = []
 	for target in novac.targets:
-		shape.append([target.reference_form_id, target.flags, target.condition_count])
+		shape.append([target.reference_form_id, target.flags, target.conditions.size()])
 	_check(novac.text == "Head to Novac through Nipton. Ask around Novac about your attackers."
 			and shape == [[0x0009289B, 1, 2], [0x000CDF13, 0, 1], [0x00177D36, 1, 2]],
 			"VMQ01 objective 40: three REFR targets with their flags and CTDA counts (%s)" % [shape])
@@ -460,6 +460,8 @@ func _check_reference_index(server, index: Array) -> void:
 			quests += 1
 	_check(server._quest_by_editor_id.size() == quests, "every QUST is indexed by editor ID (%d)" % quests)
 	_check_quest_bases(server, index)
+	_check_owner_conditions(server, index)
+	_check_linked_references(server, index)
 	var global_count := 0
 	for row: Dictionary in index:
 		if String(row.get("record_type", "")) == "GLOB":
@@ -576,12 +578,9 @@ func _check_package_bases(server, index: Array) -> void:
 		else:
 			for condition_index in raw_conditions.size():
 				var condition_data: PackedByteArray = raw_conditions[condition_index]
-				var condition: PackageCondition = package.conditions[condition_index]
-				if condition == null or condition.type_flags != _u8(condition_data) or condition.function_id != _u16(condition_data, 8) or condition.parameter_1 != _u32(condition_data, 12) or condition.parameter_2 != _u32(condition_data, 16) or condition.has_run_on != (condition_data.size() == 28):
+				var condition: Condition = package.conditions[condition_index]
+				if not _condition_matches(condition, condition_data):
 					errors.append("0x%08X CTDA %d differs" % [form_id, condition_index])
-					break
-				if condition_data.size() == 28 and (condition.run_on != _u32(condition_data, 20) or condition.reference_form_id != _u32(condition_data, 24)):
-					errors.append("0x%08X CTDA %d run-on differs" % [form_id, condition_index])
 					break
 		var raw_idles := _all_subrecords(raw, "IDLA")
 		var idle_count := 0
@@ -1514,3 +1513,69 @@ func _count_pkid(raw: Dictionary) -> int:
 	for sub in raw.get("subrecords", []):
 		if String(sub.get("type", "")) == "PKID": count += 1
 	return count
+
+
+## Whether a Condition holds exactly the fields of its raw CTDA bytes.
+func _condition_matches(condition: Condition, data: PackedByteArray) -> bool:
+	if condition == null:
+		return false
+	var type := _u8(data)
+	if condition.comparison != (type >> 5) or condition.flags != (type & 0x1F) or condition.function_index != _u16(data, 8) \
+			or condition.parameter_1 != _u32(data, 12) or condition.parameter_2 != _u32(data, 16) or condition.has_run_on != (data.size() >= 24):
+		return false
+	if condition.uses_global() and condition.comparison_global_form_id != _u32(data, 4):
+		return false
+	if not condition.uses_global() and not is_equal_approx(condition.comparison_value, _f32(data, 4)) and not is_nan(_f32(data, 4)):
+		return false
+	if data.size() >= 24 and condition.run_on != _u32(data, 20):
+		return false
+	return data.size() < 28 or condition.reference_form_id == _u32(data, 24)
+
+
+## Every CTDA on QUST and TERM records becomes a Condition on its owner, in
+## order, field for field: 1501 on QUST (quest, log entry and objective target
+## conditions) and 405 on TERM menu items in FalloutNV.esm.
+func _check_owner_conditions(server, index: Array) -> void:
+	var totals := {"QUST": 0, "TERM": 0}
+	var mismatches: Array[String] = []
+	for row: Dictionary in index:
+		var type := String(row.get("record_type", ""))
+		if not totals.has(type):
+			continue
+		var base: EsmBase = server.get_base(int(row["form_id"]))
+		var parsed: Array[Condition] = []
+		if base is QuestBase:
+			parsed.append_array(base.conditions)
+			for stage: QuestStage in base.stages:
+				for entry: QuestLogEntry in stage.log_entries:
+					parsed.append_array(entry.conditions)
+			for objective: QuestObjective in base.objectives:
+				for target: QuestObjectiveTarget in objective.targets:
+					parsed.append_array(target.conditions)
+		elif base is TerminalBase:
+			for item: TerminalMenuItem in base.menu_items:
+				parsed.append_array(item.conditions)
+		var raw: Array = server.reader.get_record_data(int(row["form_id"])).get("subrecords", [])
+		var raw_conditions: Array[PackedByteArray] = []
+		for sub: Dictionary in raw:
+			if String(sub.get("type", "")) == "CTDA":
+				raw_conditions.append(sub["data"])
+		totals[type] += parsed.size()
+		if parsed.size() != raw_conditions.size():
+			mismatches.append("%s 0x%08X: %d parsed, %d CTDA" % [type, base.form_id, parsed.size(), raw_conditions.size()])
+			continue
+		for i in parsed.size():
+			if not _condition_matches(parsed[i], raw_conditions[i]):
+				mismatches.append("%s 0x%08X CTDA %d differs" % [type, base.form_id, i])
+				break
+	_check(mismatches.is_empty() and totals["QUST"] == 1501 and totals["TERM"] == 405,
+			"every QUST and TERM CTDA is a Condition on its owner, field for field (%s; %s)" % [totals, mismatches.slice(0, 3)])
+
+
+## XLKR reaches the reference: placed terminal REFR 00143990 is linked to
+## 0013DC47 (terminal_link_census.cpp: all 4 placed terminals whose base has
+## linked-reference conditions carry an XLKR).
+func _check_linked_references(server, _index: Array) -> void:
+	var terminal: EsmReference = server.get_reference("authored:00143990")
+	_check(terminal != null and terminal.linked_reference_form_id == 0x0013DC47,
+			"a placed reference carries its XLKR linked reference (%s)" % ("0x%08X" % terminal.linked_reference_form_id if terminal != null else "missing"))

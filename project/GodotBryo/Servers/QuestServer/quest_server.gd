@@ -144,7 +144,7 @@ func set_stage(quest: EsmBase, stage: int) -> void:
 	if authored == null:
 		return
 	for entry in authored.log_entries:
-		if entry.condition_count > 0:
+		if not entry.conditions.is_empty():
 			continue
 		if (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0:
 			state.completed = true

@@ -107,6 +107,10 @@ struct ReferencePlacement {
 	// enum: 0 None, 1 Box, 2 Sphere, 3 Portal Box. Bounds are converted
 	// Gamebryo units -> meters; xEdit displays them doubled, which suggests
 	// half-extents (a box's half size, a sphere's radius in X), unverified.
+	// XLKR (Linked Reference): another placed reference this one is linked to,
+	// e.g. the door a terminal controls; 0 when absent. REFR, ACHR and ACRE.
+	uint32_t linked_reference_form_id = 0;
+
 	uint32_t primitive_type = 0;
 	float primitive_bounds[3] = { 0.0f, 0.0f, 0.0f };
 	float primitive_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };

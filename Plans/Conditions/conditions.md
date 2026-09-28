@@ -1,6 +1,6 @@
 # Conditions (CTDA)
 
-**Status: stage A done; stage B next.**
+**Status: stages A and B done; stage C next.**
 
 Parse every CTDA into one shared typed resource on the record that owns it, and evaluate
 condition lists at runtime through the same function registry scripts use. First consumers:
@@ -107,7 +107,9 @@ the subject addresses or acts on) and the owning record. Run On picks the refere
 function is called on: Subject, Target, the condition's Reference, Combat Target and Linked
 Reference (a condition on a null reference is false). Combat Target is null until combat
 exists. Linked Reference is the reference's XLKR, which stage B parses onto EsmReference: 115
-TERM conditions depend on it. A Reference of 0x14 is the player's reference
+TERM conditions depend on it. Of the 16 TERM records with linked-reference conditions, 4 are placed, all with
+an XLKR (`native/tools/terminal_link_census.cpp`); the rest are submenus, whose conditions run on
+the placed terminal's linked reference. A Reference of 0x14 is the player's reference
 (`ScriptServer.player_reference`). Short-form conditions run on the subject. A trailing Or
 flag is ignored. The function result is compared with the comparison value, or the GLOB's current value
 from `ScriptServer.globals`.
@@ -128,10 +130,10 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | Stage | Work | Gate |
 |---|---|---|
 | A. Census | Every CTDA in FalloutNV.esm: type byte distribution split into operator and flags; Use Global against a GLOB comparison FormID; Run On and Reference use per record type; the 20- and 24-byte cases; function indices used, with counts and whether each has a registry function; Or runs and group shapes. | All 67,985 accounted for; the type byte encoding confirmed or corrected in this plan. |
-| B. Resource and parser | `Condition` replaces `PackageCondition`; `_condition()` parser; REFR XLKR (linked reference) onto EsmReference; conditions on PACK, QUST log entries and objective targets, TERM items, and MESG buttons (each button is an ITXT followed by its CTDAs; buttons are currently read natively as plain strings). INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE get theirs when their records are parsed. | `test_esm_server` asserts the census totals per parsed owner and a sample of fields against xEdit for known records. |
+| B. Resource and parser | `Condition` replaces `PackageCondition`; `_condition()` parser; REFR XLKR (linked reference) onto EsmReference; conditions on PACK, QUST (quest, log entries, objective targets) and TERM items. MESG buttons (each an ITXT followed by its CTDAs, read natively as plain strings today) move to stage E, where they are first used. INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE get theirs when their records are parsed. | `test_esm_server` asserts the census totals per parsed owner and a sample of fields against xEdit for known records. |
 | C. Function table | `ScriptConditionFunctions` indexed by xEdit index with parameter types; FormID parameter resolution; registry helpers accept resources. | Every function index in the census resolves to a name; parameter kinds match xEdit for every used function. |
 | D. Evaluator | `ConditionEvaluator` and `ConditionContext`: run-on, comparison, globals, Or grouping. | Unit checks per operator, flag and run-on; real conditions from a known quest stage and terminal evaluate as expected in known game states. |
-| E. Consumers | `QuestServer.set_stage()` runs the first log entry whose conditions pass; `TerminalSession` hides items whose conditions fail; MESG buttons likewise. | `test_quest_server` and `test_terminal_session` cover a conditioned stage and a conditioned terminal item in both states. |
+| E. Consumers | `QuestServer.set_stage()` runs the first log entry whose conditions pass; MESG buttons get their conditions parsed; `TerminalSession` reads its menu from `TerminalBase.menu_items` instead of the native terminal dictionaries and hides items whose conditions fail; MESG buttons likewise. | `test_quest_server` and `test_terminal_session` cover a conditioned stage and a conditioned terminal item in both states. |
 | F. Coverage | A report of condition functions by use across all CTDAs, marking unimplemented ones. | Lists the next functions to implement; nothing to pass. |
 
 ## Unverified

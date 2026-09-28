@@ -68,7 +68,7 @@ func _ready() -> void:
 		var candidate := esm_server.get_base(int(row["form_id"])) as QuestBase
 		for stage: QuestStage in candidate.stages:
 			for entry: QuestLogEntry in stage.log_entries:
-				if entry.condition_count == 0 and (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0 and entry.script_source.strip_edges().is_empty():
+				if entry.conditions.is_empty() and (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0 and entry.script_source.strip_edges().is_empty():
 					completing_quest = candidate
 					completing_stage = stage.index
 					break
