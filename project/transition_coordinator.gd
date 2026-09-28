@@ -43,7 +43,7 @@ func center_on_cell(args: Array) -> Variant:
 		return { "error": "CenterOnCell requires a cell EditorID." }
 	if player == null or player.possessed == null:
 		return { "error": "No actor is possessed by the player." }
-	var cell := int(EsmServer.reader.find_cell_by_editor_id(str(args[0])).get("form_id", 0))
+	var cell := EsmServer.find_form_id_by_editor_id(str(args[0]))
 	if cell == 0:
 		return { "error": "No CELL with EditorID '%s' in the loaded ESM." % str(args[0]) }
 	if EsmServer.get_space_form_id_for_cell(cell) != cell:

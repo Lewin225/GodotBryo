@@ -312,6 +312,13 @@ func find_quest_by_editor_id(editor_id: String) -> EsmBase:
 	var form_id := int(_quest_by_editor_id.get(editor_id.to_lower(), 0))
 	return get_base(form_id) if form_id != 0 else null
 
+## The FormID of the non-placement record (a base, CELL, WRLD, QUST, ...) with
+## this editor ID, or 0. Case-insensitive, from an in-memory index, unlike
+## EsmReader's find_cell_by_editor_id / find_worldspace_by_editor_id, which
+## scan every record.
+func find_form_id_by_editor_id(editor_id: String) -> int:
+	return int(_base_by_editor_id.get(editor_id.to_lower(), 0))
+
 ## The non-placement record (a base, QUST, GLOB, ...) with this editor ID, or
 ## null. Case-insensitive, from an in-memory index.
 func find_base_by_editor_id(editor_id: String) -> EsmBase:

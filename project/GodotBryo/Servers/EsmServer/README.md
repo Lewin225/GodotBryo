@@ -51,6 +51,7 @@ EsmServer.get_player_reference() -> ActorReference              # also get_refer
 EsmServer.find_quest_by_editor_id(editor_id) -> EsmBase
 EsmServer.find_global_by_editor_id(editor_id) -> Dictionary     # GLOB type and authored value
 EsmServer.find_base_by_editor_id(editor_id) -> EsmBase          # any non-placement record
+EsmServer.find_form_id_by_editor_id(editor_id) -> int           # indexed; CELL, WRLD and other non-placements
 EsmServer.add_inventory_items(owner, item_base, count) -> int   # typed items; leveled lists resolve
 EsmServer.get_game_setting(editor_id) -> Variant                # GMST value; null when the ESM has none
 EsmServer.get_exterior_cell_form_id(worldspace_form_id, coord: Vector2i) -> int

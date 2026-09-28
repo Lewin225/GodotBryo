@@ -126,11 +126,11 @@ func _register_defaults() -> void:
 	# `[Ref.]PositionCell x y z zRot CellID`: Gamebryo units, degrees; the
 	# CELL by editor ID. Keeps the reference's x/y rotation.
 	register("PositionCell", func(a: Array, ctx: ScriptExecutionContext):
-		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm == null:
-			return 0
-		var cell := int(esm.find_cell_by_editor_id(str(a[4])).get("form_id", 0))
 		var esm_server := EsmReference.get_esm_server()
-		if cell == 0 or esm_server == null:
+		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm_server == null:
+			return 0
+		var cell: int = esm_server.find_form_id_by_editor_id(str(a[4]))
+		if cell == 0:
 			return 0
 		_position(ctx.calling_reference, esm_server.get_space_form_id_for_cell(cell), a)
 		return 1)
@@ -138,9 +138,10 @@ func _register_defaults() -> void:
 	# `[Ref.]PositionWorld x y z zRot WorldspaceID`: as PositionCell, in a
 	# worldspace named by editor ID.
 	register("PositionWorld", func(a: Array, ctx: ScriptExecutionContext):
-		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm == null:
+		var esm_server := EsmReference.get_esm_server()
+		if ctx.calling_reference == null or a.size() < 5 or script_server == null or esm_server == null:
 			return 0
-		var worldspace := int(esm.find_worldspace_by_editor_id(str(a[4])).get("form_id", 0))
+		var worldspace: int = esm_server.find_form_id_by_editor_id(str(a[4]))
 		if worldspace == 0:
 			return 0
 		_position(ctx.calling_reference, worldspace, a)
@@ -320,15 +321,17 @@ func _register_defaults() -> void:
 		return 1 if ctx.calling_reference != null and not a.is_empty() and a[0] is EsmReference and a[0] == ctx.calling_reference else 0)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
-		if ctx.calling_reference == null or a.is_empty() or esm == null:
+		var esm_server := EsmReference.get_esm_server()
+		if ctx.calling_reference == null or a.is_empty() or esm_server == null:
 			return 0
-		var cell := int(esm.find_cell_by_editor_id(str(a[0])).get("form_id", 0))
+		var cell: int = esm_server.find_form_id_by_editor_id(str(a[0]))
 		return 1 if cell != 0 and ctx.calling_reference.current_cell_form_id == cell else 0)
 	# `GetInWorldspace Worldspace`: true in that worldspace's exterior.
 	register("GetInWorldspace", func(a: Array, ctx: ScriptExecutionContext):
-		if ctx.calling_reference == null or a.is_empty() or esm == null:
+		var esm_server := EsmReference.get_esm_server()
+		if ctx.calling_reference == null or a.is_empty() or esm_server == null:
 			return 0
-		var worldspace := int(esm.find_worldspace_by_editor_id(str(a[0])).get("form_id", 0))
+		var worldspace: int = esm_server.find_form_id_by_editor_id(str(a[0]))
 		return 1 if worldspace != 0 and ctx.calling_reference.current_space_form_id == worldspace else 0)
 	register("GetInSameCell", func(a: Array, ctx: ScriptExecutionContext):
 		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
