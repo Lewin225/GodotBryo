@@ -1,6 +1,6 @@
 # Conditions (CTDA)
 
-**Status: proposed.**
+**Status: stage A done; stage B next.**
 
 Parse every CTDA into one shared typed resource on the record that owns it, and evaluate
 condition lists at runtime through the same function registry scripts use. First consumers:
@@ -8,7 +8,7 @@ quest stage log entries and terminal menu items; dialogue (INFO) builds on this.
 
 ## Facts
 
-FalloutNV.esm census (`native/tools/ctda_record_census.cpp`): 67,985 CTDAs on 12 record types.
+FalloutNV.esm census (`native/tools/ctda_record_census.cpp`): 68,005 CTDAs on 12 record types.
 
 | Type | Records with CTDA | CTDAs | Decides |
 |---|---|---|---|
@@ -44,9 +44,28 @@ Layout (xEdit `wbConditions`, `enginedocs/xEdit/Core/wbDefinitionsFNV.pas`):
 Fields from offset 20 are optional (xEdit `SetOptionalFrom(7)`); the 20- and 24-byte forms lack
 them.
 
-The type byte's encoding is defined outside the saved xEdit sources. Recalled, and to be confirmed
-by the census in stage A: the comparison operator is the top three bits (0 `==`, 1 `!=`, 2 `>`,
-3 `>=`, 4 `<`, 5 `<=`); the low bits are flags, 0x01 Or, 0x02 Run On Target, 0x04 Use Global.
+**Stage A results** (`native/tools/ctda_layout_census.cpp`):
+
+- Type byte: the top three bits are the comparison operator, 0 `==` (57,475), 1 `!=` (3,108),
+  2 `>` (841), 3 `>=` (3,365), 4 `<` (2,369), 5 `<=` (847); 6 and 7 never occur. Low bits are
+  flags: 0x01 Or (2,898), 0x04 Use Global (59), 0x02 never set, 0x10 once (meaning unknown). The
+  operator names are recalled, the ordering matches xEdit's usual `==, !=, >, >=, <, <=`.
+- Use Global: all 59 flagged conditions have a GLOB FormID as comparison word; no unflagged
+  condition does.
+- Run On (28-byte forms): Subject 62,811, Target 2,941, Reference 1,927, Combat Target 66 (all
+  INFO), Linked Reference 130 (TERM 115, PACK 15). On IDLE the field holds animation groups
+  (1, 7, 20).
+- Reference: set on 1,923 of the 1,927 Run On = Reference conditions, and on 179 others, where it
+  is ignored. Targets: ACHR 537, ACRE 166, REFR 101, and 0x14 1,298. 0x14 is the player's
+  reference, which has no record in the ESM.
+- Short forms: 20 bytes x123 (IDLE 98, PACK 24 on function 18, QUST 1 on function 427), 24 bytes
+  x2 (IDLE). They have no Run On; they run on the subject.
+- Or: 27,582 condition lists (maximal runs of consecutive CTDAs); 1,471 contain an Or flag and
+  422 end with one, where no following condition exists to group with.
+- Functions: 144 distinct indices, all present in xEdit's table. 27,733 CTDAs (40.8%) use a
+  function the registry implements. Most used unimplemented: GetIsVoiceType 16,982,
+  GetQuestVariable 9,444, GetInFaction 3,535, GetGlobalValue 2,844, GetReputationThreshold
+  1,598, GetScriptVariable 830, GetDead 521, GetIsSex 410, GetDeadCount 391, HasPerk 306.
 
 Existing code: `PackageCondition` (`project/GodotBryo/Types/Resource/package_condition.gd`)
 already parses PACK CTDAs with raw fields. `QuestLogEntry` and `QuestObjectiveTarget` keep only
@@ -86,8 +105,11 @@ ConditionEvaluator.evaluate(conditions: Array[Condition], context: ConditionCont
 `ConditionContext` holds `subject` (the speaker, package owner, terminal user), `target` (who
 the subject addresses or acts on) and the owning record. Run On picks the reference the
 function is called on: Subject, Target, the condition's Reference, Combat Target and Linked
-Reference (null until combat and linked references exist; a condition on a null reference is
-false). The function result is compared with the comparison value, or the GLOB's current value
+Reference (a condition on a null reference is false). Combat Target is null until combat
+exists. Linked Reference is the reference's XLKR, which stage B parses onto EsmReference: 115
+TERM conditions depend on it. A Reference of 0x14 is the player's reference
+(`ScriptServer.player_reference`). Short-form conditions run on the subject. A trailing Or
+flag is ignored. The function result is compared with the comparison value, or the GLOB's current value
 from `ScriptServer.globals`.
 
 **Combining.** Recalled, to be verified: consecutive conditions flagged Or form a group with the
@@ -106,7 +128,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | Stage | Work | Gate |
 |---|---|---|
 | A. Census | Every CTDA in FalloutNV.esm: type byte distribution split into operator and flags; Use Global against a GLOB comparison FormID; Run On and Reference use per record type; the 20- and 24-byte cases; function indices used, with counts and whether each has a registry function; Or runs and group shapes. | All 67,985 accounted for; the type byte encoding confirmed or corrected in this plan. |
-| B. Resource and parser | `Condition` replaces `PackageCondition`; `_condition()` parser; conditions on PACK, QUST log entries and objective targets, TERM items, and MESG buttons (each button is an ITXT followed by its CTDAs; buttons are currently read natively as plain strings). INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE get theirs when their records are parsed. | `test_esm_server` asserts the census totals per parsed owner and a sample of fields against xEdit for known records. |
+| B. Resource and parser | `Condition` replaces `PackageCondition`; `_condition()` parser; REFR XLKR (linked reference) onto EsmReference; conditions on PACK, QUST log entries and objective targets, TERM items, and MESG buttons (each button is an ITXT followed by its CTDAs; buttons are currently read natively as plain strings). INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE get theirs when their records are parsed. | `test_esm_server` asserts the census totals per parsed owner and a sample of fields against xEdit for known records. |
 | C. Function table | `ScriptConditionFunctions` indexed by xEdit index with parameter types; FormID parameter resolution; registry helpers accept resources. | Every function index in the census resolves to a name; parameter kinds match xEdit for every used function. |
 | D. Evaluator | `ConditionEvaluator` and `ConditionContext`: run-on, comparison, globals, Or grouping. | Unit checks per operator, flag and run-on; real conditions from a known quest stage and terminal evaluate as expected in known game states. |
 | E. Consumers | `QuestServer.set_stage()` runs the first log entry whose conditions pass; `TerminalSession` hides items whose conditions fail; MESG buttons likewise. | `test_quest_server` and `test_terminal_session` cover a conditioned stage and a conditioned terminal item in both states. |
@@ -114,14 +136,14 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 
 ## Unverified
 
-- The type byte encoding (operator bits, flag bits): stage A.
+- The operator names for values 0-5 (the ordering is recalled; the value range is confirmed).
+- Flag 0x10 (one condition).
 - Or grouping: stage A, then the original.
 - Unimplemented function = 0: a condition such as `GetIsID X == 0` on an unimplemented function
   passes. Stage F measures how often that matters.
-- What the 20- and 24-byte CTDAs omit: stage A.
 
 ## Out of scope
 
 - Parsing INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE records themselves.
 - Dialogue topic and response selection, which uses this evaluator.
-- Combat targets and linked references, which the evaluator reads as null until they exist.
+- Combat targets, which the evaluator reads as null until combat exists.
