@@ -1533,11 +1533,12 @@ func _condition_matches(condition: Condition, data: PackedByteArray) -> bool:
 	return data.size() < 28 or condition.reference_form_id == _u32(data, 24)
 
 
-## Every CTDA on QUST and TERM records becomes a Condition on its owner, in
-## order, field for field: 1501 on QUST (quest, log entry and objective target
-## conditions) and 405 on TERM menu items in FalloutNV.esm.
+## Every CTDA on QUST, TERM and MESG records becomes a Condition on its owner,
+## in order, field for field: 1501 on QUST (quest, log entry and objective
+## target conditions), 405 on TERM menu items and 259 on MESG buttons in
+## FalloutNV.esm.
 func _check_owner_conditions(server, index: Array) -> void:
-	var totals := {"QUST": 0, "TERM": 0}
+	var totals := {"QUST": 0, "TERM": 0, "MESG": 0}
 	var mismatches: Array[String] = []
 	for row: Dictionary in index:
 		var type := String(row.get("record_type", ""))
@@ -1556,6 +1557,9 @@ func _check_owner_conditions(server, index: Array) -> void:
 		elif base is TerminalBase:
 			for item: TerminalMenuItem in base.menu_items:
 				parsed.append_array(item.conditions)
+		elif base is MessageBase:
+			for button: MessageButton in base.buttons:
+				parsed.append_array(button.conditions)
 		var raw: Array = server.reader.get_record_data(int(row["form_id"])).get("subrecords", [])
 		var raw_conditions: Array[PackedByteArray] = []
 		for sub: Dictionary in raw:
@@ -1569,8 +1573,8 @@ func _check_owner_conditions(server, index: Array) -> void:
 			if not _condition_matches(parsed[i], raw_conditions[i]):
 				mismatches.append("%s 0x%08X CTDA %d differs" % [type, base.form_id, i])
 				break
-	_check(mismatches.is_empty() and totals["QUST"] == 1501 and totals["TERM"] == 405,
-			"every QUST and TERM CTDA is a Condition on its owner, field for field (%s; %s)" % [totals, mismatches.slice(0, 3)])
+	_check(mismatches.is_empty() and totals["QUST"] == 1501 and totals["TERM"] == 405 and totals["MESG"] == 259,
+			"every QUST, TERM and MESG CTDA is a Condition on its owner, field for field (%s; %s)" % [totals, mismatches.slice(0, 3)])
 
 
 ## XLKR reaches the reference: placed terminal REFR 00143990 is linked to
@@ -1582,14 +1586,14 @@ func _check_linked_references(server, _index: Array) -> void:
 			"a placed reference carries its XLKR linked reference (%s)" % ("0x%08X" % terminal.linked_reference_form_id if terminal != null else "missing"))
 
 
-## Every parsed condition (PACK, QUST, TERM) names a known function, and each
+## Every parsed condition (PACK, QUST, TERM, MESG) names a known function, and each
 ## parameter resolves to the kind its xEdit type says: a reference, a base
 ## resource, or an int. A FormID parameter naming nothing is counted.
 func _check_condition_parameters(server, index: Array) -> void:
 	var conditions: Array[Condition] = []
 	for row: Dictionary in index:
 		var type := String(row.get("record_type", ""))
-		if type != "PACK" and type != "QUST" and type != "TERM":
+		if type != "PACK" and type != "QUST" and type != "TERM" and type != "MESG":
 			continue
 		var base: EsmBase = server.get_base(int(row["form_id"]))
 		if base is PackageBase:
@@ -1605,6 +1609,9 @@ func _check_condition_parameters(server, index: Array) -> void:
 		elif base is TerminalBase:
 			for item: TerminalMenuItem in base.menu_items:
 				conditions.append_array(item.conditions)
+		elif base is MessageBase:
+			for button: MessageButton in base.buttons:
+				conditions.append_array(button.conditions)
 	var unknown := {}
 	var wrong_kind: Array[String] = []
 	var unresolved := 0
@@ -1629,7 +1636,7 @@ func _check_condition_parameters(server, index: Array) -> void:
 			elif ScriptConditionFunctions.BASE_PARAMETERS.has(kind) and not value is EsmBase:
 				wrong_kind.append("%s %s" % [name, kind])
 	_check(unknown.is_empty() and wrong_kind.is_empty(),
-			"every PACK/QUST/TERM condition names a known function with parameters of its xEdit kind (%d conditions; unknown %s; wrong %s; %d FormID parameters name nothing)"
+			"every PACK/QUST/TERM/MESG condition names a known function with parameters of its xEdit kind (%d conditions; unknown %s; wrong %s; %d FormID parameters name nothing)"
 			% [conditions.size(), unknown.keys(), wrong_kind.slice(0, 3), unresolved])
 	var get_stage: Variant = ScriptConditionFunctions.resolve_parameter("ptQuest", server.find_quest_by_editor_id("VCG01").form_id)
 	_check(get_stage is QuestBase and get_stage.editor_id == "VCG01", "a quest parameter resolves to its QuestBase")

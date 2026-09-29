@@ -451,10 +451,34 @@ func _handle_show_message(msg: Dictionary, ctx: ScriptExecutionContext) -> int:
 	_message_owner = ctx.calling_reference
 	_last_button_pressed = -1
 	if message_box != null:
-		message_box.display_message(msg)
+		message_box.display_message(_with_available_buttons(msg))
 		return 1
 	push_warning("ScriptServer: ShowMessage called but no MessageBox is set")
 	return 0
+
+## `msg` showing only the buttons whose conditions pass, each keeping its
+## authored index for GetButtonPressed. Conditions run on the player: button
+## conditions test the player's skills and items (GSBrokenSMGMsg: Repair >= 25),
+## though the original's subject is not verified.
+func _with_available_buttons(msg: Dictionary) -> Dictionary:
+	var esm_server := EsmReference.get_esm_server()
+	var message: MessageBase = esm_server.get_base(int(msg.get("form_id", 0))) as MessageBase if esm_server != null else null
+	if message == null:
+		return msg
+	var context := ConditionContext.new(esm_server.get_player_reference())
+	context.owner_label = "MESG %s" % message.editor_id
+	var texts := PackedStringArray()
+	var indices: Array[int] = []
+	for i in message.buttons.size():
+		if evaluate_conditions(message.buttons[i].conditions, context):
+			texts.append(message.buttons[i].text)
+			indices.append(i)
+	if indices.size() == message.buttons.size():
+		return msg
+	var filtered := msg.duplicate()
+	filtered["buttons"] = texts
+	filtered["button_indices"] = indices
+	return filtered
 
 ## The button clicked on the message box this script's reference showed, once;
 ## -1 until then, and always -1 for any other reference.

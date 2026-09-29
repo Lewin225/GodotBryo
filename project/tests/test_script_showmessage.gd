@@ -11,6 +11,10 @@ func check(ok: bool, message: String) -> void:
 
 
 func _ready() -> void:
+	var esm_server = get_node("/root/EsmServer")
+	if not esm_server.is_ready():
+		await esm_server.esm_ready
+	var player: ActorReference = esm_server.get_player_reference()
 	var esm := EsmReader.new()
 	var data_dir := GameDataSettings.get_data_dir()
 	check(esm.open(data_dir + "FalloutNV.esm"), "opened FalloutNV.esm")
@@ -22,8 +26,11 @@ func _ready() -> void:
 	script_engine.function_registry.esm = esm
 	script_engine.message_box = msg_box
 
-	# 1. Initial button pressed state should be -1
+	# GSBrokenSMGMsg's second button needs the player's Repair >= 25.
 	var ctx := ScriptExecutionContext.new(null)
+	script_engine.function_registry.call_function("SetActorValue", ["Repair", 50], ScriptExecutionContext.new(player))
+
+	# 1. Initial button pressed state should be -1
 	var initial_btn: Variant = script_engine.function_registry.call_function("GetButtonPressed", [], ctx)
 	check(initial_btn == -1, "GetButtonPressed initially returns -1 (got %s)" % str(initial_btn))
 
@@ -49,6 +56,26 @@ func _ready() -> void:
 	# 6. Check GetButtonPressed again -> returns -1 (consumed)
 	var consumed_btn: Variant = script_engine.function_registry.call_function("GetButtonPressed", [], ctx)
 	check(consumed_btn == -1, "GetButtonPressed auto-resets to -1 after consumption (got %s)" % str(consumed_btn))
+
+	# Buttons whose conditions fail are hidden; the rest report their authored
+	# index. NellisSolarArrayRepairMsg: button 1 needs Repair >= 40, button 2
+	# an item (0015ECD6) the player carries.
+	script_engine.function_registry.call_function("SetActorValue", ["Repair", 10], ScriptExecutionContext.new(player))
+	script_engine.function_registry.call_function("ShowMessage", ["NellisSolarArrayRepairMsg"], ctx)
+	check(msg_box._button_nodes.size() == 1, "with Repair 10 and no item only the first button shows (%d)" % msg_box._button_nodes.size())
+	msg_box._button_nodes[0].emit_signal("pressed")
+	script_engine.function_registry.call_function("GetButtonPressed", [], ctx)
+	esm_server.add_inventory_items(player, esm_server.get_base(0x0015ECD6), 1)
+	script_engine.function_registry.call_function("ShowMessage", ["NellisSolarArrayRepairMsg"], ctx)
+	check(msg_box._button_nodes.size() == 2, "carrying the item shows its button too (%d)" % msg_box._button_nodes.size())
+	msg_box._button_nodes[1].emit_signal("pressed")
+	var hidden_btn: Variant = script_engine.function_registry.call_function("GetButtonPressed", [], ctx)
+	check(hidden_btn == 2, "which reports its authored index 2 past the hidden one (got %s)" % str(hidden_btn))
+	script_engine.function_registry.call_function("SetActorValue", ["Repair", 50], ScriptExecutionContext.new(player))
+	script_engine.function_registry.call_function("ShowMessage", ["NellisSolarArrayRepairMsg"], ctx)
+	check(msg_box._button_nodes.size() == 3, "Repair 50 shows all three")
+	msg_box._button_nodes[0].emit_signal("pressed")
+	script_engine.function_registry.call_function("GetButtonPressed", [], ctx)
 
 	# 7. Test Toast Notification (WildWastelandMessage)
 	var toast_res: Variant = script_engine.function_registry.call_function("ShowMessage", ["WildWastelandMessage"], ctx)

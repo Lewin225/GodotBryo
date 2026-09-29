@@ -20,6 +20,8 @@ signal button_clicked(button_index: int)
 var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 var _is_dialog_active: bool = false
 var _button_nodes: Array[Button] = []
+## The index button_clicked reports for each of _button_nodes.
+var _button_indices: Array[int] = []
 var _toast_tween: Tween = null
 ## Notifications waiting for the current one to fade: [{text, display_time}].
 var _toast_queue: Array[Dictionary] = []
@@ -70,6 +72,8 @@ const DEFAULT_DISPLAY_TIME := 5.0
 ## Displays a parsed MESG record dictionary:
 ## { "form_id": int, "editor_id": String, "title": String, "text": String,
 ##   "buttons": PackedStringArray, "is_message_box": bool, "flags": int, "display_time": float }
+## An optional "button_indices" array gives the index button_clicked reports
+## for each button, for a message showing only some of its buttons.
 func display_message(msg: Dictionary) -> void:
 	var is_box: bool = bool(msg.get("is_message_box", true))
 	var buttons: Array = msg.get("buttons", [])
@@ -97,13 +101,15 @@ func _show_modal_dialog(msg: Dictionary) -> void:
 	for b in _buttons_container.get_children():
 		b.queue_free()
 	_button_nodes.clear()
+	_button_indices.clear()
 
 	# Populate ITXT buttons (or single default OK button)
+	var indices: Array = msg.get("button_indices", [])
 	if buttons.is_empty():
-		_add_dialog_button(0, "OK")
+		_add_dialog_button(0, "OK", 0)
 	else:
 		for i in buttons.size():
-			_add_dialog_button(i, String(buttons[i]))
+			_add_dialog_button(i, String(buttons[i]), int(indices[i]) if i < indices.size() else i)
 
 	_previous_mouse_mode = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -115,7 +121,7 @@ func _show_modal_dialog(msg: Dictionary) -> void:
 		_button_nodes[0].grab_focus()
 
 
-func _add_dialog_button(index: int, label_text: String) -> void:
+func _add_dialog_button(index: int, label_text: String, reported_index: int) -> void:
 	var btn := Button.new()
 	btn.text = "%d.  %s" % [index + 1, label_text] if label_text != "OK" else "OK"
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -124,6 +130,7 @@ func _add_dialog_button(index: int, label_text: String) -> void:
 	btn.pressed.connect(_on_button_pressed.bind(index))
 	_buttons_container.add_child(btn)
 	_button_nodes.append(btn)
+	_button_indices.append(reported_index)
 
 
 func _on_button_pressed(index: int) -> void:
@@ -132,7 +139,7 @@ func _on_button_pressed(index: int) -> void:
 	_is_dialog_active = false
 	_dialog_root.visible = false
 	Input.mouse_mode = _previous_mouse_mode
-	button_clicked.emit(index)
+	button_clicked.emit(_button_indices[index] if index < _button_indices.size() else index)
 
 
 ## Queues a notification; notifications show one after another, each for its

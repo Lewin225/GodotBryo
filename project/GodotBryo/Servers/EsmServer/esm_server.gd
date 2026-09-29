@@ -21,7 +21,8 @@ const TYPE_TO_BASE := {
 	"KEYM": "KeyBase", "MISC": "MiscBase", "DOOR": "DoorBase", "SCOL": "StaticCollectionBase",
 	"LIGH": "LightBase", "CONT": "ContainerBase", "ACTI": "ActivatorBase", "FURN": "FurnitureBase",
 	"TACT": "TalkingActivatorBase", "MSTT": "MovableStaticBase", "TERM": "TerminalBase",
-	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase", "QUST": "QuestBase"
+	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase", "QUST": "QuestBase",
+	"MESG": "MessageBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -660,18 +661,18 @@ func _populate_actor_values(reference: EsmReference) -> void:
 	if reference is ActorReference or reference is CreatureReference:
 		reference.get_actor_values()
 
-## Adds `count` of `item_base` to `owner`'s inventory as typed items, as a
-## script's AddItem does. A leveled list resolves `count` times at the owner's
-## level. Returns the number of items added; 0 when `owner` has no inventory.
-func add_inventory_items(owner: EsmReference, item_base: EsmBase, count: int) -> int:
-	var inventory: Inventory = owner.get("contents") if owner != null and "contents" in owner else null
+## Adds `count` of `item_base` to `holder`'s inventory as typed items, as a
+## script's AddItem does. A leveled list resolves `count` times at the holder's
+## level. Returns the number of items added; 0 when `holder` has no inventory.
+func add_inventory_items(holder: EsmReference, item_base: EsmBase, count: int) -> int:
+	var inventory: Inventory = holder.get("contents") if holder != null and "contents" in holder else null
 	if inventory == null or item_base == null or count <= 0:
 		return 0
 	var added := 0
 	if item_base is LeveledItemBase:
 		var resolver := LeveledItemResolver.new(self)
 		for i in count:
-			for resolved in resolver.resolve(item_base as LeveledItemBase, _owner_level(owner), {}):
+			for resolved in resolver.resolve(item_base as LeveledItemBase, _holder_level(holder), {}):
 				if inventory.add_inventory_item(resolved):
 					added += resolved.count
 		return added
@@ -683,9 +684,9 @@ func add_inventory_items(owner: EsmReference, item_base: EsmBase, count: int) ->
 	item.count = count
 	return count if inventory.add_inventory_item(item) else 0
 
-## The level leveled lists resolve at for `owner`: an actor's level, else 1.
-static func _owner_level(owner: EsmReference) -> int:
-	var values: ActorValues = owner.get_actor_values() if owner != null else null
+## The level leveled lists resolve at for `holder`: an actor's level, else 1.
+static func _holder_level(holder: EsmReference) -> int:
+	var values: ActorValues = holder.get_actor_values() if holder != null else null
 	return values.get_level() if values != null else 1
 
 ## CNTO is the authored seed for an owner inventory. The live inventory is
@@ -701,7 +702,7 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		return
 	var item_index := 0
 	var resolver := LeveledItemResolver.new(self)
-	var level := _owner_level(reference)
+	var level := _holder_level(reference)
 	for item_data in owner_base.all_subrecord_data("CNTO"):
 		if item_data.size() < 8:
 			continue
@@ -766,6 +767,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		_populate_quest(result as QuestBase, raw)
 	elif result is PackageBase:
 		_populate_package(result as PackageBase, raw)
+	elif result is MessageBase:
+		_populate_message(result as MessageBase, raw)
 	elif result is WeaponBase:
 		var weapon: WeaponBase = result
 		weapon.model_path = _string(_subrecord(raw, "MODL"))
@@ -973,6 +976,23 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		if _has_property(result, "model_path"):
 			result.set("model_path", _string(_subrecord(raw, "MODL")))
 	result._rehydrating = false
+
+func _populate_message(message: MessageBase, raw: Dictionary) -> void:
+	message.description = _string(_subrecord(raw, "DESC"))
+	message.icon_form_id = _u32(_subrecord(raw, "INAM"))
+	message.flags = _u32(_subrecord(raw, "DNAM"))
+	message.display_time = _u32(_subrecord(raw, "TNAM"))
+	message.buttons.clear()
+	# Each button starts at its ITXT; its CTDAs follow it.
+	for sub: Dictionary in raw.get("subrecords", []):
+		var tag := String(sub.get("type", ""))
+		var data: PackedByteArray = sub.get("data", PackedByteArray())
+		if tag == "ITXT":
+			var button := MessageButton.new()
+			button.text = _string(data)
+			message.buttons.append(button)
+		elif tag == "CTDA" and not message.buttons.is_empty():
+			_append_condition(message.buttons.back().conditions, message, data)
 
 func _populate_race(race: RaceBase, raw: Dictionary) -> void:
 	# These relationship fields are documented by fopdoc as formid/formid[],
@@ -1424,10 +1444,10 @@ func _package_target(package: PackageBase, tag: String, data: PackedByteArray) -
 
 ## One CTDA as a Condition. 28-byte CTDAs carry Run On and Reference, the
 ## 24-byte form Run On only, the 20-byte form neither. Null, with a diagnostic
-## on `owner`, for any other size.
-func _condition(owner: EsmBase, data: PackedByteArray) -> Condition:
+## on `record`, for any other size.
+func _condition(record: EsmBase, data: PackedByteArray) -> Condition:
 	if data.size() != 20 and data.size() != 24 and data.size() != 28:
-		owner.diagnostics.append("%s 0x%08X has CTDA with %d bytes; expected 20, 24 or 28" % [owner.record_type, owner.form_id, data.size()])
+		record.diagnostics.append("%s 0x%08X has CTDA with %d bytes; expected 20, 24 or 28" % [record.record_type, record.form_id, data.size()])
 		return null
 	var condition := Condition.new()
 	var type := _u8(data)
@@ -1447,8 +1467,8 @@ func _condition(owner: EsmBase, data: PackedByteArray) -> Condition:
 	return condition
 
 ## Appends the Condition parsed from `data` to `conditions`, when it parses.
-func _append_condition(conditions: Array[Condition], owner: EsmBase, data: PackedByteArray) -> void:
-	var condition := _condition(owner, data)
+func _append_condition(conditions: Array[Condition], record: EsmBase, data: PackedByteArray) -> void:
+	var condition := _condition(record, data)
 	if condition != null:
 		conditions.append(condition)
 
