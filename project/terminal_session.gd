@@ -23,6 +23,11 @@ enum View { WELCOME, MENU, RESULT, NOTE }
 
 var _esm: EsmReader
 var _terminal_stack: Array[Dictionary] = []
+## The TerminalBase of each _terminal_stack entry, for its items' conditions.
+var _base_stack: Array[TerminalBase] = []
+## Item conditions run on the user, and follow the placed terminal's linked
+## reference.
+var _condition_context: ConditionContext = null
 var _view: View = View.WELCOME
 var _pending_note_form_id: int = 0
 var _pending_submenu_form_id: int = 0
@@ -35,8 +40,10 @@ func _ready() -> void:
 	_back.pressed.connect(_go_back)
 	_exit.pressed.connect(close_session)
 
-## Opens `terminal`'s menu. Returns false when its base has no terminal data.
-func open_session(terminal: TerminalReference, esm: EsmReader) -> bool:
+## Opens `terminal`'s menu for `user`, the actor using it. Items whose
+## conditions fail are hidden. Returns false when its base has no terminal
+## data.
+func open_session(terminal: TerminalReference, esm: EsmReader, user: EsmReference = null) -> bool:
 	var terminal_data: Dictionary = {}
 	if terminal != null and terminal.base != null:
 		terminal_data = esm.get_terminal_data(terminal.base.form_id)
@@ -45,6 +52,10 @@ func open_session(terminal: TerminalReference, esm: EsmReader) -> bool:
 		return false
 	_esm = esm
 	_terminal_stack = [terminal_data]
+	_base_stack = [terminal.base as TerminalBase]
+	_condition_context = ConditionContext.new(user)
+	_condition_context.linked_from = terminal
+	_condition_context.owner_label = "TERM %s" % terminal.base.editor_id
 	_previous_mouse_mode = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	visible = true
@@ -71,23 +82,20 @@ func _show_menu() -> void:
 	_body.text = "Select an entry."
 	_choices.clear()
 	var items: Array = _current_terminal().get("items", [])
-	for item_variant in items:
-		var item: Dictionary = item_variant
-		# Item conditions are not evaluated yet; items that have them stay
-		# listed but unavailable rather than shown when the game might hide them.
-		var unavailable: bool = int(item.get("condition_count", 0)) > 0
-		var label: String = String(item.get("text", ""))
-		if unavailable:
-			label += "  [conditions not evaluated]"
-		var index: int = _choices.add_item(label)
+	var base: TerminalBase = _base_stack.back() if not _base_stack.is_empty() else null
+	for i in items.size():
+		var item: Dictionary = items[i]
+		# TerminalBase.menu_items is built from the same items, in order.
+		if base != null and i < base.menu_items.size() and not _item_available(base.menu_items[i]):
+			continue
+		var index: int = _choices.add_item(String(item.get("text", "")))
 		_choices.set_item_metadata(index, item)
-		_choices.set_item_disabled(index, unavailable)
 	_choices.visible = true
 	_select.visible = true
 	_select.text = "Open"
 	_back.visible = _terminal_stack.size() > 1
 	_status.text = ""
-	if not items.is_empty():
+	if _choices.item_count > 0:
 		_choices.select(0)
 
 func _show_result(item: Dictionary) -> void:
@@ -140,6 +148,7 @@ func _open_submenu(form_id: int) -> void:
 		_status.text = "Submenu TERM 0x%X could not be read." % form_id
 		return
 	_terminal_stack.append(submenu)
+	_base_stack.append(EsmServer.get_base(form_id) as TerminalBase)
 	if not String(submenu.get("welcome_text", "")).is_empty():
 		_show_welcome(String(submenu.get("welcome_text", "")))
 	else:
@@ -150,6 +159,7 @@ func _go_back() -> void:
 		View.MENU:
 			if _terminal_stack.size() > 1:
 				_terminal_stack.pop_back()
+				_base_stack.pop_back()
 				_show_menu()
 		View.RESULT, View.NOTE:
 			_show_menu()
@@ -158,6 +168,10 @@ func _go_back() -> void:
 
 func _current_terminal() -> Dictionary:
 	return _terminal_stack.back() if not _terminal_stack.is_empty() else {}
+
+## Whether a menu item's conditions pass for the session's user.
+func _item_available(item: TerminalMenuItem) -> bool:
+	return item.conditions.is_empty() or ScriptServer.evaluate_conditions(item.conditions, _condition_context)
 
 func _terminal_title() -> String:
 	var terminal: Dictionary = _current_terminal()
@@ -170,6 +184,7 @@ func close_session() -> void:
 	visible = false
 	Input.mouse_mode = _previous_mouse_mode
 	_terminal_stack.clear()
+	_base_stack.clear()
 	closed.emit()
 
 func _unhandled_key_input(event: InputEvent) -> void:

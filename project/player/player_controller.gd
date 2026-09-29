@@ -759,7 +759,7 @@ func _on_using_changed(_previous: EsmReference, current: EsmReference) -> void:
 		_open_unlock("Lockpick", LOCK_LEVEL_NAMES[clampi(current.lock_level / 25, 0, 4)])
 
 func _open_terminal(terminal: TerminalReference) -> void:
-	if terminal_session != null and terminal_session.open_session(terminal, EsmServer.reader):
+	if terminal_session != null and terminal_session.open_session(terminal, EsmServer.reader, possessed):
 		_set_input_suspended(true)
 	else:
 		ScriptServer.end_use(possessed)
