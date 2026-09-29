@@ -131,27 +131,32 @@ func is_stage_done(quest: EsmBase, stage: int) -> bool:
 	return state != null and state.stages_done.has(stage)
 
 ## Sets the quest's stage, marks it done and runs the stage's result script:
-## that of its first log entry without conditions (conditions are not
-## evaluated, so a stage whose entries all have conditions runs none). An entry
-## flagged to complete or fail the quest marks it so.
-func set_stage(quest: EsmBase, stage: int) -> void:
+## that of its first log entry whose conditions pass, so a stage whose entries
+## all fail runs none. An entry flagged to complete or fail the quest marks it
+## so. Returns the entry run, or null.
+func set_stage(quest: EsmBase, stage: int) -> QuestLogEntry:
 	var state := get_quest_state(quest)
 	if state == null:
-		return
+		return null
 	state.stage = stage
 	state.stages_done[stage] = true
 	var authored := (quest as QuestBase).get_stage(stage)
 	if authored == null:
-		return
+		return null
+	# Conditions run on the player; the original's subject for stage log
+	# entries is not verified.
+	var context := ConditionContext.new(EsmServer.get_player_reference())
+	context.owner_label = "QUST %s stage %d" % [quest.editor_id, stage]
 	for entry in authored.log_entries:
-		if not entry.conditions.is_empty():
+		if not ScriptServer.evaluate_conditions(entry.conditions, context):
 			continue
 		if (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0:
 			state.completed = true
 		if (entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0:
 			state.failed = true
 		ScriptServer.run_result_script(entry.script_source, null)
-		break
+		return entry
+	return null
 
 ## Whether the objective is displayed. False for an index the quest does not
 ## define, with one warning per quest and index.

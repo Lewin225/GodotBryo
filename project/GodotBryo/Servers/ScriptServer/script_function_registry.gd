@@ -198,6 +198,10 @@ func _register_defaults() -> void:
 	register("GetQuestRunning", func(a: Array, _c):
 		var quests := _quest_server()
 		return 1 if quests != null and quests.is_running(_quest(a, 0)) else 0)
+	# The platform: this engine runs as the PC version.
+	register("IsWin32", func(_a: Array, _c): return 1)
+	register("IsXBox", func(_a: Array, _c): return 0)
+	register("IsPS3", func(_a: Array, _c): return 0)
 	# `GetGlobalValue Global`: a global's current value, the GLOB as a condition
 	# passes it or by editor ID; 0 when it is not a global.
 	register("GetGlobalValue", func(a: Array, _c):

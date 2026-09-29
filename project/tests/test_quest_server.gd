@@ -94,6 +94,7 @@ func _ready() -> void:
 
 	_check_objectives(esm_server, quests, script_server)
 	_check_quest_state_functions(esm_server, quests, script_server)
+	_check_stage_entries(esm_server, quests, script_server)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -161,6 +162,25 @@ func _check_quest_state_functions(esm_server, quests, script_server) -> void:
 	script_server.run_debug_line("SetQuestObject VFSWeapLaserRifleVanGraff 1")
 	check(quests.is_quest_object(rifle), "SetQuestObject 1 makes it a quest item again")
 	check(not quests.is_quest_object(esm_server.find_base_by_editor_id("WeapNV9mmPistol")), "an unflagged weapon is not a quest item")
+
+## SetStage runs the first log entry whose conditions pass. VMQTops stage 20's
+## two entries test its script variable 0x11 == 0 and == 1; CGTutorial stage
+## 212's test IsWin32 == 1 (the PC entry) and == 0.
+func _check_stage_entries(esm_server, quests, script_server) -> void:
+	var tops: QuestBase = esm_server.find_quest_by_editor_id("VMQTops")
+	var entries: Array[QuestLogEntry] = tops.get_stage(20).log_entries
+	var variable: String = script_server.script_variable_name(tops.script_form_id, 0x11)
+	script_server.get_quest_instance(tops).set_local(variable, 0)
+	check(quests.set_stage(tops, 20) == entries[0], "VMQTops stage 20 runs its first entry while %s is 0" % variable)
+	script_server.get_quest_instance(tops).set_local(variable, 1)
+	check(quests.set_stage(tops, 20) == entries[1], "and its second once it is 1")
+	script_server.get_quest_instance(tops).set_local(variable, 2)
+	check(quests.set_stage(tops, 20) == null and quests.get_stage(tops) == 20, "neither passes at 2: no entry runs, the stage is still set")
+	script_server.get_quest_instance(tops).set_local(variable, 0)
+	quests.reset_quest(tops)
+	var tutorial: QuestBase = esm_server.find_quest_by_editor_id("CGTutorial")
+	check(quests.set_stage(tutorial, 212) == tutorial.get_stage(212).log_entries[0], "CGTutorial stage 212 runs its PC entry")
+	quests.reset_quest(tutorial)
 
 func _check_objectives(esm_server, quests, script_server) -> void:
 	var vmq01: QuestBase = esm_server.find_quest_by_editor_id("VMQ01")

@@ -1,6 +1,6 @@
 # Conditions (CTDA)
 
-**Status: stages A-D done; stage E next.**
+**Status: stages A-E done; stage F next.**
 
 Parse every CTDA into one shared typed resource on the record that owns it, and evaluate
 condition lists at runtime through the same function registry scripts use. First consumers:
@@ -122,6 +122,15 @@ parameter 1 = 0 and 6 name a quest without a script, reading 0. V19OverseerWallT
 test GetOpenState on a linked ACTI, so activators carry an open state
 (`ActivatorReference.is_open`).
 
+**Stage E results.** `QuestServer.set_stage()` returns the log entry it ran. CGTutorial chooses
+its PC or console entries with IsWin32, IsXBox and IsPS3, which the registry answers as the PC
+version. MESG records parse into `MessageBase`, each ITXT and its CTDAs a `MessageButton`: 259
+CTDAs on 70 records. Button conditions test the player's skills and items (GSBrokenSMGMsg: Repair
+>= 25), so they run on the player. ShowMessage hides failing buttons, and a shown button reports
+its authored index to GetButtonPressed. `TerminalSession` keeps the native terminal dictionaries
+for display and takes each item's conditions from `TerminalBase.menu_items` at the same index;
+the conditions run on the user, and Linked Reference follows the placed terminal's XLKR.
+
 **Combining.** Recalled, to be verified: consecutive conditions flagged Or form a group with the
 next unflagged condition; the list passes when every group has at least one true condition,
 i.e. `(a OR b) AND c`. Recorded as unverified until checked against real data (stage A:
@@ -141,7 +150,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | B. Resource and parser | `Condition` replaces `PackageCondition`; `_condition()` parser; REFR XLKR (linked reference) onto EsmReference; conditions on PACK, QUST (quest, log entries, objective targets) and TERM items. MESG buttons (each an ITXT followed by its CTDAs, read natively as plain strings today) move to stage E, where they are first used. INFO, IDLE, CPTH, PERK, ALCH, SPEL, ENCH and RCPE get theirs when their records are parsed. | `test_esm_server` asserts the census totals per parsed owner and a sample of fields against xEdit for known records. |
 | C. Function table | `ScriptConditionFunctions` indexed by xEdit index with parameter types; FormID parameter resolution; registry helpers accept resources. | Every function index in the census resolves to a name; parameter kinds match xEdit for every used function. |
 | D. Evaluator | `ConditionEvaluator` and `ConditionContext`: run-on, comparison, globals, Or grouping. | Unit checks per operator, flag and run-on; real conditions from a known quest stage and terminal evaluate as expected in known game states. |
-| E. Consumers | `QuestServer.set_stage()` runs the first log entry whose conditions pass; MESG buttons get their conditions parsed; `TerminalSession` reads its menu from `TerminalBase.menu_items` instead of the native terminal dictionaries and hides items whose conditions fail; MESG buttons likewise. | `test_quest_server` and `test_terminal_session` cover a conditioned stage and a conditioned terminal item in both states. |
+| E. Consumers | `QuestServer.set_stage()` runs the first log entry whose conditions pass; MESG buttons get their conditions parsed; `TerminalSession` hides items whose conditions fail, taking them from `TerminalBase.menu_items`; ShowMessage hides MESG buttons likewise. | `test_quest_server`, `test_terminal_session` and `test_script_showmessage` cover a conditioned stage, terminal item and message button in both states. |
 | F. Coverage | A report of condition functions by use across all CTDAs, marking unimplemented ones. | Lists the next functions to implement; nothing to pass. |
 
 ## Unverified
@@ -149,6 +158,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 - The operator names for values 0-5 (the ordering is recalled; the value range is confirmed).
 - Flag 0x10 (one condition).
 - Or grouping: stage A, then the original.
+- The subject of quest stage log entry and MESG button conditions: the player here.
 - Unimplemented function = 0: a condition such as `GetIsID X == 0` on an unimplemented function
   passes. Stage F measures how often that matters.
 
