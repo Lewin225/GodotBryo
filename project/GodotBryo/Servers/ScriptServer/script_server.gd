@@ -44,6 +44,8 @@ var _message_owner: EsmReference = null
 
 var _pending_moves: Dictionary = {} # EsmReference -> {space_form_id, position, rotation}
 var _result_script_cache: Dictionary = {} # result script source -> ScriptInterpreter
+var _condition_evaluator: ConditionEvaluator = null
+var _variable_names: Dictionary = {} # SCPT FormID -> {SLSD index: SCVR name}
 
 const _DECLARATION_TYPES := ["int", "short", "long", "float", "ref"]
 
@@ -87,6 +89,34 @@ func apply_pending_moves() -> void:
 ## The SCPT FormID `reference` runs: its base record's SCRI, or 0.
 static func get_script_form_id(reference: EsmReference) -> int:
 	return reference.base.script_form_id if reference != null and reference.base != null else 0
+
+## Whether a list of CTDA conditions passes for `context` (ConditionEvaluator).
+func evaluate_conditions(conditions: Array[Condition], context: ConditionContext) -> bool:
+	if _condition_evaluator == null:
+		_condition_evaluator = ConditionEvaluator.new(self)
+	return _condition_evaluator.evaluate(conditions, context)
+
+## The name of a script's local variable by its SLSD index, or "" when the
+## script declares none with that index. Conditions (GetQuestVariable,
+## GetScriptVariable) name variables by index. Read from the SCPT's SLSD/SCVR
+## pairs, once per script.
+func script_variable_name(script_form_id: int, index: int) -> String:
+	if not _variable_names.has(script_form_id):
+		var names := {}
+		var esm_server := EsmReference.get_esm_server()
+		var raw: Dictionary = esm_server.reader.get_record_data(script_form_id) if esm_server != null and esm_server.reader != null else {}
+		var pending := -1
+		for sub: Dictionary in raw.get("subrecords", []):
+			var bytes: PackedByteArray = sub.get("data", PackedByteArray())
+			match String(sub.get("type", "")):
+				"SLSD":
+					pending = int(bytes.decode_u32(0)) if bytes.size() >= 4 else -1
+				"SCVR":
+					if pending >= 0:
+						names[pending] = bytes.get_string_from_utf8()
+					pending = -1
+		_variable_names[script_form_id] = names
+	return String(_variable_names[script_form_id].get(index, ""))
 
 ## The reference's ScriptInstance, created with its declared locals set to 0
 ## the first time it is needed. Null when the reference has no script.

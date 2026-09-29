@@ -198,6 +198,29 @@ func _register_defaults() -> void:
 	register("GetQuestRunning", func(a: Array, _c):
 		var quests := _quest_server()
 		return 1 if quests != null and quests.is_running(_quest(a, 0)) else 0)
+	# `GetGlobalValue Global`: a global's current value, the GLOB as a condition
+	# passes it or by editor ID; 0 when it is not a global.
+	register("GetGlobalValue", func(a: Array, _c):
+		var global := _base_arg(a, 0)
+		if global == null or script_server == null:
+			return 0
+		var value: Variant = script_server.globals.get_global(global.editor_id)
+		return value if value != null else 0)
+	# `GetQuestVariable Quest Variable`: a quest script variable, named as an
+	# SLSD index (conditions) or by name; 0 when the quest or variable is
+	# unknown.
+	register("GetQuestVariable", func(a: Array, _c):
+		var quest := _quest(a, 0)
+		if quest == null or script_server == null or a.size() < 2:
+			return 0
+		return _variable_value(script_server.get_quest_instance(quest), quest.script_form_id, a[1]))
+	# `GetScriptVariable Reference Variable`: as GetQuestVariable, on a
+	# reference's object script.
+	register("GetScriptVariable", func(a: Array, _c):
+		var ref: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
+		if ref == null or script_server == null or a.size() < 2:
+			return 0
+		return _variable_value(script_server.get_script_instance(ref), script_server.get_script_form_id(ref), a[1]))
 	register("GetQuestCompleted", func(a: Array, _c):
 		var quests := _quest_server()
 		return 1 if quests != null and quests.is_completed(_quest(a, 0)) else 0)
@@ -465,6 +488,15 @@ func _position(ref: EsmReference, space_form_id: int, args: Array) -> void:
 	var position := Vector3(_number(args, 0), _number(args, 1), _number(args, 2)) * GAMEBRYO_UNITS_TO_METERS
 	var rotation := Vector3(ref.rotation.x, ref.rotation.y, deg_to_rad(_number(args, 3)))
 	script_server.move_reference(ref, space_form_id, position, rotation)
+
+## A script variable's value from `instance`: `variable` is an SLSD index into
+## script `script_form_id`, or a name. 0 when there is no such variable.
+func _variable_value(instance: ScriptInstance, script_form_id: int, variable: Variant) -> Variant:
+	if instance == null:
+		return 0
+	var name: String = script_server.script_variable_name(script_form_id, variable) if variable is int else str(variable)
+	var value: Variant = instance.get_local(name) if not name.is_empty() else null
+	return value if value != null else 0
 
 ## GetDistance's result for references in different spaces (or unplaced).
 const DISTANCE_OTHER_SPACE := 1.0e10

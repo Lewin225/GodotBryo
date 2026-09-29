@@ -1,6 +1,6 @@
 # Conditions (CTDA)
 
-**Status: stages A-C done; stage D next.**
+**Status: stages A-D done; stage E next.**
 
 Parse every CTDA into one shared typed resource on the record that owns it, and evaluate
 condition lists at runtime through the same function registry scripts use. First consumers:
@@ -105,14 +105,22 @@ ConditionEvaluator.evaluate(conditions: Array[Condition], context: ConditionCont
 `ConditionContext` holds `subject` (the speaker, package owner, terminal user), `target` (who
 the subject addresses or acts on) and the owning record. Run On picks the reference the
 function is called on: Subject, Target, the condition's Reference, Combat Target and Linked
-Reference (a condition on a null reference is false). Combat Target is null until combat
-exists. Linked Reference is the reference's XLKR, which stage B parses onto EsmReference: 115
+Reference. A missing Reference, Linked Reference or Combat Target makes a condition false; a
+missing subject or target runs the function with no calling reference, since quest-level
+functions (GetStage, GetQuestVariable) need none. Combat Target is null until combat exists. Linked Reference is the reference's XLKR, which stage B parses onto EsmReference: 115
 TERM conditions depend on it. Of the 16 TERM records with linked-reference conditions, 4 are placed, all with
 an XLKR (`native/tools/terminal_link_census.cpp`); the rest are submenus, whose conditions run on
 the placed terminal's linked reference. A Reference of 0x14 is the player's reference
 (`ScriptServer.player_reference`). Short-form conditions run on the subject. A trailing Or
 flag is ignored. The function result is compared with the comparison value, or the GLOB's current value
 from `ScriptServer.globals`.
+
+**Stage D results.** GetQuestVariable and GetScriptVariable name a variable by its SLSD index
+in the quest's or reference's script (`native/tools/condition_variable_census.cpp`, every such
+CTDA in FalloutNV.esm): 9,297 and 744 resolve to a declared variable, none fail; 227 have
+parameter 1 = 0 and 6 name a quest without a script, reading 0. V19OverseerWallTerminal's items
+test GetOpenState on a linked ACTI, so activators carry an open state
+(`ActivatorReference.is_open`).
 
 **Combining.** Recalled, to be verified: consecutive conditions flagged Or form a group with the
 next unflagged condition; the list passes when every group has at least one true condition,

@@ -82,6 +82,17 @@ lists. `GetIsID`, `GetIsReference`, `GetInCell`, `GetInWorldspace`, `GetInSameCe
 `SetOpenState` lets a loaded door play the change. `MarkForDelete` sets
 `EsmReference.marked_for_delete`, which the streamers do not spawn again.
 
+**Conditions.** `evaluate_conditions(conditions, context)` evaluates a list of CTDA
+`Condition`s through `ConditionEvaluator`, stateless. Each condition calls its function (by
+CTDA index, `ScriptConditionFunctions`) on the reference its Run On names from the
+`ConditionContext` (subject, target, the linked reference of `linked_from`, or a named
+reference, 0x14 being the player), with its parameters resolved, and compares the result with
+its value or its GLOB's current value. Or'd conditions group with the next; every group must
+pass. A missing Reference, Linked Reference or Combat Target makes a condition false; a missing
+subject or target runs the function with no calling reference. Unimplemented functions read 0,
+warned once per function per owner. `GetQuestVariable` and `GetScriptVariable` take a variable
+as an SLSD index (`script_variable_name()`), as conditions store it, or by name.
+
 **Triggers.** A placed reference with an XPRM primitive gets an `EsmPrimitiveVolume`
 (Area3D) when loaded, whatever its base or script. When its base has a script, the volume
 dispatches `OnTriggerEnter` and `OnTriggerLeave` once per actor and `OnTrigger` every
@@ -202,6 +213,8 @@ Each is a reason to test before building on it.
 | `GetOpenState` is 1 open, 2 opening, 3 closed, 4 closing; opening and closing are never reported | registry `GetOpenState` | GECK wiki, recalled; shipped scripts test `== 1 \|\| == 2` | `GetOpenState` while a door animates |
 | `GetDistance` across spaces returns a very large number (1e10 here) | registry `DISTANCE_OTHER_SPACE` | no source | console `GetDistance` to a reference in another cell |
 | `MarkForDelete` removes the reference only once its CELL unloads | `EsmReference.marked_for_delete`, streamer `_should_spawn` | GECK wiki, recalled | a `MarkForDelete` script on a placed reference, then leave and return |
+| Or'd conditions group with the next unflagged one, `(a OR b) AND c` | `ConditionEvaluator.evaluate` | recalled; the data cannot show it | a dialogue line whose conditions mix Or and And, in the original |
+| Activators have an open state (`GetOpenState`/`SetOpenState`), like doors and containers | `ActivatorReference.is_open` | shipped data: V19OverseerWallTerminal's items test `GetOpenState` on a linked ACTI; GECK, recalled | `GetOpenState` on an animated activator after opening it |
 | Completing an objective does not display it, and hiding one does not uncomplete it; the two flags are independent | `QuestServer.set_objective_completed` / `set_objective_displayed` | conservative default; no source | console `SetObjectiveCompleted VMQ01 10 1` on a new game, then check the Pip-Boy and `GetObjectiveDisplayed VMQ01 10` |
 | `SetObjective*` without a flag changes nothing | registry `_change_objective` | conservative default; every one of 4785 shipped calls passes a flag | console `SetObjectiveDisplayed VMQ01 10` on a new game |
 | A flag other than 0 or 1 sets (one shipped call: `SetObjectiveDisplayed VMQHouse4 50 2`) | registry `_change_objective` | treated as nonzero = set; no source | console `SetObjectiveDisplayed VMQ01 10 2`, then `GetObjectiveDisplayed VMQ01 10` |
