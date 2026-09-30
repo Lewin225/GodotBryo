@@ -31,9 +31,9 @@ const FLAG_HIGH_INTELLIGENCE := 0x20
 ## DATA byte 0; differs from its topic's type on 803 INFOs in FalloutNV.esm.
 ## Read; not used yet.
 @export_custom(PROPERTY_HINT_ENUM, "Topic,Conversation,Combat,Persuasion,Detection,Service,Miscellaneous,Radio", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var info_type: DialogueTopicBase.Type = DialogueTopicBase.Type.TOPIC
-## DATA byte 1: xEdit's Next Speaker, whose values are defined outside
-## `wbDefinitionsFNV.pas` and not checked here. Read; not used yet.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var next_speaker: int = 0
+## DATA byte 1: the next speaker (xEdit `wbNextSpeaker`: 0 Target, 1 Self,
+## 2 Either). Read; not used yet.
+@export_custom(PROPERTY_HINT_ENUM, "Target,Self,Either", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var next_speaker: int = 0
 ## DATA byte 2: flags. Read; not used yet (Goodbye ends a conversation, Say
 ## Once and Random steer which INFO is chosen).
 @export_custom(PROPERTY_HINT_FLAGS, "Goodbye:1,Random:2,Say Once:4,Run Immediately:8,Info Refusal:16,Random End:32,Run for Rumors:64,Speech Challenge:128", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0

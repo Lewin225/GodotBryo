@@ -346,6 +346,40 @@ func _register_defaults() -> void:
 		return 1 if ctx.calling_reference != null and base != null and ctx.calling_reference.base_form_id == base.form_id else 0)
 	register("GetIsReference", func(a: Array, ctx: ScriptExecutionContext):
 		return 1 if ctx.calling_reference != null and not a.is_empty() and a[0] is EsmReference and a[0] == ctx.calling_reference else 0)
+	# `GetIsSex Male|Female` (conditions pass 0 or 1): the actor's ACBS Female
+	# flag, from its template when that supplies traits.
+	register("GetIsSex", func(a: Array, ctx: ScriptExecutionContext):
+		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS)
+		if source == null or a.is_empty():
+			return 0
+		var female := (int(source.get("actor_stats").flags) & 0x01) != 0
+		var wants_female: bool = int(a[0]) == 1 if (a[0] is int or a[0] is float) else str(a[0]).to_lower() == "female"
+		return 1 if female == wants_female else 0)
+	# `GetIsVoiceType VoiceType`: the actor's VTCK (from its template when that
+	# supplies traits) is the VTYP, or is in the FLST of them.
+	register("GetIsVoiceType", func(a: Array, ctx: ScriptExecutionContext):
+		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS)
+		var voice := _base_arg(a, 0)
+		if source == null or voice == null:
+			return 0
+		var voice_type: int = source.get("voice_type_form_id")
+		if voice.record_type == "FLST":
+			for entry in voice.all_subrecord_data("LNAM"):
+				if entry.size() >= 4 and entry.decode_u32(0) == voice_type:
+					return 1
+			return 0
+		return 1 if voice.form_id == voice_type else 0)
+	# `GetInFaction Faction`: the actor's SNAM (from its template when that
+	# supplies factions) names the FACT with a rank of 0 or more.
+	register("GetInFaction", func(a: Array, ctx: ScriptExecutionContext):
+		return 1 if _faction_rank(ctx.calling_reference, _base_arg(a, 0)) >= 0 else 0)
+	# `GetFactionRank Faction`: the actor's rank in the FACT, or -1.
+	register("GetFactionRank", func(a: Array, ctx: ScriptExecutionContext):
+		return _faction_rank(ctx.calling_reference, _base_arg(a, 0)))
+	# `GetTalkedToPC`: whether the actor has talked to the player.
+	register("GetTalkedToPC", func(_a: Array, ctx: ScriptExecutionContext):
+		var dialogue := _dialogue_server()
+		return 1 if dialogue != null and dialogue.has_talked_to_player(ctx.calling_reference) else 0)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
 		var esm_server := EsmReference.get_esm_server()
@@ -518,6 +552,28 @@ static func _base_arg(args: Array, index: int) -> EsmBase:
 		return args[index]
 	var esm_server := EsmReference.get_esm_server()
 	return esm_server.find_base_by_editor_id(str(args[index])) if esm_server != null and esm_server.is_ready() else null
+
+## The NPC_ or CREA record supplying `actor`'s part named by a template
+## flag, or null when it is not an actor.
+static func _actor_part(actor: EsmReference, template_flag: int) -> EsmBase:
+	if actor == null or actor.base == null or actor.base.get("actor_stats") == null:
+		return null
+	return ActorStats.template_source(actor.base, template_flag)
+
+## `actor`'s authored rank in `faction` (ActorFaction.rank), or -1 when it
+## is not a member. A negative authored rank also reads as not a member.
+static func _faction_rank(actor: EsmReference, faction: EsmBase) -> int:
+	var source := _actor_part(actor, ActorStats.TEMPLATE_USE_FACTIONS)
+	if source == null or faction == null:
+		return -1
+	for entry: ActorFaction in source.get("factions"):
+		if entry.faction_form_id == faction.form_id:
+			return entry.rank if entry.rank >= 0 else -1
+	return -1
+
+static func _dialogue_server() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("DialogueServer") if tree != null else null
 
 ## The first inventory item of a base, or null.
 static func _first_item(inventory: Inventory, base_form_id: int) -> InventoryItem:

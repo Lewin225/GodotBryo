@@ -1,6 +1,6 @@
 # Dialogue (DIAL / INFO)
 
-**Status: stage A done; stage B next.**
+**Status: stages A-B done; stage C next.**
 
 Parse DIAL topics and their INFO responses into typed resources, choose the INFO an actor says
 through the condition evaluator, and run its result scripts. Two consumers: scripted speech
@@ -62,8 +62,15 @@ subject is the speaker. Conditions on the listener run on the target: VCG01DocRe
 INFOs a subject GetIsID also names a speaker, the ANAM speaker on 10,896; 201 have ANAM and no
 GetIsID.
 
-**Voice types.** Every NPC_ (3,816) has VTCK; CREA 1,045 of 1,578; no TACT has VTCK, whose voice
-type is VNAM (xEdit `wbDefinitionsFNV.pas`).
+**Voice types, sex and factions.** Every NPC_ (3,816) has VTCK; CREA 1,045 of 1,578; no TACT
+has VTCK, whose voice type is VNAM (xEdit `wbDefinitionsFNV.pas`). SNAM factions: 14,625 on
+NPC_ and CREA, all 8 bytes, a FACT FormID and a signed rank (0 on 14,566, 1-3 on the rest).
+xEdit's shared definitions (`wbDefinitionsCommon.pas`, TES5Edit branch dev-4.1.6) give the ACBS
+template flags as Traits 0x01, Stats 0x02, Factions 0x04, Actor Effect List 0x08, AI Data 0x10,
+AI Packages 0x20, Model/Animation 0x40, Base Data 0x80, Inventory 0x100, Script 0x200; the
+Female flag and VTCK follow Traits and SNAM Factions. Records keep stale SNAM and VTCK under
+set flags (3,723 templated NPC_/CREA), so presence cannot stand in for the flags. The next
+speaker byte is 0 Target, 1 Self, 2 Either.
 
 **Quest flags (QUST DATA).** Allow Repeated Conversation Topics (0x04) on 94 quests, Allow
 Repeated Stages (0x08) on 34, of 436. `QuestServer.set_stage()` ignores both: every SetStage runs
@@ -83,9 +90,17 @@ DocMitchellChairREF, it sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartCo
 Player`, with no topic. Doc's GREETING INFO then offers VCG01DocMitchellTopic000-005 through TCLT,
 each linking onward, ending in stage 85.
 
+**Stage B results.** `DialogueServer.choose_info()` yields VCG01Intro's 15 INFOs in file order
+as each is said; picks VCG01DocReactions' line by `nDocReaction` (VCG01 variable 5) and the
+player's sex; gives Doc's GREETING from VCG01 while it runs and not after. `QuestServer`
+refuses a repeated SetStage unless the quest allows repeated stages
+(VEFR00LegionMix2CaesarsHire does). The actor functions read traits and factions through the
+template flags (`ActorStats.template_source`).
+
 **Script use.** Across all script sources: SayTo x760, Say x147, StartConversation x149,
 AddTopic x11, and 136 `Begin SayToDone` blocks, most naming a topic. None is supported yet, nor
-GetIsVoiceType, GetInFaction, GetTalkedToPC, GetPlayerName or ShowRaceMenu.
+GetPlayerName or ShowRaceMenu; stage B added GetIsVoiceType, GetIsSex, GetInFaction,
+GetFactionRank and GetTalkedToPC.
 
 **Voice files.** `Fallout - Voices1.bsa` (52,896 `.ogg`, 52,581 `.lip`, 40 `.wav`) holds each
 response at `sound\voice\falloutnv.esm\<voice type EDID>\<quest>_<topic>_<INFO>_<n>.ogg`, with a
@@ -178,7 +193,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | Stage | Work | Gate |
 |---|---|---|
 | A. Resources | `DialogueTopicBase`, `DialogueInfoBase`, `DialogueResponse`; the topic → INFO order from the record index; NPC_/CREA VTCK and TACT VNAM; QUST DATA flags; `dialogue_census.cpp` extended with a voice-file census (every response's path, from its speaker's voice types). | `test_esm_server` asserts the census totals (topics, INFOs, responses, conditions, scripts, links) field for field against the raw subrecords; the voice census resolves every VCG01 response. |
-| B. Choosing | `DialogueServer.choose_info()`: quest running, quest conditions, quest priority, per-speaker Say Once, ANAM, Random sets; GetIsVoiceType, GetIsSex, GetInFaction, GetTalkedToPC. `QuestServer.set_stage()` runs a stage once unless its quest allows repeated stages. | VCG01Intro yields its 15 INFOs in file order as each is said; VCG01DocReactions picks by SPECIAL and the player's sex; Doc's GREETING is VCG01's while VCG01 runs; a Say Once INFO said by one actor is still available to another; a repeated SetStage on a quest without the flag does nothing. |
+| B. Choosing (done) | `DialogueServer.choose_info()`: quest running, quest conditions, quest priority, per-speaker Say Once, ANAM, Random sets; GetIsVoiceType, GetIsSex, GetInFaction, GetTalkedToPC. `QuestServer.set_stage()` runs a stage once unless its quest allows repeated stages. | VCG01Intro yields its 15 INFOs in file order as each is said; VCG01DocReactions picks by SPECIAL and the player's sex; Doc's GREETING is VCG01's while VCG01 runs; a Say Once INFO said by one actor is still available to another; a repeated SetStage on a quest without the flag does nothing. |
 | C. Scripted speech | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
 | D. Conversation | `DialogueSession`: activating an actor, GREETING, Link To choices, topic list, prompts, Goodbye; StartConversation, AddTopic. | A test sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartConversation Player`, and choosing through the Rorschach test reaches stage 85; in play, talking to Doc opens his GREETING. The trigger's own start needs Doc sitting in his chair, which waits for AI packages. |
 | E. Voice | Play each response's `.ogg` at the speaker. | Doc Mitchell's opening is heard in play. |
