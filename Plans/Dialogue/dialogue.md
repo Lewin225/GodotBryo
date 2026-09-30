@@ -1,6 +1,6 @@
 # Dialogue (DIAL / INFO)
 
-**Status: planned; stage A next.**
+**Status: stage A done; stage B next.**
 
 Parse DIAL topics and their INFO responses into typed resources, choose the INFO an actor says
 through the condition evaluator, and run its result scripts. Two consumers: scripted speech
@@ -45,8 +45,8 @@ quests.
 | 2 to 31 | 4,213 |
 | none | 9 |
 | Conditions (CTDA) | 22,471 (776 have none) |
-| Begin script (SCTX before NEXT) | 2,825 |
-| End script (SCTX after NEXT) | 4,531 (989 have both) |
+| Begin script (SCTX before NEXT) | 2,827 (2 are only `;`) |
+| End script (SCTX after NEXT) | 4,544 (13 are only `;`; 990 INFOs have both) |
 | Link To (TCLT, choices after it) | 6,348 |
 | Link From (TCLF) | 645 |
 | Follow Up (TCFU) | 1,107 |
@@ -87,10 +87,16 @@ each linking onward, ending in stage 85.
 AddTopic x11, and 136 `Begin SayToDone` blocks, most naming a topic. None is supported yet, nor
 GetIsVoiceType, GetInFaction, GetTalkedToPC, GetPlayerName or ShowRaceMenu.
 
-**Voice files.** One INFO checked: `Fallout - Voices1.bsa` holds
-`sound\voice\falloutnv.esm\maleuniquedocmitchell\vcg01_vcg01intro_00104bee_1.ogg` and a `.lip`
-of the same name: voice type EDID, then quest EDID, topic EDID, INFO FormID and response
-number. The archive holds 52,896 `.ogg`, 52,581 `.lip` and 40 `.wav`.
+**Voice files.** `Fallout - Voices1.bsa` (52,896 `.ogg`, 52,581 `.lip`, 40 `.wav`) holds each
+response at `sound\voice\falloutnv.esm\<voice type EDID>\<quest>_<topic>_<INFO>_<n>.ogg`, with a
+`.lip` of the same name: quest and topic EDIDs, the INFO FormID as 8 hex digits and the TRDT
+response number, lowercased. When the quest and topic EDIDs exceed 25 characters together, the
+quest keeps its first 10 and the topic the rest of 25 (`vdialoguec_greeting_...`,
+`vdoctors_doctormedical33ye_...`). Of 29,674 responses, the rule names the file of 28,767; one
+file carries another topic's name (INFO 0015A304) and 906 responses have none. The file is under
+one of the speaker's voice types (from ANAM, a subject GetIsID, or GetIsVoiceType, including form
+lists) for 24,307 of the 27,121 responses whose speaker is named that way, and for all 149 of
+VCG01's.
 
 ## References
 
@@ -190,7 +196,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 - Result scripts run with the speaker as the calling reference.
 - The response duration when there is no voice file, and when subtitles show without
   ForceSubtitle.
-- The voice path for every INFO; checked on one.
+- The folder of the 2,814 voiced responses not under a voice type their conditions name.
 - The 803 INFOs whose type differs from their topic's; the 43 whose quest is not among their
   topic's; DIAL Added Quests' shared INFOs (INFC/INFX).
 

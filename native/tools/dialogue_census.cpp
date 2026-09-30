@@ -2,10 +2,14 @@
 // flags and priorities; INFO placement in each topic's child GRUP; PNAM
 // (previous INFO) order against file order; INFO DATA types and flags;
 // responses, conditions, scripts, links and speakers per INFO; QSTI use; and
-// the topics and INFOs that name a given NPC_ by GetIsID or ANAM.
+// the topics and INFOs that name a given NPC_ by GetIsID or ANAM; and every
+// response's voice file in Fallout - Voices1.bsa.
 // Usage: dialogue_census [NPC_ EditorID ...]
+#include "bsa/bsa_archive.h"
 #include "esm/esm_file.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -50,6 +54,11 @@ int main(int argc, char **argv) {
 	std::map<std::string, std::string> type_of_form; // filled below
 	std::map<uint32_t, std::vector<std::pair<uint32_t, int>>> infos_naming_npc; // NPC_ -> (INFO, via 0 GetIsID / 1 ANAM)
 	std::map<uint32_t, uint32_t> info_quest;
+	std::map<uint32_t, uint32_t> voice_of; // NPC_/CREA VTCK, TACT VNAM
+	std::map<uint32_t, std::vector<uint32_t>> list_of; // FLST -> LNAM entries
+	std::map<uint32_t, std::set<uint32_t>> info_voices; // INFO -> candidate VTYP
+	std::map<uint32_t, std::vector<int>> info_responses; // INFO -> TRDT response numbers
+	std::vector<uint32_t> info_order;
 	std::map<std::string, int> run_on_by_function; // "GetIsID run on N"
 
 	std::map<uint32_t, int> quest_priority, quest_flags;
@@ -59,6 +68,15 @@ int main(int argc, char **argv) {
 		if (r.type == "GRUP") return;
 		std::vector<uint8_t> data;
 		std::vector<Subrecord> subs;
+		if (r.type == "FLST" || r.type == "VTYP" || r.type == "TACT") {
+			data = esm_file.read_record_data(r);
+			subs = EsmFile::parse_subrecords(data);
+			for (auto &s : subs) {
+				if (s.type == "EDID") edid_of[r.form_id] = str(s);
+				if (r.type == "FLST" && s.type == "LNAM") list_of[r.form_id].push_back(u32(s.data));
+				if (r.type == "TACT" && s.type == "VNAM") voice_of[r.form_id] = u32(s.data);
+			}
+		}
 		if (r.type == "NPC_" || r.type == "DIAL" || r.type == "INFO" || r.type == "QUST" || r.type == "CREA") {
 			data = esm_file.read_record_data(r);
 			subs = EsmFile::parse_subrecords(data);
@@ -67,7 +85,7 @@ int main(int argc, char **argv) {
 		if (r.type == "QUST") for (auto &s : subs) if (s.type == "DATA" && s.size >= 2) { quest_flags[r.form_id] = s.data[0]; quest_priority[r.form_id] = s.data[1]; }
 		if (r.type == "NPC_" || r.type == "CREA" || r.type == "TACT") {
 			if (subs.empty()) { data = esm_file.read_record_data(r); subs = EsmFile::parse_subrecords(data); }
-			bool vtck = false; for (auto &s : subs) if (s.type == "VTCK") vtck = true;
+			bool vtck = false; for (auto &s : subs) if (s.type == "VTCK") { vtck = true; voice_of[r.form_id] = u32(s.data); }
 			voice_types[r.type][vtck ? "with VTCK" : "without"]++;
 		}
 		if (r.type == "DIAL") {
@@ -83,6 +101,7 @@ int main(int argc, char **argv) {
 			topics.push_back(t);
 		} else if (r.type == "INFO") {
 			info_total++;
+			info_order.push_back(r.form_id);
 			if (topics.empty() || (last_type != "DIAL" && last_type != "INFO")) info_outside_topic++;
 			if (!topics.empty()) { topics.back().infos.push_back(r.form_id); topic_of_info[r.form_id] = topics.size() - 1; }
 			int responses = 0, conditions = 0;
@@ -99,7 +118,7 @@ int main(int argc, char **argv) {
 					info_quest[r.form_id] = u32(s.data);
 					if (!topics.empty() && !topics.back().quests.count(u32(s.data))) info_qsti_not_topic_quest++;
 				} else if (s.type == "PNAM") previous_of[r.form_id] = u32(s.data);
-				else if (s.type == "TRDT") responses++;
+				else if (s.type == "TRDT") { responses++; info_responses[r.form_id].push_back(s.size > 12 ? s.data[12] : 0); }
 				else if (s.type == "CTDA" && s.size >= 24) {
 					conditions++;
 					uint16_t fn = u16(s.data + 8);
@@ -110,10 +129,11 @@ int main(int argc, char **argv) {
 						if (run_on == 0) getisid_of[r.form_id].insert(u32(s.data + 12));
 						run_on_by_function["GetIsID run on " + std::to_string(run_on)]++;
 					}
-					if (fn == 427) { voice = true; run_on_by_function["GetIsVoiceType run on " + std::to_string(run_on)]++; }
+					if (fn == 427) { info_voices[r.form_id].insert(u32(s.data + 12));
+						voice = true; run_on_by_function["GetIsVoiceType run on " + std::to_string(run_on)]++; }
 				}
 				else if (s.type == "NEXT") after_next = true;
-				else if (s.type == "SCTX" && s.size > 1) { if (after_next) end = true; else begin = true; }
+				else if (s.type == "SCTX" && s.size > 0) { if (after_next) end = true; else begin = true; }
 				else if (s.type == "ANAM") { anam_speakers++; anam_of[r.form_id] = u32(s.data); infos_naming_npc[u32(s.data)].push_back({r.form_id, 1}); }
 			}
 			for (auto &t : tags) subrecord_presence[t]++;
@@ -131,6 +151,68 @@ int main(int argc, char **argv) {
 		else { anam_with_getisid++; if (it->second.count(speaker)) anam_matches_getisid++; }
 		auto rec = esm_file.find_record_by_form_id(speaker);
 		anam_target_types[rec ? rec->type : (speaker == 0 ? "0" : "missing")]++;
+	}
+	// Voice files: <voice type>\<quest>_<topic>_<INFO>_<response>.ogg.
+	{
+		bsa::BsaArchive voices;
+		voices.open("../fresh_nv_copy/Data/Fallout - Voices1.bsa");
+		auto lower = [](std::string v) { std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return (char)std::tolower(c); }); return v; };
+		std::set<std::string> paths; // folder\file, lowercase
+		std::map<std::string, std::set<std::string>> files; // file -> voice type folders
+		std::set<std::string> suffixes; // "_<info>_<n>.ogg"
+		for (auto &e : voices.entries()) {
+			std::string folder = lower(e.folder), file = lower(e.file);
+			if (file.size() < 4 || file.substr(file.size() - 4) != ".ogg") continue;
+			paths.insert(folder + "\\" + file);
+			auto slash = folder.rfind('\\');
+			files[file].insert(slash == std::string::npos ? folder : folder.substr(slash + 1));
+			auto u = file.rfind('_'); auto u2 = u == std::string::npos ? u : file.rfind('_', u - 1);
+			if (u2 != std::string::npos) suffixes.insert(file.substr(u2));
+		}
+		// Candidate voice types per INFO: ANAM's, subject GetIsID's, GetIsVoiceType's (a VTYP or FLST of VTYP).
+		for (auto &[info, speaker] : anam_of) if (voice_of.count(speaker)) info_voices[info].insert(voice_of[speaker]);
+		for (auto &[info, ids] : getisid_of) for (auto id : ids) if (voice_of.count(id)) info_voices[info].insert(voice_of[id]);
+		for (auto &[info, vs] : info_voices) {
+			std::set<uint32_t> expanded;
+			for (auto v : vs) { if (list_of.count(v)) for (auto x : list_of[v]) expanded.insert(x); else expanded.insert(v); }
+			vs = expanded;
+		}
+		// File name: <quest>_<topic>_<INFO>_<response>.ogg; when quest and topic
+		// EDIDs exceed 25 characters together, the quest keeps 10 and the topic
+		// the rest of 25.
+		auto file_name = [&](uint32_t info, int n) {
+			std::string q = edid_of[info_quest[info]], tp = topics[topic_of_info[info]].edid;
+			if (q.size() + tp.size() > 25) { q = q.substr(0, 10); tp = tp.substr(0, 25 - q.size()); }
+			char id[16]; snprintf(id, sizeof id, "%08x", info);
+			return lower(q + "_" + tp + "_" + id + "_" + std::to_string(n) + ".ogg");
+		};
+		uint32_t vcg01 = 0; for (auto &[id, e] : edid_of) if (e == "VCG01") vcg01 = id;
+		int responses_total = 0, named = 0, other_name = 0, no_file = 0, with_candidates = 0, exact = 0, exact_missing = 0;
+		int vcg01_total = 0, vcg01_exact = 0, vcg01_no_candidates = 0, shown = 0;
+		std::map<int, int> no_file_by_type;
+		for (auto info : info_order) {
+			char id[16]; snprintf(id, sizeof id, "%08x", info);
+			bool is_vcg01 = info_quest[info] == vcg01;
+			for (int n : info_responses[info]) {
+				responses_total++;
+				vcg01_total += is_vcg01;
+				std::string file = file_name(info, n);
+				std::string suffix = std::string("_") + id + "_" + std::to_string(n) + ".ogg";
+				if (files.count(file)) named++;
+				else if (suffixes.count(suffix)) { other_name++; if (shown++ < 3) printf("VOICE OTHER NAME expected %s\n", file.c_str()); }
+				else no_file_by_type[topics[topic_of_info[info]].type]++, no_file++;
+				if (info_voices[info].empty()) { vcg01_no_candidates += is_vcg01; continue; }
+				with_candidates++;
+				bool any = false;
+				for (auto v : info_voices[info]) if (paths.count(lower("sound\\voice\\falloutnv.esm\\" + edid_of[v] + "\\" + file))) any = true;
+				if (any) exact++; else exact_missing++;
+				vcg01_exact += is_vcg01 && any;
+			}
+		}
+		printf("VOICE responses %d: file named by the rule %d, file under another name %d, no file %d (by topic type:", responses_total, named, other_name, no_file);
+		for (auto &[k, v] : no_file_by_type) printf(" %d:%d", k, v); printf(")\n");
+		printf("VOICE responses with speaker voice types (ANAM, GetIsID, GetIsVoiceType) %d: file under one of them %d, not %d\n", with_candidates, exact, exact_missing);
+		printf("VOICE VCG01 responses %d: file under a speaker voice type %d, no speaker voice type %d\n", vcg01_total, vcg01_exact, vcg01_no_candidates);
 	}
 	// Quest blocks within each topic: INFOs of one quest contiguous, and the
 	// blocks in descending quest priority.

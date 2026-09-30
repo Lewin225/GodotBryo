@@ -463,6 +463,8 @@ func _check_reference_index(server, index: Array) -> void:
 	_check_owner_conditions(server, index)
 	_check_linked_references(server, index)
 	_check_condition_parameters(server, index)
+	_check_dialogue(server, index)
+	_check_voice_types_and_quest_flags(server, index)
 	var global_count := 0
 	for row: Dictionary in index:
 		if String(row.get("record_type", "")) == "GLOB":
@@ -1616,8 +1618,8 @@ func _check_condition_parameters(server, index: Array) -> void:
 	var wrong_kind: Array[String] = []
 	var unresolved := 0
 	for condition in conditions:
-		var name := ScriptConditionFunctions.name_for_index(condition.function_index)
-		if name.is_empty():
+		var function_name := ScriptConditionFunctions.name_for_index(condition.function_index)
+		if function_name.is_empty():
 			unknown[condition.function_index] = true
 			continue
 		var types: Array = ScriptConditionFunctions.BY_INDEX[condition.function_index][1]
@@ -1628,16 +1630,148 @@ func _check_condition_parameters(server, index: Array) -> void:
 			var raw: int = condition.parameter_1 if i == 0 else condition.parameter_2
 			if ScriptConditionFunctions.INTEGER_PARAMETERS.has(kind) or ScriptConditionFunctions.FORM_ID_PARAMETERS.has(kind):
 				if not value is int:
-					wrong_kind.append("%s %s" % [name, kind])
+					wrong_kind.append("%s %s" % [function_name, kind])
 			elif value == null:
 				unresolved += int(raw != 0)
 			elif ScriptConditionFunctions.REFERENCE_PARAMETERS.has(kind) and not value is EsmReference:
-				wrong_kind.append("%s %s" % [name, kind])
+				wrong_kind.append("%s %s" % [function_name, kind])
 			elif ScriptConditionFunctions.BASE_PARAMETERS.has(kind) and not value is EsmBase:
-				wrong_kind.append("%s %s" % [name, kind])
+				wrong_kind.append("%s %s" % [function_name, kind])
 	_check(unknown.is_empty() and wrong_kind.is_empty(),
 			"every PACK/QUST/TERM/MESG condition names a known function with parameters of its xEdit kind (%d conditions; unknown %s; wrong %s; %d FormID parameters name nothing)"
 			% [conditions.size(), unknown.keys(), wrong_kind.slice(0, 3), unresolved])
 	var get_stage: Variant = ScriptConditionFunctions.resolve_parameter("ptQuest", server.find_quest_by_editor_id("VCG01").form_id)
 	_check(get_stage is QuestBase and get_stage.editor_id == "VCG01", "a quest parameter resolves to its QuestBase")
 	_check(ScriptConditionFunctions.resolve_parameter("ptReference", 0x14) == server.get_player_reference(), "reference 0x14 resolves to the player's reference")
+
+
+## Every DIAL and INFO parses field for field against its raw subrecords, and
+## the totals match dialogue_census.cpp: 18,215 topics holding 23,247 INFOs in
+## file order, 29,674 responses, 59,664 conditions, 2,827 begin and 4,544 end
+## scripts, and the INFOs with links, prompts and speakers.
+func _check_dialogue(server, index: Array) -> void:
+	var topics := 0
+	var infos_in_topics := 0
+	var totals := {"responses": 0, "conditions": 0, "begin": 0, "end": 0, "link_to": 0, "link_from": 0,
+			"follow_up": 0, "add_topics": 0, "prompt": 0, "speaker": 0}
+	var mismatches: Array[String] = []
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "DIAL":
+			continue
+		topics += 1
+		var topic: DialogueTopicBase = server.get_base(int(row["form_id"]))
+		var raw_topic: Dictionary = server.reader.get_record_data(topic.form_id)
+		var topic_data := PackedByteArray()
+		var raw_quests: Array[int] = []
+		for sub: Dictionary in raw_topic.get("subrecords", []):
+			match String(sub.get("type", "")):
+				"DATA": topic_data = sub["data"]
+				"QSTI": raw_quests.append(_u32(sub["data"]))
+		if topic.topic_type != _u8(topic_data) or topic.flags != _u8(topic_data, 1) or topic.quest_form_ids != raw_quests:
+			mismatches.append("DIAL 0x%08X" % topic.form_id)
+		for info: DialogueInfoBase in topic.infos:
+			infos_in_topics += 1
+			if info.topic_form_id != topic.form_id:
+				mismatches.append("INFO 0x%08X topic" % info.form_id)
+			var problem := _dialogue_info_mismatch(server, info, totals)
+			if not problem.is_empty():
+				mismatches.append("INFO 0x%08X %s" % [info.form_id, problem])
+	_check(topics == 18215 and infos_in_topics == 23247, "18,215 topics hold the 23,247 INFOs (%d, %d)" % [topics, infos_in_topics])
+	_check(mismatches.is_empty(), "every DIAL and INFO matches its raw subrecords (%d mismatches: %s)" % [mismatches.size(), mismatches.slice(0, 3)])
+	_check(totals == {"responses": 29674, "conditions": 59664, "begin": 2827, "end": 4544, "link_to": 6348, "link_from": 645,
+			"follow_up": 1107, "add_topics": 420, "prompt": 1411, "speaker": 11355}, "INFO totals match the census (%s)" % [totals])
+
+	var intro: DialogueTopicBase = server.find_base_by_editor_id("VCG01Intro")
+	var all_say_once := true
+	for info in intro.infos:
+		all_say_once = all_say_once and info.has_flag(DialogueInfoBase.FLAG_SAY_ONCE)
+	_check(intro.topic_type == DialogueTopicBase.Type.CONVERSATION and intro.infos.size() == 15 and intro.infos[0].form_id == 0x00104BEE and all_say_once,
+			"VCG01Intro is a Conversation topic of 15 Say Once INFOs, 00104BEE first")
+	var first: DialogueInfoBase = intro.infos[0]
+	_check(first.quest != null and first.quest.editor_id == "VCG01" and first.responses[0].text.begins_with("You're awake")
+			and first.end_script_source.contains("SetStage VCG01 5"), "its first INFO says \"You're awake\" and sets VCG01 stage 5")
+
+## What differs between `info` and its raw subrecords, or "" when nothing does.
+## Adds the INFO's counts to `totals`.
+func _dialogue_info_mismatch(server, info: DialogueInfoBase, totals: Dictionary) -> String:
+	var raw: Array = server.reader.get_record_data(info.form_id).get("subrecords", [])
+	var texts: Array[String] = []
+	var numbers: Array[int] = []
+	var conditions: Array[PackedByteArray] = []
+	var lists := {"TCLT": [] as Array[int], "TCLF": [] as Array[int], "TCFU": [] as Array[int], "NAME": [] as Array[int]}
+	var begin_script := ""
+	var end_script := ""
+	var after_next := false
+	var data := PackedByteArray()
+	var prompt := ""
+	var speaker := 0
+	var quest := 0
+	for sub: Dictionary in raw:
+		var tag := String(sub.get("type", ""))
+		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
+		match tag:
+			"DATA": data = bytes
+			"QSTI": quest = _u32(bytes)
+			"TRDT": numbers.append(_u8(bytes, 12))
+			"NAM1": texts.append(_string(bytes))
+			"CTDA": conditions.append(bytes)
+			"TCLT", "TCLF", "TCFU", "NAME": lists[tag].append(_u32(bytes))
+			"NEXT": after_next = true
+			"SCTX":
+				if after_next: end_script = _string(bytes)
+				else: begin_script = _string(bytes)
+			"RNAM": prompt = _string(bytes)
+			"ANAM": speaker = _u32(bytes)
+	var parsed_texts: Array[String] = []
+	var parsed_numbers: Array[int] = []
+	for response in info.responses:
+		parsed_texts.append(response.text)
+		parsed_numbers.append(response.response_number)
+	totals["responses"] += info.responses.size()
+	totals["conditions"] += info.conditions.size()
+	totals["begin"] += int(not info.begin_script_source.is_empty())
+	totals["end"] += int(not info.end_script_source.is_empty())
+	totals["link_to"] += int(not info.link_to_form_ids.is_empty())
+	totals["link_from"] += int(not info.link_from_form_ids.is_empty())
+	totals["follow_up"] += int(not info.follow_up_form_ids.is_empty())
+	totals["add_topics"] += int(not info.add_topic_form_ids.is_empty())
+	totals["prompt"] += int(not info.prompt.is_empty())
+	totals["speaker"] += int(info.speaker_form_id != 0)
+	if parsed_texts != texts or parsed_numbers != numbers:
+		return "responses"
+	if info.conditions.size() != conditions.size():
+		return "condition count"
+	for i in conditions.size():
+		if not _condition_matches(info.conditions[i], conditions[i]):
+			return "condition %d" % i
+	if info.link_to_form_ids != lists["TCLT"] or info.link_from_form_ids != lists["TCLF"] or info.follow_up_form_ids != lists["TCFU"] or info.add_topic_form_ids != lists["NAME"]:
+		return "links"
+	if info.begin_script_source != begin_script or info.end_script_source != end_script:
+		return "scripts"
+	if info.flags != _u8(data, 2) or info.flags_2 != _u8(data, 3) or info.info_type != _u8(data) or info.quest_form_id != quest:
+		return "data"
+	if info.prompt != prompt or info.speaker_form_id != speaker:
+		return "prompt or speaker"
+	return ""
+
+## Voice types: VTCK on every NPC_ (3,816) and 1,045 of 1,578 CREA; Doc
+## Mitchell's is MaleUniqueDocMitchell, whose folder holds his voice files. QUST
+## DATA flags: Allow Repeated Conversation Topics on 94 quests, Allow Repeated
+## Stages on 34, Default Script Processing Delay on 282.
+func _check_voice_types_and_quest_flags(server, index: Array) -> void:
+	var voiced := {"NPC_": 0, "CREA": 0}
+	var quest_flags := {"topics": 0, "stages": 0, "delay": 0}
+	for row: Dictionary in index:
+		var type := String(row.get("record_type", ""))
+		if type == "NPC_" or type == "CREA":
+			voiced[type] += int(server.get_base(int(row["form_id"])).voice_type_form_id != 0)
+		elif type == "QUST":
+			var quest: QuestBase = server.get_base(int(row["form_id"]))
+			quest_flags["topics"] += int(quest.allows_repeated_topics)
+			quest_flags["stages"] += int(quest.allows_repeated_stages)
+			quest_flags["delay"] += int(quest.uses_default_script_delay)
+	_check(voiced == {"NPC_": 3816, "CREA": 1045}, "VTCK on every NPC_ and 1,045 CREA (%s)" % [voiced])
+	var doc: NpcBase = server.find_base_by_editor_id("DocMitchell")
+	var voice: EsmBase = server.get_base(doc.voice_type_form_id)
+	_check(voice != null and voice.editor_id == "MaleUniqueDocMitchell", "Doc Mitchell's voice type is MaleUniqueDocMitchell (%s)" % (voice.editor_id if voice != null else "none"))
+	_check(quest_flags == {"topics": 94, "stages": 34, "delay": 282}, "QUST DATA flags match the census (%s)" % [quest_flags])

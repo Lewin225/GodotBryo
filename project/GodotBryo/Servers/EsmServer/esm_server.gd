@@ -22,7 +22,7 @@ const TYPE_TO_BASE := {
 	"LIGH": "LightBase", "CONT": "ContainerBase", "ACTI": "ActivatorBase", "FURN": "FurnitureBase",
 	"TACT": "TalkingActivatorBase", "MSTT": "MovableStaticBase", "TERM": "TerminalBase",
 	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase", "QUST": "QuestBase",
-	"MESG": "MessageBase"
+	"MESG": "MessageBase", "DIAL": "DialogueTopicBase", "INFO": "DialogueInfoBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -56,6 +56,8 @@ var _reference_by_editor_id: Dictionary = {} # lowercased REFR/ACHR/ACRE EDID ->
 var _quest_by_editor_id: Dictionary = {} # lowercased QUST EDID -> FormID
 var _global_by_editor_id: Dictionary = {} # lowercased GLOB EDID -> FormID
 var _base_by_editor_id: Dictionary = {} # lowercased EDID of any non-placement record -> FormID
+var _topic_infos: Dictionary = {} # DIAL -> PackedInt64Array of its INFO FormIDs, in file order
+var _info_topics: Dictionary = {} # INFO -> DIAL
 var _game_setting_by_editor_id: Dictionary = {} # lowercased GMST EDID -> FormID
 var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 ## References whose cell has changed since they were built, by current CELL:
@@ -121,6 +123,8 @@ func _process(_delta: float) -> void:
 	_global_by_editor_id = _load_result.get("global_by_editor_id", {})
 	_base_by_editor_id = _load_result.get("base_by_editor_id", {})
 	_game_setting_by_editor_id = _load_result.get("game_setting_by_editor_id", {})
+	_topic_infos = _load_result.get("topic_infos", {})
+	_info_topics = _load_result.get("info_topics", {})
 	state = "ready"
 	esm_ready.emit()
 	for resource in _pending_rehydrates:
@@ -157,8 +161,21 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 	var globals := {}
 	var bases := {}
 	var game_settings := {}
+	# Every INFO sits in its DIAL's child GRUP, which follows the DIAL, so an
+	# INFO belongs to the last DIAL before it in file order.
+	var topic_infos := {}
+	var info_topics := {}
+	var topic := 0
 	for row: Dictionary in record_index:
 		var record_type := String(row.get("record_type", ""))
+		if record_type == "DIAL":
+			topic = int(row["form_id"])
+			topic_infos[topic] = PackedInt64Array()
+		elif record_type == "INFO" and topic != 0:
+			var infos: PackedInt64Array = topic_infos[topic]
+			infos.append(int(row["form_id"]))
+			topic_infos[topic] = infos
+			info_topics[int(row["form_id"])] = topic
 		var editor_id := String(row.get("editor_id", ""))
 		if editor_id.is_empty():
 			continue
@@ -174,7 +191,7 @@ static func _build_reference_index(pairs: PackedInt64Array, record_index: Array)
 			game_settings[editor_id.to_lower()] = int(row["form_id"])
 	return {"placed_reference_ids": ids, "placed_reference_cells": cells, "reference_by_editor_id": by_editor_id,
 			"quest_by_editor_id": quests, "global_by_editor_id": globals, "base_by_editor_id": bases,
-			"game_setting_by_editor_id": game_settings}
+			"game_setting_by_editor_id": game_settings, "topic_infos": topic_infos, "info_topics": info_topics}
 
 ## Turns the native per-worldspace cell listing into the lookup tables behind
 ## cell_at(), get_exterior_cell_form_id() and get_space_form_id_for_cell().
@@ -769,6 +786,10 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		_populate_package(result as PackageBase, raw)
 	elif result is MessageBase:
 		_populate_message(result as MessageBase, raw)
+	elif result is DialogueTopicBase:
+		_populate_dialogue_topic(result as DialogueTopicBase, raw)
+	elif result is DialogueInfoBase:
+		_populate_dialogue_info(result as DialogueInfoBase, raw)
 	elif result is WeaponBase:
 		var weapon: WeaponBase = result
 		weapon.model_path = _string(_subrecord(raw, "MODL"))
@@ -824,6 +845,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 			face.diagnostics = decoded.get("diagnostics", PackedStringArray())
 		npc.face_gen = face
 		npc.actor_stats = _actor_stats(raw, false)
+		npc.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 		npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
 		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
 		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
@@ -845,7 +867,6 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
 		armor.model_path = armor.male_world_model
 		armor.biped_flags = _u32(_subrecord(raw, "BMDT"))
-		npc.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 		armor.equipment_type = _u32(_subrecord(raw, "ETYP"))
 		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
 		armor.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
@@ -978,6 +999,85 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 			result.set("model_path", _string(_subrecord(raw, "MODL")))
 	result._rehydrating = false
 
+func _populate_dialogue_topic(topic: DialogueTopicBase, raw: Dictionary) -> void:
+	topic.quest_form_ids.clear()
+	for data in _all_subrecords(raw, "QSTI"):
+		topic.quest_form_ids.append(_u32(data))
+	var data := _subrecord(raw, "DATA")
+	topic.topic_type = _u8(data) as DialogueTopicBase.Type
+	topic.flags = _u8(data, 1)
+	topic.priority = _f32(_subrecord(raw, "PNAM")) if _subrecord_present(raw, "PNAM") else 50.0
+	topic.infos.clear()
+	for form_id in _topic_infos.get(topic.form_id, PackedInt64Array()):
+		var info := get_base(form_id) as DialogueInfoBase
+		if info != null:
+			topic.infos.append(info)
+
+func _populate_dialogue_info(info: DialogueInfoBase, raw: Dictionary) -> void:
+	info.topic_form_id = int(_info_topics.get(info.form_id, 0))
+	info.quest_form_id = _u32(_subrecord(raw, "QSTI"))
+	info.quest = get_base(info.quest_form_id) as QuestBase
+	var data := _subrecord(raw, "DATA")
+	info.info_type = _u8(data) as DialogueTopicBase.Type
+	info.next_speaker = _u8(data, 1)
+	info.flags = _u8(data, 2)
+	info.flags_2 = _u8(data, 3)
+	info.prompt = _string(_subrecord(raw, "RNAM"))
+	info.speaker_form_id = _u32(_subrecord(raw, "ANAM"))
+	info.actor_value_or_perk_form_id = _u32(_subrecord(raw, "KNAM"))
+	info.speech_challenge = _u32(_subrecord(raw, "DNAM"))
+	info.responses.clear()
+	info.conditions.clear()
+	info.link_to_form_ids.clear()
+	info.link_from_form_ids.clear()
+	info.follow_up_form_ids.clear()
+	info.add_topic_form_ids.clear()
+	info.begin_script_source = ""
+	info.end_script_source = ""
+	# A response starts at its TRDT; its NAM1-LNAM follow. The SCTX before NEXT
+	# is the begin script, the one after it the end script.
+	var response: DialogueResponse = null
+	var after_next := false
+	for sub: Dictionary in raw.get("subrecords", []):
+		var tag := String(sub.get("type", ""))
+		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
+		match tag:
+			"TRDT":
+				response = DialogueResponse.new()
+				response.emotion = _u32(bytes) as DialogueResponse.Emotion
+				response.emotion_value = _i32(bytes, 4)
+				response.response_number = _u8(bytes, 12)
+				response.sound_form_id = _u32(bytes, 16)
+				response.uses_emotion_animation = _u8(bytes, 20) != 0
+				info.responses.append(response)
+			"NAM1":
+				if response != null: response.text = _string(bytes)
+			"NAM2":
+				if response != null: response.script_notes = _string(bytes)
+			"NAM3":
+				if response != null: response.edits = _string(bytes)
+			"SNAM":
+				if response != null: response.speaker_idle_form_id = _u32(bytes)
+			"LNAM":
+				if response != null: response.listener_idle_form_id = _u32(bytes)
+			"CTDA":
+				_append_condition(info.conditions, info, bytes)
+			"TCLT":
+				info.link_to_form_ids.append(_u32(bytes))
+			"TCLF":
+				info.link_from_form_ids.append(_u32(bytes))
+			"TCFU":
+				info.follow_up_form_ids.append(_u32(bytes))
+			"NAME":
+				info.add_topic_form_ids.append(_u32(bytes))
+			"NEXT":
+				after_next = true
+			"SCTX":
+				if after_next:
+					info.end_script_source = _string(bytes)
+				else:
+					info.begin_script_source = _string(bytes)
+
 func _populate_message(message: MessageBase, raw: Dictionary) -> void:
 	message.description = _string(_subrecord(raw, "DESC"))
 	message.icon_form_id = _u32(_subrecord(raw, "INAM"))
@@ -1102,6 +1202,9 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 	var data := _subrecord(raw, "DATA")
 	result.flags = _u8(data)
 	result.starts_enabled = (result.flags & 0x01) != 0
+	result.allows_repeated_topics = (result.flags & 0x04) != 0
+	result.allows_repeated_stages = (result.flags & 0x08) != 0
+	result.uses_default_script_delay = (result.flags & 0x10) != 0
 	result.priority = _u8(data, 1) if data.size() >= 2 else 0
 	result.script_delay = _f32(data, 4) if data.size() >= 8 else 0.0
 	result.conditions.clear()
@@ -1202,9 +1305,6 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 	result.general_flags_raw = 0
 	result.general_flags = null
-	result.allows_repeated_topics = (result.flags & 0x04) != 0
-	result.allows_repeated_stages = (result.flags & 0x08) != 0
-	result.uses_default_script_delay = (result.flags & 0x10) != 0
 	result.package_type = PackageBase.PackageType.FIND
 	result.fallout_behavior_flags_raw = 0
 	result.fallout_behavior_flags = null
@@ -1539,6 +1639,7 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 
 func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 	result.actor_stats = _actor_stats(raw, true)
+	result.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 	result.model_path = _string(_subrecord(raw, "MODL"))
 	result.model_list_filenames.clear()
 	result.model_list_paths.clear()
@@ -1639,7 +1740,6 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, body_part_data: BodyPartDataBase) -> void:
 	part.raw_bpnd = data.duplicate()
 	if data.size() != 84:
-	result.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 		body_part_data.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [body_part_data.form_id, data.size()])
 		return
 	part.damage_multiplier = _f32(data)
