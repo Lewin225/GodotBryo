@@ -350,11 +350,11 @@ func _register_defaults() -> void:
 	# flag, from its template when that supplies traits.
 	register("GetIsSex", func(a: Array, ctx: ScriptExecutionContext):
 		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS)
-		if source == null or a.is_empty():
+		var wants_female := _sex_arg(a, 0)
+		if source == null or wants_female < 0:
 			return 0
-		var female := (int(source.get("actor_stats").flags) & 0x01) != 0
-		var wants_female: bool = int(a[0]) == 1 if (a[0] is int or a[0] is float) else str(a[0]).to_lower() == "female"
-		return 1 if female == wants_female else 0)
+		var stats: ActorStats = source.get("actor_stats")
+		return 1 if stats.is_female() == (wants_female == 1) else 0)
 	# `GetIsVoiceType VoiceType`: the actor's VTCK (from its template when that
 	# supplies traits) is the VTYP, or is in the FLST of them.
 	register("GetIsVoiceType", func(a: Array, ctx: ScriptExecutionContext):
@@ -619,6 +619,20 @@ static func _change_actor_value(args: Array, ctx: ScriptExecutionContext, method
 
 ## The actor value code an argument gives: an int code as a condition passes
 ## it, or a script name. -1 when neither.
+## The sex at argument `index`: 1 female, 0 male, -1 when it is neither. A
+## condition passes ptSex as 0 or 1; a script names it, `Male` or `Female`.
+static func _sex_arg(args: Array, index: int) -> int:
+	if index >= args.size():
+		return -1
+	var value: Variant = args[index]
+	if value is int or value is float:
+		return int(value) if int(value) == 0 or int(value) == 1 else -1
+	match str(value).to_lower():
+		"male": return 0
+		"female": return 1
+	push_warning("ScriptFunctionRegistry: unknown sex '%s'" % str(value))
+	return -1
+
 static func _actor_value_code(args: Array, index: int) -> int:
 	if index >= args.size():
 		return -1

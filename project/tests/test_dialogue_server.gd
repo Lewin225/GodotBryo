@@ -49,9 +49,9 @@ func _ready() -> void:
 	var stats: ActorStats = player.base.actor_stats
 	var authored_flags := stats.flags
 	instance.set_local(special, 1)
-	stats.flags = authored_flags & ~0x01
+	stats.flags = authored_flags & ~ActorStats.FLAG_FEMALE
 	var male: DialogueInfoBase = dialogue.choose_info(reactions, doc, player)
-	stats.flags = authored_flags | 0x01
+	stats.flags = authored_flags | ActorStats.FLAG_FEMALE
 	var female: DialogueInfoBase = dialogue.choose_info(reactions, doc, player)
 	stats.flags = authored_flags
 	check(male != null and male.form_id == 0x00104BDE and female != null and female.form_id == 0x00104BDF,
