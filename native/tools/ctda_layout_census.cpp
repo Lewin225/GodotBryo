@@ -1,4 +1,4 @@
-// CTDA layout census over FalloutNV.esm for Plans/Conditions/conditions.md
+// CTDA layout census over FalloutNV.esm for Plans/Completed Plans/Conditions/conditions.md
 // stage A: type byte (top 3 bits / low 5 bits), Use Global against GLOB
 // comparison FormIDs, Run On and Reference per record type, the short forms,
 // function index use, and Or runs within each list of consecutive CTDAs.

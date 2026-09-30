@@ -1,11 +1,11 @@
 extends Node
 
-## Writes Plans/Conditions/coverage.md: every condition function used by a CTDA
+## Writes Plans/Completed Plans/Conditions/coverage.md: every condition function used by a CTDA
 ## in FalloutNV.esm, with its uses per record type, whether ScriptServer's
 ## registry implements it, and how many of its conditions pass anyway because
 ## an unimplemented function reads 0.
 
-const OUTPUT := "../Plans/Conditions/coverage.md"
+const OUTPUT := "../Plans/Completed Plans/Conditions/coverage.md"
 ## Record types whose conditions are evaluated today.
 const EVALUATED := ["QUST", "TERM", "MESG"]
 const COMPARISONS := ["==", "!=", ">", ">=", "<", "<="]
