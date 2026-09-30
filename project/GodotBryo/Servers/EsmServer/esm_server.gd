@@ -845,6 +845,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
 		armor.model_path = armor.male_world_model
 		armor.biped_flags = _u32(_subrecord(raw, "BMDT"))
+		npc.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 		armor.equipment_type = _u32(_subrecord(raw, "ETYP"))
 		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
 		armor.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
@@ -1201,6 +1202,9 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 	result.general_flags_raw = 0
 	result.general_flags = null
+	result.allows_repeated_topics = (result.flags & 0x04) != 0
+	result.allows_repeated_stages = (result.flags & 0x08) != 0
+	result.uses_default_script_delay = (result.flags & 0x10) != 0
 	result.package_type = PackageBase.PackageType.FIND
 	result.fallout_behavior_flags_raw = 0
 	result.fallout_behavior_flags = null
@@ -1635,6 +1639,7 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, body_part_data: BodyPartDataBase) -> void:
 	part.raw_bpnd = data.duplicate()
 	if data.size() != 84:
+	result.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
 		body_part_data.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [body_part_data.form_id, data.size()])
 		return
 	part.damage_multiplier = _f32(data)

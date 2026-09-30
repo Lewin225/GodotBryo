@@ -4,7 +4,8 @@ extends EsmBase
 
 ## TACT Model Data model path.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_path: String = ""
-## TACT VNAM Voice Type FormID.
+## VNAM: the VTYP voice type FormID; TACT records carry no VTCK. Read; not
+## used yet (dialogue voice file paths and GetIsVoiceType).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var voice_type_form_id: int = 0
 ## TACT SNAM sound FormID.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var sound_form_id: int = 0
