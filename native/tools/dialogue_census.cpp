@@ -52,6 +52,8 @@ int main(int argc, char **argv) {
 	std::map<uint32_t, uint32_t> info_quest;
 	std::map<std::string, int> run_on_by_function; // "GetIsID run on N"
 
+	std::map<uint32_t, int> quest_priority, quest_flags;
+	std::map<std::string, std::map<std::string, int>> voice_types; // record type -> "with VTCK"/"without"
 	std::string last_type;
 	esm_file.for_each_record([&](const RecordInfo &r) {
 		if (r.type == "GRUP") return;
@@ -61,6 +63,12 @@ int main(int argc, char **argv) {
 			data = esm_file.read_record_data(r);
 			subs = EsmFile::parse_subrecords(data);
 			for (auto &s : subs) if (s.type == "EDID") { edid_of[r.form_id] = str(s); if (r.type == "NPC_") npc_by_edid[str(s)] = r.form_id; }
+		}
+		if (r.type == "QUST") for (auto &s : subs) if (s.type == "DATA" && s.size >= 2) { quest_flags[r.form_id] = s.data[0]; quest_priority[r.form_id] = s.data[1]; }
+		if (r.type == "NPC_" || r.type == "CREA" || r.type == "TACT") {
+			if (subs.empty()) { data = esm_file.read_record_data(r); subs = EsmFile::parse_subrecords(data); }
+			bool vtck = false; for (auto &s : subs) if (s.type == "VTCK") vtck = true;
+			voice_types[r.type][vtck ? "with VTCK" : "without"]++;
 		}
 		if (r.type == "DIAL") {
 			Topic t; t.info = r;
@@ -124,6 +132,33 @@ int main(int argc, char **argv) {
 		auto rec = esm_file.find_record_by_form_id(speaker);
 		anam_target_types[rec ? rec->type : (speaker == 0 ? "0" : "missing")]++;
 	}
+	// Quest blocks within each topic: INFOs of one quest contiguous, and the
+	// blocks in descending quest priority.
+	int multi_quest_topics = 0, non_contiguous = 0, blocks_by_priority = 0, blocks_not_by_priority = 0, equal_priority_neighbours = 0;
+	for (auto &t : topics) {
+		std::vector<uint32_t> blocks;
+		std::set<uint32_t> seen;
+		bool contiguous = true;
+		for (auto info : t.infos) {
+			uint32_t q = info_quest[info];
+			if (blocks.empty() || blocks.back() != q) { if (seen.count(q)) contiguous = false; blocks.push_back(q); seen.insert(q); }
+		}
+		if (seen.size() < 2) continue;
+		multi_quest_topics++;
+		if (!contiguous) non_contiguous++;
+		bool descending = true;
+		for (size_t i = 1; i < blocks.size(); i++) {
+			if (quest_priority[blocks[i]] > quest_priority[blocks[i - 1]]) descending = false;
+			if (quest_priority[blocks[i]] == quest_priority[blocks[i - 1]]) equal_priority_neighbours++;
+		}
+		if (descending) blocks_by_priority++; else {
+			if (blocks_not_by_priority++ < 5) {
+				printf("PRIORITY ORDER %s:", t.edid.c_str());
+				for (auto q : blocks) printf(" %s(%d)", edid_of[q].c_str(), quest_priority[q]);
+				printf("\n");
+			}
+		}
+	}
 	// Child GRUP membership, against file-order assignment.
 	int child_mismatch = 0, child_total = 0;
 	for (size_t i = 0; i < topics.size(); i++) {
@@ -161,6 +196,9 @@ int main(int argc, char **argv) {
 	}
 
 	printf("DIAL %zu (without INFO %d, naming more than one QSTI %d)\n", topics.size(), topics_without_infos, topics_multi_quest);
+	printf("TOPICS WITH INFOs OF 2+ QUESTS %d: quest blocks not contiguous %d; blocks in non-increasing quest priority %d, not %d; neighbouring blocks of equal priority %d\n", multi_quest_topics, non_contiguous, blocks_by_priority, blocks_not_by_priority, equal_priority_neighbours);
+	for (auto &[type, m] : voice_types) { printf("VTCK %s:", type.c_str()); for (auto &[k, v] : m) printf(" %s %d", k.c_str(), v); printf("\n"); }
+	{ std::map<int, int> qf; for (auto &[q, f] : quest_flags) for (int b = 0; b < 8; b++) if (f & (1 << b)) qf[1 << b]++; printf("QUST flags:"); for (auto &[k, v] : qf) printf(" 0x%02X:x%d", k, v); printf(" of %zu\n", quest_flags.size()); }
 	printf("DIAL type:"); for (auto &[k, v] : topic_types) printf(" %d:x%d", k, v); printf("\n");
 	printf("DIAL flags:"); for (auto &[k, v] : topic_flags) printf(" %d:x%d", k, v); printf("\n");
 	printf("DIAL priority:"); for (auto &[k, v] : priorities) printf(" %g:x%d", k, v); printf("\n");
