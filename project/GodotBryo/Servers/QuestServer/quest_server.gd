@@ -133,10 +133,13 @@ func is_stage_done(quest: EsmBase, stage: int) -> bool:
 ## Sets the quest's stage, marks it done and runs the stage's result script:
 ## that of its first log entry whose conditions pass, so a stage whose entries
 ## all fail runs none. An entry flagged to complete or fail the quest marks it
-## so. Returns the entry run, or null.
+## so. A stage already done does nothing again unless the quest allows repeated
+## stages. Returns the entry run, or null.
 func set_stage(quest: EsmBase, stage: int) -> QuestLogEntry:
 	var state := get_quest_state(quest)
 	if state == null:
+		return null
+	if state.stages_done.has(stage) and not (quest as QuestBase).allows_repeated_stages:
 		return null
 	state.stage = stage
 	state.stages_done[stage] = true

@@ -25,7 +25,7 @@ QuestServer.is_quest_object(item) -> bool / set_quest_object(item, is_quest_item
 QuestServer.get_script_delay(quest) -> float
 QuestServer.set_script_delay(quest, seconds)
 QuestServer.get_stage(quest) -> int
-QuestServer.set_stage(quest, stage)
+QuestServer.set_stage(quest, stage) -> QuestLogEntry  # the log entry run, or null
 QuestServer.is_stage_done(quest, stage) -> bool
 QuestServer.is_objective_displayed(quest, index) -> bool
 QuestServer.is_objective_completed(quest, index) -> bool
@@ -59,9 +59,10 @@ script `GameMode` block runs every `get_script_delay()` seconds: the `SetQuestDe
 override, else the QUST DATA delay, else `DEFAULT_SCRIPT_DELAY` (5 s) when that is 0.
 
 **Stages.** `set_stage()` records the stage, marks it done and runs the result script of
-the stage's first log entry without conditions. Conditions are not evaluated (20 of 969
-log entries have them), so a stage whose entries all have conditions runs none. A log
-entry flagged complete or fail marks the quest so.
+the stage's first log entry whose conditions pass, evaluated on the player; a stage whose
+entries all fail runs none. A log entry flagged complete or fail marks the quest so. A
+stage already done does nothing again unless the quest's DATA flags allow repeated stages
+(34 of 436 quests), per the GECK wiki's Quest Data Tab.
 
 **Objectives.** The authored objectives are `QuestBase.objectives` (`QuestObjective`: QOBJ
 index, NNAM text, QSTA targets). An objective's state is two independent flags on the
@@ -80,7 +81,8 @@ are parsed but not used.
 
 - The journal / Pip-Boy view; objective targets as compass and map markers; target
   conditions (CTDA on QSTA) are counted, not evaluated.
-- Quest log entry conditions; quest-level conditions.
+- Quest-level conditions (DialogueServer applies them to the quest's dialogue).
+- The subject of log entry conditions (the player here) is not verified.
 - The 5 s default delay is the engine's recalled default, not verified in play.
 - Saving and loading quest state.
 

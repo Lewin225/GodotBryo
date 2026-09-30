@@ -172,12 +172,41 @@ func _check_stage_entries(esm_server, quests, script_server) -> void:
 	var variable: String = script_server.script_variable_name(tops.script_form_id, 0x11)
 	script_server.get_quest_instance(tops).set_local(variable, 0)
 	check(quests.set_stage(tops, 20) == entries[0], "VMQTops stage 20 runs its first entry while %s is 0" % variable)
+	quests.reset_quest(tops)
 	script_server.get_quest_instance(tops).set_local(variable, 1)
 	check(quests.set_stage(tops, 20) == entries[1], "and its second once it is 1")
+	quests.reset_quest(tops)
 	script_server.get_quest_instance(tops).set_local(variable, 2)
 	check(quests.set_stage(tops, 20) == null and quests.get_stage(tops) == 20, "neither passes at 2: no entry runs, the stage is still set")
-	script_server.get_quest_instance(tops).set_local(variable, 0)
 	quests.reset_quest(tops)
+
+	# A stage already done does nothing again unless the quest allows repeated
+	# stages: VMQTops does not; a quest that does runs a stage again.
+	script_server.get_quest_instance(tops).set_local(variable, 0)
+	quests.set_stage(tops, 20)
+	quests.set_stage(tops, 30)
+	check(not tops.allows_repeated_stages and quests.set_stage(tops, 20) == null and quests.get_stage(tops) == 30,
+			"VMQTops does not allow repeated stages: SetStage 20 again runs nothing and leaves stage 30")
+	quests.reset_quest(tops)
+	var repeating: QuestBase = null
+	for row: Dictionary in esm_server.get_record_index():
+		if String(row.get("record_type", "")) != "QUST":
+			continue
+		var candidate: QuestBase = esm_server.get_base(int(row["form_id"]))
+		for stage in candidate.stages:
+			if candidate.allows_repeated_stages and repeating == null and not stage.log_entries.is_empty() and stage.log_entries[0].conditions.is_empty() and stage.log_entries[0].script_source.strip_edges().is_empty():
+				repeating = candidate
+	if repeating != null:
+		var repeat_stage: int = -1
+		for stage in repeating.stages:
+			if repeat_stage < 0 and not stage.log_entries.is_empty() and stage.log_entries[0].conditions.is_empty() and stage.log_entries[0].script_source.strip_edges().is_empty():
+				repeat_stage = stage.index
+		quests.set_stage(repeating, repeat_stage)
+		check(quests.set_stage(repeating, repeat_stage) == repeating.get_stage(repeat_stage).log_entries[0],
+				"%s allows repeated stages: SetStage %d runs again" % [repeating.editor_id, repeat_stage])
+		quests.reset_quest(repeating)
+	else:
+		check(false, "a quest allowing repeated stages has a stage with an unconditioned, scriptless entry")
 	var tutorial: QuestBase = esm_server.find_quest_by_editor_id("CGTutorial")
 	check(quests.set_stage(tutorial, 212) == tutorial.get_stage(212).log_entries[0], "CGTutorial stage 212 runs its PC entry")
 	quests.reset_quest(tutorial)
