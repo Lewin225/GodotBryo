@@ -90,18 +90,7 @@ func get_level() -> int:
 ## The stats the base values derive from: the base record's, or its template
 ## chain's while each record takes its stats from its template.
 func get_stats() -> ActorStats:
-	var record: EsmBase = owner.base if owner != null else null
-	var esm_server := EsmReference.get_esm_server()
-	for _depth in 8:
-		var stats: ActorStats = record.get("actor_stats") if record != null else null
-		if stats == null:
-			return null
-		if (stats.template_flags & ActorStats.TEMPLATE_USE_STATS) == 0 or stats.template_form_id == 0 or esm_server == null:
-			return stats
-		var template: EsmBase = esm_server.get_base(stats.template_form_id)
-		if template == null or template.get("actor_stats") == null:
-			return stats
-		record = template
+	var record := ActorStats.template_source(owner.base if owner != null else null, ActorStats.TEMPLATE_USE_STATS)
 	return record.get("actor_stats") if record != null else null
 
 func _is_player() -> bool:

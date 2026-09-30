@@ -846,6 +846,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		npc.face_gen = face
 		npc.actor_stats = _actor_stats(raw, false)
 		npc.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
+		npc.factions = _actor_factions(raw)
 		npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
 		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
 		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
@@ -1637,9 +1638,20 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 		"SCRO": event.script_references.append(_u32(data))
 		"SCRV": event.script_local_reference_indices.append(_u32(data))
 
+## An NPC_ or CREA's SNAM faction entries: FACT FormID and signed rank.
+func _actor_factions(raw: Dictionary) -> Array[ActorFaction]:
+	var factions: Array[ActorFaction] = []
+	for data in _all_subrecords(raw, "SNAM"):
+		var entry := ActorFaction.new()
+		entry.faction_form_id = _u32(data)
+		entry.rank = _i8(data, 4)
+		factions.append(entry)
+	return factions
+
 func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 	result.actor_stats = _actor_stats(raw, true)
 	result.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
+	result.factions = _actor_factions(raw)
 	result.model_path = _string(_subrecord(raw, "MODL"))
 	result.model_list_filenames.clear()
 	result.model_list_paths.clear()

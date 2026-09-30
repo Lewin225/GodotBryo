@@ -55,10 +55,16 @@ var face_gen: FaceGenData
 ## AI traits and the stats template. Read; used by ActorValues to derive the
 ## actor's base values.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "ActorStats", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var actor_stats: ActorStats
-## VTCK: the VTYP voice type FormID, present on all 3,816 NPC_ records in
-## FalloutNV.esm. Read, from the record itself (a template's is not applied);
-## not used yet (dialogue voice file paths and GetIsVoiceType).
+## VTCK: the VTYP voice type FormID, on all 3,816 NPC_ records in FalloutNV.esm;
+## 0 when absent. Read, from this record; with the Traits template flag the
+## template's is used (ActorStats.template_source). Used by GetIsVoiceType.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var voice_type_form_id: int = 0
+## SNAM: the factions and the actor's rank in each, in authored order (14,625
+## SNAM on NPC_ and CREA in FalloutNV.esm). Read, from this record; with the
+## Factions template flag the template's are used. Used by GetInFaction and
+## GetFactionRank; runtime changes (SetFactionRank, AddToFaction) are not
+## implemented.
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ActorFaction", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var factions: Array[ActorFaction] = []
 
 func animation_search_paths() -> PackedStringArray:
 	return PackedStringArray([DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH])
