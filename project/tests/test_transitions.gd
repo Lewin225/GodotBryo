@@ -38,17 +38,14 @@ func _ready() -> void:
 	var player: PlayerController = game.player
 	var player_ref: ActorReference = esm_server.get_player_reference()
 
-	# Startup: the player's reference is moved to the default CELL's COC marker.
+	# Startup: the player's reference is moved to VCG01PlayerStartMarkerREF.
 	check(await _await_space(coordinator, house), "startup loads GSDocMitchellHouse")
 	check(player.possessed == player_ref and script_server.player_reference == player_ref, "the controller possesses the player's reference")
 	check(player_ref.current_space_form_id == house and player_ref.current_cell_form_id == house, "the player's reference is in the house")
 	check(not player.frozen, "the body is released after the load")
 	check(EsmNode.node_for(player_ref) == null, "the possessed reference has no node of its own")
-	var coc: EsmReference = null
-	for reference in esm_server.get_references_in_cell(house):
-		if reference.base != null and reference.base.editor_id == "COCMarkerHeading":
-			coc = reference
-	check(coc != null and _body_at(player, coc.position), "the body stands at the COC marker")
+	var start_marker: EsmReference = esm_server.find_reference_by_editor_id("VCG01PlayerStartMarkerREF")
+	check(start_marker != null and _body_at(player, start_marker.position), "the body stands at VCG01PlayerStartMarkerREF, where VCG00 stage 0 puts the player")
 	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
 	check(script_server.is_reference_loaded(doc) and doc.script_instance != null, "Doc Mitchell's script is loaded with his house")
 	check(doc.script_instance != null and doc.script_instance.get_local("PlayerLeft") == 0, "DocMitchellREF.PlayerLeft starts at 0")

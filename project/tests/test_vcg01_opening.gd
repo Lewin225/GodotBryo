@@ -48,10 +48,7 @@ func _ready() -> void:
 	var stages: Array[int] = [0]
 	var seconds := 0.0
 	while seconds < LIMIT_SECONDS and quests.get_stage(vcg01) != 55:
-		script_server._process(STEP)
-		quests._process(STEP)
-		dialogue.wait_for_loads()
-		dialogue._process(STEP)
+		_step(script_server, quests, dialogue)
 		seconds += STEP
 		if quests.get_stage(vcg01) != stages.back():
 			stages.append(quests.get_stage(vcg01))
@@ -78,6 +75,27 @@ func _ready() -> void:
 	probe.run_block("SayToDone", ScriptExecutionContext.new(doc, instance), intro)
 	check(other_topic != 1 and instance.get_local("heard") == 1, "Begin SayToDone VCG01Intro runs for VCG01Intro only")
 
+	# On to the vigor tester: entering its trigger sets 60; Doc's line there
+	# displays objective 30; activating the tester sets 65, whose timer sets 70,
+	# Doc's reaction, whose end script sets 75 (the shipped stages then carry on
+	# to 79, skipping the cut skull test).
+	var trigger: EsmReference = esm_server.get_reference("authored:00104C16")
+	var tester: EsmReference = esm_server.get_reference("authored:00104C13")
+	script_server.dispatch_event(trigger, "OnTriggerEnter", script_server.player_reference)
+	check(quests.get_stage(vcg01) == 60, "entering the vigor tester's trigger sets stage 60 (%d)" % quests.get_stage(vcg01))
+	var waited := 0.0
+	while waited < 60.0 and not quests.is_objective_displayed(vcg01, 30):
+		_step(script_server, quests, dialogue)
+		waited += STEP
+	check(quests.is_objective_displayed(vcg01, 30), "Doc's line at 60 displays objective 30 (after %.1f s)" % waited)
+	script_server.activate(tester, script_server.player_reference)
+	check(quests.get_stage(vcg01) == 65, "activating the vigor tester sets stage 65 (%d)" % quests.get_stage(vcg01))
+	waited = 0.0
+	while waited < 120.0 and quests.get_stage(vcg01) < 75:
+		_step(script_server, quests, dialogue)
+		waited += STEP
+	check(quests.is_stage_done(vcg01, 70) and quests.is_stage_done(vcg01, 75), "65's timer sets 70, Doc reacts, and his line sets 75 (now %d)" % quests.get_stage(vcg01))
+
 	var path: String = dialogue.voice_path(intro.infos[0], 0, doc)
 	check(path == "sound\\voice\\falloutnv.esm\\maleuniquedocmitchell\\vcg01_vcg01intro_00104bee_1.ogg", "a line's voice file is %s" % path)
 	var duration: float = dialogue.response_duration(intro.infos[0], 0, doc)
@@ -88,3 +106,11 @@ func _ready() -> void:
 	dialogue.reset()
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## One step of game time: scripts, quests, then dialogue (voice loads waited
+## for, so the run does not depend on thread timing).
+func _step(script_server, quests, dialogue) -> void:
+	script_server._process(STEP)
+	quests._process(STEP)
+	dialogue.wait_for_loads()
+	dialogue._process(STEP)

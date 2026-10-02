@@ -2,13 +2,17 @@ extends Node3D
 
 ## The runtime entry point. Wires the scene's servers and nodes, gives the
 ## player controller the player's reference to possess, and starts the game by
-## moving that reference to DEFAULT_CELL_EDITOR_ID's COC marker.
+## moving that reference to START_MARKER_EDITOR_ID (or, without it,
+## DEFAULT_CELL_EDITOR_ID's COC marker).
 ##
 ## Loading follows the possessed reference (TransitionCoordinator). Game reacts
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
 ## weather and sky, and the debug HUD.
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
+## Where a new game puts the player: VCG00 stage 0 does
+## `player.moveto VCG01PlayerStartMarkerREF`, the bed in Doc Mitchell's house.
+const START_MARKER_EDITOR_ID := "VCG01PlayerStartMarkerREF"
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
 
@@ -96,13 +100,18 @@ func _ready() -> void:
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
 	QuestServer.begin_game()
-	# VCG00, the cemetery intro, is not played: its last stage (100) ends with
-	# `SetStage VCG01 0`, which starts Doc Mitchell's opening, so that is set
+	# VCG00, the cemetery intro, is not played: its stage 0 moves the player to
+	# VCG01PlayerStartMarkerREF and its last stage (100) ends with
+	# `SetStage VCG01 0`, which starts Doc Mitchell's opening; both are done
 	# here. The player starts with VCG01 (Ain't That a Kick in the Head) as the
 	# active quest.
 	var vcg01 := EsmServer.find_quest_by_editor_id("VCG01")
 	QuestServer.set_stage(vcg01, 0)
 	QuestServer.active_quest = vcg01
+	var marker := EsmServer.find_reference_by_editor_id(START_MARKER_EDITOR_ID)
+	if marker != null and player.possessed != null:
+		ScriptServer.move_reference(player.possessed, marker.current_space_form_id, marker.position, marker.rotation)
+		return
 	var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
 	if start is Dictionary:
 		push_error("game.gd: " + String(start["error"]))
