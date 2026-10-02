@@ -62,7 +62,8 @@ override, else the QUST DATA delay, else `DEFAULT_SCRIPT_DELAY` (5 s) when that 
 the stage's first log entry whose conditions pass, evaluated on the player; a stage whose
 entries all fail runs none. A log entry flagged complete or fail marks the quest so. A
 stage already done does nothing again unless the quest's DATA flags allow repeated stages
-(34 of 436 quests), per the GECK wiki's Quest Data Tab.
+(34 of 436 quests), and setting a stage starts a quest that is not running, both per the
+GECK wiki's Quest Data Tab.
 
 **Objectives.** The authored objectives are `QuestBase.objectives` (`QuestObjective`: QOBJ
 index, NNAM text, QSTA targets). An objective's state is two independent flags on the
