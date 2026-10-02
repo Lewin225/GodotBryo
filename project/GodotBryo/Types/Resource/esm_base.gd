@@ -1,6 +1,6 @@
 @tool
 class_name EsmBase
-extends Resource
+extends EsmResource
 
 ## Record header FormID. Read; the record's identity everywhere.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var form_id: int = 0
@@ -27,7 +27,8 @@ const RECORD_FLAG_QUEST_ITEM := 0x400
 		if not _rehydrating and not source_uri.is_empty():
 			call_deferred("_auto_rehydrate")
 ## FULL: the display name. Read; used by EsmNode, the physicaliser and the
-## GodotBryo browser for names and labels.
+## GodotBryo browser for names and labels. The name menu sets the player's,
+## which FalloutNV.esm leaves empty, and marks the record dirty.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var full_name: String = ""
 ## SCRI: FormID of this record's SCPT script, or 0. Any record type may carry
 ## one; for placeable types it is the object script of every placement. Read;
@@ -48,8 +49,10 @@ func _notification(what: int) -> void:
 		# their GDScript setters. The deferred post-init pass covers that path.
 		call_deferred("_auto_rehydrate")
 
+## Refills the fields from the ESM record `source_uri` names, unless the base
+## is dirty (then its saved fields stand).
 func _auto_rehydrate() -> void:
-	if _rehydrating or source_uri.is_empty():
+	if _rehydrating or source_uri.is_empty() or dirty:
 		return
 	var tree := Engine.get_main_loop()
 	var root = tree.root if tree != null else null

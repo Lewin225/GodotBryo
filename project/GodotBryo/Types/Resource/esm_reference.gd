@@ -1,6 +1,6 @@
 @tool
 class_name EsmReference
-extends Resource
+extends EsmResource
 
 ## XPRM primitive types (xEdit's enum).
 enum PrimitiveType { NONE, BOX, SPHERE, PORTAL_BOX }
