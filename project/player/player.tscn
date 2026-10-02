@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://unlock_session.tscn" id="22_unlocksession"]
 [ext_resource type="PackedScene" path="res://name_menu.tscn" id="23_namemenu"]
 [ext_resource type="PackedScene" path="res://race_menu.tscn" id="24_racemenu"]
+[ext_resource type="PackedScene" path="res://dialogue_session.tscn" id="25_dialoguesession"]
 [ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
@@ -29,7 +30,7 @@ fill_to = Vector2(0.9230769, 0.16239317)
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
-[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu")]
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "dialogue_session")]
 script = ExtResource("1_controller")
 mouse_sensitivity = 0.002
 camera_aim_smooth_speed = 5.0
@@ -43,6 +44,7 @@ quest_notice = NodePath("HUD/QuestNotice")
 subtitle = NodePath("HUD/Subtitle")
 name_menu = NodePath("NameMenu")
 race_menu = NodePath("RaceMenu")
+dialogue_session = NodePath("DialogueSession")
 
 [node name="Isometric_Cam_Psuh" type="RemoteTransform3D" parent="." unique_id=1162310370]
 remote_path = NodePath("../Isometric_Cam_Root")
@@ -183,3 +185,5 @@ script = ExtResource("61_p5tca")
 [node name="NameMenu" parent="." instance=ExtResource("23_namemenu")]
 
 [node name="RaceMenu" parent="." instance=ExtResource("24_racemenu")]
+
+[node name="DialogueSession" parent="." instance=ExtResource("25_dialoguesession")]

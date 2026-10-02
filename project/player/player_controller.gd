@@ -126,6 +126,8 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var name_menu: NameMenu
 ## Race menu (ShowRaceMenu).
 @export var race_menu: RaceMenu
+## Conversation screen (DialogueServer conversations with the player).
+@export var dialogue_session: DialogueSession
 
 const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 
@@ -203,6 +205,8 @@ func _ready() -> void:
 	if dialogue != null and not dialogue.response_started.is_connected(_on_response_started):
 		dialogue.response_started.connect(_on_response_started)
 		dialogue.line_finished.connect(_on_line_finished)
+		dialogue.conversation_started.connect(_on_conversation_started)
+		dialogue.conversation_ended.connect(_on_conversation_ended)
 	if subtitle != null:
 		subtitle.hide()
 	floor_max_angle = deg_to_rad(max_floor_angle)
@@ -747,9 +751,10 @@ func _on_quest_granted(quest: QuestBase) -> void:
 	if generation == _quest_notice_generation and quest_notice != null:
 		quest_notice.hide()
 
-## Shows a response being said as a subtitle.
+## Shows a response being said as a subtitle, unless the conversation screen
+## shows it.
 func _on_response_started(line: DialogueLine, text: String) -> void:
-	if subtitle == null:
+	if subtitle == null or (dialogue_session != null and dialogue_session.visible and line.speaker == DialogueServer.get_conversation_speaker()):
 		return
 	_subtitle_line = line
 	subtitle.text = text
@@ -787,6 +792,18 @@ func _open_script_menu(menu_id: int) -> bool:
 
 func _on_script_menu_closed() -> void:
 	_set_input_suspended(false)
+
+## A conversation with the possessed actor opens the conversation screen.
+func _on_conversation_started(speaker: EsmReference, listener: EsmReference) -> void:
+	if dialogue_session == null or possessed == null or listener != possessed:
+		return
+	dialogue_session.open(speaker)
+	_set_input_suspended(true)
+
+func _on_conversation_ended(_speaker: EsmReference) -> void:
+	if dialogue_session != null and dialogue_session.visible:
+		dialogue_session.close()
+		_set_input_suspended(false)
 
 ## Shows the UI for what the possessed actor started using, and closes it when
 ## the use ends another way.

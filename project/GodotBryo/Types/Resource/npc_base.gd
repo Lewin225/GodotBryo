@@ -71,6 +71,13 @@ var face_gen: FaceGenData
 ## implemented.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "ActorFaction", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var factions: Array[ActorFaction] = []
 
+## Activating an NPC: the player starts a conversation with it (GREETING).
+## Another activator does nothing.
+func activate(ref: EsmReference, activator: EsmReference) -> void:
+	if ref == null or activator == null or activator != ScriptServer.player_reference:
+		return
+	DialogueServer.start_conversation(ref, activator)
+
 ## Whether this record's ACBS flags it Female. A template supplying traits is
 ## not followed. Used by EsmHumanoidActor (body parts, biped models) and
 ## GetIsSex.

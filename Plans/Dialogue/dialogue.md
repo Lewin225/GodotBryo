@@ -1,6 +1,6 @@
 # Dialogue (DIAL / INFO)
 
-**Status: stages A-C done (C awaits its play check); stage D next.**
+**Status: stages A-D done; voice plays non-positionally.**
 
 Parse DIAL topics and their INFO responses into typed resources, choose the INFO an actor says
 through the condition evaluator, and run its result scripts. Two consumers: scripted speech
@@ -107,6 +107,14 @@ the GECK's Quest Data Tab says. Stage 17 (a sex choice by message box) is never 
 sets it. In play, `game.gd` sets VCG01 stage 0, as VCG00 stage 100 does at the end of the
 cemetery intro, which is not played.
 
+**Stage D results.** `test_vcg01_opening` continues from stage 79: with `VCG01.bGiveTest` set,
+`DocMitchellREF.StartConversation Player` (from the console, as the couch trigger would)
+opens a conversation in the Dialog menu (1009); Doc greets with 0010558F, whose Link To
+offers VCG01DocMitchellTopic000-005, and choosing on through the test reaches stage 85,
+whose Goodbye line ends the conversation. Doc's topic list after VCG01 (no Link To) offers
+seven topics, from "I'm hurt. I need help, Doc." to "Goodbye.". The couch trigger itself
+needs the player sitting (IsCurrentFurnitureRef) and Doc in his chair (AI packages).
+
 **Script use.** Across all script sources: SayTo x760, Say x147, StartConversation x149,
 AddTopic x11, and 136 `Begin SayToDone` blocks, most naming a topic. None is supported yet, nor
 GetPlayerName or ShowRaceMenu; stage B added GetIsVoiceType, GetIsSex, GetInFaction,
@@ -205,7 +213,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | A. Resources | `DialogueTopicBase`, `DialogueInfoBase`, `DialogueResponse`; the topic → INFO order from the record index; NPC_/CREA VTCK and TACT VNAM; QUST DATA flags; `dialogue_census.cpp` extended with a voice-file census (every response's path, from its speaker's voice types). | `test_esm_server` asserts the census totals (topics, INFOs, responses, conditions, scripts, links) field for field against the raw subrecords; the voice census resolves every VCG01 response. |
 | B. Choosing (done) | `DialogueServer.choose_info()`: quest running, quest conditions, quest priority, per-speaker Say Once, ANAM, Random sets; GetIsVoiceType, GetIsSex, GetInFaction, GetTalkedToPC. `QuestServer.set_stage()` runs a stage once unless its quest allows repeated stages. | VCG01Intro yields its 15 INFOs in file order as each is said; VCG01DocReactions picks by SPECIAL and the player's sex; Doc's GREETING is VCG01's while VCG01 runs; a Say Once INFO said by one actor is still available to another; a repeated SetStage on a quest without the flag does nothing. |
 | C. Scripted speech (done; play check pending) | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
-| D. Conversation | `DialogueSession`: activating an actor, GREETING, Link To choices, topic list, prompts, Goodbye; StartConversation, AddTopic. | A test sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartConversation Player`, and choosing through the Rorschach test reaches stage 85; in play, talking to Doc opens his GREETING. The trigger's own start needs Doc sitting in his chair, which waits for AI packages. |
+| D. Conversation (done; couch trigger needs furniture and AI packages) | `DialogueSession`: activating an actor, GREETING, Link To choices, topic list, prompts, Goodbye; StartConversation, AddTopic. | A test sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartConversation Player`, and choosing through the Rorschach test reaches stage 85; in play, talking to Doc opens his GREETING. The trigger's own start needs Doc sitting in his chair, which waits for AI packages. |
 | E. Voice | Play each response's `.ogg` at the speaker. Non-positional playback, loaded on worker threads, landed with stage C. | Doc Mitchell's opening is heard in play. |
 | F. Coverage | Re-run `diag_condition_coverage` with INFO evaluated today; list the next functions. | Nothing to pass. |
 

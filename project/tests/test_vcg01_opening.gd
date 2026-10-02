@@ -108,6 +108,39 @@ func _ready() -> void:
 			"with Luck 10, %s is 4 and Doc says 00104BE2, \"With luck like yours...\" (%s, %s)" % [special, script_server.get_quest_instance(vcg01).get_local(special), reactions_said])
 	script_server.function_registry.call_function("SetActorValue", ["Luck", 5], player_ctx)
 
+	# The Rorschach test, started from the console the way the couch trigger
+	# starts it (it needs the player on the couch and Doc in his chair):
+	# Doc's VCG01 GREETING offers VCG01DocMitchellTopic000-005; each choice
+	# links onward, and the last sets stage 85.
+	script_server.run_debug_line("set VCG01.bGiveTest to 1")
+	var first_choices: Array = []
+	var greeting_infos: Array[int] = []
+	dialogue.choices_ready.connect(func(choices: Array[DialogueChoice]) -> void:
+		if first_choices.is_empty():
+			first_choices.append_array(choices))
+	dialogue.response_started.connect(func(line: DialogueLine, _text: String) -> void:
+		if line.topic != null and line.topic.editor_id == "GREETING" and not greeting_infos.has(line.info.form_id):
+			greeting_infos.append(line.info.form_id))
+	script_server.run_debug_line("DocMitchellREF.StartConversation Player")
+	check(dialogue.get_conversation_speaker() == doc and script_server.get_menu() == script_server.MENU_DIALOG,
+			"StartConversation Player opens a conversation with Doc, menu 1009 (Dialog)")
+	var picks := 0
+	waited = 0.0
+	while waited < 300.0 and dialogue.get_conversation_speaker() != null:
+		_step(script_server, quests, dialogue)
+		waited += STEP
+		if not dialogue.get_choices().is_empty():
+			dialogue.choose(0)
+			picks += 1
+	var offered: Array[String] = []
+	for choice: DialogueChoice in first_choices:
+		offered.append(choice.topic.editor_id)
+	check(greeting_infos == [0x0010558F], "Doc greets with 0010558F, the test's first prompt (%s)" % [greeting_infos])
+	check(offered == ["VCG01DocMitchellTopic000", "VCG01DocMitchellTopic001", "VCG01DocMitchellTopic002", "VCG01DocMitchellTopic003", "VCG01DocMitchellTopic004", "VCG01DocMitchellTopic005"],
+			"his line's Link To offers Topic000-005 (%s)" % [offered])
+	check(quests.is_stage_done(vcg01, 85) and dialogue.get_conversation_speaker() == null and not script_server.is_menu_mode(),
+			"%d choices later the test sets stage 85 and the Goodbye line ends the conversation" % picks)
+
 	var path: String = dialogue.voice_path(intro.infos[0], 0, doc)
 	check(path == "sound\\voice\\falloutnv.esm\\maleuniquedocmitchell\\vcg01_vcg01intro_00104bee_1.ogg", "a line's voice file is %s" % path)
 	var duration: float = dialogue.response_duration(intro.infos[0], 0, doc)

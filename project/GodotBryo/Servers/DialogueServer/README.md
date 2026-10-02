@@ -18,8 +18,14 @@ DialogueServer.get_line(speaker) -> DialogueLine                # the line being
 DialogueServer.response_duration(info, index, speaker) -> float  # loads on the calling thread
 DialogueServer.wait_for_loads()                                  # blocks on pending voice loads (tests)
 DialogueServer.voice_path(info, index, speaker) -> String       # "" when the speaker has no voice type
+DialogueServer.start_conversation(speaker, listener, topic = GREETING) -> bool
+DialogueServer.choose(index)                                     # one of the last choices_ready
+DialogueServer.end_conversation(say_goodbye = true)
+DialogueServer.get_conversation_speaker() -> EsmReference
+DialogueServer.choices_after(info, speaker, listener) -> Array[DialogueChoice]
 signal response_started(line, text)                              # a subtitle
 signal line_finished(line)
+signal conversation_started(speaker, listener) / choices_ready(choices) / conversation_ended(speaker)
 DialogueServer.mark_said(info, speaker)                # for Say Once and Say Once a Day
 DialogueServer.has_said(info, speaker) -> bool
 DialogueServer.set_talked_to_player(actor) / has_talked_to_player(actor) -> bool
@@ -51,6 +57,19 @@ speaker's `SayToDone` block for the topic, then `line_finished`. A new line from
 replaces the one it is saying. The player's HUD shows each response as a subtitle. In menu
 mode (`ScriptServer.is_menu_mode()`) lines do not advance and their voices pause.
 
+**Conversations.** `start_conversation()` (StartConversation with the player, or the player
+activating an NPC) opens the Dialog menu (1009), records that the speaker has talked to the
+player, and has the speaker say the topic's INFO, GREETING by default; a said INFO's Add
+Topics join the player's topics. When the line finishes, a Goodbye INFO ends the
+conversation; otherwise the choices are its Link To topics, or else the topic list:
+top-level topics, then the player's added topics, each by priority (highest first), each
+with an INFO this speaker would say. A choice shows that INFO's prompt (RNAM), or else the
+topic's name. `choose()` has the speaker say the chosen topic. Escape ends the conversation,
+and the speaker says GOODBYE, which the GECK's Topics Tab says is used when the player
+exits the dialogue menu. Lines run under the Dialog menu while other menus pause them. The
+first topic list loads the 2,283 top-level topics once (425 ms; later lists about 20 ms).
+The player's `DialogueSession` shows the speaker, the response and the choices.
+
 **Voice files** are `sound\voice\falloutnv.esm\<voice type>\<quest>_<topic>_<INFO>_<n>.ogg`
 in `Fallout - Voices1.bsa`, lowercase; when the quest and topic editor IDs exceed 25
 characters together, the quest keeps 10 and the topic the rest. The voice type is the
@@ -67,7 +86,8 @@ factions from its record or, when its template flags say so, its template
 ## Not yet
 
 - Positional voice at the speaker (stage E); lip sync and speaker/listener idles.
-- The conversation menu, AddTopic and INFO Add Topics: stage D.
+- The speaker walking to the player before StartConversation; conversations between NPCs.
+- Shading heard choices, Info Refusal, speech challenges.
 - Runtime faction changes (SetFactionRank, AddToFaction); GetInFaction reads authored SNAM.
 - Templates that are leveled lists are not followed.
 
@@ -80,6 +100,8 @@ factions from its record or, when its template flags say so, its template
 - Result scripts running on the speaker; an INFO marked said as it starts; a new line
   replacing the one being said; subtitles always shown (SayTo's ForceSubtitle is ignored).
 - The duration of an unvoiced response.
+- The topic list: top-level topics without being added, top-level first, by priority; the
+  speaker saying GOODBYE when the player leaves.
 
 ## Tests
 

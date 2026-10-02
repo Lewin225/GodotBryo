@@ -56,7 +56,9 @@ references in `_physics_process()`, earlier in the frame. Script `MoveTo Target 
 `set_reference_loaded()`, which also runs `OnLoad` (once per load).
 `dispatch_event_for(reference, block_type, subject)` runs blocks for a non-reference
 subject: a menu ID, or a topic for `SayToDone <topic>`, matched by editor ID. `SayTo` and
-`Say` speak through `DialogueServer.say()`.
+`Say` speak through `DialogueServer.say()`; `StartConversation Player [Topic]` starts a
+conversation (`DialogueServer.start_conversation`), and `AddTopic` adds a topic to the
+player's list.
 
 **Menu mode.** A menu opening calls `enter_menu(menu_id)` and closing calls
 `exit_menu(menu_id)`; the game is in menu mode while any is open (the GECK's Begin page:

@@ -9,6 +9,12 @@ extends Node
 signal response_started(line: DialogueLine, text: String)
 ## A line finished: its end script and the speaker's SayToDone have run.
 signal line_finished(line: DialogueLine)
+## A conversation began: `speaker` talks to `listener` (the player).
+signal conversation_started(speaker: EsmReference, listener: EsmReference)
+## The speaker finished a line and the player chooses what next.
+signal choices_ready(choices: Array[DialogueChoice])
+## The conversation ended.
+signal conversation_ended(speaker: EsmReference)
 
 ## The voice files' plugin folder: the only master loaded is FalloutNV.esm.
 const VOICE_PLUGIN := "falloutnv.esm"
@@ -23,6 +29,14 @@ var _added_topics: Dictionary = {} # DIAL FormID -> true
 var _lines: Dictionary = {} # speaker instance_id -> DialogueLine being said
 var _streams: Dictionary = {} # voice file path -> AudioStream, or null when it does not load
 var _tasks: Dictionary = {} # WorkerThreadPool task ID -> DialogueLine whose voice it loads
+## The conversation being held, or null: its speaker, listener and the line
+## the speaker is saying in it.
+var _conversation_speaker: EsmReference = null
+var _conversation_listener: EsmReference = null
+var _conversation_line: DialogueLine = null
+var _choices: Array[DialogueChoice] = []
+var _top_level_topics: Array[DialogueTopicBase] = [] # built on first use
+var _top_level_built := false
 ## Picks among a set of Random INFOs.
 var rng := RandomNumberGenerator.new()
 
@@ -98,10 +112,12 @@ func get_line(speaker: EsmReference) -> DialogueLine:
 
 ## Starts lines whose voice has loaded, then advances every started line by
 ## `delta` seconds, finishing those whose last response ends. In menu mode
-## lines and their voices pause.
+## lines and their voices pause, except under the Dialog menu (a
+## conversation), whose lines run.
 func _process(delta: float) -> void:
-	_pause_voices(ScriptServer.is_menu_mode())
-	if ScriptServer.is_menu_mode():
+	var paused := ScriptServer.is_menu_mode() and ScriptServer.get_menu() != ScriptServer.MENU_DIALOG
+	_pause_voices(paused)
+	if paused:
 		return
 	for task: int in _tasks.keys():
 		if not WorkerThreadPool.is_task_completed(task):
@@ -174,6 +190,137 @@ func _finish(line: DialogueLine) -> void:
 	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
 	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
 	line_finished.emit(line)
+	if line == _conversation_line:
+		_continue_conversation(line)
+
+## `speaker` starts a conversation with `listener` (the player): the Dialog
+## menu opens, the speaker has talked to the player, and says `topic`'s INFO,
+## GREETING when none is given. After each line the player chooses
+## (choices_ready) until a Goodbye INFO, no choice left, or end_conversation().
+## Returns false, starting nothing, when no INFO qualifies.
+func start_conversation(speaker: EsmReference, listener: EsmReference, topic: DialogueTopicBase = null) -> bool:
+	if speaker == null:
+		return false
+	if topic == null:
+		topic = EsmServer.find_base_by_editor_id("GREETING") as DialogueTopicBase
+	if choose_info(topic, speaker, listener) == null:
+		return false
+	if _conversation_speaker != null:
+		end_conversation(false)
+	_conversation_speaker = speaker
+	_conversation_listener = listener
+	set_talked_to_player(speaker)
+	ScriptServer.enter_menu(ScriptServer.MENU_DIALOG)
+	conversation_started.emit(speaker, listener)
+	_say_in_conversation(topic)
+	return true
+
+## The player chooses choice `index` of the last choices_ready: the speaker
+## says its topic.
+func choose(index: int) -> void:
+	if _conversation_speaker == null or index < 0 or index >= _choices.size():
+		return
+	var choice := _choices[index]
+	_choices.clear()
+	_say_in_conversation(choice.topic)
+
+## Ends the conversation: the Dialog menu closes. With `say_goodbye` (the
+## player leaving) the speaker says GOODBYE, which the GECK's Topics Tab says
+## is used when the player exits the dialogue menu.
+func end_conversation(say_goodbye := true) -> void:
+	var speaker := _conversation_speaker
+	if speaker == null:
+		return
+	var listener := _conversation_listener
+	_conversation_speaker = null
+	_conversation_listener = null
+	_conversation_line = null
+	_choices.clear()
+	ScriptServer.exit_menu(ScriptServer.MENU_DIALOG)
+	conversation_ended.emit(speaker)
+	if say_goodbye:
+		say(speaker, EsmServer.find_base_by_editor_id("GOODBYE") as DialogueTopicBase, listener)
+
+## The speaker of the conversation being held, or null.
+func get_conversation_speaker() -> EsmReference:
+	return _conversation_speaker
+
+## The choices offered after the speaker's last line.
+func get_choices() -> Array[DialogueChoice]:
+	return _choices
+
+## The choices after `info`: its Link To topics when it has any, else the
+## topic list (top-level topics, then the player's added topics), each with an
+## INFO the speaker would say and ordered by topic priority, highest first.
+func choices_after(info: DialogueInfoBase, speaker: EsmReference, listener: EsmReference) -> Array[DialogueChoice]:
+	var topics: Array[DialogueTopicBase] = []
+	if not info.link_to_form_ids.is_empty():
+		for form_id in info.link_to_form_ids:
+			var linked := EsmServer.get_base(form_id) as DialogueTopicBase
+			if linked != null:
+				topics.append(linked)
+	else:
+		var listed: Array[DialogueTopicBase] = []
+		for topic in _get_top_level_topics():
+			listed.append(topic)
+		var added: Array[DialogueTopicBase] = []
+		for form_id: int in _added_topics:
+			var topic := EsmServer.get_base(form_id) as DialogueTopicBase
+			if topic != null and not topic.is_top_level():
+				added.append(topic)
+		var by_priority := func(a: DialogueTopicBase, b: DialogueTopicBase) -> bool: return a.priority > b.priority
+		listed.sort_custom(by_priority)
+		added.sort_custom(by_priority)
+		topics.append_array(listed)
+		topics.append_array(added)
+	var choices: Array[DialogueChoice] = []
+	for topic in topics:
+		var chosen := choose_info(topic, speaker, listener)
+		if chosen == null:
+			continue
+		var choice := DialogueChoice.new()
+		choice.topic = topic
+		choice.info = chosen
+		choice.text = chosen.prompt if not chosen.prompt.is_empty() else topic.full_name
+		choices.append(choice)
+	return choices
+
+func _say_in_conversation(topic: DialogueTopicBase) -> void:
+	var line := say(_conversation_speaker, topic, _conversation_listener)
+	if line == null:
+		end_conversation(false)
+		return
+	_conversation_line = line
+	for form_id in line.info.add_topic_form_ids:
+		add_topic(EsmServer.get_base(form_id) as DialogueTopicBase)
+
+func _continue_conversation(line: DialogueLine) -> void:
+	_conversation_line = null
+	if line.info.has_flag(DialogueInfoBase.FLAG_GOODBYE):
+		end_conversation(false)
+		return
+	_choices = choices_after(line.info, _conversation_speaker, _conversation_listener)
+	if _choices.is_empty():
+		end_conversation(false)
+		return
+	choices_ready.emit(_choices)
+
+## Every top-level DIAL (2,283 in FalloutNV.esm), found once: each DIAL's raw
+## DATA flags are read, and only top-level topics (with their INFOs) loaded.
+func _get_top_level_topics() -> Array[DialogueTopicBase]:
+	if not _top_level_built:
+		_top_level_built = true
+		for row: Dictionary in EsmServer.get_record_index():
+			if String(row.get("record_type", "")) != "DIAL":
+				continue
+			var raw: Dictionary = EsmServer.reader.get_record_data(int(row["form_id"]))
+			for sub: Dictionary in raw.get("subrecords", []):
+				if String(sub.get("type", "")) != "DATA":
+					continue
+				var data: PackedByteArray = sub.get("data", PackedByteArray())
+				if data.size() >= 2 and (data[1] & DialogueTopicBase.FLAG_TOP_LEVEL) != 0:
+					_top_level_topics.append(EsmServer.get_base(int(row["form_id"])) as DialogueTopicBase)
+	return _top_level_topics
 
 ## Pauses or resumes every line's voice.
 func _pause_voices(paused: bool) -> void:
@@ -261,6 +408,8 @@ func reset() -> void:
 	_said.clear()
 	_talked_to_player.clear()
 	_added_topics.clear()
+	if _conversation_speaker != null:
+		end_conversation(false)
 	for line: DialogueLine in _lines.values():
 		_stop(line)
 	_lines.clear()

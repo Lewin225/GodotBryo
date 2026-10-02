@@ -401,6 +401,25 @@ func _register_defaults() -> void:
 		if dialogue != null and ctx.calling_reference != null and topic != null:
 			dialogue.say(ctx.calling_reference, topic, null)
 		return 0)
+	# `[Speaker.]StartConversation Target [Topic]`: with the player as Target,
+	# the speaker starts a conversation with the topic, GREETING when none is
+	# given. The speaker does not walk to the player first. Conversations
+	# between NPCs are not implemented.
+	register("StartConversation", func(a: Array, ctx: ScriptExecutionContext):
+		var dialogue := _dialogue_server()
+		var target: Variant = a[0] if not a.is_empty() else null
+		if dialogue == null or ctx.calling_reference == null or not target is EsmReference or target != script_server.player_reference:
+			return 0
+		var topic := _base_arg(a, 1) as DialogueTopicBase if a.size() > 1 else null
+		return 1 if dialogue.start_conversation(ctx.calling_reference, target, topic) else 0)
+	# `AddTopic Topic`: adds the topic to the player's topic list.
+	register("AddTopic", func(a: Array, _c):
+		var dialogue := _dialogue_server()
+		var topic := _base_arg(a, 0) as DialogueTopicBase
+		if dialogue == null or topic == null:
+			return 0
+		dialogue.add_topic(topic)
+		return 1)
 	# `GetPlayerName` / `ShowNameMenu` opens the name entry menu (1051, TextEdit);
 	# it returns nothing useful, as the GECK wiki notes.
 	register(["GetPlayerName", "ShowNameMenu"], func(_a: Array, _c):
