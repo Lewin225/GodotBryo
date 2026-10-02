@@ -59,6 +59,11 @@ func call_function(name: String, args: Array, ctx: ScriptExecutionContext) -> Va
 	return 0
 
 func _register_defaults() -> void:
+	# `Abs x`, `Sqrt x`: the math functions shipped scripts call (Abs per the
+	# GECK wiki's Abs page; Sqrt from its use in shipped scripts). Sqrt of a
+	# negative number gives 0 here; the original's result is not known.
+	register("Abs", func(a: Array, _c): return absf(_number(a, 0)))
+	register("Sqrt", func(a: Array, _c): return sqrt(maxf(_number(a, 0), 0.0)))
 	# Real seconds since the calling script last ran.
 	register("GetSecondsPassed", func(_a, ctx: ScriptExecutionContext):
 		return ctx.seconds_passed)

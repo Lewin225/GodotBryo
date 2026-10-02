@@ -298,6 +298,13 @@ func _test_globals(server) -> void:
 	check(not server.globals.has_global("GSBrokenSMGMsg") and not server.globals.has_global("GSBrokenSMGMsg"), "a non-global name is not a global (cached)")
 	server.globals.set_global("CGHealTimer", 120)
 
+	# Abs and Sqrt parse as calls in expressions (VCG01SCRIPT: `set fMaxDeviation
+	# to abs fCurrentValue`), not as bare names.
+	var math := ScriptExecutionContext.new(null)
+	run.call("float a\nfloat b\nfloat c\nbegin GameMode\nset a to 0 - 3.5\nset b to abs a\nset c to sqrt 16\nend", math)
+	check(is_equal_approx(float(math.get_local("b")), 3.5) and is_equal_approx(float(math.get_local("c")), 4.0),
+			"abs -3.5 is 3.5 and sqrt 16 is 4 (%s, %s)" % [math.get_local("b"), math.get_local("c")])
+
 	# GetSecondsPassed is per script: game seconds (ScriptServer.clock) since
 	# that script last ran.
 	var instance := ScriptInstance.new()

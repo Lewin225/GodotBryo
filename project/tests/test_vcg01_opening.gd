@@ -88,6 +88,14 @@ func _ready() -> void:
 		_step(script_server, quests, dialogue)
 		waited += STEP
 	check(quests.is_objective_displayed(vcg01, 30), "Doc's line at 60 displays objective 30 (after %.1f s)" % waited)
+	# Luck 10 is the player's most extreme SPECIAL: VCG01SCRIPT's reaction block
+	# (abs of each deviation from 5.5) picks nDocReaction 4, high luck.
+	var player_ctx := ScriptExecutionContext.new(script_server.player_reference)
+	script_server.function_registry.call_function("SetActorValue", ["Luck", 10], player_ctx)
+	var reactions_said: Array[int] = []
+	dialogue.response_started.connect(func(line: DialogueLine, _text: String) -> void:
+		if line.topic != null and line.topic.editor_id == "VCG01DocReactions":
+			reactions_said.append(line.info.form_id))
 	script_server.activate(tester, script_server.player_reference)
 	check(quests.get_stage(vcg01) == 65, "activating the vigor tester sets stage 65 (%d)" % quests.get_stage(vcg01))
 	waited = 0.0
@@ -95,6 +103,10 @@ func _ready() -> void:
 		_step(script_server, quests, dialogue)
 		waited += STEP
 	check(quests.is_stage_done(vcg01, 70) and quests.is_stage_done(vcg01, 75), "65's timer sets 70, Doc reacts, and his line sets 75 (now %d)" % quests.get_stage(vcg01))
+	var special: String = script_server.script_variable_name(vcg01.script_form_id, 5)
+	check(script_server.get_quest_instance(vcg01).get_local(special) == 4 and reactions_said == [0x00104BE2],
+			"with Luck 10, %s is 4 and Doc says 00104BE2, \"With luck like yours...\" (%s, %s)" % [special, script_server.get_quest_instance(vcg01).get_local(special), reactions_said])
+	script_server.function_registry.call_function("SetActorValue", ["Luck", 5], player_ctx)
 
 	var path: String = dialogue.voice_path(intro.infos[0], 0, doc)
 	check(path == "sound\\voice\\falloutnv.esm\\maleuniquedocmitchell\\vcg01_vcg01intro_00104bee_1.ogg", "a line's voice file is %s" % path)

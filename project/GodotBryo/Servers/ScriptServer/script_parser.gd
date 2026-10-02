@@ -30,6 +30,8 @@ extends RefCounted
 ## GSBrokenSMGMsg` needs the literal name `GSBrokenSMGMsg`, not a swallowed
 ## 0 from calling a nonexistent function named that.
 const KNOWN_ARITIES := {
+	"abs": 1,
+	"sqrt": 1,
 	"getactionref": 0,
 	"getbuttonpressed": 0,
 	"getcurrenttime": 0,
