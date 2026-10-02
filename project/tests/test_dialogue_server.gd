@@ -46,14 +46,14 @@ func _ready() -> void:
 	var reactions: DialogueTopicBase = esm_server.find_base_by_editor_id("VCG01DocReactions")
 	var special: String = script_server.script_variable_name(vcg01.script_form_id, 5)
 	var instance: ScriptInstance = script_server.get_quest_instance(vcg01)
-	var stats: ActorStats = player.base.actor_stats
-	var authored_flags := stats.flags
+	var player_base: NpcBase = player.base
+	var authored_flags := player_base.acbs_flags
 	instance.set_local(special, 1)
-	stats.flags = authored_flags & ~ActorStats.FLAG_FEMALE
+	player_base.acbs_flags = authored_flags & ~NpcBase.FLAG_FEMALE
 	var male: DialogueInfoBase = dialogue.choose_info(reactions, doc, player)
-	stats.flags = authored_flags | ActorStats.FLAG_FEMALE
+	player_base.acbs_flags = authored_flags | NpcBase.FLAG_FEMALE
 	var female: DialogueInfoBase = dialogue.choose_info(reactions, doc, player)
-	stats.flags = authored_flags
+	player_base.acbs_flags = authored_flags
 	check(male != null and male.form_id == 0x00104BDE and female != null and female.form_id == 0x00104BDF,
 			"%s 1: \"Sorry, son\" to a male player, \"Sorry, little lady\" to a female one" % special)
 	instance.set_local(special, 3)

@@ -828,7 +828,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		npc.model_path = _string(_subrecord(raw, "MODL"))
 		var acbs := _subrecord(raw, "ACBS")
 		npc.acbs_flags = _u32(acbs)
-		npc.is_female = (npc.acbs_flags & 1) != 0
+		npc.acbs_template_flags = _u16(acbs, 22)
 		npc.is_child = false
 		var face := FaceGenData.new()
 		face.fggs = _subrecord(raw, "FGGS")

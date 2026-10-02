@@ -4,6 +4,8 @@ extends EsmBase
 
 
 const DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID := 0x0000001D
+## ACBS flag: the NPC is female.
+const FLAG_FEMALE := 0x01
 # The shipped third-person humanoid animation library is conventionally named
 # `_male`; it is a shared asset root, not a branch on this record's sex flag.
 # No official NPC_ record supplies KFFZ (4,222-record master census), so the
@@ -38,15 +40,17 @@ var class_form_id: int = 0
 ## PKID: the AI packages, in authored order. Read; not used yet (package
 ## selection is not implemented).
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "PackageBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var packages: Array[PackageBase] = []
-## ACBS flag 0x01 (Female). Read; used by EsmHumanoidActor to choose male or
-## female body parts and biped models.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_female: bool = false
 ## Not an NPC_ field: whether the NPC is a child, which the RACE's DATA flags
 ## (Child) would decide. Not read; always false, and not used.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_child: bool = false
-## ACBS flags (offset 0). Read; used only to set `is_female`. Also held in
-## `actor_stats.flags`.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_flags: int = 0
+## ACBS offset 0: the NPC_ flags, named as xEdit names them (bit 28, set on
+## 1 NPC_ in FalloutNV.esm, is its Unknown 28). Read; Female is used by
+## is_female(); the rest are not used yet. Also held in `actor_stats.flags`.
+@export_custom(PROPERTY_HINT_FLAGS, "Female:1,Essential:2,Is CharGen Face Preset:4,Respawn:8,Auto-calc Stats:16,PC Level Mult:128,Use Template:256,No Low Level Processing:512,No Blood Spray:2048,No Blood Decal:4096,No VATS Melee:1048576,Can Be All Races:4194304,Autocalc Service:8388608,No Knockdowns:67108864,Not Pushable:134217728,Unknown 28:268435456,No Rotating To Head-track:1073741824", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_flags: int = 0
+## ACBS offset 22: which parts come from the TPLT template (xEdit
+## `wbTemplateFlags`). Read; not used yet from here (ActorStats holds the same
+## value and follows Stats). Also held in `actor_stats.template_flags`.
+@export_custom(PROPERTY_HINT_FLAGS, "Traits:1,Stats:2,Factions:4,Actor Effect List:8,AI Data:16,AI Packages:32,Model/Animation:64,Base Data:128,Inventory:256,Script:512", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_template_flags: int = 0
 ## FGGS, FGGA and FGTS: FaceGen geometry-symmetric, geometry-asymmetric and
 ## texture-symmetric coefficients, raw and decoded. Read; not used by
 ## EsmHumanoidActor yet (only the legacy GamebryoMeshResolver accepts it).
@@ -65,6 +69,12 @@ var face_gen: FaceGenData
 ## GetFactionRank; runtime changes (SetFactionRank, AddToFaction) are not
 ## implemented.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "ActorFaction", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var factions: Array[ActorFaction] = []
+
+## Whether this record's ACBS flags it Female. A template supplying traits is
+## not followed. Used by EsmHumanoidActor (body parts, biped models) and
+## GetIsSex.
+func is_female() -> bool:
+	return (acbs_flags & FLAG_FEMALE) != 0
 
 func animation_search_paths() -> PackedStringArray:
 	return PackedStringArray([DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH])

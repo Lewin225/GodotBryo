@@ -346,15 +346,14 @@ func _register_defaults() -> void:
 		return 1 if ctx.calling_reference != null and base != null and ctx.calling_reference.base_form_id == base.form_id else 0)
 	register("GetIsReference", func(a: Array, ctx: ScriptExecutionContext):
 		return 1 if ctx.calling_reference != null and not a.is_empty() and a[0] is EsmReference and a[0] == ctx.calling_reference else 0)
-	# `GetIsSex Male|Female` (conditions pass 0 or 1): the actor's ACBS Female
-	# flag, from its template when that supplies traits.
+	# `GetIsSex Male|Female` (conditions pass 0 or 1): the NPC_'s ACBS Female
+	# flag, from its template when that supplies traits; 0 for anything else.
 	register("GetIsSex", func(a: Array, ctx: ScriptExecutionContext):
-		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS)
+		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS) as NpcBase
 		var wants_female := _sex_arg(a, 0)
 		if source == null or wants_female < 0:
 			return 0
-		var stats: ActorStats = source.get("actor_stats")
-		return 1 if stats.is_female() == (wants_female == 1) else 0)
+		return 1 if source.is_female() == (wants_female == 1) else 0)
 	# `GetIsVoiceType VoiceType`: the actor's VTCK (from its template when that
 	# supplies traits) is the VTYP, or is in the FLST of them.
 	register("GetIsVoiceType", func(a: Array, ctx: ScriptExecutionContext):

@@ -5,8 +5,6 @@ extends Resource
 ## The authored stats of an NPC_ or CREA record: ACBS, DATA, DNAM (NPC_) and
 ## AIDT. ActorValues derives an actor's base values from these.
 
-## ACBS flag: the actor is female.
-const FLAG_FEMALE := 0x01
 ## ACBS flag: level is a multiple of the player's level.
 const FLAG_PC_LEVEL_MULT := 0x80
 ## ACBS template flags: which parts come from the TPLT record (xEdit
@@ -63,9 +61,6 @@ static func template_source(record: EsmBase, flag: int) -> EsmBase:
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var responsibility: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var mood: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var assistance: int = 0
-
-func is_female() -> bool:
-	return (flags & FLAG_FEMALE) != 0
 
 func has_pc_level_mult() -> bool:
 	return (flags & FLAG_PC_LEVEL_MULT) != 0
