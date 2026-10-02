@@ -44,8 +44,9 @@ var class_form_id: int = 0
 ## (Child) would decide. Not read; always false, and not used.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_child: bool = false
 ## ACBS offset 0: the NPC_ flags, named as xEdit names them (bit 28, set on
-## 1 NPC_ in FalloutNV.esm, is its Unknown 28). Read; Female is used by
-## is_female(); the rest are not used yet. Also held in `actor_stats.flags`.
+## 1 NPC_ in FalloutNV.esm, is its Unknown 28). Read; Female is read by
+## is_female() and changed by set_female() (SexChange, the race menu); the
+## rest are not used yet. Also held in `actor_stats.flags`.
 @export_custom(PROPERTY_HINT_FLAGS, "Female:1,Essential:2,Is CharGen Face Preset:4,Respawn:8,Auto-calc Stats:16,PC Level Mult:128,Use Template:256,No Low Level Processing:512,No Blood Spray:2048,No Blood Decal:4096,No VATS Melee:1048576,Can Be All Races:4194304,Autocalc Service:8388608,No Knockdowns:67108864,Not Pushable:134217728,Unknown 28:268435456,No Rotating To Head-track:1073741824", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var acbs_flags: int = 0
 ## ACBS offset 22: which parts come from the TPLT template (xEdit
 ## `wbTemplateFlags`). Read; not used yet from here (ActorStats holds the same
@@ -75,6 +76,12 @@ var face_gen: FaceGenData
 ## GetIsSex.
 func is_female() -> bool:
 	return (acbs_flags & FLAG_FEMALE) != 0
+
+## Sets or clears the ACBS Female flag (SexChange, the race menu) and marks
+## the record dirty.
+func set_female(female: bool) -> void:
+	acbs_flags = (acbs_flags | FLAG_FEMALE) if female else (acbs_flags & ~FLAG_FEMALE)
+	mark_dirty()
 
 func animation_search_paths() -> PackedStringArray:
 	return PackedStringArray([DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH])

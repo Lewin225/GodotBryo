@@ -77,6 +77,13 @@ tables map a record type to each — `TYPE_TO_BASE` and `TYPE_TO_REFERENCE`,
 resolved out of `GodotBryo/Types/Resource/`. A type present in one and absent
 from the other is deliberate: not every record type can be placed in a cell.
 
+**Dirty.** Both extend `EsmResource`. A clean one mirrors the ESM, and a base is
+rehydrated from its record (`source_uri`). One changed at runtime is marked dirty
+(`mark_dirty()`): it is rehydrated from save data instead, never again from the ESM, and
+`EsmBase._auto_rehydrate()` skips it. The name menu (the player NPC_'s FULL) and the race
+menu and `SexChange` (its ACBS Female flag) mark the player's NPC_ dirty. Saving and
+loading dirty resources is not built yet; references are not rehydrated from the ESM yet.
+
 **Where a reference is.** Every `EsmReference` has a space (its WRLD when
 exterior, its CELL when interior), a position (metres, Gamebryo Z-up axes) and
 a cell. Assigning `position` or `current_space_form_id`, or calling

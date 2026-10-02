@@ -58,6 +58,8 @@ func open_session(terminal: TerminalReference, esm: EsmReader, user: EsmReferenc
 	_condition_context.owner_label = "TERM %s" % terminal.base.editor_id
 	_previous_mouse_mode = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not visible:
+		ScriptServer.enter_menu(ScriptServer.MENU_COMPUTERS)
 	visible = true
 	var welcome: String = String(terminal_data.get("welcome_text", ""))
 	if welcome.is_empty():
@@ -185,6 +187,7 @@ func close_session() -> void:
 	Input.mouse_mode = _previous_mouse_mode
 	_terminal_stack.clear()
 	_base_stack.clear()
+	ScriptServer.exit_menu(ScriptServer.MENU_COMPUTERS)
 	closed.emit()
 
 func _unhandled_key_input(event: InputEvent) -> void:

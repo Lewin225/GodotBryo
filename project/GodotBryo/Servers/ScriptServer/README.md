@@ -53,13 +53,25 @@ references in `_physics_process()`, earlier in the frame. Script `MoveTo Target 
 **Blocks.** Event blocks (`OnActivate`, `OnTriggerEnter`, ...) run whenever
 `dispatch_event()` is called, whether or not the reference is loaded. `GameMode` and
 `MenuMode` run every frame only for references marked loaded with
-`set_reference_loaded()`, which also runs `OnLoad` (once per load). There is no menu UI:
-`show_menu(menu_id)` runs, once, the `MenuMode` blocks that accept the menu (a bare
-`MenuMode`, or `MenuMode <id>`) of every running quest and loaded reference;
-`ShowRaceMenu` calls it with 1036. `dispatch_event_for(reference, block_type, subject)`
-runs blocks for a non-reference subject: a menu ID, or a topic for `SayToDone <topic>`,
-matched by editor ID. `SayTo` and `Say` speak through `DialogueServer.say()`;
-`GetPlayerName` does nothing, as the name menu closes at once.
+`set_reference_loaded()`, which also runs `OnLoad` (once per load).
+`dispatch_event_for(reference, block_type, subject)` runs blocks for a non-reference
+subject: a menu ID, or a topic for `SayToDone <topic>`, matched by editor ID. `SayTo` and
+`Say` speak through `DialogueServer.say()`.
+
+**Menu mode.** A menu opening calls `enter_menu(menu_id)` and closing calls
+`exit_menu(menu_id)`; the game is in menu mode while any is open (the GECK's Begin page:
+GameMode runs "while the game is in non-menu mode", MenuMode "while the game is in menu
+mode"). Then loaded references run `MenuMode` blocks accepting the most recently opened
+menu each frame instead of `GameMode`, quest scripts run `MenuMode` instead of `GameMode`,
+and `DialogueServer` lines and voices pause. Menu IDs are the GECK's (`MenuMode
+(Function)` in `enginedocs/Geck`): `MessageBox` modal dialogs are 1001, the race menu
+1036, the name menu 1051 (TextEdit), `TerminalSession` 1057 (Computers).
+`open_menu(menu_id)` is how a script opens one (`GetPlayerName`/`ShowNameMenu` 1051,
+`ShowRaceMenu` 1036): the player's controller (`menu_opener`) shows `NameMenu` or
+`RaceMenu`; with no UI (headless) the menu opens and closes at once, running the
+`MenuMode` blocks that accept it once. The `MenuMode [type]` function is 1 for any open
+menu, a specific open menu, or group 2 (any menu but the "main four", none of which exist
+yet); group 1 is always 0. `SexChange` sets the ACBS Female flag of the actor's NPC_.
 `CellStreamerV2` marks its current CELL's references loaded; `WorldStreamerV2`
 marks those of resident tiles at full detail, and unloads them when a tile drops to
 LOD, is removed, or is paused for an interior visit. References moving between

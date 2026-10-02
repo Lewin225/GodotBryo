@@ -21,6 +21,7 @@ func _ready() -> void:
 
 	var note_terminal := _typed_terminal(0x166B56) # VHDStealthSuitTerminal
 	check(session.open_session(note_terminal, esm), "a terminal reference opens a session")
+	check(ScriptServer.get_menu() == ScriptServer.MENU_COMPUTERS, "an open session is menu 1057 (Computers)")
 	check(session.visible, "opening a terminal shows the session overlay")
 	check(session._choices.item_count == 3, "empty welcome text opens the real menu directly")
 	session._select_current()
@@ -33,6 +34,7 @@ func _ready() -> void:
 	check(session._view == TerminalSession.View.MENU, "Back from NOTE restores its terminal menu")
 	session.close_session()
 	check(not session.visible and closed_count[0] == 1, "closing hides the session and emits closed once")
+	check(not ScriptServer.is_menu_mode(), "and leaves menu mode")
 	session.close_session()
 	check(closed_count[0] == 1, "closing an already-closed session emits nothing")
 

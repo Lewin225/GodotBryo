@@ -8,6 +8,19 @@ extends Node
 ## MenuMode blocks run each frame only for references marked loaded through
 ## set_reference_loaded(). Parsed scripts are cached per SCPT FormID.
 
+## The game entered (true) or left (false) menu mode.
+signal menu_mode_changed(in_menu_mode: bool)
+
+## Menu type IDs, as `Begin MenuMode <id>` names them (GECK wiki, "MenuMode
+## (Function)", `enginedocs/Geck`). 1 and 2 are groups: the "main four"
+## (stats, inventory, Pip-Boy) and any other menu.
+const MENU_GROUP_MAIN_FOUR := 1
+const MENU_GROUP_OTHER := 2
+const MENU_MESSAGE := 1001
+const MENU_RACE := 1036
+const MENU_TEXT_EDIT := 1051
+const MENU_COMPUTERS := 1057
+
 ## A queued move was applied to `reference`.
 signal reference_teleported(reference: EsmReference, old_space_form_id: int, new_space_form_id: int)
 
@@ -32,6 +45,11 @@ var function_registry := ScriptFunctionRegistry.new()
 ## Seconds of game time, advanced by _process: the clock GetSecondsPassed
 ## measures between a script's runs.
 var clock := 0.0
+## Opens the UI for a menu a script asks for (GetPlayerName, ShowRaceMenu):
+## called with the menu ID, returns true when a UI opened it; that UI then
+## calls enter_menu and exit_menu. Set by the player's controller.
+var menu_opener: Callable
+var _open_menus: Array[int] = [] # menus open, most recent last
 ## The game's global variables (GLOB), seeded from the ESM on first use. World
 ## state: a save stores this resource.
 var globals := GlobalVariables.new()
@@ -67,13 +85,60 @@ func _ready() -> void:
 		else:
 			esm_server.esm_ready.connect(func(): function_registry.esm = esm_server.reader, CONNECT_ONE_SHOT)
 
-## Each frame: advances the script clock, runs GameMode blocks of loaded
-## references, then applies queued moves.
+## Each frame: advances the script clock, runs loaded references' GameMode
+## blocks, or in menu mode their MenuMode blocks for the open menu, then
+## applies queued moves.
 func _process(delta: float) -> void:
 	clock += delta
 	for reference: EsmReference in _loaded_game_mode.keys():
-		dispatch_event(reference, "GameMode")
+		if is_menu_mode():
+			dispatch_event_for(reference, "MenuMode", get_menu())
+		else:
+			dispatch_event(reference, "GameMode")
 	apply_pending_moves()
+
+## A menu opens: the game is in menu mode until every open menu has closed.
+## GameMode blocks and quest scripts' GameMode stop; MenuMode blocks accepting
+## the most recently opened menu run each frame instead; dialogue lines pause.
+func enter_menu(menu_id: int) -> void:
+	var was_menu_mode := is_menu_mode()
+	_open_menus.append(menu_id)
+	if not was_menu_mode:
+		menu_mode_changed.emit(true)
+
+## A menu closes; the game leaves menu mode when it was the last open.
+func exit_menu(menu_id: int) -> void:
+	_open_menus.erase(menu_id)
+	if _open_menus.is_empty():
+		menu_mode_changed.emit(false)
+
+func is_menu_mode() -> bool:
+	return not _open_menus.is_empty()
+
+## Whether menu `menu_type` is open: any menu for 0, the "main four" group for
+## 1 (none of which exist yet, so false), any other menu for 2, else that
+## specific menu.
+func is_menu_open(menu_type: int) -> bool:
+	match menu_type:
+		0: return is_menu_mode()
+		MENU_GROUP_MAIN_FOUR: return false
+		MENU_GROUP_OTHER: return is_menu_mode()
+	return _open_menus.has(menu_type)
+
+## The most recently opened menu, or 0 outside menu mode.
+func get_menu() -> int:
+	return _open_menus.back() if not _open_menus.is_empty() else 0
+
+## Runs, once, the MenuMode blocks accepting the open menu of every running
+## quest and loaded reference.
+func run_menu_mode_blocks() -> void:
+	var quests := get_node_or_null("/root/QuestServer")
+	if quests != null:
+		for state: QuestState in quests.get_quest_states():
+			if state.running:
+				run_quest_block(state.quest, "MenuMode", get_menu())
+	for reference: EsmReference in _loaded_game_mode.keys():
+		dispatch_event_for(reference, "MenuMode", get_menu())
 
 ## Applies every queued move: sets rotation, then space and position together
 ## (one cell refresh, so anything reacting to the cell change sees the final
@@ -308,17 +373,16 @@ func run_quest_block(quest: EsmBase, block_type: String, subject: Variant = null
 	_start_run(ctx)
 	return interpreter.run_block(block_type, ctx, subject)
 
-## The game opens menu `menu_id` (1036: the race menu) and, as no menu UI
-## exists yet, closes it again: the MenuMode blocks that accept the menu run
-## once, for every running quest and every loaded reference.
-func show_menu(menu_id: int) -> void:
-	var quests := get_node_or_null("/root/QuestServer")
-	if quests != null:
-		for state: QuestState in quests.get_quest_states():
-			if state.running:
-				run_quest_block(state.quest, "MenuMode", menu_id)
-	for reference: EsmReference in _loaded_game_mode.keys():
-		dispatch_event_for(reference, "MenuMode", menu_id)
+## A script opens menu `menu_id` (GetPlayerName: 1051, ShowRaceMenu: 1036).
+## The player's UI opens it through `menu_opener`; with no UI for it (headless,
+## or no player), the menu opens and closes at once, running the MenuMode
+## blocks that accept it once.
+func open_menu(menu_id: int) -> void:
+	if menu_opener.is_valid() and menu_opener.call(menu_id):
+		return
+	enter_menu(menu_id)
+	run_menu_mode_blocks()
+	exit_menu(menu_id)
 
 ## Marks a reference's cell loaded or unloaded. Loading runs its OnLoad block
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.

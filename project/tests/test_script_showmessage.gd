@@ -38,6 +38,7 @@ func _ready() -> void:
 	var show_res: Variant = script_engine.function_registry.call_function("ShowMessage", ["GSBrokenSMGMsg"], ctx)
 	check(show_res == 1, "ShowMessage returned 1 (success)")
 	check(msg_box._is_dialog_active == true, "MessageBox dialog is active")
+	check(script_engine.get_menu() == script_engine.MENU_MESSAGE, "a message box is menu 1001 (Message)")
 	check(msg_box._button_nodes.size() == 2, "MessageBox instantiated 2 buttons")
 
 	# 3. Check GetButtonPressed while dialog is open -> still -1
@@ -48,6 +49,7 @@ func _ready() -> void:
 	check(msg_box._button_nodes[1] != null, "Button 1 node exists")
 	msg_box._button_nodes[1].emit_signal("pressed")
 	check(msg_box._is_dialog_active == false, "MessageBox dialog closed after button click")
+	check(not script_engine.is_menu_mode(), "and the game leaves menu mode")
 
 	# 5. Check GetButtonPressed -> returns 1
 	var clicked_btn: Variant = script_engine.function_registry.call_function("GetButtonPressed", [], ctx)

@@ -270,11 +270,11 @@ func _animation_profile(stage: String) -> void:
 func _requested_asset_set(record: NpcBase) -> Dictionary:
 	var assets := {}
 	_add_requested_asset(assets, "skeleton", record.model_path, true, "skeleton")
-	for part in record.race.body_parts(record.is_female()):
+	for part in record.race.body_parts(_is_female):
 		_add_requested_asset(assets, "body:%d" % int(part.index), part.model_path, true, "body", {
 			"race_part_index": int(part.index),
 		})
-	for part in record.race.head_parts(record.is_female()):
+	for part in record.race.head_parts(_is_female):
 		_add_requested_asset(assets, "head:%d" % int(part.index), part.model_path, false, "head", {
 			"part_type": String(part.part_type),
 		})

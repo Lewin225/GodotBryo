@@ -113,6 +113,8 @@ func _show_modal_dialog(msg: Dictionary) -> void:
 
 	_previous_mouse_mode = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not _is_dialog_active:
+		ScriptServer.enter_menu(ScriptServer.MENU_MESSAGE)
 	_is_dialog_active = true
 	_dialog_root.visible = true
 
@@ -139,6 +141,7 @@ func _on_button_pressed(index: int) -> void:
 	_is_dialog_active = false
 	_dialog_root.visible = false
 	Input.mouse_mode = _previous_mouse_mode
+	ScriptServer.exit_menu(ScriptServer.MENU_MESSAGE)
 	button_clicked.emit(_button_indices[index] if index < _button_indices.size() else index)
 
 

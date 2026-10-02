@@ -122,6 +122,10 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var quest_notice: Label
 ## HUD label showing the response being said (DialogueServer).
 @export var subtitle: Label
+## Name entry menu (GetPlayerName).
+@export var name_menu: NameMenu
+## Race menu (ShowRaceMenu).
+@export var race_menu: RaceMenu
 
 const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 
@@ -727,6 +731,7 @@ func possess(actor_reference: ActorReference) -> void:
 	ScriptServer.player_reference = actor_reference
 	ScriptServer.player_node = self
 	ScriptServer.message_box = message_box
+	ScriptServer.menu_opener = _open_script_menu
 	_connect_ui()
 
 ## Shows "Quest Added: <name>" for QUEST_NOTICE_SECONDS; a newer notice
@@ -763,6 +768,25 @@ func _connect_ui() -> void:
 	if unlock_session != null and not unlock_session.succeeded.is_connected(_on_unlock_succeeded):
 		unlock_session.succeeded.connect(_on_unlock_succeeded)
 		unlock_session.cancelled.connect(_on_unlock_cancelled)
+	for menu: CanvasLayer in [name_menu, race_menu]:
+		if menu != null and not menu.closed.is_connected(_on_script_menu_closed):
+			menu.closed.connect(_on_script_menu_closed)
+
+## Opens the menu a script asked for (ScriptServer.menu_opener): the name or
+## race menu for the possessed actor. False for a menu with no UI.
+func _open_script_menu(menu_id: int) -> bool:
+	var menu: CanvasLayer = null
+	match menu_id:
+		ScriptServer.MENU_TEXT_EDIT: menu = name_menu
+		ScriptServer.MENU_RACE: menu = race_menu
+	if menu == null or possessed == null:
+		return false
+	menu.open(possessed)
+	_set_input_suspended(true)
+	return true
+
+func _on_script_menu_closed() -> void:
+	_set_input_suspended(false)
 
 ## Shows the UI for what the possessed actor started using, and closes it when
 ## the use ends another way.

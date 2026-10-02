@@ -251,4 +251,7 @@ func _process(delta: float) -> void:
 		if _elapsed[form_id] < get_script_delay(state.quest):
 			continue
 		_elapsed[form_id] = 0.0
-		ScriptServer.run_quest_block(state.quest, "GameMode")
+		if ScriptServer.is_menu_mode():
+			ScriptServer.run_quest_block(state.quest, "MenuMode", ScriptServer.get_menu())
+		else:
+			ScriptServer.run_quest_block(state.quest, "GameMode")

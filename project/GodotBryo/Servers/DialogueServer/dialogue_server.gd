@@ -97,8 +97,12 @@ func get_line(speaker: EsmReference) -> DialogueLine:
 	return _lines.get(speaker.instance_id) if speaker != null else null
 
 ## Starts lines whose voice has loaded, then advances every started line by
-## `delta` seconds, finishing those whose last response ends.
+## `delta` seconds, finishing those whose last response ends. In menu mode
+## lines and their voices pause.
 func _process(delta: float) -> void:
+	_pause_voices(ScriptServer.is_menu_mode())
+	if ScriptServer.is_menu_mode():
+		return
 	for task: int in _tasks.keys():
 		if not WorkerThreadPool.is_task_completed(task):
 			continue
@@ -170,6 +174,12 @@ func _finish(line: DialogueLine) -> void:
 	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
 	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
 	line_finished.emit(line)
+
+## Pauses or resumes every line's voice.
+func _pause_voices(paused: bool) -> void:
+	for line: DialogueLine in _lines.values():
+		if line.voice_player != null:
+			line.voice_player.stream_paused = paused
 
 ## Stops and frees a line's voice player.
 func _stop(line: DialogueLine) -> void:

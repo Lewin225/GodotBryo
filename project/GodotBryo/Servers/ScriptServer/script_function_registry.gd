@@ -26,9 +26,6 @@ var place_at_me_handler: Callable
 ## Activate, Lock and Unlock commands. Null in a bare registry.
 var script_server: Object = null
 var center_on_cell_handler: Callable
-## The race menu's ID, as `Begin MenuMode 1036` names it.
-const RACE_MENU := 1036
-
 var show_message_handler: Callable
 var get_button_pressed_handler: Callable
 
@@ -399,15 +396,30 @@ func _register_defaults() -> void:
 		if dialogue != null and ctx.calling_reference != null and topic != null:
 			dialogue.say(ctx.calling_reference, topic, null)
 		return 0)
-	# `GetPlayerName` opens the name menu; with no menu UI it closes at once
-	# and the name is unchanged.
-	register("GetPlayerName", func(_a: Array, _c): return 0)
-	# `ShowRaceMenu` opens the race menu (menu 1036); with no menu UI it closes
-	# at once, after the MenuMode 1036 blocks run.
+	# `GetPlayerName` / `ShowNameMenu` opens the name entry menu (1051, TextEdit);
+	# it returns nothing useful, as the GECK wiki notes.
+	register(["GetPlayerName", "ShowNameMenu"], func(_a: Array, _c):
+		if script_server != null:
+			script_server.open_menu(script_server.MENU_TEXT_EDIT)
+		return 0)
+	# `ShowRaceMenu` opens the race menu (1036).
 	register("ShowRaceMenu", func(_a: Array, _c):
 		if script_server != null:
-			script_server.show_menu(RACE_MENU)
+			script_server.open_menu(script_server.MENU_RACE)
 		return 0)
+	# `MenuMode [MenuType]`: whether a menu is open, or that menu or group
+	# (ScriptServer.is_menu_open).
+	register("MenuMode", func(a: Array, _c):
+		return 1 if script_server != null and script_server.is_menu_open(int(_number(a, 0)) if not a.is_empty() else 0) else 0)
+	# `[Actor.]SexChange Male|Female [1]`: sets the ACBS Female flag of the
+	# actor's NPC_, which marks it dirty.
+	register("SexChange", func(a: Array, ctx: ScriptExecutionContext):
+		var npc := ctx.calling_reference.base as NpcBase if ctx.calling_reference != null else null
+		var female := _sex_arg(a, 0)
+		if npc == null or female < 0:
+			return 0
+		npc.set_female(female == 1)
+		return 1)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
 		var esm_server := EsmReference.get_esm_server()

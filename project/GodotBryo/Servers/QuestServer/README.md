@@ -55,8 +55,11 @@ and is what a save stores for quests.
 
 **Running quests.** `begin_game()` starts every quest whose DATA flags mark it start
 game enabled (281 in FalloutNV.esm); `game.gd` calls it at startup. Each running quest's
-script `GameMode` block runs every `get_script_delay()` seconds: the `SetQuestDelay`
-override, else the QUST DATA delay, else `DEFAULT_SCRIPT_DELAY` (5 s) when that is 0.
+script `GameMode` block runs every `get_script_delay()` seconds, its `MenuMode` block for
+the open menu instead while the game is in menu mode (`ScriptServer.enter_menu`): the
+`SetQuestDelay` override, else the QUST DATA delay, else `DEFAULT_SCRIPT_DELAY` (5 s) when
+that is 0. That quest scripts keep their delay in menu mode, rather than running every
+frame, is not verified.
 
 **Stages.** `set_stage()` records the stage, marks it done and runs the result script of
 the stage's first log entry whose conditions pass, evaluated on the player; a stage whose

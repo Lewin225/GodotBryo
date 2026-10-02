@@ -48,7 +48,8 @@ response lasts its voice file's length and plays it, not positionally, through a
 `fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
 every line; when its last response ends, the end script runs on the speaker, then the
 speaker's `SayToDone` block for the topic, then `line_finished`. A new line from a speaker
-replaces the one it is saying. The player's HUD shows each response as a subtitle.
+replaces the one it is saying. The player's HUD shows each response as a subtitle. In menu
+mode (`ScriptServer.is_menu_mode()`) lines do not advance and their voices pause.
 
 **Voice files** are `sound\voice\falloutnv.esm\<voice type>\<quest>_<topic>_<INFO>_<n>.ogg`
 in `Fallout - Voices1.bsa`, lowercase; when the quest and topic editor IDs exceed 25
