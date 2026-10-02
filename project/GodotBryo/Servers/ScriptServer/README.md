@@ -53,7 +53,13 @@ references in `_physics_process()`, earlier in the frame. Script `MoveTo Target 
 **Blocks.** Event blocks (`OnActivate`, `OnTriggerEnter`, ...) run whenever
 `dispatch_event()` is called, whether or not the reference is loaded. `GameMode` and
 `MenuMode` run every frame only for references marked loaded with
-`set_reference_loaded()`, which also runs `OnLoad` (once per load).
+`set_reference_loaded()`, which also runs `OnLoad` (once per load). There is no menu UI:
+`show_menu(menu_id)` runs, once, the `MenuMode` blocks that accept the menu (a bare
+`MenuMode`, or `MenuMode <id>`) of every running quest and loaded reference;
+`ShowRaceMenu` calls it with 1036. `dispatch_event_for(reference, block_type, subject)`
+runs blocks for a non-reference subject: a menu ID, or a topic for `SayToDone <topic>`,
+matched by editor ID. `SayTo` and `Say` speak through `DialogueServer.say()`;
+`GetPlayerName` does nothing, as the name menu closes at once.
 `CellStreamerV2` marks its current CELL's references loaded; `WorldStreamerV2`
 marks those of resident tiles at full detail, and unloads them when a tile drops to
 LOD, is removed, or is paused for an interior visit. References moving between
@@ -144,10 +150,12 @@ reference. Many loaded scripts poll `GetButtonPressed` every frame.
 **Return.** `Return` ends the run: no later statement of the block, and no later block of
 the same type, runs.
 
-**Elapsed time.** `GetSecondsPassed` returns the real seconds since the calling script
-last ran (0 on its first run), tracked per `ScriptInstance` in the runtime-only
-`last_run_msec`. Every run through `dispatch_event` or `run_quest_block` restarts
-that script's clock; result scripts and console lines get 0 and restart nothing.
+**Elapsed time.** `GetSecondsPassed` returns the seconds of `ScriptServer.clock` since
+the calling script last ran (0 on its first run), tracked per `ScriptInstance` in the
+runtime-only `last_run_time`. `clock` is frame time (not timescaled game time), advanced
+by `_process(delta)`, so a test can step it. Every run through `dispatch_event` or
+`run_quest_block` restarts that script's clock; result scripts and console lines get 0 and
+restart nothing.
 
 **Actor values.** `GetActorValue`/`GetAV`, `GetBaseActorValue`/`GetBaseAV`,
 `GetPermanentActorValue`/`GetPermAV`, `SetActorValue`/`SetAV`, `ModActorValue`/`ModAV`,
@@ -195,7 +203,7 @@ Each is a reason to test before building on it.
 | `Activate`'s `RunOnActivateBlockFlag` defaults to 0 = built-in activation; 1 runs the target's `OnActivate` | registry `Activate` | GECK wiki, recalled | scripted door + console `SomeDoorREF.Activate player` with and without `1` |
 | Code after `player.MoveTo` to another CELL still runs that frame | `move_reference` never interrupts the caller | GECK wiki recalls the rest of the script stops | a script that sets a variable after `player.MoveTo` |
 | `GetPos` right after `MoveTo` in the same script returns the old position | moves are queued and applied after `GameMode` | follows from deferred moves | `GetPos` is not implemented yet |
-| `GetSecondsPassed` counts real time, not game time (timescale), per calling script | `ScriptServer._start_run` | GECK wiki, recalled | a quest script counting down 10 s with `GetSecondsPassed` at timescale 30 |
+| `GetSecondsPassed` counts frame time, not game time (timescale), per calling script | `ScriptServer._start_run` (`clock`) | GECK wiki, recalled | a quest script counting down 10 s with `GetSecondsPassed` at timescale 30 |
 | Derived base values other than human Health: creature Health (DATA health alone), action points, carry weight, crit chance, heal rate, melee/unarmed damage, poison/rad resist | `ActorValue.derive_base` | GMST names and GECK defaults; the way they combine is inferred | console `GetBaseAV` for each on Doc Mitchell and Rex |
 | Human Health = base health + EnduranceMult × (Endurance + EnduranceOffset) + LevelMult × (level − 1), with `fAVDHealth*` for the player and `fAVDNPCHealth*` for NPCs | `ActorValue._health` | Nexus Mods forum, "Equal base health for all humans" (forums.nexusmods.com/topic/7329951); Fallout wiki for the player; the level-1 player's 200 at Endurance 5 confirmed in the original | console `GetBaseAV Health` on Doc Mitchell (expects 65) |
 | Creature skill actor values (Barter–Unarmed) are 0; CREA DATA's combat/magic/stealth skills are not mapped onto them | `ActorValue.derive_base` | no source | console `GetAV Guns` on a creature |

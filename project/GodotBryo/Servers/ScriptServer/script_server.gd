@@ -29,6 +29,9 @@ var message_box: MessageBox = null:
 			message_box.button_clicked.connect(_on_message_box_button_clicked)
 
 var function_registry := ScriptFunctionRegistry.new()
+## Seconds of game time, advanced by _process: the clock GetSecondsPassed
+## measures between a script's runs.
+var clock := 0.0
 ## The game's global variables (GLOB), seeded from the ESM on first use. World
 ## state: a save stores this resource.
 var globals := GlobalVariables.new()
@@ -64,8 +67,10 @@ func _ready() -> void:
 		else:
 			esm_server.esm_ready.connect(func(): function_registry.esm = esm_server.reader, CONNECT_ONE_SHOT)
 
-## Each frame: GameMode blocks of loaded references, then queued moves.
-func _process(_delta: float) -> void:
+## Each frame: advances the script clock, runs GameMode blocks of loaded
+## references, then applies queued moves.
+func _process(delta: float) -> void:
+	clock += delta
 	for reference: EsmReference in _loaded_game_mode.keys():
 		dispatch_event(reference, "GameMode")
 	apply_pending_moves()
@@ -143,6 +148,12 @@ func get_script_instance(reference: EsmReference) -> ScriptInstance:
 ## when its parameter names the action reference. Returns the value of the
 ## last statement run, or null.
 func dispatch_event(reference: EsmReference, block_type: String, action_ref: EsmReference = null) -> Variant:
+	return dispatch_event_for(reference, block_type, action_ref, action_ref)
+
+## Runs every `block_type` block of the reference's script that accepts
+## `subject`, which need not be a reference: a menu ID (`Begin MenuMode
+## 1036`) or a topic (`Begin SayToDone VCG01Intro`).
+func dispatch_event_for(reference: EsmReference, block_type: String, subject: Variant, action_ref: EsmReference = null) -> Variant:
 	var instance := get_script_instance(reference)
 	if instance == null:
 		return null
@@ -151,7 +162,7 @@ func dispatch_event(reference: EsmReference, block_type: String, action_ref: Esm
 		return null
 	var ctx := _context(reference, instance, action_ref)
 	_start_run(ctx)
-	return interpreter.run_block(block_type, ctx, action_ref)
+	return interpreter.run_block(block_type, ctx, subject)
 
 ## Whether dispatching `block_type` with `action_ref` would run a block.
 func has_block_for(reference: EsmReference, block_type: String, action_ref: EsmReference = null) -> bool:
@@ -286,7 +297,7 @@ func _quest_state(quest: EsmBase) -> QuestState:
 
 ## Runs `block_type` blocks of a quest's script, with the quest's variables and
 ## no calling reference.
-func run_quest_block(quest: EsmBase, block_type: String) -> Variant:
+func run_quest_block(quest: EsmBase, block_type: String, subject: Variant = null) -> Variant:
 	var instance := get_quest_instance(quest)
 	if instance == null:
 		return null
@@ -295,7 +306,19 @@ func run_quest_block(quest: EsmBase, block_type: String) -> Variant:
 		return null
 	var ctx := _context(null, instance, null)
 	_start_run(ctx)
-	return interpreter.run_block(block_type, ctx)
+	return interpreter.run_block(block_type, ctx, subject)
+
+## The game opens menu `menu_id` (1036: the race menu) and, as no menu UI
+## exists yet, closes it again: the MenuMode blocks that accept the menu run
+## once, for every running quest and every loaded reference.
+func show_menu(menu_id: int) -> void:
+	var quests := get_node_or_null("/root/QuestServer")
+	if quests != null:
+		for state: QuestState in quests.get_quest_states():
+			if state.running:
+				run_quest_block(state.quest, "MenuMode", menu_id)
+	for reference: EsmReference in _loaded_game_mode.keys():
+		dispatch_event_for(reference, "MenuMode", menu_id)
 
 ## Marks a reference's cell loaded or unloaded. Loading runs its OnLoad block
 ## and starts its GameMode/MenuMode blocks each frame; unloading stops them.
@@ -424,9 +447,8 @@ func get_debug_usage() -> Dictionary:
 ## instance last ran, and the instance's clock restarts now.
 func _start_run(ctx: ScriptExecutionContext) -> void:
 	var instance := ctx.instance
-	var now := Time.get_ticks_msec()
-	ctx.seconds_passed = 0.0 if instance.last_run_msec < 0 else (now - instance.last_run_msec) / 1000.0
-	instance.last_run_msec = now
+	ctx.seconds_passed = 0.0 if instance.last_run_time < 0.0 else clock - instance.last_run_time
+	instance.last_run_time = clock
 
 func _context(reference: EsmReference, instance: ScriptInstance, action_ref: EsmReference) -> ScriptExecutionContext:
 	var ctx := ScriptExecutionContext.new(reference, instance)

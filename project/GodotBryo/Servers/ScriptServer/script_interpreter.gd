@@ -36,7 +36,7 @@ func has_block_for(block_type: String, ctx: ScriptExecutionContext, subject: Var
 ## A block without a parameter always runs. A block with one runs only when
 ## the parameter names `subject`: `Begin OnActivate Player` runs when the
 ## player's reference is the activator, `Begin MenuMode 1001` when subject is
-## 1001.
+## 1001, `Begin SayToDone VCG01Intro` when subject is that topic.
 ## `Return` ends the run: no further statement or matching block runs.
 func run_block(block_type: String, ctx: ScriptExecutionContext, subject: Variant = null) -> Variant:
 	var result: Variant = null
@@ -55,6 +55,8 @@ func _block_accepts(block: Dictionary, ctx: ScriptExecutionContext, subject: Var
 	if subject == null:
 		return false
 	var param: Variant = params[0]
+	if param is String and subject is EsmBase:
+		return String(param).to_lower() == (subject as EsmBase).editor_id.to_lower()
 	if param is String:
 		var named := ctx.resolve_reference_name(param)
 		return named != null and named == subject

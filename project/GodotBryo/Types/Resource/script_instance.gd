@@ -13,9 +13,9 @@ extends Resource
 ## instance never embeds another reference.
 @export var locals: Dictionary = {}
 
-## Ticks (msec) when this script last ran; -1 before its first run. Runtime
-## only: GetSecondsPassed measures from it.
-var last_run_msec: int = -1
+## ScriptServer.clock when this script last ran; -1 before its first run.
+## Runtime only: GetSecondsPassed measures from it.
+var last_run_time: float = -1.0
 
 func get_local(name: String) -> Variant:
 	var value: Variant = locals.get(name.to_lower())
