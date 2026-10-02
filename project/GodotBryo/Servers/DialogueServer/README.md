@@ -15,7 +15,8 @@ The design and its sources are in `Plans/Dialogue/dialogue.md`.
 DialogueServer.choose_info(topic, speaker, listener) -> DialogueInfoBase   # null when none qualifies
 DialogueServer.say(speaker, topic, listener) -> DialogueLine   # null when none qualifies; listener null for Say
 DialogueServer.get_line(speaker) -> DialogueLine                # the line being said, or null
-DialogueServer.response_duration(info, index, speaker) -> float
+DialogueServer.response_duration(info, index, speaker) -> float  # loads on the calling thread
+DialogueServer.wait_for_loads()                                  # blocks on pending voice loads (tests)
 DialogueServer.voice_path(info, index, speaker) -> String       # "" when the speaker has no voice type
 signal response_started(line, text)                              # a subtitle
 signal line_finished(line)
@@ -37,10 +38,14 @@ conditions and its own pass, the speaker has not said it (Say Once) or has not s
 starts a set: it and the qualifying Random INFOs after it, up to one flagged Random End; one
 is chosen with `rng`.
 
-**Saying.** `say()` chooses the INFO and marks it said, then runs its begin script on the
-speaker (the listener as action reference), so an end script that says the same topic
-again gets the next line. Each response lasts its voice file's length; with no voice file,
-its text at `fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
+**Saying.** `say()` chooses the INFO and marks it said at once, so an end script that says
+the same topic again gets the next line. The line starts when its voice files are loaded:
+cached ones at once, others read and parsed on a `WorkerThreadPool` task (usually ready the
+next frame; Doc's 15 VCG01Intro files take 0.05-1.4 ms to read and 0.05 ms each to parse).
+Starting runs the begin script on the speaker (the listener as action reference). Each
+response lasts its voice file's length and plays it, not positionally, through an
+`AudioStreamPlayer` the line owns; with no voice file it lasts its text at
+`fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
 every line; when its last response ends, the end script runs on the speaker, then the
 speaker's `SayToDone` block for the topic, then `line_finished`. A new line from a speaker
 replaces the one it is saying. The player's HUD shows each response as a subtitle.
@@ -48,8 +53,7 @@ replaces the one it is saying. The player's HUD shows each response as a subtitl
 **Voice files** are `sound\voice\falloutnv.esm\<voice type>\<quest>_<topic>_<INFO>_<n>.ogg`
 in `Fallout - Voices1.bsa`, lowercase; when the quest and topic editor IDs exceed 25
 characters together, the quest keeps 10 and the topic the rest. The voice type is the
-speaker's VTCK (from its template when that supplies traits) or TACT VNAM. Voice is not
-played yet.
+speaker's VTCK (from its template when that supplies traits) or TACT VNAM.
 
 **State** is kept per actor, by `EsmReference.instance_id`. The day for Say Once a Day is
 `GameDaysPassed`, rounded down. None of the state is saved yet.
@@ -61,7 +65,7 @@ factions from its record or, when its template flags say so, its template
 
 ## Not yet
 
-- Playing voice (stage E); lip sync and speaker/listener idles.
+- Positional voice at the speaker (stage E); lip sync and speaker/listener idles.
 - The conversation menu, AddTopic and INFO Add Topics: stage D.
 - Runtime faction changes (SetFactionRank, AddToFaction); GetInFaction reads authored SNAM.
 - Templates that are leveled lists are not followed.

@@ -21,7 +21,8 @@ var _said: Dictionary = {} # speaker instance_id -> {INFO FormID: game day said}
 var _talked_to_player: Dictionary = {} # actor instance_id -> true
 var _added_topics: Dictionary = {} # DIAL FormID -> true
 var _lines: Dictionary = {} # speaker instance_id -> DialogueLine being said
-var _durations: Dictionary = {} # voice file path -> seconds
+var _streams: Dictionary = {} # voice file path -> AudioStream, or null when it does not load
+var _tasks: Dictionary = {} # WorkerThreadPool task ID -> DialogueLine whose voice it loads
 ## Picks among a set of Random INFOs.
 var rng := RandomNumberGenerator.new()
 
@@ -60,11 +61,13 @@ func choose_info(topic: DialogueTopicBase, speaker: EsmReference, listener: EsmR
 	return null
 
 ## `speaker` says the INFO `choose_info()` picks in `topic` to `listener`
-## (null for Say): it is marked said, its begin script runs on the speaker,
-## then each response is said for its duration; when the last ends, the end
-## script runs and the speaker's `SayToDone` block for the topic. A line the
-## speaker is already saying is replaced. Returns the line, or null when no
-## INFO qualifies.
+## (null for Say). The INFO is marked said at once; the line starts when its
+## voice files are loaded, on a worker thread when any is not cached (usually
+## the next frame): its begin script runs on the speaker, then each response is
+## said and played for its duration; when the last ends, the end script runs
+## and the speaker's `SayToDone` block for the topic. A line the speaker is
+## already saying is replaced. Returns the line, or null when no INFO
+## qualifies.
 func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference) -> DialogueLine:
 	var info := choose_info(topic, speaker, listener)
 	if info == null or speaker == null:
@@ -74,52 +77,122 @@ func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference
 	line.topic = topic
 	line.speaker = speaker
 	line.listener = listener
+	var missing := PackedStringArray()
 	for i in info.responses.size():
-		line.durations.append(response_duration(info, i, speaker))
+		var path := voice_path(info, i, speaker)
+		line.voice_paths.append(path)
+		if not path.is_empty() and not _streams.has(path) and not missing.has(path):
+			missing.append(path)
+	_stop(_lines.get(speaker.instance_id))
 	_lines[speaker.instance_id] = line
 	mark_said(info, speaker)
-	ScriptServer.run_result_script(info.begin_script_source, speaker, listener)
-	if _lines.get(speaker.instance_id) == line and not info.responses.is_empty():
-		response_started.emit(line, line.current_text())
+	if missing.is_empty():
+		_start(line)
+	else:
+		_tasks[WorkerThreadPool.add_task(_load_voice.bind(line, missing))] = line
 	return line
 
 ## The line `speaker` is saying, or null.
 func get_line(speaker: EsmReference) -> DialogueLine:
 	return _lines.get(speaker.instance_id) if speaker != null else null
 
-## Advances every line by `delta` seconds, finishing those whose last response
-## ends.
+## Starts lines whose voice has loaded, then advances every started line by
+## `delta` seconds, finishing those whose last response ends.
 func _process(delta: float) -> void:
+	for task: int in _tasks.keys():
+		if not WorkerThreadPool.is_task_completed(task):
+			continue
+		WorkerThreadPool.wait_for_task_completion(task)
+		var loaded_line: DialogueLine = _tasks[task]
+		_tasks.erase(task)
+		_streams.merge(loaded_line.loaded)
+		if _lines.get(loaded_line.speaker.instance_id) == loaded_line:
+			_start(loaded_line)
 	for line: DialogueLine in _lines.values():
+		if not line.started:
+			continue
 		line.elapsed += delta
 		while line.response_index < line.durations.size() and line.elapsed >= line.durations[line.response_index]:
 			line.elapsed -= line.durations[line.response_index]
 			line.response_index += 1
 			if line.response_index < line.durations.size():
-				response_started.emit(line, line.current_text())
+				_say_response(line)
 		if line.response_index >= line.durations.size() and _lines.get(line.speaker.instance_id) == line:
 			_finish(line)
 
+## Blocks until every pending voice load has finished; the next _process
+## starts their lines. For tests that step time by hand.
+func wait_for_loads() -> void:
+	for task: int in _tasks.keys():
+		WorkerThreadPool.wait_for_task_completion(task)
+	var lines: Array = _tasks.values()
+	_tasks.clear()
+	for line: DialogueLine in lines:
+		_streams.merge(line.loaded)
+		if _lines.get(line.speaker.instance_id) == line:
+			_start(line)
+
+## Reads and parses `paths` into `line.loaded`. Runs on a worker thread;
+## ArchiveServer.read is thread-safe once initialised.
+func _load_voice(line: DialogueLine, paths: PackedStringArray) -> void:
+	for path in paths:
+		var file: Dictionary = ArchiveServer.read(path)
+		line.loaded[path] = AudioStreamOggVorbis.load_from_buffer(file["data"]) if bool(file.get("found", false)) else null
+
+## Begins a line whose voice is loaded: sets each response's stream and
+## duration, runs the begin script, and says the first response.
+func _start(line: DialogueLine) -> void:
+	for i in line.info.responses.size():
+		var stream: AudioStream = _streams.get(line.voice_paths[i])
+		line.streams.append(stream)
+		line.durations.append(stream.get_length() if stream != null and stream.get_length() > 0.0 else _text_duration(line.info.responses[i].text))
+	line.started = true
+	ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
+	if _lines.get(line.speaker.instance_id) == line and not line.info.responses.is_empty():
+		_say_response(line)
+
+## Plays the current response's voice and shows it as a subtitle.
+func _say_response(line: DialogueLine) -> void:
+	var stream: AudioStream = line.streams[line.response_index]
+	if stream != null:
+		if line.voice_player == null:
+			line.voice_player = AudioStreamPlayer.new()
+			add_child(line.voice_player)
+		line.voice_player.stream = stream
+		line.voice_player.play()
+	elif line.voice_player != null:
+		line.voice_player.stop()
+	response_started.emit(line, line.current_text())
+
 func _finish(line: DialogueLine) -> void:
 	_lines.erase(line.speaker.instance_id)
+	_stop(line)
 	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
 	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
 	line_finished.emit(line)
 
-## Seconds response `index` of `info` takes: its voice file's length, or, with
-## no voice file, its text at fNoticeTextTimePerCharacter seconds a character
-## (an estimate; the original's rule for unvoiced lines is not known).
+## Stops and frees a line's voice player.
+func _stop(line: DialogueLine) -> void:
+	if line != null and line.voice_player != null:
+		line.voice_player.queue_free()
+		line.voice_player = null
+
+## Seconds response `index` of `info` takes as `speaker` says it, loading its
+## voice file on the calling thread if it is not cached: the file's length,
+## or, with none, the text estimate.
 func response_duration(info: DialogueInfoBase, index: int, speaker: EsmReference) -> float:
 	var path := voice_path(info, index, speaker)
-	if not path.is_empty():
-		if not _durations.has(path):
-			var file: Dictionary = ArchiveServer.read(path)
-			var stream := AudioStreamOggVorbis.load_from_buffer(file["data"]) if bool(file.get("found", false)) else null
-			_durations[path] = stream.get_length() if stream != null else -1.0
-		if float(_durations[path]) > 0.0:
-			return _durations[path]
+	if not path.is_empty() and not _streams.has(path):
+		var file: Dictionary = ArchiveServer.read(path)
+		_streams[path] = AudioStreamOggVorbis.load_from_buffer(file["data"]) if bool(file.get("found", false)) else null
+	var stream: AudioStream = _streams.get(path)
+	return stream.get_length() if stream != null and stream.get_length() > 0.0 else _text_duration(info.responses[index].text)
+
+## An unvoiced response's duration: its text at fNoticeTextTimePerCharacter
+## seconds a character (an estimate; the original's rule is not known).
+func _text_duration(text: String) -> float:
 	var per_character: Variant = EsmServer.get_game_setting("fNoticeTextTimePerCharacter")
-	return info.responses[index].text.length() * (float(per_character) if per_character != null else 0.08)
+	return text.length() * (float(per_character) if per_character != null else 0.08)
 
 ## The voice file of response `index` of `info` as `speaker` says it:
 ## sound\voice\<plugin>\<voice type>\<quest>_<topic>_<INFO>_<n>.ogg, or ""
@@ -178,7 +251,12 @@ func reset() -> void:
 	_said.clear()
 	_talked_to_player.clear()
 	_added_topics.clear()
+	for line: DialogueLine in _lines.values():
+		_stop(line)
 	_lines.clear()
+	for task: int in _tasks.keys():
+		WorkerThreadPool.wait_for_task_completion(task)
+	_tasks.clear()
 
 func _qualifies(info: DialogueInfoBase, speaker: EsmReference, context: ConditionContext) -> bool:
 	if info.quest == null or not QuestServer.is_running(info.quest):

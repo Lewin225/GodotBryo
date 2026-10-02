@@ -32,10 +32,13 @@ func _ready() -> void:
 
 	var lines: Array[DialogueInfoBase] = []
 	var subtitles: Array[String] = []
+	var played_voice := [false]
 	dialogue.response_started.connect(func(line: DialogueLine, text: String) -> void:
 		if lines.is_empty() or lines.back() != line.info:
 			lines.append(line.info)
-		subtitles.append(text))
+		subtitles.append(text)
+		if line.voice_player != null and line.voice_player.stream != null and line.voice_player.playing:
+			played_voice[0] = true)
 
 	dialogue.reset()
 	quests.stop_quest(vcg01)
@@ -47,6 +50,7 @@ func _ready() -> void:
 	while seconds < LIMIT_SECONDS and quests.get_stage(vcg01) != 55:
 		script_server._process(STEP)
 		quests._process(STEP)
+		dialogue.wait_for_loads()
 		dialogue._process(STEP)
 		seconds += STEP
 		if quests.get_stage(vcg01) != stages.back():
@@ -63,6 +67,7 @@ func _ready() -> void:
 		expected_lines.append(info)
 	check(lines == expected_lines, "Doc says VCG01Intro's first %d lines in order (%d said)" % [expected_lines.size(), lines.size()])
 	check(not subtitles.is_empty() and subtitles[0].begins_with("You're awake"), "the first subtitle is \"%s\"" % (subtitles[0] if not subtitles.is_empty() else ""))
+	check(played_voice[0], "Doc's lines play their voice files")
 
 	# A SayToDone block runs for the topic it names and no other.
 	var source := "scn SayToDoneProbe\nshort heard\nbegin SayToDone VCG01Intro\nset heard to 1\nend\n"
