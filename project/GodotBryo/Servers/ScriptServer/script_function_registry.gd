@@ -26,6 +26,9 @@ var place_at_me_handler: Callable
 ## Activate, Lock and Unlock commands. Null in a bare registry.
 var script_server: Object = null
 var center_on_cell_handler: Callable
+## The race menu's ID, as `Begin MenuMode 1036` names it.
+const RACE_MENU := 1036
+
 var show_message_handler: Callable
 var get_button_pressed_handler: Callable
 
@@ -379,6 +382,32 @@ func _register_defaults() -> void:
 	register("GetTalkedToPC", func(_a: Array, ctx: ScriptExecutionContext):
 		var dialogue := _dialogue_server()
 		return 1 if dialogue != null and dialogue.has_talked_to_player(ctx.calling_reference) else 0)
+	# `[Actor.]SayTo Target Topic [ForceSubtitle] [NoTargetLook]`: the calling
+	# actor says the topic's chosen INFO to Target. Returns 0, as the GECK
+	# documents; subtitles always show and Target does not turn to look.
+	register("SayTo", func(a: Array, ctx: ScriptExecutionContext):
+		var dialogue := _dialogue_server()
+		var topic := _base_arg(a, 1) as DialogueTopicBase
+		if dialogue != null and ctx.calling_reference != null and topic != null and a[0] is EsmReference:
+			dialogue.say(ctx.calling_reference, topic, a[0])
+		return 0)
+	# `[Actor.]Say Topic [ForceSubtitle] ...`: the calling actor says the
+	# topic's chosen INFO to no one in particular.
+	register("Say", func(a: Array, ctx: ScriptExecutionContext):
+		var dialogue := _dialogue_server()
+		var topic := _base_arg(a, 0) as DialogueTopicBase
+		if dialogue != null and ctx.calling_reference != null and topic != null:
+			dialogue.say(ctx.calling_reference, topic, null)
+		return 0)
+	# `GetPlayerName` opens the name menu; with no menu UI it closes at once
+	# and the name is unchanged.
+	register("GetPlayerName", func(_a: Array, _c): return 0)
+	# `ShowRaceMenu` opens the race menu (menu 1036); with no menu UI it closes
+	# at once, after the MenuMode 1036 blocks run.
+	register("ShowRaceMenu", func(_a: Array, _c):
+		if script_server != null:
+			script_server.show_menu(RACE_MENU)
+		return 0)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
 		var esm_server := EsmReference.get_esm_server()

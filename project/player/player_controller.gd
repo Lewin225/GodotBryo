@@ -120,6 +120,8 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var unlock_session: UnlockSession
 ## HUD label announcing a newly granted quest.
 @export var quest_notice: Label
+## HUD label showing the response being said (DialogueServer).
+@export var subtitle: Label
 
 const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 
@@ -184,6 +186,7 @@ func toggle_noclip() -> bool:
 ## Seconds a "Quest Added" notice stays on screen.
 const QUEST_NOTICE_SECONDS := 4.0
 var _quest_notice_generation := 0
+var _subtitle_line: DialogueLine = null # the line the subtitle shows
 
 func _ready() -> void:
 	slide_on_ceiling = false
@@ -192,6 +195,12 @@ func _ready() -> void:
 		quest_server.quest_granted.connect(_on_quest_granted)
 	if quest_notice != null:
 		quest_notice.hide()
+	var dialogue := get_tree().root.get_node_or_null("DialogueServer")
+	if dialogue != null and not dialogue.response_started.is_connected(_on_response_started):
+		dialogue.response_started.connect(_on_response_started)
+		dialogue.line_finished.connect(_on_line_finished)
+	if subtitle != null:
+		subtitle.hide()
 	floor_max_angle = deg_to_rad(max_floor_angle)
 
 	if capture_mouse_on_start and handle_mouse_capture:
@@ -732,6 +741,20 @@ func _on_quest_granted(quest: QuestBase) -> void:
 	await get_tree().create_timer(QUEST_NOTICE_SECONDS).timeout
 	if generation == _quest_notice_generation and quest_notice != null:
 		quest_notice.hide()
+
+## Shows a response being said as a subtitle.
+func _on_response_started(line: DialogueLine, text: String) -> void:
+	if subtitle == null:
+		return
+	_subtitle_line = line
+	subtitle.text = text
+	subtitle.visible = not text.is_empty()
+
+## Clears the subtitle when its line finishes and no other line replaced it.
+func _on_line_finished(line: DialogueLine) -> void:
+	if subtitle != null and line == _subtitle_line:
+		subtitle.hide()
+		_subtitle_line = null
 
 func _connect_ui() -> void:
 	if terminal_session != null and not terminal_session.closed.is_connected(_on_terminal_closed):

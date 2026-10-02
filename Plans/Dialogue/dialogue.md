@@ -1,6 +1,6 @@
 # Dialogue (DIAL / INFO)
 
-**Status: stages A-B done; stage C next.**
+**Status: stages A-C done (C awaits its play check); stage D next.**
 
 Parse DIAL topics and their INFO responses into typed resources, choose the INFO an actor says
 through the condition evaluator, and run its result scripts. Two consumers: scripted speech
@@ -96,6 +96,16 @@ player's sex; gives Doc's GREETING from VCG01 while it runs and not after. `Ques
 refuses a repeated SetStage unless the quest allows repeated stages
 (VEFR00LegionMix2CaesarsHire does). The actor functions read traits and factions through the
 template flags (`ActorStats.template_source`).
+
+**Stage C results.** `test_vcg01_opening` runs VCG01 from stage 0 to 55 headless in 73.9 s of
+game time, through stages 0, 1, 3, 5, 7, 8, 10, 15, 25, 30, 35, 36, 40, 45, 50 and 55, with Doc
+saying VCG01Intro's first 13 INFOs in order. Response durations are the voice files' lengths
+(00104BEE's is 2.61 s). The opening needed, beyond SayTo: the VCG01 quest script's timers
+(GetSecondsPassed now on `ScriptServer.clock`, steppable), `ShowRaceMenu` running the quest's
+`MenuMode 1036` block (stage 36 to 40), and SetStage starting a quest that is not running, as
+the GECK's Quest Data Tab says. Stage 17 (a sex choice by message box) is never set: no script
+sets it. In play, `game.gd` sets VCG01 stage 0, as VCG00 stage 100 does at the end of the
+cemetery intro, which is not played.
 
 **Script use.** Across all script sources: SayTo x760, Say x147, StartConversation x149,
 AddTopic x11, and 136 `Begin SayToDone` blocks, most naming a topic. None is supported yet, nor
@@ -194,7 +204,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 |---|---|---|
 | A. Resources | `DialogueTopicBase`, `DialogueInfoBase`, `DialogueResponse`; the topic → INFO order from the record index; NPC_/CREA VTCK and TACT VNAM; QUST DATA flags; `dialogue_census.cpp` extended with a voice-file census (every response's path, from its speaker's voice types). | `test_esm_server` asserts the census totals (topics, INFOs, responses, conditions, scripts, links) field for field against the raw subrecords; the voice census resolves every VCG01 response. |
 | B. Choosing (done) | `DialogueServer.choose_info()`: quest running, quest conditions, quest priority, per-speaker Say Once, ANAM, Random sets; GetIsVoiceType, GetIsSex, GetInFaction, GetTalkedToPC. `QuestServer.set_stage()` runs a stage once unless its quest allows repeated stages. | VCG01Intro yields its 15 INFOs in file order as each is said; VCG01DocReactions picks by SPECIAL and the player's sex; Doc's GREETING is VCG01's while VCG01 runs; a Say Once INFO said by one actor is still available to another; a repeated SetStage on a quest without the flag does nothing. |
-| C. Scripted speech | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
+| C. Scripted speech (done; play check pending) | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
 | D. Conversation | `DialogueSession`: activating an actor, GREETING, Link To choices, topic list, prompts, Goodbye; StartConversation, AddTopic. | A test sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartConversation Player`, and choosing through the Rorschach test reaches stage 85; in play, talking to Doc opens his GREETING. The trigger's own start needs Doc sitting in his chair, which waits for AI packages. |
 | E. Voice | Play each response's `.ogg` at the speaker. | Doc Mitchell's opening is heard in play. |
 | F. Coverage | Re-run `diag_condition_coverage` with INFO evaluated today; list the next functions. | Nothing to pass. |

@@ -13,6 +13,12 @@ The design and its sources are in `Plans/Dialogue/dialogue.md`.
 
 ```gdscript
 DialogueServer.choose_info(topic, speaker, listener) -> DialogueInfoBase   # null when none qualifies
+DialogueServer.say(speaker, topic, listener) -> DialogueLine   # null when none qualifies; listener null for Say
+DialogueServer.get_line(speaker) -> DialogueLine                # the line being said, or null
+DialogueServer.response_duration(info, index, speaker) -> float
+DialogueServer.voice_path(info, index, speaker) -> String       # "" when the speaker has no voice type
+signal response_started(line, text)                              # a subtitle
+signal line_finished(line)
 DialogueServer.mark_said(info, speaker)                # for Say Once and Say Once a Day
 DialogueServer.has_said(info, speaker) -> bool
 DialogueServer.set_talked_to_player(actor) / has_talked_to_player(actor) -> bool
@@ -31,6 +37,20 @@ conditions and its own pass, the speaker has not said it (Say Once) or has not s
 starts a set: it and the qualifying Random INFOs after it, up to one flagged Random End; one
 is chosen with `rng`.
 
+**Saying.** `say()` chooses the INFO and marks it said, then runs its begin script on the
+speaker (the listener as action reference), so an end script that says the same topic
+again gets the next line. Each response lasts its voice file's length; with no voice file,
+its text at `fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
+every line; when its last response ends, the end script runs on the speaker, then the
+speaker's `SayToDone` block for the topic, then `line_finished`. A new line from a speaker
+replaces the one it is saying. The player's HUD shows each response as a subtitle.
+
+**Voice files** are `sound\voice\falloutnv.esm\<voice type>\<quest>_<topic>_<INFO>_<n>.ogg`
+in `Fallout - Voices1.bsa`, lowercase; when the quest and topic editor IDs exceed 25
+characters together, the quest keeps 10 and the topic the rest. The voice type is the
+speaker's VTCK (from its template when that supplies traits) or TACT VNAM. Voice is not
+played yet.
+
 **State** is kept per actor, by `EsmReference.instance_id`. The day for Say Once a Day is
 `GameDaysPassed`, rounded down. None of the state is saved yet.
 
@@ -41,7 +61,7 @@ factions from its record or, when its template flags say so, its template
 
 ## Not yet
 
-- Saying an INFO (responses, result scripts, SayTo, SayToDone): stage C of the plan.
+- Playing voice (stage E); lip sync and speaker/listener idles.
 - The conversation menu, AddTopic and INFO Add Topics: stage D.
 - Runtime faction changes (SetFactionRank, AddToFaction); GetInFaction reads authored SNAM.
 - Templates that are leveled lists are not followed.
@@ -52,7 +72,10 @@ factions from its record or, when its template flags say so, its template
   assumed. Quests of equal priority keep file order.
 - Say Once per actor, Random End: from search summaries of geckwiki.com.
 - ANAM restricting the speaker at runtime.
+- Result scripts running on the speaker; an INFO marked said as it starts; a new line
+  replacing the one being said; subtitles always shown (SayTo's ForceSubtitle is ignored).
+- The duration of an unvoiced response.
 
 ## Tests
 
-`tests/test_dialogue_server.tscn`.
+`tests/test_dialogue_server.tscn`, `tests/test_vcg01_opening.tscn` (VCG01 stage 0 to 55).

@@ -27,7 +27,7 @@ fill_to = Vector2(0.9230769, 0.16239317)
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
-[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice")]
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle")]
 script = ExtResource("1_controller")
 mouse_sensitivity = 0.002
 camera_aim_smooth_speed = 5.0
@@ -38,6 +38,7 @@ message_box = NodePath("MessageBox")
 terminal_session = NodePath("TerminalSession")
 unlock_session = NodePath("UnlockSession")
 quest_notice = NodePath("HUD/QuestNotice")
+subtitle = NodePath("HUD/Subtitle")
 
 [node name="Isometric_Cam_Psuh" type="RemoteTransform3D" parent="." unique_id=1162310370]
 remote_path = NodePath("../Isometric_Cam_Root")
@@ -134,6 +135,29 @@ theme_override_font_sizes/font_size = 22
 text = "Quest Added"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="Subtitle" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -420.0
+offset_top = -140.0
+offset_right = 420.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 20
+text = "Subtitle"
+horizontal_alignment = 1
+vertical_alignment = 2
+autowrap_mode = 3
 
 [node name="Isometric_Cam_Root" type="Node3D" parent="." unique_id=1747492222]
 top_level = true
