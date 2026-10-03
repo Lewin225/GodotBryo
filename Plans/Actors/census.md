@@ -237,7 +237,9 @@ script) appear on 11 of the 68.
 
 From `native/tools/furniture_census` over every FURN in FalloutNV.esm and its NIF in the BSAs.
 
-**FURN records: 234.** xEdit gives FURN EDID, OBND, FULL, MODL, SCRI, DEST and MNAM ("Marker
+**FURN records: 234** in FalloutNV.esm (recounted from the FURN group's record headers and
+from the record index; Dead Money adds 15, Honest Hearts 7, the other masters none). They are base
+records: 7,054 placed REFRs use 206 of them. xEdit gives FURN EDID, OBND, FULL, MODL, SCRI, DEST and MNAM ("Marker
 Flags", a byte array, on all 234, always 4 bytes). One FURN's NIF is missing from the BSAs.
 
 **NIF markers.** The NIF's `BSFurnitureMarker` extra data holds a list of positions (nifly's
