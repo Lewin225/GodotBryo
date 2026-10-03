@@ -256,10 +256,17 @@ func get_script_instance(reference: EsmReference) -> ScriptInstance:
 func dispatch_event(reference: EsmReference, block_type: String, action_ref: EsmReference = null) -> Variant:
 	return dispatch_event_for(reference, block_type, action_ref, action_ref)
 
+## A disabled actor's (NPC or creature) script does not run; other disabled
+## references' scripts do.
+func _is_disabled_actor(reference: EsmReference) -> bool:
+	return (reference is ActorReference or reference is CreatureReference) and reference.is_disabled()
+
 ## Runs every `block_type` block of the reference's script that accepts
 ## `subject`, which need not be a reference: a menu ID (`Begin MenuMode
 ## 1036`) or a topic (`Begin SayToDone VCG01Intro`).
 func dispatch_event_for(reference: EsmReference, block_type: String, subject: Variant, action_ref: EsmReference = null) -> Variant:
+	if _is_disabled_actor(reference):
+		return null
 	var instance := get_script_instance(reference)
 	if instance == null:
 		return null
@@ -272,6 +279,8 @@ func dispatch_event_for(reference: EsmReference, block_type: String, subject: Va
 
 ## Whether dispatching `block_type` with `action_ref` would run a block.
 func has_block_for(reference: EsmReference, block_type: String, action_ref: EsmReference = null) -> bool:
+	if _is_disabled_actor(reference):
+		return false
 	var instance := get_script_instance(reference)
 	if instance == null:
 		return false

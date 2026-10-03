@@ -48,6 +48,9 @@ var _request_generation := 0
 ## The tier actually represented by a live NIF child, or -1 while absent.
 var _active_visual_detail := -1
 var _generated_children: Array[Node] = []
+## The reference and its enable parents, whose enable_state_changed this node
+## listens to while in the tree.
+var _enable_chain: Array[EsmReference] = []
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 ## EsmReference -> the EsmNode representing it in a scene tree.
@@ -71,6 +74,15 @@ func _register_reference() -> void:
 	_nodes_by_reference[reference] = self
 	if not reference.teleported.is_connected(_on_reference_teleported):
 		reference.teleported.connect(_on_reference_teleported)
+	_enable_chain.clear()
+	var link := reference
+	while link != null:
+		_enable_chain.append(link)
+		if not link.enable_state_changed.is_connected(_apply_enable_state):
+			link.enable_state_changed.connect(_apply_enable_state)
+		link = link.get_enable_parent()
+	if reference.is_disabled():
+		_apply_enable_state()
 
 func _unregister_reference() -> void:
 	if reference == null:
@@ -79,6 +91,18 @@ func _unregister_reference() -> void:
 		_nodes_by_reference.erase(reference)
 	if reference.teleported.is_connected(_on_reference_teleported):
 		reference.teleported.disconnect(_on_reference_teleported)
+	for link in _enable_chain:
+		if link.enable_state_changed.is_connected(_apply_enable_state):
+			link.enable_state_changed.disconnect(_apply_enable_state)
+	_enable_chain.clear()
+
+## Hides a disabled reference and turns its collision off; shows an enabled
+## one and turns its collision back on. Runs when the node registers a
+## disabled reference, and when the reference or an enable parent changes.
+func _apply_enable_state() -> void:
+	var disabled := reference != null and reference.is_disabled()
+	visible = not disabled
+	set_collision_disabled(self, disabled)
 
 ## A teleport within the same space moves the node to the reference's new
 ## placement. Leaving the loaded space is handled by the streamer that owns
@@ -94,6 +118,8 @@ func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) ->
 ## down. Static because it walks whatever subtree it is handed, including the
 ## NIF-generated children that are not EsmNodes themselves.
 static func set_collision_disabled(node: Node, disabled: bool) -> void:
+	if not disabled and node is EsmNode and node.reference != null and node.reference.is_disabled():
+		disabled = true
 	if node is CollisionShape3D:
 		node.disabled = disabled
 	for child in node.get_children():
@@ -167,6 +193,8 @@ func add_generated_child(child: Node) -> void:
 	child.set_meta("esm_generated", true)
 	add_child(child)
 	_generated_children.append(child)
+	if reference != null and reference.is_disabled():
+		set_collision_disabled(child, true)
 	if Engine.is_editor_hint() and owner != null:
 		_set_owner_recursive(child, owner)
 
@@ -227,6 +255,8 @@ func _build_primitive_volume() -> void:
 	var volume := EsmPrimitiveVolume.new()
 	volume.configure(reference)
 	add_child(volume)
+	if reference.is_disabled():
+		set_collision_disabled(volume, true)
 
 ## Starts the desired exact NIF request. The full/LOD choice is the only
 ## difference; NifServer owns all parsing, caching and callback pacing.

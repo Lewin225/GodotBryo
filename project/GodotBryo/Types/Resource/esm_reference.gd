@@ -12,6 +12,14 @@ signal cell_changed(old_cell_form_id: int, new_cell_form_id: int)
 ## opposed to movement synced from a physics body).
 @warning_ignore("unused_signal")
 signal teleported(old_space_form_id: int, new_space_form_id: int)
+## Emitted when `disabled` changes. A reference with an enable parent follows
+## its parent's state without emitting; listen on the parent chain
+## (get_enable_parent()) for that.
+signal enable_state_changed
+
+## XESP flags (xEdit's names).
+const ENABLE_PARENT_OPPOSITE := 0x01
+const ENABLE_PARENT_POP_IN := 0x02
 
 ## NAME's base record, resolved. Set by EsmServer; used for everything the
 ## base defines (model, scripts, activation). Visible for inspection but not
@@ -57,6 +65,18 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 ## by ConditionEvaluator for Condition.RunOn.LINKED_REFERENCE (130 conditions,
 ## 115 of them on terminals).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var linked_reference_form_id: int = 0
+## Record header flag 0x800 (Initially Disabled). Read, on REFR, ACHR and ACRE
+## (1567, 1449 and 512 in FalloutNV.esm); used as the starting value of
+## `disabled`.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var initially_disabled: bool = false
+## XESP: the enable parent reference's FormID; 0 when absent. Read, on REFR,
+## ACHR and ACRE (3337 in FalloutNV.esm; parents are REFRs, ACHRs and ACREs,
+## chains at most two deep); used by is_disabled(), which follows the parent
+## instead of `disabled`.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var enable_parent_form_id: int = 0
+## XESP flags. Read; Opposite of Parent used by is_disabled(), Pop In (118
+## references) not used yet.
+@export_custom(PROPERTY_HINT_FLAGS, "Opposite of Parent,Pop In", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var enable_parent_flags: int = 0
 ## XPRM: the primitive volume placed with this reference -- triggers,
 ## acoustic spaces, sound emitters, room portals. Read; 5677 REFRs in
 ## FalloutNV.esm carry one (Box 2436, Sphere 130, Portal Box 3111). Used by
@@ -83,6 +103,12 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 ## reference again; its current node, if any, stays until its CELL unloads.
 ## Saved.
 @export var marked_for_delete: bool = false
+
+## Not an ESM field: whether Disable has hidden this reference; starts as
+## `initially_disabled`. Set by set_disabled() (Enable, Disable); ignored while
+## the reference has an enable parent. Saved. Use is_disabled() for the state
+## in effect.
+@export var disabled: bool = false
 
 ## Runtime state with no ESM source: the actor using this reference, for
 ## references used by one actor at a time (terminals, containers, a door being
@@ -126,6 +152,32 @@ static func get_esm_server() -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	_esm_server = tree.root.get_node_or_null("EsmServer") if tree != null else null
 	return _esm_server
+
+## Whether this reference is disabled: its enable parent's state (inverted
+## with Opposite of Parent) when it has one, otherwise `disabled`. A disabled
+## reference is not shown and has no collision; an actor's script does not
+## run while it is disabled.
+func is_disabled() -> bool:
+	var parent := get_enable_parent()
+	if parent == null:
+		return disabled
+	return parent.is_disabled() != ((enable_parent_flags & ENABLE_PARENT_OPPOSITE) != 0)
+
+## Enable / Disable. Does nothing on a reference with an enable parent, whose
+## state is always its parent's.
+func set_disabled(value: bool) -> void:
+	if enable_parent_form_id != 0 or disabled == value:
+		return
+	disabled = value
+	mark_dirty()
+	enable_state_changed.emit()
+
+## The XESP enable parent, or null when there is none.
+func get_enable_parent() -> EsmReference:
+	if enable_parent_form_id == 0:
+		return null
+	var server := get_esm_server()
+	return server.get_reference("authored:%08X" % enable_parent_form_id) if server != null else null
 
 ## This reference's actor values, or null when it is not an actor.
 func get_actor_values() -> ActorValues:

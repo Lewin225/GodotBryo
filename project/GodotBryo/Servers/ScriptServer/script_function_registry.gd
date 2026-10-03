@@ -77,27 +77,23 @@ func _register_defaults() -> void:
 		return 0.0)
 	register("GetRandomPercent", func(_a, _c): return randi_range(0, 99))
 
+	# `Enable` / `Disable` set the reference's state (EsmReference.set_disabled),
+	# loaded or not; nothing on one with an enable parent. The fade argument
+	# (`Enable 1`) is ignored.
 	register("Enable", func(_a, ctx: ScriptExecutionContext):
-		var node := EsmNode.node_for(ctx.calling_reference)
-		if node == null:
+		if ctx.calling_reference == null:
 			return 0
-		node.visible = true
-		EsmNode.set_collision_disabled(node, false)
+		ctx.calling_reference.set_disabled(false)
 		return 1)
 
 	register("Disable", func(_a, ctx: ScriptExecutionContext):
-		var node := EsmNode.node_for(ctx.calling_reference)
-		if node == null:
+		if ctx.calling_reference == null:
 			return 0
-		node.visible = false
-		EsmNode.set_collision_disabled(node, true)
+		ctx.calling_reference.set_disabled(true)
 		return 1)
 
 	register("GetDisabled", func(_a, ctx: ScriptExecutionContext):
-		var node := EsmNode.node_for(ctx.calling_reference)
-		if node == null:
-			return 0
-		return 0 if node.visible else 1)
+		return 1 if ctx.calling_reference != null and ctx.calling_reference.is_disabled() else 0)
 
 	# `[Ref.]Activate [ActionRef] [RunOnActivateBlockFlag]`. The activator is
 	# ActionRef when given, else this dispatch's action reference. With the

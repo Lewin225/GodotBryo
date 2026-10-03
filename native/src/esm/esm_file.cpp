@@ -496,6 +496,8 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 	uint32_t base_form_id = 0;
 	uint32_t emittance_form_id = 0;
 	uint32_t linked_reference_form_id = 0;
+	uint32_t enable_parent_form_id = 0;
+	uint32_t enable_parent_flags = 0;
 	uint32_t primitive_type = 0;
 	float primitive_bounds[3] = { 0.0f, 0.0f, 0.0f };
 	float primitive_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -520,6 +522,10 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 		} else if (s.type == "XEMI" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			emittance_form_id = sr.read_u32();
+		} else if (s.type == "XESP" && s.size >= 5) {
+			util::ByteReader sr(s.data, s.size);
+			enable_parent_form_id = sr.read_u32();
+			enable_parent_flags = s.data[4];
 		} else if (s.type == "XLKR" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			linked_reference_form_id = sr.read_u32();
@@ -573,6 +579,9 @@ std::optional<ReferencePlacement> EsmFile::placement_from_refr(const RecordInfo 
 	std::memcpy(pl.rotation, rotation, sizeof(rotation));
 	pl.scale = scale;
 	pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+	pl.initially_disabled = (child.flags & kRecordFlagInitiallyDisabled) != 0;
+	pl.enable_parent_form_id = enable_parent_form_id;
+	pl.enable_parent_flags = enable_parent_flags;
 	pl.has_xtel = has_xtel;
 	pl.has_xsrf_or_xsrd = has_xsrf_or_xsrd;
 	pl.dest_refr_form_id = dest_refr_form_id;
@@ -621,11 +630,17 @@ std::optional<ReferencePlacement> EsmFile::placement_from_actor(const RecordInfo
 	float scale = 1.0f;
 	bool has_data = false;
 	uint32_t linked_reference_form_id = 0;
+	uint32_t enable_parent_form_id = 0;
+	uint32_t enable_parent_flags = 0;
 
 	for (const auto &s : subs) {
 		if (s.type == "NAME" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			base_form_id = sr.read_u32();
+		} else if (s.type == "XESP" && s.size >= 5) {
+			util::ByteReader sr(s.data, s.size);
+			enable_parent_form_id = sr.read_u32();
+			enable_parent_flags = s.data[4];
 		} else if (s.type == "XLKR" && s.size >= 4) {
 			util::ByteReader sr(s.data, s.size);
 			linked_reference_form_id = sr.read_u32();
@@ -657,6 +672,9 @@ std::optional<ReferencePlacement> EsmFile::placement_from_actor(const RecordInfo
 	std::memcpy(pl.rotation, rotation, sizeof(rotation));
 	pl.scale = scale;
 	pl.visible_when_distant = (child.flags & kRecordFlagVisibleWhenDistant) != 0;
+	pl.initially_disabled = (child.flags & kRecordFlagInitiallyDisabled) != 0;
+	pl.enable_parent_form_id = enable_parent_form_id;
+	pl.enable_parent_flags = enable_parent_flags;
 
 	if (auto base = find_record_by_form_id(base_form_id)) {
 		fill_actor_base_fields(*base, pl);

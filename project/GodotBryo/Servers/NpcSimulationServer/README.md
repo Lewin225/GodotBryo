@@ -14,6 +14,9 @@ triangles, and routes between them.
 - **Positions** — authored REFR/ACHR vectors plus a navmesh snap
 - **Routing** — A* over triangles, funnelled, async, cross-space, component-aware
 - **Dependencies** — `EsmServer` + `NavmeshReader` (native)
+- **Disabled actors** — nothing here moves actors yet. A disabled actor
+  (`EsmReference.is_disabled()`) is frozen: no AI packages, combat or schedules,
+  and no travel while virtual. Script moves (`MoveTo`) still move it.
 
 An earlier prototype (`npc_simulation_server.gd`) indexed actors by raw authored
 position with no ground truth and no routing. It was deleted once this superseded

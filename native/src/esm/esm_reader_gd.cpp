@@ -78,6 +78,9 @@ Dictionary placement_to_dict(const esm::ReferencePlacement &pl) {
 	// false for SCOL parts (get_scol_parts()), which have no REFR record of
 	// their own to carry the flag.
 	d["visible_when_distant"] = pl.visible_when_distant;
+	d["initially_disabled"] = pl.initially_disabled;
+	d["enable_parent_form_id"] = static_cast<int64_t>(pl.enable_parent_form_id);
+	d["enable_parent_flags"] = static_cast<int64_t>(pl.enable_parent_flags);
 	d["has_xtel"] = pl.has_xtel;
 	d["has_xsrf_or_xsrd"] = pl.has_xsrf_or_xsrd;
 	if (pl.has_xtel) {

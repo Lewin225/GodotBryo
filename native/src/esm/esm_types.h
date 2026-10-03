@@ -23,6 +23,8 @@ constexpr uint32_t kRecordFlagCompressed = 0x00040000;
 // game renders a distant-LOD variant of it at all, independent of whether
 // one happens to exist on disk.
 constexpr uint32_t kRecordFlagVisibleWhenDistant = 0x00008000;
+// REFR/ACHR/ACRE header flag 0x800 (xEdit: "Initially Disabled").
+constexpr uint32_t kRecordFlagInitiallyDisabled = 0x00000800;
 
 // Subrecord size field is 16-bit; a size of 0xFFFF means the real size is
 // carried in a preceding 4-byte "XXXX" subrecord instead (for subrecords
@@ -125,6 +127,14 @@ struct ReferencePlacement {
 	// caller needs, and a decoded bool matches this struct's own existing
 	// style (has_xtel below) better than a raw bitmask would.
 	bool visible_when_distant = false;
+
+	// Header flag 0x800 (kRecordFlagInitiallyDisabled). REFR, ACHR and ACRE.
+	bool initially_disabled = false;
+	// XESP (Enable Parent): the parent reference (0 when absent) and the flags
+	// byte (xEdit: 0x01 Set Enable State to Opposite of Parent, 0x02 Pop In).
+	// Always 8 bytes in FalloutNV.esm (3,337 of 3,337). REFR, ACHR and ACRE.
+	uint32_t enable_parent_form_id = 0;
+	uint32_t enable_parent_flags = 0;
 
 	// XTEL, present on teleporting doors (phases/2/07-runtime-cell-loader.md).
 	// Confirmed against real data: 32 bytes — dest REFR FormID (4), dest

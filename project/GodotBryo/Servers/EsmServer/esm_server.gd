@@ -611,6 +611,10 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.visible_when_distant = bool(placement.get("visible_when_distant", false))
 	result.has_xsrf_or_xsrd = bool(placement.get("has_xsrf_or_xsrd", false))
 	result.linked_reference_form_id = int(placement.get("linked_reference_form_id", 0))
+	result.initially_disabled = bool(placement.get("initially_disabled", false))
+	result.disabled = result.initially_disabled
+	result.enable_parent_form_id = int(placement.get("enable_parent_form_id", 0))
+	result.enable_parent_flags = int(placement.get("enable_parent_flags", 0))
 	result.primitive_type = int(placement.get("primitive_type", 0)) as EsmReference.PrimitiveType
 	result.primitive_bounds = placement.get("primitive_bounds", Vector3.ZERO)
 	result.primitive_color = placement.get("primitive_color", Color(0, 0, 0, 0))

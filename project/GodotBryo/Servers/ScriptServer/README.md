@@ -196,9 +196,15 @@ is ModAV by (value − current), DamageAV and RestoreAV move the damage modifier
 Base values derive from the base record's `ActorStats`, following NPC_/CREA templates
 that supply stats.
 
-**Nodes.** Commands that act on a loaded object (`Enable`, `Disable`, `GetDisabled`)
-find it with `EsmNode.node_for(reference)` and do nothing when the reference
-is not physicalised.
+**Enable state.** `Enable` / `Disable` set the reference's state
+(`EsmReference.set_disabled`), loaded or not, and mark it dirty; `GetDisabled` reads
+`is_disabled()`. A placement starts as its header flag 0x800 (Initially Disabled) says. A
+reference with an XESP enable parent always has its parent's state (inverted with
+Opposite of Parent), and `Enable` / `Disable` on it do nothing, per the GECK. A disabled
+NPC's or creature's script does not run (`dispatch_event` / `has_block_for` skip it);
+other disabled references' scripts do. `EsmNode` hides a disabled reference and turns its
+collision off, following `enable_state_changed` on the reference and its enable parents
+while it is in the tree. The fade argument (`Enable 1`) is ignored.
 
 **Handlers.** World-facing commands delegate to callables on `function_registry` set by
 the scene that owns the loaders: `place_at_me_handler(args, calling_reference)`,
