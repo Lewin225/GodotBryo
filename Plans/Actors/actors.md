@@ -18,6 +18,20 @@ the door.
   meaning (census A1). `NpcBase` and `CreatureBase` extend it, each reading its own DATA, RNAM,
   PNAM, CNAM, NAM5 and LNAM (same signatures, different meanings) and its own-type subrecords,
   and naming the ACBS flags its own way.
+- **Hierarchy.** Each reference type pairs with its base type; generic code works on
+  `ActorReference` and `ActorBase` only.
+
+  ```
+  EsmReference
+  └── ActorReference         abstract: ACHR/ACRE shared fields, inventory, actor values, use and package state
+      ├── NpcReference       ACHR; base is an NpcBase
+      └── CreatureReference  ACRE; base is a CreatureBase; adds XOWN ownership
+
+  EsmBase
+  └── ActorBase              abstract: the 20 subrecords NPC_ and CREA share
+      ├── NpcBase            DATA, RNAM race, PNAM head parts, CNAM class, DNAM, hair, eyes, FaceGen
+      └── CreatureBase       DATA, RNAM attack reach, PNAM body part data, CNAM impact dataset, NIFZ, sounds
+  ```
 - **One actor node** renders NPCs and creatures: skeleton (`MODL`), skinned parts bound to it,
   animation. Parts come from RACE for an NPC_ and from `NIFZ` (relative to `MODL`'s folder,
   through `TPLT` when templated) for a CREA. A humanoid layer adds head, hair, eyes and worn
