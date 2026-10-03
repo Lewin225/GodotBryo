@@ -234,7 +234,7 @@ To the actor refactor (one actor node for NPCs and creatures, then furniture and
   `SetObjectiveCompleted VCG01 40 1`, `set VCG01.bGiveTest to 1`,
   `DocMitchellREF.StartConversation Player`.
 - Stage 110 onward: Doc walking to the exit (`evp`) and his force-greet at the door (PACK
-  00105BD1); until then, after the exit trigger sets 115, `DocMitchellREF.StartConversation
+  00105BD2; 00105BD1 is the walk to the exit); until then, after the exit trigger sets 115, `DocMitchellREF.StartConversation
   Player`.
 - `PlayIdle` (IDLE records), `Look` / `StopLook`.
 

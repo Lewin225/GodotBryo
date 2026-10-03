@@ -58,7 +58,7 @@ the door.
   objective 40 displayed and not completed, it completes objective 40 and sets `VCG01.bGiveTest`.
   Doc's script (SCPT 00105BCB) checks `bDocInChair`.
 - Stage 110 runs `DocMitchellREF.evp` to walk Doc to the exit; `GSDocMitchellExitTriggerScript`
-  sets 115 when the player enters the exit trigger at 110; PACK 00105BD1 is Doc's force-greet.
+  sets 115 when the player enters the exit trigger at 110. PACK 00105BD1 (Travel) walks Doc to the exit; PACK 00105BD2 (Dialogue, stage >= 115) is his force-greet.
 
 ## Stages
 
