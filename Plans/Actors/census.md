@@ -271,8 +271,9 @@ NIF: 0 (7), 1 (62), 2 (72), 3 (73), 4 (12), 5 (5), 6 (3). No `BSFurnitureMarkerN
 
 **MNAM.** Bits set, by FURN count: 0 (163), 1 (95), 2 (40), 3 (14), 4 (10), 5 (6), 30 (144),
 31 (59); no others. Bit i of bits 0-5 enables NIF marker i: on 212 of the 233 FURN with a NIF,
-every set low bit indexes an existing marker, and the L / R / F variants of one chair NIF (Chair01L,
-Chair01R, Chair01F: bits 0, 1, 2) enable its left, right and front markers. On the other 21, bits
+every set low bit indexes an existing marker. Chair variants named L, R and F (Chair01L,
+Chair01R, Chair01F) set bits 0, 1 and 2; in SubChairDirty01.NIF, markers 0, 1 and 2 are posRef 11
+(left), 12 (right) and 14 (front). Chair01's own NIF marker order was not checked. On the other 21, bits
 are set beyond the NIF's markers (the benches' 0x1F over 3 markers; consoles and intercoms with
 bit 0 and no markers). Bits 30 and 31 are not markers; their meaning is unknown.
 `FurnitureBase.get_active_markers()` takes bits 0-23 as markers, which fits.
