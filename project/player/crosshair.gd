@@ -52,8 +52,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## The prompt for what the crosshair is on; none while scripts disable rollover
+## text (DisablePlayerControls).
 func _on_target_changed(_target: Object, _collider: Object, _type: StringName, action_text: String) -> void:
-	current_action = action_text
+	current_action = action_text if ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_ROLLOVER_TEXT) else ""
 
 
 func _draw() -> void:

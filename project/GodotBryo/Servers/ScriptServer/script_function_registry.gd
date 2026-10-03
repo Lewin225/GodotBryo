@@ -420,6 +420,24 @@ func _register_defaults() -> void:
 			return 0
 		dialogue.add_topic(topic)
 		return 1)
+	# `DisablePlayerControls [Movement Pipboy Fighting POV Looking RolloverText
+	# Sneaking]` (each 0 or 1): disables the controls flagged 1; with no
+	# arguments, `1 1 1 1 0 0 0`, as the GECK wiki gives it.
+	register("DisablePlayerControls", func(a: Array, _c):
+		if script_server == null:
+			return 0
+		script_server.disable_player_controls(_control_flags(a, 0x0F))
+		return 1)
+	# `EnablePlayerControls [...]`: enables the controls flagged 1, the same
+	# flags; with no arguments every control (not verified).
+	register("EnablePlayerControls", func(a: Array, _c):
+		if script_server == null:
+			return 0
+		script_server.enable_player_controls(_control_flags(a, 0x7F))
+		return 1)
+	# `GetPlayerControlsDisabled`: whether any player control is disabled.
+	register("GetPlayerControlsDisabled", func(_a: Array, _c):
+		return 1 if script_server != null and script_server.disabled_player_controls != 0 else 0)
 	# `GetPlayerName` / `ShowNameMenu` opens the name entry menu (1051, TextEdit);
 	# it returns nothing useful, as the GECK wiki notes.
 	register(["GetPlayerName", "ShowNameMenu"], func(_a: Array, _c):
@@ -683,6 +701,18 @@ static func _change_actor_value(args: Array, ctx: ScriptExecutionContext, method
 
 ## The actor value code an argument gives: an int code as a condition passes
 ## it, or a script name. -1 when neither.
+## DisablePlayerControls' / EnablePlayerControls' 0/1 arguments as
+## ScriptServer CONTROL_* flags (the Nth argument is bit N); `default` with no
+## arguments.
+static func _control_flags(args: Array, default: int) -> int:
+	if args.is_empty():
+		return default
+	var flags := 0
+	for i in mini(args.size(), 7):
+		if _number(args, i) != 0.0:
+			flags |= 1 << i
+	return flags
+
 ## The sex at argument `index`: 1 female, 0 male, -1 when it is neither. A
 ## condition passes ptSex as 0 or 1; a script names it, `Male` or `Female`.
 static func _sex_arg(args: Array, index: int) -> int:

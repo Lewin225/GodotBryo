@@ -77,6 +77,15 @@ no screen sets the mouse mode itself.
 `MenuMode` blocks that accept it once. The `MenuMode [type]` function is 1 for any open
 menu, a specific open menu, or group 2 (any menu but the "main four", none of which exist
 yet); group 1 is always 0. `SexChange` sets the ACBS Female flag of the actor's NPC_.
+
+**Player controls.** `DisablePlayerControls` / `EnablePlayerControls [Movement Pipboy
+Fighting POV Looking RolloverText Sneaking]` (each 0/1; Disable with none is `1 1 1 1 0 0 0`
+per the GECK wiki, Enable with none enables all, not verified) set
+`disabled_player_controls`, the player's (not any actor's) disabled controls, and emit
+`player_controls_changed`. The player's controller ignores movement input and activation
+while Movement is disabled and mouse look while Looking is; the crosshair drops its prompt
+while Rollover Text is. Pip-Boy, Fighting, POV and Sneaking are recorded with no system
+reading them yet.
 `CellStreamerV2` marks its current CELL's references loaded; `WorldStreamerV2`
 marks those of resident tiles at full detail, and unloads them when a tile drops to
 LOD, is removed, or is paused for an interior visit. References moving between

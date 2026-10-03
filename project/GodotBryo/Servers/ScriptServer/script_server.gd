@@ -10,6 +10,19 @@ extends Node
 
 ## The game entered (true) or left (false) menu mode.
 signal menu_mode_changed(in_menu_mode: bool)
+## DisablePlayerControls / EnablePlayerControls changed the disabled controls.
+signal player_controls_changed(disabled: int)
+
+## Player controls DisablePlayerControls and EnablePlayerControls name, in
+## their argument order (GECK wiki DisablePlayerControls, through search
+## summaries). Movement also stops activating objects; Looking locks the view.
+const CONTROL_MOVEMENT := 0x01
+const CONTROL_PIPBOY := 0x02
+const CONTROL_FIGHTING := 0x04
+const CONTROL_POV := 0x08
+const CONTROL_LOOKING := 0x10
+const CONTROL_ROLLOVER_TEXT := 0x20
+const CONTROL_SNEAKING := 0x40
 
 ## Menu type IDs, as `Begin MenuMode <id>` names them (GECK wiki, "MenuMode
 ## (Function)", `enginedocs/Geck`). 1 and 2 are groups: the "main four"
@@ -54,6 +67,10 @@ var clock := 0.0
 ## calls enter_menu and exit_menu. Set by the player's controller.
 var menu_opener: Callable
 var _open_menus: Array[int] = [] # menus open, most recent last
+## The player controls scripts have disabled (CONTROL_* flags, in
+## DisablePlayerControls' argument order).
+@export_flags("Movement", "Pip-Boy", "Fighting", "POV", "Looking", "Rollover Text", "Sneaking")
+var disabled_player_controls := 0
 ## The game's global variables (GLOB), seeded from the ESM on first use. World
 ## state: a save stores this resource.
 var globals := GlobalVariables.new()
@@ -115,6 +132,24 @@ func exit_menu(menu_id: int) -> void:
 	_open_menus.erase(menu_id)
 	if _open_menus.is_empty():
 		menu_mode_changed.emit(false)
+
+## Disables the CONTROL_* flags in `controls` (DisablePlayerControls).
+func disable_player_controls(controls: int) -> void:
+	_set_disabled_player_controls(disabled_player_controls | controls)
+
+## Enables the CONTROL_* flags in `controls` (EnablePlayerControls).
+func enable_player_controls(controls: int) -> void:
+	_set_disabled_player_controls(disabled_player_controls & ~controls)
+
+## Whether the player control `control` (a CONTROL_* flag) is enabled.
+func is_player_control_enabled(control: int) -> bool:
+	return (disabled_player_controls & control) == 0
+
+func _set_disabled_player_controls(controls: int) -> void:
+	if controls == disabled_player_controls:
+		return
+	disabled_player_controls = controls
+	player_controls_changed.emit(controls)
 
 func is_menu_mode() -> bool:
 	return not _open_menus.is_empty()

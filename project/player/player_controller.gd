@@ -17,6 +17,9 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 	"zoom": &"zoom",
 }
 
+## Controls the processing of input events
+@export var input_enabled:bool = true
+ 
 @export_group("Mouse & Look")
 @export var mouse_sensitivity: float = 0.003
 @export_range(10.0, 89.0) var pitch_limit_degrees: float = 89.0
@@ -194,11 +197,16 @@ var _subtitle_line: DialogueLine = null # the line the subtitle shows
 
 func _ready() -> void:
 	slide_on_ceiling = false
+	floor_max_angle = deg_to_rad(max_floor_angle)
+	
+	# Connect to quest server for ui notifications
 	var quest_server := get_tree().root.get_node_or_null("QuestServer")
 	if quest_server != null and not quest_server.quest_granted.is_connected(_on_quest_granted):
 		quest_server.quest_granted.connect(_on_quest_granted)
 	if quest_notice != null:
 		quest_notice.hide()
+		
+	# Connected to dialogserver for subtitles
 	var dialogue := get_tree().root.get_node_or_null("DialogueServer")
 	if dialogue != null and not dialogue.response_started.is_connected(_on_response_started):
 		dialogue.response_started.connect(_on_response_started)
@@ -207,11 +215,13 @@ func _ready() -> void:
 		dialogue.conversation_ended.connect(_on_conversation_ended)
 	if subtitle != null:
 		subtitle.hide()
-	floor_max_angle = deg_to_rad(max_floor_angle)
-
+	
+	# Connect to script server for menu mode signals
 	if not ScriptServer.menu_mode_changed.is_connected(_on_menu_mode_changed):
 		ScriptServer.menu_mode_changed.connect(_on_menu_mode_changed)
+		ScriptServer.player_controls_changed.connect(_on_player_controls_changed)
 	_on_menu_mode_changed(ScriptServer.is_menu_mode())
+	_on_player_controls_changed(ScriptServer.disabled_player_controls)
 
 	if not collision_shape:
 		collision_shape = get_node_or_null("CollisionShape3D")
@@ -261,7 +271,8 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"interact"):
-		request_activate()
+		if ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_MOVEMENT):
+			request_activate()
 		return
 	if debug_click_shake and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		return
@@ -270,7 +281,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		#apply_camera_shake(shake_val)
 		#_click_shake_index = (_click_shake_index + 1) % CLICK_SHAKE_PATTERN.size()
 
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+			and ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_LOOKING):
 		rotation.y -= event.relative.x * mouse_sensitivity
 		var max_pitch := deg_to_rad(pitch_limit_degrees)
 		camera_pitch = clampf(camera_pitch - (event.relative.y * mouse_sensitivity), -max_pitch, max_pitch)
@@ -304,9 +316,10 @@ func _physics_process(delta: float) -> void:
 		_coyote_timer = coyote_time
 	else:
 		_coyote_timer = maxf(0.0, _coyote_timer - delta)
-
-	_handle_movement(delta)
-	_handle_crouching(space_state)
+	
+	if input_enabled:
+		_handle_movement(delta)
+		_handle_crouching(space_state)
 
 	move_and_slide()
 	_apply_push_forces(delta)
@@ -793,6 +806,11 @@ func _open_script_menu(menu_id: int) -> bool:
 ## captured for looking otherwise.
 func _on_menu_mode_changed(in_menu_mode: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if in_menu_mode else Input.MOUSE_MODE_CAPTURED
+
+## The enabled controls has changed
+func _on_player_controls_changed(disabled: int) -> void:
+	input_enabled = ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_MOVEMENT)
+	
 
 func _on_script_menu_closed() -> void:
 	_set_input_suspended(false)
