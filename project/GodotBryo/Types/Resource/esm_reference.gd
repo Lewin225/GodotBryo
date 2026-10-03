@@ -16,6 +16,8 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 ## its parent's state without emitting; listen on the parent chain
 ## (get_enable_parent()) for that.
 signal enable_state_changed
+## Emitted when swap_texture() changes a block's texture.
+signal texture_swapped(block_name: String)
 
 ## XESP flags (xEdit's names).
 const ENABLE_PARENT_OPPOSITE := 0x01
@@ -110,6 +112,12 @@ const ENABLE_PARENT_POP_IN := 0x02
 ## in effect.
 @export var disabled: bool = false
 
+## Runtime state with no ESM source: SwapTexture's swaps, NIF block name ->
+## texture path relative to textures\, without extension. Set by
+## swap_texture(); applied by EsmNode. Not saved: per the GECK wiki, loading a
+## save reverts swapped textures.
+var texture_swaps: Dictionary = {}
+
 ## Runtime state with no ESM source: the actor using this reference, for
 ## references used by one actor at a time (terminals, containers, a door being
 ## lockpicked). Set only by ScriptServer.begin_use / end_use; not saved.
@@ -171,6 +179,12 @@ func set_disabled(value: bool) -> void:
 	disabled = value
 	mark_dirty()
 	enable_state_changed.emit()
+
+## SwapTexture: the NIF block `block_name` shows `texture_path` (relative to
+## textures\, no extension) in place of its diffuse texture.
+func swap_texture(block_name: String, texture_path: String) -> void:
+	texture_swaps[block_name] = texture_path
+	texture_swapped.emit(block_name)
 
 ## The XESP enable parent, or null when there is none.
 func get_enable_parent() -> EsmReference:

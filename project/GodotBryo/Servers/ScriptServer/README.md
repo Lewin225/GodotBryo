@@ -206,6 +206,14 @@ other disabled references' scripts do. `EsmNode` hides a disabled reference and 
 collision off, following `enable_state_changed` on the reference and its enable parents
 while it is in the tree. The fade argument (`Enable 1`) is ignored.
 
+**Texture swaps.** `SwapTexture Ref "Block" "path"` (always this form in FalloutNV.esm:
+242 calls, the Rorschach card, the ending slides and Euclid's C-Finder screen) records
+`Block -> path` on the reference (`EsmReference.swap_texture`, `texture_swaps`), loaded
+or not. `EsmNode` gives the meshes of the NIF block with that authored name
+(case-insensitive) `textures\<path>.dds` as their albedo, through a per-node copy of each
+material, when its visual loads and on each later swap. Swaps are not saved: per the GECK
+wiki, loading a save reverts them.
+
 **Handlers.** World-facing commands delegate to callables on `function_registry` set by
 the scene that owns the loaders: `place_at_me_handler(args, calling_reference)`,
 `center_on_cell_handler(args)`, plus `game_time_manager` for time functions.

@@ -31,6 +31,7 @@ extends RefCounted
 ## 0 from calling a nonexistent function named that.
 const KNOWN_ARITIES := {
 	"abs": 1,
+	"swaptexture": 3,
 	"sqrt": 1,
 	"getactionref": 0,
 	"getbuttonpressed": 0,

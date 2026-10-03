@@ -77,6 +77,16 @@ func _register_defaults() -> void:
 		return 0.0)
 	register("GetRandomPercent", func(_a, _c): return randi_range(0, 99))
 
+	# `SwapTexture Ref "Block" "path"` gives the NIF block named Block on Ref
+	# the texture textures\<path>.dds (EsmReference.swap_texture). The block
+	# name is the authored NIF name, ## prefix included where the NIF has it.
+	register("SwapTexture", func(a: Array, _c):
+		var target: Variant = a[0] if a.size() > 0 else null
+		if not target is EsmReference or a.size() < 3:
+			return 0
+		(target as EsmReference).swap_texture(str(a[1]), str(a[2]))
+		return 1)
+
 	# `Enable` / `Disable` set the reference's state (EsmReference.set_disabled),
 	# loaded or not; nothing on one with an enable parent. The fade argument
 	# (`Enable 1`) is ignored.

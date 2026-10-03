@@ -74,6 +74,8 @@ func _register_reference() -> void:
 	_nodes_by_reference[reference] = self
 	if not reference.teleported.is_connected(_on_reference_teleported):
 		reference.teleported.connect(_on_reference_teleported)
+	if not reference.texture_swapped.is_connected(_apply_texture_swap):
+		reference.texture_swapped.connect(_apply_texture_swap)
 	_enable_chain.clear()
 	var link := reference
 	while link != null:
@@ -91,10 +93,45 @@ func _unregister_reference() -> void:
 		_nodes_by_reference.erase(reference)
 	if reference.teleported.is_connected(_on_reference_teleported):
 		reference.teleported.disconnect(_on_reference_teleported)
+	if reference.texture_swapped.is_connected(_apply_texture_swap):
+		reference.texture_swapped.disconnect(_apply_texture_swap)
 	for link in _enable_chain:
 		if link.enable_state_changed.is_connected(_apply_enable_state):
 			link.enable_state_changed.disconnect(_apply_enable_state)
 	_enable_chain.clear()
+
+## Gives the meshes of the NIF block named `block_name` (case-insensitive) in
+## the current visual the reference's swapped texture as their albedo, through
+## a per-node copy of each surface's material. Normal and glow maps are left
+## as authored.
+func _apply_texture_swap(block_name: String) -> void:
+	var visual := _visual_node(_active_visual_detail) if _active_visual_detail != -1 else null
+	if visual == null or not reference.texture_swaps.has(block_name):
+		return
+	var swapped := String(reference.texture_swaps[block_name])
+	var path := "textures\\%s.dds" % swapped
+	var wanted := block_name.to_lower()
+	var meshes: Array[MeshInstance3D] = []
+	for node: Node in visual.find_children("*", "", true, false):
+		if String(node.get_meta(NifNames.META_NIF_NAME, "")).to_lower() != wanted:
+			continue
+		if node is MeshInstance3D:
+			meshes.append(node)
+		for child in node.find_children("*", "MeshInstance3D", true, false):
+			meshes.append(child)
+	for mesh in meshes:
+		for surface in mesh.mesh.get_surface_count() if mesh.mesh != null else 0:
+			var source := mesh.get_active_material(surface) as BaseMaterial3D
+			if source == null:
+				continue
+			var alpha_safe := source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+			var texture: Texture2D = await TextureServer.request(path, alpha_safe)
+			# A later swap of the same block may have finished first.
+			if texture == null or not is_instance_valid(mesh) or reference.texture_swaps.get(block_name) != swapped:
+				continue
+			var material := source.duplicate() as BaseMaterial3D
+			material.albedo_texture = texture
+			mesh.set_surface_override_material(surface, material)
 
 ## Hides a disabled reference and turns its collision off; shows an enabled
 ## one and turns its collision back on. Runs when the node registers a
@@ -297,6 +334,8 @@ func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
 	if replaced != null:
 		_remove_generated_child(replaced)
 	_active_visual_detail = detail
+	for block_name: String in reference.texture_swaps:
+		_apply_texture_swap(block_name)
 	visual_detail_applied.emit(detail)
 	if detail == VisualDetail.FULL:
 		_on_nif_visual_ready(tree)
