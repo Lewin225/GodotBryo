@@ -232,3 +232,65 @@ Dialogue (force-greet with GREETING), selected top to bottom by condition, re-ev
 `evp`. For Goodsprings generally: add Sandbox, Sleep and hour schedules. Guard, Flee Not Combat
 and Ambush only serve VMS16's gunfight. Package events (On Begin / End / Change: idle, topic,
 script) appear on 11 of the 68.
+
+## A4. Furniture
+
+From `native/tools/furniture_census` over every FURN in FalloutNV.esm and its NIF in the BSAs.
+
+**FURN records: 234.** xEdit gives FURN EDID, OBND, FULL, MODL, SCRI, DEST and MNAM ("Marker
+Flags", a byte array, on all 234, always 4 bytes). One FURN's NIF is missing from the BSAs.
+
+**NIF markers.** The NIF's `BSFurnitureMarker` extra data holds a list of positions (nifly's
+`FurniturePosition`; FNV's NIFs use the User Version <= 11 form): an offset (Vector3, NIF units),
+an orientation (u16) and two bytes, posRef1 and posRef2. 516 markers over 233 NIFs; markers per
+NIF: 0 (7), 1 (62), 2 (72), 3 (73), 4 (12), 5 (5), 6 (3). No `BSFurnitureMarkerNode` occurs.
+
+- Orientation is in thousandths of a radian: the common values are 1570, 3141 and 4712 (pi/2, pi,
+  3pi/2), and none exceeds 6283.
+- posRef1 equals posRef2 on all 516 markers. Its value sorts by furniture kind (names of the
+  FURN using it):
+
+  | posRef | Furniture | Usual orientation |
+  |---|---|---|
+  | 1-4 | beds, mattresses, bedrolls | pi/2, 3pi/2 |
+  | 5, 6 | super mutant beds, floor sleeping, dying soldier | |
+  | 10 | NVCrucifixFurniture | |
+  | 11 | chairs, from the left | pi/2 (88 of 93) |
+  | 12 | chairs, from the right | 3pi/2 (88 of 93) |
+  | 14 | chairs, couches, benches, from the front | pi (123 of 153) |
+  | 15 | stools, gambling stools | |
+  | 16 | Lucky38TLPodchair | |
+  | 17 | floor sit, dance markers | pi |
+  | 18 | FFCaptiveMarker | |
+  | 19 | wall markers, welding | |
+  | 20 | couches (SubCouchDirty01F, VMS21NeroCouch, VCG01DocMitchellCouch), DanceMarker03 | |
+  | 22 | lean, blackboard, cook stove, push-ups | |
+
+  What a posRef value selects (animation, entry side) is inferred from these names, not
+  documented.
+
+**MNAM.** Bits set, by FURN count: 0 (163), 1 (95), 2 (40), 3 (14), 4 (10), 5 (6), 30 (144),
+31 (59); no others. Bit i of bits 0-5 enables NIF marker i: on 212 of the 233 FURN with a NIF,
+every set low bit indexes an existing marker, and the L / R / F variants of one chair NIF (Chair01L,
+Chair01R, Chair01F: bits 0, 1, 2) enable its left, right and front markers. On the other 21, bits
+are set beyond the NIF's markers (the benches' 0x1F over 3 markers; consoles and intercoms with
+bit 0 and no markers). Bits 30 and 31 are not markers; their meaning is unknown.
+`FurnitureBase.get_active_markers()` takes bits 0-23 as markers, which fits.
+
+**The couch and Doc's chair.**
+
+| Reference | FURN | NIF | MNAM | Enabled marker |
+|---|---|---|---|---|
+| DocMitchellCouchREF | VCG01DocMitchellCouch (0012429A) | Furniture\Suburban\SubCouchDirty01.NIF | 0x40000004 | 2: offset (-47.6, 71.9, -33.7), orientation pi, posRef 14 |
+| DocMitchellChairREF | SubChairDirtyF (0006B55D) | Furniture\Suburban\SubChairDirty01.NIF | 0x40000004 | 2: offset (-2.0, 62.8, -37.2), orientation pi, posRef 14 |
+
+The couch NIF has four markers: three front seats (posRef 14) and one posRef 20 at (-0.9, 194.7,
+0.0). VCG01DocMitchellCouch is a VCG01-specific FURN enabling only one seat. The chair NIF's
+markers are left (posRef 11), right (12) and front (14); SubChairDirtyF enables the front. Neither
+FURN has a script.
+
+**Result.** Using furniture means: pick a free enabled marker (an MNAM bit with a NIF marker
+behind it), take the marker's offset and orientation in the furniture's space, and play the
+animation its posRef names. The marker offsets lie beside or in front of the seat, about 35 units
+below the NIF origin; whether the actor stands there before the enter animation or ends there is
+not established, and is for stage F's animations to settle.
