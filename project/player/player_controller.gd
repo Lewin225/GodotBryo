@@ -129,6 +129,10 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export var race_menu: RaceMenu
 ## SPECIAL menu (ShowLoveTesterMenuParams, the vigor tester).
 @export var special_menu: SpecialMenu
+## Tag skills menu (SetTagSkills).
+@export var tag_skills_menu: TagSkillsMenu
+## Trait menu (ShowTraitMenu).
+@export var trait_menu: TraitMenu
 ## Conversation screen (DialogueServer conversations with the player).
 @export var dialogue_session: DialogueSession
 
@@ -787,18 +791,20 @@ func _connect_ui() -> void:
 	if unlock_session != null and not unlock_session.succeeded.is_connected(_on_unlock_succeeded):
 		unlock_session.succeeded.connect(_on_unlock_succeeded)
 		unlock_session.cancelled.connect(_on_unlock_cancelled)
-	for menu: CanvasLayer in [name_menu, race_menu, special_menu]:
+	for menu: CanvasLayer in [name_menu, race_menu, special_menu, tag_skills_menu, trait_menu]:
 		if menu != null and not menu.closed.is_connected(_on_script_menu_closed):
 			menu.closed.connect(_on_script_menu_closed)
 
 ## Opens the menu a script asked for (ScriptServer.menu_opener): the name,
-## race or SPECIAL menu for the possessed actor. False for a menu with no UI.
+## race, SPECIAL, tag skills or trait menu for the possessed actor. False for a menu with no UI.
 func _open_script_menu(menu_id: int, params: Dictionary = {}) -> bool:
 	var menu: CanvasLayer = null
 	match menu_id:
 		ScriptServer.MENU_TEXT_EDIT: menu = name_menu
 		ScriptServer.MENU_RACE: menu = race_menu
 		ScriptServer.MENU_LOVE_TESTER: menu = special_menu
+		ScriptServer.MENU_CHARGEN: menu = tag_skills_menu
+		ScriptServer.MENU_TRAITS: menu = trait_menu
 	if menu == null or possessed == null:
 		return false
 	menu.open(possessed, params)

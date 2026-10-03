@@ -73,8 +73,11 @@ console). The player's controller frees the mouse in menu mode and captures it o
 no screen sets the mouse mode itself.
 `open_menu(menu_id)` is how a script opens one (`GetPlayerName`/`ShowNameMenu` 1051,
 `ShowRaceMenu` 1036, `ShowLoveTesterMenuParams` 1074 with its points): the player's
-controller (`menu_opener`) shows `NameMenu`, `RaceMenu` or `SpecialMenu` (the vigor
-tester, which sets the SPECIAL as base actor values once every point is spent); with no UI (headless) the menu opens and closes at once, running the
+controller (`menu_opener`) shows `NameMenu`, `RaceMenu`, `SpecialMenu` (the vigor
+tester, which sets the SPECIAL as base actor values once every point is spent),
+`TagSkillsMenu` (`SetTagSkills total`, CharGen 1048) or `TraitMenu` (`ShowTraitMenu`,
+1084, up to `iTraitMenuMaxNumTraits`); the last two are placeholders that set nothing, as
+tag skills and traits are not stored yet; with no UI (headless) the menu opens and closes at once, running the
 `MenuMode` blocks that accept it once. The `MenuMode [type]` function is 1 for any open
 menu, a specific open menu, or group 2 (any menu but the "main four", none of which exist
 yet); group 1 is always 0. `SexChange` sets the ACBS Female flag of the actor's NPC_.

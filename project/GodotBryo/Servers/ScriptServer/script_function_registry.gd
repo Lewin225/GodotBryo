@@ -457,6 +457,20 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_LOVE_TESTER, {"points": int(_number(a, 0))})
 		return 0)
+	# `SetTagSkills total [showInitialTaggedSkills]` opens the CharGen menu
+	# (1048) at its Skills page; the player chooses until `total` skills are
+	# tagged (GECK wiki). No skill is tagged yet, so that is `total` choices;
+	# showInitialTaggedSkills (default 1) only hides existing tags, and is
+	# ignored.
+	register("SetTagSkills", func(a: Array, _c):
+		if script_server != null:
+			script_server.open_menu(script_server.MENU_CHARGEN, {"count": int(_number(a, 0)) if a.size() > 0 else 3})
+		return 0)
+	# `ShowTraitMenu` opens the trait menu (1084, Character Creation Traits).
+	register("ShowTraitMenu", func(_a, _c):
+		if script_server != null:
+			script_server.open_menu(script_server.MENU_TRAITS)
+		return 0)
 	# `ShowRaceMenu` opens the race menu (1036).
 	register("ShowRaceMenu", func(_a: Array, _c):
 		if script_server != null:

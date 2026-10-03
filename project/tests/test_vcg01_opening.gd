@@ -141,6 +141,21 @@ func _ready() -> void:
 	check(quests.is_stage_done(vcg01, 85) and dialogue.get_conversation_speaker() == null and not script_server.is_menu_mode(),
 			"%d choices later the test sets stage 85 and the Goodbye line ends the conversation" % picks)
 
+	# From 85 the quest timer runs the tag skills menu (90), Doc's trait intro
+	# (95), the trait menu (102) and his farewell line (105), which sets 110.
+	# With no UI the menus open and close at once.
+	var later: Array[int] = []
+	waited = 0.0
+	while waited < 120.0 and quests.get_stage(vcg01) < 110:
+		_step(script_server, quests, dialogue)
+		waited += STEP
+		if later.is_empty() or later.back() != quests.get_stage(vcg01):
+			later.append(quests.get_stage(vcg01))
+	check(later == [85, 90, 95, 98, 100, 102, 105, 110], "the timer and Doc's lines go 85 to 110: %s (%.1f s)" % [later, waited])
+	check(not script_server.is_player_control_enabled(script_server.CONTROL_FIGHTING) and script_server.is_player_control_enabled(script_server.CONTROL_MOVEMENT),
+			"110 leaves movement enabled and fighting disabled")
+	script_server.enable_player_controls(0x7F)
+
 	var path: String = dialogue.voice_path(intro.infos[0], 0, doc)
 	check(path == "sound\\voice\\falloutnv.esm\\maleuniquedocmitchell\\vcg01_vcg01intro_00104bee_1.ogg", "a line's voice file is %s" % path)
 	var duration: float = dialogue.response_duration(intro.infos[0], 0, doc)

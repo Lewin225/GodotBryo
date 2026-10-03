@@ -8,6 +8,8 @@ extends Node
 const NAME_MENU := preload("res://name_menu.tscn")
 const RACE_MENU := preload("res://race_menu.tscn")
 const SPECIAL_MENU := preload("res://special_menu.tscn")
+const TAG_SKILLS_MENU := preload("res://tag_skills_menu.tscn")
+const TRAIT_MENU := preload("res://trait_menu.tscn")
 
 var failures := 0
 
@@ -110,6 +112,29 @@ func _ready() -> void:
 	special_menu.queue_free()
 	script_server.run_debug_line("ShowLoveTesterMenuParams 40")
 	check(not script_server.is_menu_mode(), "with no UI, ShowLoveTesterMenuParams opens and closes menu 1074 at once")
+
+	# The tag skills menu closes once exactly the asked-for count is chosen.
+	var tag_menu: TagSkillsMenu = TAG_SKILLS_MENU.instantiate()
+	add_child(tag_menu)
+	tag_menu.open(player, {"count": 3})
+	tag_menu.set_chosen(0, true)
+	tag_menu.set_chosen(3, true)
+	tag_menu.accept()
+	var open_with_two: bool = tag_menu.visible and script_server.get_menu() == script_server.MENU_CHARGEN
+	tag_menu.set_chosen(12, true)
+	check(open_with_two and tag_menu.chosen() == [ActorValue.BARTER, ActorValue.GUNS, ActorValue.UNARMED],
+			"the tag skills menu is 1048 and stays open with 2 of 3 chosen")
+	tag_menu.accept()
+	check(not tag_menu.visible and not script_server.is_menu_mode(), "with 3 it closes")
+	tag_menu.queue_free()
+	var trait_menu: TraitMenu = TRAIT_MENU.instantiate()
+	add_child(trait_menu)
+	trait_menu.open(player)
+	var trait_menu_id: int = script_server.get_menu()
+	trait_menu.accept()
+	check(trait_menu_id == script_server.MENU_TRAITS and not script_server.is_menu_mode() and trait_menu.max_traits() == 2,
+			"the trait menu is 1084, allows iTraitMenuMaxNumTraits (2) and Done closes it (%d)" % trait_menu.max_traits())
+	trait_menu.queue_free()
 
 	# SexChange changes the NPC_ too.
 	script_server.run_debug_line("player.SexChange Male 1")

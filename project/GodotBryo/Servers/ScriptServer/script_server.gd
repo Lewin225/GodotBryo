@@ -38,6 +38,8 @@ const MENU_TEXT_EDIT := 1051
 const MENU_HACKING := 1055
 const MENU_COMPUTERS := 1057
 const MENU_LOVE_TESTER := 1074
+const MENU_CHARGEN := 1048
+const MENU_TRAITS := 1084
 
 ## A queued move was applied to `reference`.
 signal reference_teleported(reference: EsmReference, old_space_form_id: int, new_space_form_id: int)
