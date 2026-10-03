@@ -14,8 +14,10 @@ the door.
   the state every actor has: inventory, actor values, use state, package state, health, alive.
   `NpcReference` (ACHR) and `CreatureReference` (ACRE) extend it. Today's `ActorReference` is the
   NPC one and becomes `NpcReference`.
-- **Bases.** `NpcBase` and `CreatureBase` stay separate: their fields differ and their ACBS flags
-  differ. A shared parent only if stage A finds enough shared fields.
+- **Bases.** An abstract `ActorBase` holds the 20 subrecords NPC_ and CREA share with the same
+  meaning (census A1). `NpcBase` and `CreatureBase` extend it, each reading its own DATA, RNAM,
+  PNAM, CNAM, NAM5 and LNAM (same signatures, different meanings) and its own-type subrecords,
+  and naming the ACBS flags its own way.
 - **One actor node** renders NPCs and creatures: skeleton (`MODL`), skinned parts bound to it,
   animation. Parts come from RACE for an NPC_ and from `NIFZ` (relative to `MODL`'s folder,
   through `TPLT` when templated) for a CREA. A humanoid layer adds head, hair, eyes and worn

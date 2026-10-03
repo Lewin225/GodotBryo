@@ -102,3 +102,53 @@ each type reads its own DATA, RNAM, PNAM, CNAM, NAM5 and LNAM.
   (`animation_filenames`, `animation_paths`); none of its fields carries a description.
 - The earlier note that CREA RNAM is an impact data set is wrong: CREA RNAM is Attack Reach; the
   impact data set is CREA CNAM.
+
+## A2. Code callers
+
+Every use of `ActorReference` and `CreatureReference` in `project/` outside `old/` and
+`addons/` (107 lines, 29 files), plus the base-type checks that stand for "an actor". After stage
+B, `ActorReference` is the abstract actor; today's `ActorReference` is the NPC.
+
+**Any actor: stays `ActorReference`.** A pair `is ActorReference or is CreatureReference`
+becomes one `is ActorReference`.
+
+| Where | Use |
+|---|---|
+| `script_server.gd:264` | disabled actors' scripts do not run (pair) |
+| `script_server.gd:331, 357` | `begin_use` / `end_use` cast the user to `ActorReference`; a creature user fails the cast today |
+| `esm_server.gd:623-626` | `spawn_cell_form_id`, `simulation_mode` set on placement |
+| `esm_server.gd:682, 717` | actor values and inventory created (pairs) |
+| `esm_primitive_volume.gd:78` | trigger occupants are actors (pair) |
+| `esm_reference.gd:124` (`used_by`), `furniture_reference.gd:11` (`occupants`) | who uses a reference |
+| `world_streamer_v2.gd:541-542` | actors are excluded from a tile's static set (pair) |
+| `player_controller.gd:739, 747` | the possessed actor |
+| `special_menu.gd`, `tag_skills_menu.gd`, `trait_menu.gd` | actor values; nothing NPC-specific |
+| `nav_npc_simulation_server.gd` (24 lines), `nav_simulation_viewer.gd` (5) | index, ground, route, check-out and check-in |
+| `esm_server.gd:440-452, 499-504` | `get_all_placed_actor_references()` and its batch feed the simulation server, but from `get_all_placed_npc_actors()` (ACHR only); widening it to ACRE is what makes the server generic |
+
+**NPC only: becomes `NpcReference`.**
+
+| Where | Use |
+|---|---|
+| `esm_server.gd:28` | `TYPE_TO_REFERENCE["NPC_"]` |
+| `esm_server.gd:67, 312-316` | the player's reference (base 0x7, an NPC_) |
+| `esm_server.gd:752` | `equip_default_armor()` on the new inventory: worn equipment is humanoid |
+| `name_menu.gd`, `race_menu.gd` | write the NPC_'s FULL and Female flag |
+| `esm_humanoid_actor.gd:913, 1288, 1296` | the humanoid node's reference; becomes the humanoid layer in stage C |
+| `esm_reference_physicaliser.gd:71` | NPCs to the humanoid node; actors to the actor node after stage C |
+
+**Both kept apart.** `cell_streamer_v2.gd:241-243` and `world_streamer_v2.gd:523-525` choose by
+the `SPAWN_ACHR` / `SPAWN_CREA` flags: `NpcReference` and `CreatureReference`.
+
+**Bases.** Five places reach the stats by `record.get("actor_stats")` duck typing because no
+shared base type exists: `actor_stats.gd:26, 30`, `actor_values.gd:94`,
+`script_function_registry.gd:668`, `dialogue_server.gd:375`. With `ActorBase` they type it.
+`SexChange`, `GetIsSex` and `race_menu.gd` use `NpcBase` and stay NPC only.
+
+**Tests.** 13 test files name `ActorReference`; each follows its subject's class above (the
+player and Doc become `NpcReference`, `test_actor_values.gd`'s creature Rex stays
+`CreatureReference`, `ActorReference.new()` in tests becomes the concrete type).
+
+**Result.** Of the non-test uses, most mean any actor; the NPC-only ones are the NPC_ mapping,
+the player, worn equipment, the name and race menus and the humanoid node. Two places silently
+exclude creatures today: `begin_use` / `end_use`, and the simulation server's seed list.
