@@ -7,7 +7,7 @@ extends Node
 
 const OUTPUT := "../Plans/Completed Plans/Conditions/coverage.md"
 ## Record types whose conditions are evaluated today.
-const EVALUATED := ["QUST", "TERM", "MESG"]
+const EVALUATED := ["QUST", "TERM", "MESG", "INFO"]
 const COMPARISONS := ["==", "!=", ">", ">=", "<", "<="]
 
 func _ready() -> void:

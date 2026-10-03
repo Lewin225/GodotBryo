@@ -5,7 +5,7 @@ Chooses what actors say and holds dialogue state. Autoloaded singleton `Dialogue
 Topics (DIAL) and their INFOs are authored resources, `DialogueTopicBase` and
 `DialogueInfoBase`, from `EsmServer`. This server holds only runtime state: which actor has
 said which INFO, which actors have talked to the player, and the player's added topics.
-The design and its sources are in `Plans/Dialogue/dialogue.md`.
+The design and its sources are in `Plans/Completed Plans/Dialogue/dialogue.md`.
 
 ---
 

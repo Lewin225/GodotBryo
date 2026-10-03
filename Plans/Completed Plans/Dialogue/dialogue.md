@@ -1,6 +1,7 @@
 # Dialogue (DIAL / INFO)
 
-**Status: stages A-D done; voice plays non-positionally.**
+**Status: complete. Stages A-F done; voice plays non-positionally. Work that needs actors moved
+to the actor refactor (see "Carried forward").**
 
 Parse DIAL topics and their INFO responses into typed resources, choose the INFO an actor says
 through the condition evaluator, and run its result scripts. Two consumers: scripted speech
@@ -212,10 +213,30 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 |---|---|---|
 | A. Resources | `DialogueTopicBase`, `DialogueInfoBase`, `DialogueResponse`; the topic → INFO order from the record index; NPC_/CREA VTCK and TACT VNAM; QUST DATA flags; `dialogue_census.cpp` extended with a voice-file census (every response's path, from its speaker's voice types). | `test_esm_server` asserts the census totals (topics, INFOs, responses, conditions, scripts, links) field for field against the raw subrecords; the voice census resolves every VCG01 response. |
 | B. Choosing (done) | `DialogueServer.choose_info()`: quest running, quest conditions, quest priority, per-speaker Say Once, ANAM, Random sets; GetIsVoiceType, GetIsSex, GetInFaction, GetTalkedToPC. `QuestServer.set_stage()` runs a stage once unless its quest allows repeated stages. | VCG01Intro yields its 15 INFOs in file order as each is said; VCG01DocReactions picks by SPECIAL and the player's sex; Doc's GREETING is VCG01's while VCG01 runs; a Say Once INFO said by one actor is still available to another; a repeated SetStage on a quest without the flag does nothing. |
-| C. Scripted speech (done; play check pending) | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
+| C. Scripted speech (done) | `DialogueLine`; SayTo, Say; `SayToDone` blocks; HUD subtitles; response durations from voice files; GetPlayerName and ShowRaceMenu complete at once. | A headless test steps a new game from VCG01's start through to stage 55; a play check shows the subtitles. |
 | D. Conversation (done; couch trigger needs furniture and AI packages) | `DialogueSession`: activating an actor, GREETING, Link To choices, topic list, prompts, Goodbye; StartConversation, AddTopic. | A test sets `VCG01.bGiveTest` and calls `DocMitchellREF.StartConversation Player`, and choosing through the Rorschach test reaches stage 85; in play, talking to Doc opens his GREETING. The trigger's own start needs Doc sitting in his chair, which waits for AI packages. |
-| E. Voice | Play each response's `.ogg` at the speaker. Non-positional playback, loaded on worker threads, landed with stage C. | Doc Mitchell's opening is heard in play. |
-| F. Coverage | Re-run `diag_condition_coverage` with INFO evaluated today; list the next functions. | Nothing to pass. |
+| E. Voice (done, non-positional) | Play each response's `.ogg`. Non-positional playback, loaded on worker threads, landed with stage C; playing it at the speaker needs the actor node. | Doc Mitchell's opening is heard in play. |
+| F. Coverage (done) | Re-run `diag_condition_coverage` with INFO evaluated today; list the next functions. | Nothing to pass. |
+
+**Stage F results.** `Plans/Completed Plans/Conditions/coverage.md`, regenerated with INFO
+evaluated: 94.5% of INFO's 59,664 CTDAs use an implemented function (3,284 do not, 1,232 of those
+pass anyway at 0). Next by use in QUST, TERM, MESG and INFO: GetReputationThreshold (1,583),
+GetDead (431), GetDeadCount (380), GetPCIsSex (176), IsChild (156), IsInCombat (130), HasPerk
+(123), IsActorTalkingThroughActivator (91), GetHasNote (84), PlayerInRegion (70).
+
+## Carried forward
+
+To the actor refactor (one actor node for NPCs and creatures, then furniture and AI packages):
+
+- Voice played at the speaker, positionally.
+- The couch trigger (SCPT 001055B4): the player sitting on `DocMitchellCouchREF`
+  (`IsCurrentFurnitureRef`), and Doc in his chair (`bDocInChair`). Until then, at stage 80:
+  `SetObjectiveCompleted VCG01 40 1`, `set VCG01.bGiveTest to 1`,
+  `DocMitchellREF.StartConversation Player`.
+- Stage 110 onward: Doc walking to the exit (`evp`) and his force-greet at the door (PACK
+  00105BD1); until then, after the exit trigger sets 115, `DocMitchellREF.StartConversation
+  Player`.
+- `PlayIdle` (IDLE records), `Look` / `StopLook`.
 
 ## Unverified
 
@@ -241,4 +262,5 @@ Each stage has a gate; a later stage does not start on an unmet gate.
   2, 4, 6), which need AI; radio (type 7).
 - Speakers walking to their target for StartConversation, and Doc reaching his chair, which need
   AI packages.
-- The name and race menus, which stage C completes at once.
+- What the name, race, SPECIAL, tag skill and trait menus choose beyond the NPC_ name and sex and
+  the SPECIAL: they are placeholders, and tag skills and traits are not stored.

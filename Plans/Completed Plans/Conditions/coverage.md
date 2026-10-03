@@ -11,14 +11,14 @@ counted apart, as the global's value decides.
 
 | Type | CTDAs | Implemented | Unimplemented | Unimplemented, pass at 0 | Evaluated today |
 |---|---|---|---|---|---|
-| INFO | 59664 | 35636 (59.7%) | 24028 | 17516 | no |
-| PACK | 2992 | 2733 (91.3%) | 259 | 166 | no |
-| IDLE | 1798 | 607 (33.8%) | 1191 | 378 | no |
-| QUST | 1501 | 983 (65.5%) | 518 | 241 | yes |
+| INFO | 59664 | 56380 (94.5%) | 3284 | 1232 | yes |
+| PACK | 2992 | 2775 (92.7%) | 217 | 138 | no |
+| IDLE | 1798 | 656 (36.5%) | 1142 | 372 | no |
+| QUST | 1501 | 1199 (79.9%) | 302 | 234 | yes |
 | CPTH | 593 | 152 (25.6%) | 441 | 89 | no |
-| TERM | 405 | 306 (75.6%) | 99 | 26 | yes |
+| TERM | 405 | 361 (89.1%) | 44 | 26 | yes |
 | ALCH | 341 | 11 (3.2%) | 330 | 84 | no |
-| PERK | 260 | 119 (45.8%) | 141 | 25 | no |
+| PERK | 260 | 131 (50.4%) | 129 | 24 | no |
 | MESG | 259 | 197 (76.1%) | 62 | 4 | yes |
 | SPEL | 84 | 52 (61.9%) | 32 | 7 | no |
 | ENCH | 82 | 61 (74.4%) | 21 | 6 | no |
@@ -26,39 +26,65 @@ counted apart, as the global's value decides.
 
 ## Next to implement
 
-Unimplemented functions used by the record types evaluated today (QUST, TERM, MESG), by use there.
+Unimplemented functions used by the record types evaluated today (QUST, TERM, MESG, INFO), by use there.
 
-| Function | Index | Uses in QUST/TERM/MESG | All uses |
+| Function | Index | Uses in QUST/TERM/MESG/INFO | All uses |
 |---|---|---|---|
-| GetIsVoiceType | 427 | 149 | 16982 |
-| GetDead | 46 | 114 | 521 |
-| GetDeadCount | 84 | 92 | 391 |
-| GetInFaction | 71 | 66 | 3535 |
-| PlayerInRegion | 612 | 66 | 74 |
-| GetFactionRank | 73 | 55 | 64 |
+| GetReputationThreshold | 575 | 1583 | 1598 |
+| GetDead | 46 | 431 | 521 |
+| GetDeadCount | 84 | 380 | 391 |
+| GetPCIsSex | 131 | 176 | 176 |
+| IsChild | 365 | 156 | 201 |
+| IsInCombat | 289 | 130 | 198 |
+| HasPerk | 449 | 123 | 306 |
+| IsActorTalkingThroughActivator | 430 | 91 | 91 |
+| GetHasNote | 382 | 84 | 95 |
+| PlayerInRegion | 612 | 70 | 74 |
+| GetGroupMemberCount | 416 | 63 | 63 |
+| GetIsCreature | 64 | 53 | 57 |
 | GetUnconscious | 242 | 35 | 76 |
-| GetHasNote | 382 | 33 | 95 |
-| GetReputationThreshold | 575 | 18 | 1598 |
+| IsInList | 372 | 33 | 45 |
+| GetIsRace | 69 | 32 | 36 |
+| GetTrespassWarningLevel | 144 | 26 | 26 |
+| GetCasinoWinningStage | 610 | 25 | 25 |
+| Exists | 415 | 19 | 19 |
 | GetInCellParam | 230 | 18 | 18 |
+| GetMapMarkerVisible | 492 | 17 | 17 |
+| GetHitLocation | 391 | 15 | 298 |
+| IsOwner | 278 | 14 | 18 |
+| GetDisposition | 76 | 14 | 15 |
+| GetReputation | 573 | 14 | 14 |
+| GetWeaponAnimType | 108 | 11 | 44 |
+| GetFriendHit | 288 | 9 | 9 |
 | GetDestructionStage | 471 | 9 | 9 |
+| IsInInterior | 300 | 8 | 20 |
+| GetCurrentAIPackage | 110 | 8 | 15 |
 | GetDayOfWeek | 170 | 6 | 11 |
-| GetMapMarkerVisible | 492 | 5 | 17 |
+| GetFactionRelation | 450 | 6 | 11 |
+| GetIsCurrentPackage | 161 | 5 | 5 |
 | GetPos | 6 | 4 | 4 |
-| IsInInterior | 300 | 3 | 20 |
-| IsChild | 365 | 2 | 201 |
-| GetTalkedToPC | 50 | 1 | 116 |
-| IsInList | 372 | 1 | 45 |
+| GetIsAlignment | 474 | 3 | 3 |
+| IsSpellTarget | 223 | 3 | 3 |
+| GetIsClass | 68 | 3 | 10 |
+| GetMajorCrimeCount | 117 | 2 | 2 |
+| GetGroupTargetCount | 417 | 2 | 2 |
+| GetPlayerTeammate | 454 | 2 | 2 |
+| GetFactionRankDifference | 60 | 2 | 2 |
+| GetIsCreatureType | 438 | 2 | 42 |
 | GetDestroyed | 203 | 1 | 3 |
+| GetSitting | 159 | 1 | 68 |
 | GetLockLevel | 65 | 1 | 1 |
+| GetCauseofDeath | 397 | 1 | 1 |
+| IsCombatTarget | 515 | 1 | 1 |
 
 ## Every function
 
 | Function | Index | Uses | Implemented | Pass at 0 | Global compared | By type |
 |---|---|---|---|---|---|---|
 | GetIsID | 72 | 18677 | yes |  |  | INFO 18568, PACK 12, IDLE 34, QUST 26, TERM 1, ALCH 6, PERK 18, MESG 4, SPEL 1, ENCH 7 |
-| GetIsVoiceType | 427 | 16982 | no | 15946 | 0 | INFO 16833, QUST 149 |
+| GetIsVoiceType | 427 | 16982 | yes |  |  | INFO 16833, QUST 149 |
 | GetQuestVariable | 79 | 9444 | yes |  |  | INFO 7780, PACK 1231, IDLE 2, QUST 173, TERM 198, MESG 60 |
-| GetInFaction | 71 | 3535 | no | 282 | 0 | INFO 3464, IDLE 3, QUST 66, PERK 2 |
+| GetInFaction | 71 | 3535 | yes |  |  | INFO 3464, IDLE 3, QUST 66, PERK 2 |
 | GetGlobalValue | 74 | 2844 | yes |  |  | INFO 2792, PACK 30, IDLE 2, QUST 4, CPTH 3, MESG 5, SPEL 8 |
 | GetReputationThreshold | 575 | 1598 | no | 513 | 7 | INFO 1565, PACK 15, QUST 1, MESG 17 |
 | GetActorValue | 14 | 1576 | yes |  |  | INFO 1264, PACK 37, IDLE 162, TERM 36, MESG 41, SPEL 35, ENCH 1 |
@@ -70,7 +96,7 @@ Unimplemented functions used by the record types evaluated today (QUST, TERM, ME
 | GetObjectiveDisplayed | 421 | 792 | yes |  |  | INFO 745, PACK 28, QUST 7, TERM 3, MESG 9 |
 | GetRandomPercent | 77 | 564 | yes |  |  | INFO 9, PACK 64, IDLE 356, QUST 1, CPTH 134 |
 | GetDead | 46 | 521 | no | 363 | 0 | INFO 317, PACK 84, QUST 111, TERM 1, PERK 5, MESG 2, ENCH 1 |
-| GetIsSex | 70 | 410 | no | 8 | 0 | INFO 370, IDLE 30, PERK 10 |
+| GetIsSex | 70 | 410 | yes |  |  | INFO 370, IDLE 30, PERK 10 |
 | GetDeadCount | 84 | 391 | no | 224 | 0 | INFO 288, PACK 11, QUST 92 |
 | GetStageDone | 59 | 384 | yes |  |  | INFO 300, PACK 82, IDLE 1, MESG 1 |
 | GetQuestCompleted | 546 | 353 | yes |  |  | INFO 324, PACK 28, TERM 1 |
@@ -87,7 +113,7 @@ Unimplemented functions used by the record types evaluated today (QUST, TERM, ME
 | GetQuestRunning | 56 | 161 | yes |  |  | INFO 123, PACK 29, QUST 3, TERM 3, MESG 3 |
 | GetDistance | 1 | 129 | yes |  |  | INFO 12, PACK 103, CPTH 14 |
 | GetCurrentTime | 18 | 126 | yes |  |  | INFO 34, PACK 88, IDLE 4 |
-| GetTalkedToPC | 50 | 116 | no | 88 | 0 | INFO 73, PACK 42, QUST 1 |
+| GetTalkedToPC | 50 | 116 | yes |  |  | INFO 73, PACK 42, QUST 1 |
 | GetHealthPercentage | 431 | 116 | yes |  |  | INFO 114, SPEL 2 |
 | GetDisabled | 35 | 109 | yes |  |  | INFO 6, PACK 9, QUST 94 |
 | GetPermanentActorValue | 495 | 101 | yes |  |  | INFO 2, PERK 99 |
@@ -99,7 +125,7 @@ Unimplemented functions used by the record types evaluated today (QUST, TERM, ME
 | GetVATSRightTargetVisible | 525 | 75 | no | 0 | 0 | CPTH 75 |
 | PlayerInRegion | 612 | 74 | no | 20 | 0 | INFO 4, PACK 4, QUST 52, MESG 14 |
 | GetSitting | 159 | 68 | no | 11 | 0 | INFO 1, PACK 2, IDLE 65 |
-| GetFactionRank | 73 | 64 | no | 0 | 0 | INFO 4, IDLE 5, TERM 55 |
+| GetFactionRank | 73 | 64 | yes |  |  | INFO 4, IDLE 5, TERM 55 |
 | GetGroupMemberCount | 416 | 63 | no | 0 | 0 | INFO 63 |
 | GetCurrentAIProcedure | 143 | 58 | no | 16 | 0 | IDLE 58 |
 | GetIsCreature | 64 | 57 | no | 57 | 0 | INFO 53, PERK 3, ENCH 1 |
@@ -139,7 +165,7 @@ Unimplemented functions used by the record types evaluated today (QUST, TERM, ME
 | GetReputation | 573 | 14 | no | 6 | 0 | INFO 14 |
 | GetLevel | 80 | 13 | yes |  |  | INFO 9, PERK 1, SPEL 3 |
 | IsWeaponInList | 399 | 13 | no | 5 | 0 | IDLE 5, ALCH 4, PERK 4 |
-| MenuMode | 36 | 11 | no | 2 | 0 | IDLE 11 |
+| MenuMode | 36 | 11 | yes |  |  | IDLE 11 |
 | GetDayOfWeek | 170 | 11 | no | 2 | 0 | PACK 5, TERM 6 |
 | GetFactionRelation | 450 | 11 | no | 4 | 0 | INFO 6, PACK 5 |
 | GetAttacked | 63 | 10 | no | 0 | 0 | IDLE 10 |
