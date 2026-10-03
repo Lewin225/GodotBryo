@@ -145,7 +145,7 @@ shared base type exists: `actor_stats.gd:26, 30`, `actor_values.gd:94`,
 `script_function_registry.gd:668`, `dialogue_server.gd:375`. With `ActorBase` they type it.
 `SexChange`, `GetIsSex` and `race_menu.gd` use `NpcBase` and stay NPC only.
 
-**Tests.** 13 test files name `ActorReference`; each follows its subject's class above (the
+**Tests.** 11 test files name `ActorReference`; each follows its subject's class above (the
 player and Doc become `NpcReference`, `test_actor_values.gd`'s creature Rex stays
 `CreatureReference`, `ActorReference.new()` in tests becomes the concrete type).
 
