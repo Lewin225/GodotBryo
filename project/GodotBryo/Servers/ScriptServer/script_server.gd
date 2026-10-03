@@ -37,6 +37,7 @@ const MENU_RACE := 1036
 const MENU_TEXT_EDIT := 1051
 const MENU_HACKING := 1055
 const MENU_COMPUTERS := 1057
+const MENU_LOVE_TESTER := 1074
 
 ## A queued move was applied to `reference`.
 signal reference_teleported(reference: EsmReference, old_space_form_id: int, new_space_form_id: int)
@@ -62,9 +63,10 @@ var function_registry := ScriptFunctionRegistry.new()
 ## Seconds of game time, advanced by _process: the clock GetSecondsPassed
 ## measures between a script's runs.
 var clock := 0.0
-## Opens the UI for a menu a script asks for (GetPlayerName, ShowRaceMenu):
-## called with the menu ID, returns true when a UI opened it; that UI then
-## calls enter_menu and exit_menu. Set by the player's controller.
+## Opens the UI for a menu a script asks for (GetPlayerName, ShowRaceMenu,
+## ShowLoveTesterMenuParams): called with the menu ID and its parameters,
+## returns true when a UI opened it; that UI then calls enter_menu and
+## exit_menu. Set by the player's controller.
 var menu_opener: Callable
 var _open_menus: Array[int] = [] # menus open, most recent last
 ## The player controls scripts have disabled (CONTROL_* flags, in
@@ -412,12 +414,13 @@ func run_quest_block(quest: EsmBase, block_type: String, subject: Variant = null
 	_start_run(ctx)
 	return interpreter.run_block(block_type, ctx, subject)
 
-## A script opens menu `menu_id` (GetPlayerName: 1051, ShowRaceMenu: 1036).
-## The player's UI opens it through `menu_opener`; with no UI for it (headless,
-## or no player), the menu opens and closes at once, running the MenuMode
-## blocks that accept it once.
-func open_menu(menu_id: int) -> void:
-	if menu_opener.is_valid() and menu_opener.call(menu_id):
+## A script opens menu `menu_id` (GetPlayerName: 1051, ShowRaceMenu: 1036,
+## ShowLoveTesterMenuParams: 1074, with {"points": n}). The player's UI opens
+## it through `menu_opener`; with no UI for it (headless, or no player), the
+## menu opens and closes at once, running the MenuMode blocks that accept it
+## once.
+func open_menu(menu_id: int, params: Dictionary = {}) -> void:
+	if menu_opener.is_valid() and menu_opener.call(menu_id, params):
 		return
 	enter_menu(menu_id)
 	run_menu_mode_blocks()

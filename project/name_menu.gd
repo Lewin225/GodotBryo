@@ -19,7 +19,7 @@ func _ready() -> void:
 	_name.text_submitted.connect(func(_text: String) -> void: accept())
 
 ## Shows the menu for `actor`, its current name filled in.
-func open(actor: ActorReference) -> void:
+func open(actor: ActorReference, _params: Dictionary = {}) -> void:
 	_actor = actor
 	_name.text = actor.base.full_name if actor != null and actor.base != null else ""
 	visible = true

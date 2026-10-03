@@ -7,6 +7,7 @@ extends Node
 
 const NAME_MENU := preload("res://name_menu.tscn")
 const RACE_MENU := preload("res://race_menu.tscn")
+const SPECIAL_MENU := preload("res://special_menu.tscn")
 
 var failures := 0
 
@@ -90,6 +91,25 @@ func _ready() -> void:
 	race_menu.accept()
 	check(player_base.is_female() and registry.call_function("GetIsSex", ["Female"], ScriptExecutionContext.new(player)) == 1,
 			"choosing Female sets the player NPC_'s ACBS Female flag; GetIsSex Female is 1")
+
+	# The vigor tester's SPECIAL menu: 40 points over the player's 5s leaves 5.
+	var values := player.get_actor_values()
+	var authored_luck := values.get_base(ActorValue.LUCK)
+	var special_menu: SpecialMenu = SPECIAL_MENU.instantiate()
+	add_child(special_menu)
+	special_menu.open(player, {"points": 40})
+	check(script_server.get_menu() == script_server.MENU_LOVE_TESTER and special_menu.remaining() == 5,
+			"the SPECIAL menu is 1074 with 5 of 40 points left (%d)" % special_menu.remaining())
+	special_menu.accept()
+	check(special_menu.visible, "it does not close with points left")
+	special_menu.set_attribute(6, 10)
+	special_menu.accept()
+	check(not special_menu.visible and values.get_base(ActorValue.LUCK) == 10.0 and not script_server.is_menu_mode(),
+			"spending them on Luck sets the player's base Luck to 10 and closes it")
+	values.set_base(ActorValue.LUCK, authored_luck)
+	special_menu.queue_free()
+	script_server.run_debug_line("ShowLoveTesterMenuParams 40")
+	check(not script_server.is_menu_mode(), "with no UI, ShowLoveTesterMenuParams opens and closes menu 1074 at once")
 
 	# SexChange changes the NPC_ too.
 	script_server.run_debug_line("player.SexChange Male 1")

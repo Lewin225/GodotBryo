@@ -19,7 +19,7 @@ func _ready() -> void:
 	_done.pressed.connect(accept)
 
 ## Shows the menu for `actor`, its current sex selected.
-func open(actor: ActorReference) -> void:
+func open(actor: ActorReference, _params: Dictionary = {}) -> void:
 	_actor = actor
 	var female := actor != null and actor.base is NpcBase and (actor.base as NpcBase).is_female()
 	_female.button_pressed = female

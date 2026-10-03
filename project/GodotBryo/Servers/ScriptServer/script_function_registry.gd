@@ -444,6 +444,13 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_TEXT_EDIT)
 		return 0)
+	# `ShowLoveTesterMenuParams iPoints` opens the vigor tester's SPECIAL menu
+	# (1074, Love Tester): the player distributes iPoints SPECIAL points (40 is
+	# 5 in each and 5 to spend), per the GECK wiki through search summaries.
+	register("ShowLoveTesterMenuParams", func(a: Array, _c):
+		if script_server != null:
+			script_server.open_menu(script_server.MENU_LOVE_TESTER, {"points": int(_number(a, 0))})
+		return 0)
 	# `ShowRaceMenu` opens the race menu (1036).
 	register("ShowRaceMenu", func(_a: Array, _c):
 		if script_server != null:

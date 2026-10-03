@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" path="res://name_menu.tscn" id="23_namemenu"]
 [ext_resource type="PackedScene" path="res://race_menu.tscn" id="24_racemenu"]
 [ext_resource type="PackedScene" path="res://dialogue_session.tscn" id="25_dialoguesession"]
+[ext_resource type="PackedScene" path="res://special_menu.tscn" id="26_specialmenu"]
 [ext_resource type="Script" uid="uid://c3rd5bbtsv2p3" path="res://player/iso_cam_zoom_lerp_test.gd" id="61_p5tca"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
@@ -30,7 +31,7 @@ fill_to = Vector2(0.9230769, 0.16239317)
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
-[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "dialogue_session")]
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "dialogue_session", "special_menu")]
 script = ExtResource("1_controller")
 mouse_sensitivity = 0.002
 camera_aim_smooth_speed = 5.0
@@ -45,6 +46,7 @@ subtitle = NodePath("HUD/Subtitle")
 name_menu = NodePath("NameMenu")
 race_menu = NodePath("RaceMenu")
 dialogue_session = NodePath("DialogueSession")
+special_menu = NodePath("SpecialMenu")
 
 [node name="Isometric_Cam_Psuh" type="RemoteTransform3D" parent="." unique_id=1162310370]
 remote_path = NodePath("../Isometric_Cam_Root")
@@ -123,7 +125,7 @@ label_settings = SubResource("LabelSettings_yw30f")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="QuestNotice" type="Label" parent="HUD"]
+[node name="QuestNotice" type="Label" parent="HUD" unique_id=935857463]
 visible = false
 anchors_preset = 5
 anchor_left = 0.5
@@ -133,7 +135,6 @@ offset_top = 48.0
 offset_right = 300.0
 offset_bottom = 80.0
 grow_horizontal = 2
-mouse_filter = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
@@ -142,7 +143,7 @@ text = "Quest Added"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Subtitle" type="Label" parent="HUD"]
+[node name="Subtitle" type="Label" parent="HUD" unique_id=705186508]
 visible = false
 anchors_preset = 7
 anchor_left = 0.5
@@ -155,7 +156,6 @@ offset_right = 420.0
 offset_bottom = -60.0
 grow_horizontal = 2
 grow_vertical = 0
-mouse_filter = 2
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
@@ -182,8 +182,10 @@ script = ExtResource("61_p5tca")
 
 [node name="UnlockSession" parent="." unique_id=1618015456 instance=ExtResource("22_unlocksession")]
 
-[node name="NameMenu" parent="." instance=ExtResource("23_namemenu")]
+[node name="NameMenu" parent="." unique_id=275822593 instance=ExtResource("23_namemenu")]
 
-[node name="RaceMenu" parent="." instance=ExtResource("24_racemenu")]
+[node name="RaceMenu" parent="." unique_id=806060508 instance=ExtResource("24_racemenu")]
 
-[node name="DialogueSession" parent="." instance=ExtResource("25_dialoguesession")]
+[node name="DialogueSession" parent="." unique_id=408794375 instance=ExtResource("25_dialoguesession")]
+
+[node name="SpecialMenu" parent="." instance=ExtResource("26_specialmenu")]
