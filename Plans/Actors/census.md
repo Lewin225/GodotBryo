@@ -210,21 +210,24 @@ The VCG01 Travel packages carry the idle NPCSmokingIdle. Top-to-bottom selection
 highest stage reached win. The force-greet at the door is 00105BD2 (a Dialogue package whose
 target is the player); 00105BD1 is the walk to the exit (its On End is commented out).
 
-**Sitting.** Doc reaches his chair by a Travel package to DocMitchellChairREF; nothing activates
-the chair. VCG01DocMitchellChairTriggerSCRIPT (SCPT 00105BCB) then expects
-`DocMitchellREF.IsCurrentFurnitureRef DocMitchellChairREF`, and its comment assumes "the chair
-as his current furniture reference". Across FalloutNV.esm, 232 packages put Location 1 near a
-placed FURN: Travel 111, Sleep 67, Eat 20, Use Item At 17, Dialogue 7, Sandbox 6, Patrol 4.
-Inferred, not documented: an actor whose package destination is a furniture reference uses it on
-arrival. The GECK's Travel Package page says only that the actor stops at the edge of the
-destination radius.
+**Furniture use.** Travel and Use Item At packages both make an actor use furniture; a Travel
+package does so when its destination is a furniture reference with radius 0 (rule given by the
+user; not in the GECK's Travel Package page). Doc reaches his chair this way: his Travel package
+targets DocMitchellChairREF with radius 0, nothing activates the chair, and
+VCG01DocMitchellChairTriggerSCRIPT (SCPT 00105BCB) then expects
+`DocMitchellREF.IsCurrentFurnitureRef DocMitchellChairREF`.
+
+The data fits the rule: of the 111 Travel packages in FalloutNV.esm whose Location 1 is near a
+placed FURN, 110 have radius 0; the other, NVCCSleepSeverus (bedroll, radius 1024), would stop
+near the bedroll without using it. Use Item At: 17 to a placed FURN, 15 with radius 0. Other
+types with a FURN destination: Sleep 67, Eat 20, Dialogue 7, Sandbox 6, Patrol 4.
 
 **The player runs packages.** VCG00 and VCG01 add Travel packages to the player whose On Begin
 and On Change play the opening's idles: VCG00PlayerSection0-2 (NVOpenPlayerKnockedDown,
 nvopenplayercamidle, NVopenPlayerPickedUp) and VCG01PlayerSection0-2
 (LooseVCG01PlayerWakeup, Situp, Bedsit, Standup).
 
-**Result.** For the done-condition: Travel (including using furniture at the destination) and
+**Result.** For the done-condition: Travel (using the furniture at a radius-0 furniture destination) and
 Dialogue (force-greet with GREETING), selected top to bottom by condition, re-evaluated by
 `evp`. For Goodsprings generally: add Sandbox, Sleep and hour schedules. Guard, Flee Not Combat
 and Ambush only serve VMS16's gunfight. Package events (On Begin / End / Change: idle, topic,
