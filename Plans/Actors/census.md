@@ -152,3 +152,80 @@ player and Doc become `NpcReference`, `test_actor_values.gd`'s creature Rex stay
 **Result.** Of the non-test uses, most mean any actor; the NPC-only ones are the NPC_ mapping,
 the player, worn equipment, the name and race menus and the humanoid node. Two places silently
 exclude creatures today: `begin_use` / `end_use`, and the simulation server's seed list.
+
+## A3. Packages
+
+From `project/_diag/diag_package_census.tscn`. Population: the 21 ACHR filed in an interior CELL
+whose editor ID starts with "GS" (GSDocMitchellHouse, GSGasStation, GSGeneralStore,
+GSProspectorSaloonInterior), or placed in WastelandNV at grid x -19..-15, y -2..1 (the exterior
+cells holding the NPCs named for Goodsprings, padded by one). ACRE (creatures) are not in it.
+
+**Package sources.** PKID on the NPC_, or on its template when ACBS template flag 0x20 (Use AI
+Packages; xEdit `wbActorTemplateUseAIPackages`) is set: the six powder gangers GSPG02-06 take
+GSPGAAM's. Four saloon powder gangers (0015F316-0015F319) take theirs from LVLN
+VarGoodspringsPowderGanger, a leveled list, which `ActorStats.template_source` does not follow.
+Scripts add more with `AddScriptPackage` (1,141 calls in FalloutNV.esm; 12 distinct packages for
+this population and the player), and `RemoveScriptPackage` removes one (GSJoeCobbLeavePackage's
+On End).
+
+**Packages used: 56** on the population's NPC_ records, plus 12 script-added. By type, the 68:
+
+| Type | Packages |
+|---|---:|
+| Travel | 30 |
+| Sandbox | 10 |
+| Sleep | 10 |
+| Dialogue | 9 |
+| Guard | 4 |
+| Eat | 2 |
+| Flee Not Combat | 2 |
+| Ambush | 1 |
+
+Guard, Flee Not Combat and Ambush belong to VMS16's gunfight (conditions on VMS16 / VMS16b
+variables), as do the Travel packages GoodspringsMilitiaTravelPackage and GSPGTravelPackage and
+the script-added RingoTravelPackage and SunnyTravelPackage.
+
+**Selection.** Every package here has a schedule; those without an hour (-1) run at any time.
+Conditions use GetStage, GetStageDone, GetQuestCompleted, GetQuestVariable,
+GetObjectiveDisplayed and GetObjectiveCompleted, all implemented. Per the GECK's "How Are Packages
+Evaluated": the list is searched top to bottom and the first package whose schedule and
+conditions hold is selected; packages are re-evaluated about every 10 seconds, on
+`EvaluatePackage`, and when a package completes.
+
+**Doc Mitchell.** PKID, in order, with the condition that selects each:
+
+| Package | Type | Selected when | Location / target |
+|---|---|---|---|
+| GoodspringsMilitiaTravelPackage | Travel | VMS16b variable 1 == 1 | near 0015ED61 |
+| VCG01DocMitchellSandbox | Sandbox | VCG01 completed | near current location, radius 1024 |
+| VCG01DocMitchellFarewellDialogueStart (00105BD2) | Dialogue | VCG01 stage >= 115 | near VCG01DocMitchellExitMarkerREF; target the player, distance 420; no topic (GREETING) |
+| VCG01DocMitchellTravelToExit (00105BD1) | Travel | stage >= 110 | VCG01DocMitchellExitMarkerREF |
+| VCG01DocMitchellTravelToExamSpot | Travel | stage >= 80 | DocMitchellChairREF (FURN) |
+| VCG01DocMitchellTravelToSkullTestSpot | Travel | stage >= 76 | VCG01DocSkullTestMarkerREF; On End `DocMitchellREF.Look player` |
+| VCG01DocMitchellTravelToPlayerAtTester | Travel | stage >= 55 | VCG01DocMarkerFaceTesterREF |
+| VCG01DocMitchellBedsideStandingPackage | Travel | stage >= 40 | GSDocMitchellBesideMarker |
+| VCG01DocMitchellFirstPosition | Travel | always | 001059B0 |
+
+The VCG01 Travel packages carry the idle NPCSmokingIdle. Top-to-bottom selection makes the
+highest stage reached win. The force-greet at the door is 00105BD2 (a Dialogue package whose
+target is the player); 00105BD1 is the walk to the exit (its On End is commented out).
+
+**Sitting.** Doc reaches his chair by a Travel package to DocMitchellChairREF; nothing activates
+the chair. VCG01DocMitchellChairTriggerSCRIPT (SCPT 00105BCB) then expects
+`DocMitchellREF.IsCurrentFurnitureRef DocMitchellChairREF`, and its comment assumes "the chair
+as his current furniture reference". Across FalloutNV.esm, 232 packages put Location 1 near a
+placed FURN: Travel 111, Sleep 67, Eat 20, Use Item At 17, Dialogue 7, Sandbox 6, Patrol 4.
+Inferred, not documented: an actor whose package destination is a furniture reference uses it on
+arrival. The GECK's Travel Package page says only that the actor stops at the edge of the
+destination radius.
+
+**The player runs packages.** VCG00 and VCG01 add Travel packages to the player whose On Begin
+and On Change play the opening's idles: VCG00PlayerSection0-2 (NVOpenPlayerKnockedDown,
+nvopenplayercamidle, NVopenPlayerPickedUp) and VCG01PlayerSection0-2
+(LooseVCG01PlayerWakeup, Situp, Bedsit, Standup).
+
+**Result.** For the done-condition: Travel (including using furniture at the destination) and
+Dialogue (force-greet with GREETING), selected top to bottom by condition, re-evaluated by
+`evp`. For Goodsprings generally: add Sandbox, Sleep and hour schedules. Guard, Flee Not Combat
+and Ambush only serve VMS16's gunfight. Package events (On Begin / End / Change: idle, topic,
+script) appear on 11 of the 68.
