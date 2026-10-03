@@ -16,10 +16,13 @@ signal menu_mode_changed(in_menu_mode: bool)
 ## (stats, inventory, Pip-Boy) and any other menu.
 const MENU_GROUP_MAIN_FOUR := 1
 const MENU_GROUP_OTHER := 2
+const MENU_CONSOLE := 3
 const MENU_MESSAGE := 1001
 const MENU_DIALOG := 1009
+const MENU_LOCKPICK := 1014
 const MENU_RACE := 1036
 const MENU_TEXT_EDIT := 1051
+const MENU_HACKING := 1055
 const MENU_COMPUTERS := 1057
 
 ## A queued move was applied to `reference`.

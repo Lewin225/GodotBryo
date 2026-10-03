@@ -66,8 +66,11 @@ GameMode runs "while the game is in non-menu mode", MenuMode "while the game is 
 mode"). Then loaded references run `MenuMode` blocks accepting the most recently opened
 menu each frame instead of `GameMode`, quest scripts run `MenuMode` instead of `GameMode`,
 and `DialogueServer` lines and voices pause. Menu IDs are the GECK's (`MenuMode
-(Function)` in `enginedocs/Geck`): `MessageBox` modal dialogs are 1001, the race menu
-1036, the name menu 1051 (TextEdit), `TerminalSession` 1057 (Computers).
+(Function)` in `enginedocs/Geck`): `MessageBox` modal dialogs are 1001, conversations 1009
+(Dialog), `UnlockSession` 1014 (LockPick) or 1055 (Hacking), the race menu 1036, the name
+menu 1051 (TextEdit), `TerminalSession` 1057 (Computers), and the Debug Tools panel 3 (the
+console). The player's controller frees the mouse in menu mode and captures it otherwise;
+no screen sets the mouse mode itself.
 `open_menu(menu_id)` is how a script opens one (`GetPlayerName`/`ShowNameMenu` 1051,
 `ShowRaceMenu` 1036): the player's controller (`menu_opener`) shows `NameMenu` or
 `RaceMenu`; with no UI (headless) the menu opens and closes at once, running the

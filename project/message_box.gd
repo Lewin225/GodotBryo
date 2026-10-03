@@ -17,7 +17,6 @@ signal button_clicked(button_index: int)
 @onready var _toast_panel: PanelContainer = $ToastRoot/ToastPanel
 @onready var _toast_label: Label = $ToastRoot/ToastPanel/Margin/ToastLabel
 
-var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 var _is_dialog_active: bool = false
 var _button_nodes: Array[Button] = []
 ## The index button_clicked reports for each of _button_nodes.
@@ -111,8 +110,6 @@ func _show_modal_dialog(msg: Dictionary) -> void:
 		for i in buttons.size():
 			_add_dialog_button(i, String(buttons[i]), int(indices[i]) if i < indices.size() else i)
 
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not _is_dialog_active:
 		ScriptServer.enter_menu(ScriptServer.MENU_MESSAGE)
 	_is_dialog_active = true
@@ -140,7 +137,6 @@ func _on_button_pressed(index: int) -> void:
 		return
 	_is_dialog_active = false
 	_dialog_root.visible = false
-	Input.mouse_mode = _previous_mouse_mode
 	ScriptServer.exit_menu(ScriptServer.MENU_MESSAGE)
 	button_clicked.emit(_button_indices[index] if index < _button_indices.size() else index)
 

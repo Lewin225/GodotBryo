@@ -80,16 +80,31 @@ compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_7knn
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Control
 
+## Home toggles the panel. Escape closes it when open, and opens it only when no
+## game menu (conversation, terminal, message box) is open, so Escape reaches
+## that menu instead. Both keys are consumed here. While open the game is in
+## menu mode as the console (menu 3), which frees the mouse.
+
 func _ready() -> void:
 	visible = false
 
-func _process(_delta: float) -> void:
-	if Input.is_action_just_pressed(\"ui_menu\") or Input.is_action_just_pressed(\"ui_cancel\"):
-		visible = !visible
-		if visible:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		else:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed(\"ui_menu\"):
+		_set_open(not visible)
+	elif event.is_action_pressed(\"ui_cancel\") and (visible or not ScriptServer.is_menu_mode()):
+		_set_open(not visible)
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+func _set_open(open: bool) -> void:
+	if open == visible:
+		return
+	visible = open
+	if open:
+		ScriptServer.enter_menu(ScriptServer.MENU_CONSOLE)
+	else:
+		ScriptServer.exit_menu(ScriptServer.MENU_CONSOLE)
 "
 
 [sub_resource type="GDScript" id="GDScript_x5p1p"]
@@ -128,7 +143,6 @@ player = NodePath("Character")
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
-handle_mouse_capture = true
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")

@@ -12,7 +12,6 @@ signal closed
 @onready var _ok: Button = $Root/Panel/Margin/VBox/OK
 
 var _actor: ActorReference = null
-var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
 func _ready() -> void:
 	visible = false
@@ -23,8 +22,6 @@ func _ready() -> void:
 func open(actor: ActorReference) -> void:
 	_actor = actor
 	_name.text = actor.base.full_name if actor != null and actor.base != null else ""
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	visible = true
 	_name.grab_focus()
 	_name.select_all()
@@ -39,6 +36,5 @@ func accept() -> void:
 		_actor.base.full_name = typed
 		_actor.base.mark_dirty()
 	visible = false
-	Input.mouse_mode = _previous_mouse_mode
 	ScriptServer.exit_menu(ScriptServer.MENU_TEXT_EDIT)
 	closed.emit()

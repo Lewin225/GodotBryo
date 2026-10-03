@@ -31,7 +31,6 @@ var _condition_context: ConditionContext = null
 var _view: View = View.WELCOME
 var _pending_note_form_id: int = 0
 var _pending_submenu_form_id: int = 0
-var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
 func _ready() -> void:
 	visible = false
@@ -56,8 +55,6 @@ func open_session(terminal: TerminalReference, esm: EsmReader, user: EsmReferenc
 	_condition_context = ConditionContext.new(user)
 	_condition_context.linked_from = terminal
 	_condition_context.owner_label = "TERM %s" % terminal.base.editor_id
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not visible:
 		ScriptServer.enter_menu(ScriptServer.MENU_COMPUTERS)
 	visible = true
@@ -184,7 +181,6 @@ func close_session() -> void:
 	if not visible:
 		return
 	visible = false
-	Input.mouse_mode = _previous_mouse_mode
 	_terminal_stack.clear()
 	_base_stack.clear()
 	ScriptServer.exit_menu(ScriptServer.MENU_COMPUTERS)

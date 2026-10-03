@@ -11,7 +11,6 @@ extends CanvasLayer
 @onready var _choices: VBoxContainer = $Root/Panel/Margin/VBox/Choices
 
 var _speaker_reference: EsmReference = null
-var _previous_mouse_mode: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
 func _ready() -> void:
 	visible = false
@@ -24,8 +23,6 @@ func open(speaker: EsmReference) -> void:
 	_speaker.text = speaker.base.full_name if speaker != null and speaker.base != null else ""
 	_response.text = ""
 	_clear_choices()
-	_previous_mouse_mode = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	visible = true
 
 func close() -> void:
@@ -34,7 +31,6 @@ func close() -> void:
 	visible = false
 	_speaker_reference = null
 	_clear_choices()
-	Input.mouse_mode = _previous_mouse_mode
 
 func _on_response_started(line: DialogueLine, text: String) -> void:
 	if visible and line.speaker == _speaker_reference:

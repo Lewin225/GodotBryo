@@ -20,8 +20,6 @@ const MotionDataScript := preload("res://gamebryo/motion_data.gd")
 @export_group("Mouse & Look")
 @export var mouse_sensitivity: float = 0.003
 @export_range(10.0, 89.0) var pitch_limit_degrees: float = 89.0
-@export var handle_mouse_capture:bool = false
-@export var capture_mouse_on_start: bool = true
 
 # --- Movement Parameters ---
 @export_group("Movement")
@@ -211,8 +209,9 @@ func _ready() -> void:
 		subtitle.hide()
 	floor_max_angle = deg_to_rad(max_floor_angle)
 
-	if capture_mouse_on_start and handle_mouse_capture:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if not ScriptServer.menu_mode_changed.is_connected(_on_menu_mode_changed):
+		ScriptServer.menu_mode_changed.connect(_on_menu_mode_changed)
+	_on_menu_mode_changed(ScriptServer.is_menu_mode())
 
 	if not collision_shape:
 		collision_shape = get_node_or_null("CollisionShape3D")
@@ -790,6 +789,11 @@ func _open_script_menu(menu_id: int) -> bool:
 	_set_input_suspended(true)
 	return true
 
+## The cursor is free in menu mode (any game menu or the debug panel) and
+## captured for looking otherwise.
+func _on_menu_mode_changed(in_menu_mode: bool) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if in_menu_mode else Input.MOUSE_MODE_CAPTURED
+
 func _on_script_menu_closed() -> void:
 	_set_input_suspended(false)
 
@@ -832,7 +836,7 @@ func _open_unlock(title: String, detail: String) -> void:
 	if unlock_session == null:
 		ScriptServer.end_use(possessed)
 		return
-	unlock_session.open(title, detail)
+	unlock_session.open(title, detail, ScriptServer.MENU_HACKING if title == "Hack" else ScriptServer.MENU_LOCKPICK)
 	_set_input_suspended(true)
 
 ## A picked lock unlocks and ends the use; a hacked terminal unlocks and opens.
