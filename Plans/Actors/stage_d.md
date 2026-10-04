@@ -68,12 +68,16 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 
 ## Questions
 
-0. **Seams.** Godot joins regions whose free edges lie within `edge_connection_margin`; with
-   non-coincident seam vertices, exterior cells may not connect. Options: rely on the margin
-   (check it against a census of seam gaps), add a `NavigationLink3D` per authored NVEX link, or
-   load a whole exterior area as one region. Not needed for the stage D gate (an interior), but it
-   decides whether the approach holds outdoors; a census of seam gaps would settle it first.
-
+0. **Seams.** Godot connects regions by touching edges; NAVM records do not touch. Proposed:
+   stitch by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
+   record is one region. Across records, each NVEX link names its target record and triangle
+   (resolving 100%); the source triangle is not authored, and
+   `NavmeshDatabase::build_cross_record_links()` pairs it with the nearest triangle, as the
+   server's A* already uses. Each pair becomes a bidirectional link
+   (`NavigationServer3D.link_create`, no nodes) between the two triangles' centres, so local and
+   global pathing join records in the same places. Needs `NavmeshReader` to expose the derived
+   pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
+   can cross a little way into the next record.
 1. **The body.** What triggers detect, and what the player bumps into:
    - an `Area3D` capsule: cheapest; triggers see it (with the volumes monitoring areas too); the
      player walks through NPCs;
