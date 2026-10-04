@@ -372,8 +372,9 @@ func voice_path(info: DialogueInfoBase, index: int, speaker: EsmReference) -> St
 func _voice_type(speaker: EsmReference) -> EsmBase:
 	if speaker == null or speaker.base == null:
 		return null
-	var source := ActorStats.template_source(speaker.base, ActorStats.TEMPLATE_USE_TRAITS) if speaker.base.get("actor_stats") != null else speaker.base
-	var form_id: int = source.get("voice_type_form_id") if source != null and source.get("voice_type_form_id") != null else 0
+	if speaker.base is ActorBase:
+		return ActorBase.template_source(speaker.base, ActorBase.TEMPLATE_USE_TRAITS).voice_type
+	var form_id: int = speaker.base.get("voice_type_form_id") if speaker.base.get("voice_type_form_id") != null else 0
 	return EsmServer.get_base(form_id) if form_id != 0 else null
 
 ## Records that `speaker` said `info`, for Say Once and Say Once a Day.

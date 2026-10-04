@@ -715,9 +715,11 @@ static func _holder_level(holder: EsmReference) -> int:
 	var values: ActorValues = holder.get_actor_values() if holder != null else null
 	return values.get_level() if values != null else 1
 
-## CNTO is the authored seed for an owner inventory. The live inventory is
-## kept on the owner reference as typed item references and is not rebuilt
-## from the base after the reference has been created.
+## An owner's Items (ActorBase.items, following the Inventory template flag;
+## a container's CNTO) are the authored seed for its inventory. Each COED's
+## owner and condition carry to the item. The live inventory is kept on the
+## owner reference as typed item references and is not rebuilt from the base
+## after the reference has been created.
 func _populate_reference_inventory(reference: EsmReference) -> void:
 	if not (reference is ActorReference or reference is CreatureReference or reference is ContainerReference):
 		return
@@ -726,17 +728,19 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 	var owner_base := reference.base
 	if owner_base == null:
 		return
+	var items: Array[InitialItemCollection] = []
+	if owner_base is ActorBase:
+		var source := ActorBase.template_source(owner_base, ActorBase.TEMPLATE_USE_INVENTORY)
+		items = source.items
+	else:
+		items = _initial_items({"subrecords": owner_base.raw_subrecords})
 	var item_index := 0
 	var resolver := LeveledItemResolver.new(self)
 	var level := _holder_level(reference)
-	for item_data in owner_base.all_subrecord_data("CNTO"):
-		if item_data.size() < 8:
-			continue
-		var item_form_id := _u32(item_data)
-		var count := _i32(item_data, 4)
-		var item_base := get_base(item_form_id)
-		if item_base is LeveledItemBase:
-			var resolved := resolver.resolve(item_base as LeveledItemBase, level, {"seed": owner_base.form_id ^ item_index})
+	for entry in items:
+		var count := entry.count
+		if entry.item is LeveledItemBase:
+			var resolved := resolver.resolve(entry.item as LeveledItemBase, level, {"seed": owner_base.form_id ^ item_index})
 			for resolved_item in resolved:
 				resolved_item.instance_id = "inventory:%08X:%d" % [resolved_item.item_reference.base_form_id, item_index]
 				if count > 1:
@@ -744,14 +748,16 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 				reference.contents.add_inventory_item(resolved_item)
 				item_index += 1
 			continue
-		var item_reference := _create_inventory_item_reference(item_base, item_form_id, item_index)
+		var item_reference := _create_inventory_item_reference(entry.item, entry.item_form_id, item_index)
 		if item_reference == null or count <= 0:
 			item_index += 1
 			continue
 		var item := InventoryItem.new()
 		item.item_reference = item_reference
 		item.count = count
-		item.instance_id = "inventory:%08X:%d" % [item_form_id, item_index]
+		item.instance_id = "inventory:%08X:%d" % [entry.item_form_id, item_index]
+		item.owner_form_id = entry.owner_form_id
+		item.health_percent = entry.condition
 		inventory.add_item(item)
 		item_index += 1
 	if reference is ActorReference:
@@ -834,38 +840,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		result.set("inventory_icon", String(generic_item_data.get("inventory_icon", "")))
 		result.set("message_icon", String(generic_item_data.get("message_icon", "")))
 	elif result is NpcBase:
-		var npc: NpcBase = result
-		npc.model_path = _string(_subrecord(raw, "MODL"))
-		var acbs := _subrecord(raw, "ACBS")
-		npc.acbs_flags = _u32(acbs)
-		npc.acbs_template_flags = _u16(acbs, 22)
-		npc.is_child = false
-		var face := FaceGenData.new()
-		face.fggs = _subrecord(raw, "FGGS")
-		face.fgga = _subrecord(raw, "FGGA")
-		face.fgts = _subrecord(raw, "FGTS")
-		if reader != null and reader.has_method("get_facegen_data"):
-			var decoded: Dictionary = reader.get_facegen_data(npc.form_id)
-			face.fggs_values = decoded.get("fggs_values", PackedFloat32Array())
-			face.fgga_values = decoded.get("fgga_values", PackedFloat32Array())
-			face.fgts_values = decoded.get("fgts_values", PackedFloat32Array())
-			face.fggs_decoded = bool(decoded.get("fggs_decoded", false))
-			face.fgga_decoded = bool(decoded.get("fgga_decoded", false))
-			face.fgts_decoded = bool(decoded.get("fgts_decoded", false))
-			face.diagnostics = decoded.get("diagnostics", PackedStringArray())
-		npc.face_gen = face
-		npc.actor_stats = _actor_stats(raw, false)
-		npc.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
-		npc.factions = _actor_factions(raw)
-		npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
-		npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
-		npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
-		npc.class_form_id = _u32(_subrecord(raw, "CNAM")); npc.actor_class = get_base(npc.class_form_id) as ClassBase
-		npc.body_part_data = get_base(NpcBase.DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID) as BodyPartDataBase
-		npc.packages.clear()
-		for package_data in _all_subrecords(raw, "PKID"):
-			var package_base := get_base(_u32(package_data)) as PackageBase
-			if package_base != null: npc.packages.append(package_base)
+		_populate_npc(result as NpcBase, raw)
 	elif result is CreatureBase:
 		_populate_creature(result as CreatureBase, raw)
 	elif result is BodyPartDataBase:
@@ -1664,70 +1639,220 @@ func _actor_factions(raw: Dictionary) -> Array[ActorFaction]:
 		factions.append(entry)
 	return factions
 
+## The fields NPC_ and CREA share (ActorBase).
+func _populate_actor(actor: ActorBase, raw: Dictionary) -> void:
+	actor.model_path = _string(_subrecord(raw, "MODL"))
+	var obnd := _subrecord(raw, "OBND")
+	if obnd.size() >= 12:
+		actor.bounds_min = Vector3i(obnd.decode_s16(0), obnd.decode_s16(2), obnd.decode_s16(4))
+		actor.bounds_max = Vector3i(obnd.decode_s16(6), obnd.decode_s16(8), obnd.decode_s16(10))
+	var model_directory := actor.model_path.replace("\\", "/").get_base_dir()
+	actor.animations = PackedStringArray()
+	actor.animation_paths = PackedStringArray()
+	for data in _all_subrecords(raw, "KFFZ"):
+		for filename in _zero_terminated_strings(data):
+			actor.animations.append(filename)
+			actor.animation_paths.append(_join_creature_asset_path(model_directory, filename))
+	var acbs := _subrecord(raw, "ACBS")
+	actor.acbs_flags = _u32(acbs)
+	actor.fatigue = _u16(acbs, 4)
+	actor.barter_gold = _u16(acbs, 6)
+	actor.level = _u16(acbs, 8)
+	actor.calc_min = _u16(acbs, 10)
+	actor.calc_max = _u16(acbs, 12)
+	actor.speed_multiplier = _u16(acbs, 14)
+	actor.karma = _f32(acbs, 16)
+	actor.disposition_base = _i16(acbs, 20)
+	actor.template_flags = _u16(acbs, 22)
+	actor.template_form_id = _u32(_subrecord(raw, "TPLT"))
+	actor.template = get_base(actor.template_form_id)
+	actor.factions = _actor_factions(raw)
+	actor.death_item_form_id = _u32(_subrecord(raw, "INAM"))
+	actor.death_item = get_base(actor.death_item_form_id) as LeveledItemBase
+	actor.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
+	actor.voice_type = get_base(actor.voice_type_form_id) as VoiceTypeBase
+	actor.combat_style_form_id = _u32(_subrecord(raw, "ZNAM"))
+	actor.combat_style = get_base(actor.combat_style_form_id) as CombatStyleBase
+	actor.impact_material_type = _u32(_subrecord(raw, "NAM4"))
+	actor.actor_effects.clear()
+	for data in _all_subrecords(raw, "SPLO"):
+		var spell := get_base(_u32(data)) as SpellBase
+		if spell != null: actor.actor_effects.append(spell)
+	actor.unarmed_attack_effect_form_id = _u32(_subrecord(raw, "EITM"))
+	actor.unarmed_attack_effect = get_base(actor.unarmed_attack_effect_form_id)
+	actor.unarmed_attack_animation = _u16(_subrecord(raw, "EAMT"))
+	var aidt := _subrecord(raw, "AIDT")
+	actor.aggression = _u8(aidt, 0)
+	actor.confidence = _u8(aidt, 1)
+	actor.energy = _u8(aidt, 2)
+	actor.responsibility = _u8(aidt, 3)
+	actor.mood = _u8(aidt, 4)
+	actor.services = _u32(aidt, 8)
+	actor.teaches = _i8(aidt, 12)
+	actor.maximum_training_level = _u8(aidt, 13)
+	actor.assistance = _i8(aidt, 14)
+	actor.aggro_radius_behavior = _u8(aidt, 15) != 0
+	actor.aggro_radius = _i32(aidt, 16)
+	actor.packages.clear()
+	for data in _all_subrecords(raw, "PKID"):
+		var package_base := get_base(_u32(data)) as PackageBase
+		if package_base != null: actor.packages.append(package_base)
+	actor.items = _initial_items(raw)
+	actor.destructible = _destruction(raw)
+
+func _populate_npc(npc: NpcBase, raw: Dictionary) -> void:
+	_populate_actor(npc, raw)
+	npc.is_child = false
+	var data := _subrecord(raw, "DATA")
+	npc.base_health = _i32(data)
+	for i in 7:
+		npc.attributes[i] = _u8(data, 4 + i)
+	var dnam := _subrecord(raw, "DNAM")
+	npc.skill_values = PackedInt32Array()
+	npc.skill_offsets = PackedInt32Array()
+	for i in mini(dnam.size(), 14):
+		npc.skill_values.append(dnam[i])
+	for i in range(14, mini(dnam.size(), 28)):
+		npc.skill_offsets.append(dnam[i])
+	npc.race_form_id = _u32(_subrecord(raw, "RNAM")); npc.race = get_base(npc.race_form_id) as RaceBase
+	npc.class_form_id = _u32(_subrecord(raw, "CNAM")); npc.actor_class = get_base(npc.class_form_id) as ClassBase
+	npc.head_parts.clear()
+	for part_data in _all_subrecords(raw, "PNAM"):
+		var head_part := get_base(_u32(part_data)) as HeadPartBase
+		if head_part != null: npc.head_parts.append(head_part)
+	npc.hair_form_id = _u32(_subrecord(raw, "HNAM")); npc.hair = get_base(npc.hair_form_id) as HairBase
+	npc.hair_length = _f32(_subrecord(raw, "LNAM"))
+	var hclr := _subrecord(raw, "HCLR")
+	npc.hair_color = Color8(_u8(hclr, 0), _u8(hclr, 1), _u8(hclr, 2)) if hclr.size() >= 3 else Color.BLACK
+	npc.eyes_form_id = _u32(_subrecord(raw, "ENAM")); npc.eyes = get_base(npc.eyes_form_id) as EyesBase
+	var face := FaceGenData.new()
+	face.fggs = _subrecord(raw, "FGGS")
+	face.fgga = _subrecord(raw, "FGGA")
+	face.fgts = _subrecord(raw, "FGTS")
+	if reader != null and reader.has_method("get_facegen_data"):
+		var decoded: Dictionary = reader.get_facegen_data(npc.form_id)
+		face.fggs_values = decoded.get("fggs_values", PackedFloat32Array())
+		face.fgga_values = decoded.get("fgga_values", PackedFloat32Array())
+		face.fgts_values = decoded.get("fgts_values", PackedFloat32Array())
+		face.fggs_decoded = bool(decoded.get("fggs_decoded", false))
+		face.fgga_decoded = bool(decoded.get("fgga_decoded", false))
+		face.fgts_decoded = bool(decoded.get("fgts_decoded", false))
+		face.diagnostics = decoded.get("diagnostics", PackedStringArray())
+	npc.face_gen = face
+	npc.unknown_nam5 = _u16(_subrecord(raw, "NAM5"))
+	npc.height = _f32(_subrecord(raw, "NAM6")) if not _subrecord(raw, "NAM6").is_empty() else 1.0
+	npc.weight = _f32(_subrecord(raw, "NAM7"))
+	npc.body_part_data = get_base(NpcBase.DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID) as BodyPartDataBase
+
 func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
-	result.actor_stats = _actor_stats(raw, true)
-	result.voice_type_form_id = _u32(_subrecord(raw, "VTCK"))
-	result.factions = _actor_factions(raw)
-	result.model_path = _string(_subrecord(raw, "MODL"))
-	result.model_list_filenames.clear()
-	result.model_list_paths.clear()
-	result.animation_filenames.clear()
-	result.animation_paths.clear()
-	result.pnam_values.clear()
+	_populate_actor(result, raw)
+	var data := _subrecord(raw, "DATA")
+	result.creature_type = _u8(data, 0)
+	result.combat_skill = _u8(data, 1)
+	result.magic_skill = _u8(data, 2)
+	result.stealth_skill = _u8(data, 3)
+	result.health = _i16(data, 4)
+	result.damage = _i16(data, 8)
+	for i in 7:
+		result.attributes[i] = _u8(data, 10 + i)
+	result.attack_reach = _u8(_subrecord(raw, "RNAM"))
+	result.melee_weapon_list_form_id = _u32(_subrecord(raw, "LNAM"))
+	result.melee_weapon_list = get_base(result.melee_weapon_list_form_id) as FormListBase
 	# Bethesda asset paths are commonly stored with backslashes. Normalize only
 	# while extracting the directory; the resolved values retain the project's
 	# established backslash path convention.
 	var model_directory := result.model_path.replace("\\", "/").get_base_dir()
-	for data in _all_subrecords(raw, "NIFZ"):
-		for filename in _zero_terminated_strings(data):
-			result.model_list_filenames.append(filename)
+	result.model_list = PackedStringArray()
+	result.model_list_paths = PackedStringArray()
+	for nifz in _all_subrecords(raw, "NIFZ"):
+		for filename in _zero_terminated_strings(nifz):
+			result.model_list.append(filename)
 			result.model_list_paths.append(_join_creature_asset_path(model_directory, filename))
-	for data in _all_subrecords(raw, "KFFZ"):
-		for filename in _zero_terminated_strings(data):
-			result.animation_filenames.append(filename)
-			result.animation_paths.append(_join_creature_asset_path(model_directory, filename))
-	for data in _all_subrecords(raw, "PNAM"):
-		if data.size() >= 4:
-			result.pnam_values.append(_u32(data))
+	result.model_list_textures = _subrecord(raw, "NIFT")
+	result.body_part_data_form_id = _u32(_subrecord(raw, "PNAM"))
+	result.body_part_data = get_base(result.body_part_data_form_id) as BodyPartDataBase
+	result.turning_speed = _f32(_subrecord(raw, "TNAM"))
+	result.base_scale = _f32(_subrecord(raw, "BNAM")) if not _subrecord(raw, "BNAM").is_empty() else 1.0
+	result.foot_weight = _f32(_subrecord(raw, "WNAM"))
+	result.sound_level = _u32(_subrecord(raw, "NAM5"))
+	result.impact_dataset_form_id = _u32(_subrecord(raw, "CNAM"))
+	result.impact_dataset = get_base(result.impact_dataset_form_id) as ImpactDatasetBase
+	result.inherits_sounds_from_form_id = _u32(_subrecord(raw, "CSCR"))
+	result.inherits_sounds_from = get_base(result.inherits_sounds_from_form_id) as CreatureBase
+	result.sounds.clear()
+	var sound: CreatureSoundCollection = null
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var bytes: PackedByteArray = subrecord.get("data", PackedByteArray())
+		if tag == "CSDT":
+			sound = CreatureSoundCollection.new()
+			sound.sound_type = _u32(bytes)
+			result.sounds.append(sound)
+		elif tag == "CSDI" and sound != null:
+			sound.sound_form_id = _u32(bytes)
+			sound.sound = get_base(sound.sound_form_id) as SoundBase
+		elif tag == "CSDC" and sound != null:
+			sound.chance = _u8(bytes)
 
-## An NPC_ or CREA record's ACBS, DATA, DNAM (NPC_ only) and AIDT.
-func _actor_stats(raw: Dictionary, is_creature: bool) -> ActorStats:
-	var stats := ActorStats.new()
-	stats.is_creature = is_creature
-	var acbs := _subrecord(raw, "ACBS")
-	stats.flags = _u32(acbs)
-	stats.fatigue = _u16(acbs, 4)
-	stats.level = _u16(acbs, 8)
-	stats.calc_min = _u16(acbs, 10)
-	stats.calc_max = _u16(acbs, 12)
-	stats.speed_mult = _u16(acbs, 14)
-	stats.karma = _f32(acbs, 16)
-	stats.template_flags = _u16(acbs, 22)
-	stats.template_form_id = _u32(_subrecord(raw, "TPLT"))
-	var data := _subrecord(raw, "DATA")
-	var attributes_offset := 10 if is_creature else 4
-	if is_creature:
-		stats.combat_skill = _u8(data, 1)
-		stats.magic_skill = _u8(data, 2)
-		stats.stealth_skill = _u8(data, 3)
-		stats.base_health = _i16(data, 4)
-		stats.damage = _i16(data, 8)
-	else:
-		stats.base_health = _i32(data)
-		var dnam := _subrecord(raw, "DNAM")
-		stats.skills = PackedInt32Array()
-		for i in mini(dnam.size(), 14):
-			stats.skills.append(dnam[i])
-	for i in 7:
-		stats.attributes[i] = _u8(data, attributes_offset + i)
-	var aidt := _subrecord(raw, "AIDT")
-	stats.aggression = _u8(aidt, 0)
-	stats.confidence = _u8(aidt, 1)
-	stats.energy = _u8(aidt, 2)
-	stats.responsibility = _u8(aidt, 3)
-	stats.mood = _u8(aidt, 4)
-	stats.assistance = _i8(aidt, 14)
-	return stats
+## A record's xEdit "Items": each CNTO with the COED that may follow it.
+func _initial_items(raw: Dictionary) -> Array[InitialItemCollection]:
+	var items: Array[InitialItemCollection] = []
+	var current: InitialItemCollection = null
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
+		if tag == "CNTO" and data.size() >= 8:
+			current = InitialItemCollection.new()
+			current.item_form_id = _u32(data)
+			current.item = get_base(current.item_form_id)
+			current.count = _i32(data, 4)
+			items.append(current)
+		elif tag == "COED" and current != null and data.size() >= 12:
+			current.owner_form_id = _u32(data)
+			current.owner = get_base(current.owner_form_id)
+			if current.owner is NpcBase:
+				current.global_variable_form_id = _u32(data, 4)
+				current.global_variable = get_base(current.global_variable_form_id) as GlobalBase
+			elif current.owner is FactionBase:
+				current.required_rank = _i32(data, 4)
+			current.condition = _f32(data, 8)
+		elif tag != "COED":
+			current = null
+	return items
+
+## A record's DEST collection and its stages; null when it has none.
+func _destruction(raw: Dictionary) -> DestructionCollection:
+	var dest := _subrecord(raw, "DEST")
+	if dest.is_empty():
+		return null
+	var destruction := DestructionCollection.new()
+	destruction.health = _i32(dest)
+	destruction.vats_targetable = (_u8(dest, 5) & 0x01) != 0
+	var stage: DestructionStageCollection = null
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
+		match tag:
+			"DSTD":
+				stage = DestructionStageCollection.new()
+				stage.health_percent = _u8(data, 0)
+				stage.index = _u8(data, 1)
+				stage.damage_stage = _u8(data, 2)
+				stage.flags = _u8(data, 3)
+				stage.self_damage_per_second = _i32(data, 4)
+				stage.explosion_form_id = _u32(data, 8)
+				stage.explosion = get_base(stage.explosion_form_id) as ExplosionBase
+				stage.debris_form_id = _u32(data, 12)
+				stage.debris = get_base(stage.debris_form_id) as DebrisBase
+				stage.debris_count = _i32(data, 16)
+				destruction.stages.append(stage)
+			"DMDL":
+				if stage != null: stage.model_path = _string(data)
+			"DMDT":
+				if stage != null: stage.model_info = data
+			"DSTF":
+				stage = null
+	return destruction
 
 func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void:
 	result.skeleton_model_path = _string(_subrecord(raw, "MODL"))

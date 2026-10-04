@@ -65,9 +65,14 @@ Signals `esm_ready`, `failed(message)` and
 background parse completes — the reader opens on its own `Thread` in `_ready()`,
 so nothing blocks startup.
 
-**Actor stats.** `NpcBase.actor_stats` and `CreatureBase.actor_stats` are an `ActorStats`
-read from ACBS, DATA, DNAM (NPC_ only) and AIDT. Every actor and creature reference is
-created with its `ActorValues`. `get_game_setting()` reads a GMST by
+**Actor records.** NPC_ and CREA are `NpcBase` and `CreatureBase`, both extending
+`ActorBase`, which holds the 20 subrecords they share with the same meaning (ACBS, AIDT, TPLT,
+SNAM, VTCK, PKID, CNTO + COED as `items`, DEST as `destructible`, ...). Each subclass reads its
+own DATA, RNAM, PNAM, CNAM, NAM5 and LNAM, and names the ACBS flags its own way.
+`ActorBase.template_source(record, flag)` follows TPLT while the flag says a part comes from the
+template. Every actor and creature reference is created with its `ActorValues`, which derive
+from the record supplying its stats, and its inventory, seeded from `items` (the template's with
+the Inventory flag) with each COED's owner and condition. `get_game_setting()` reads a GMST by
 editor ID on first use; FalloutNV.esm omits settings left at their engine default, which
 `ActorValue.DEFAULT_SETTINGS` supplies.
 

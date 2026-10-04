@@ -360,7 +360,7 @@ func _register_defaults() -> void:
 	# `GetIsSex Male|Female` (conditions pass 0 or 1): the NPC_'s ACBS Female
 	# flag, from its template when that supplies traits; 0 for anything else.
 	register("GetIsSex", func(a: Array, ctx: ScriptExecutionContext):
-		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS) as NpcBase
+		var source := _actor_part(ctx.calling_reference, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
 		var wants_female := _sex_arg(a, 0)
 		if source == null or wants_female < 0:
 			return 0
@@ -368,11 +368,11 @@ func _register_defaults() -> void:
 	# `GetIsVoiceType VoiceType`: the actor's VTCK (from its template when that
 	# supplies traits) is the VTYP, or is in the FLST of them.
 	register("GetIsVoiceType", func(a: Array, ctx: ScriptExecutionContext):
-		var source := _actor_part(ctx.calling_reference, ActorStats.TEMPLATE_USE_TRAITS)
+		var source := _actor_part(ctx.calling_reference, ActorBase.TEMPLATE_USE_TRAITS)
 		var voice := _base_arg(a, 0)
 		if source == null or voice == null:
 			return 0
-		var voice_type: int = source.get("voice_type_form_id")
+		var voice_type: int = source.voice_type_form_id
 		if voice.record_type == "FLST":
 			for entry in voice.all_subrecord_data("LNAM"):
 				if entry.size() >= 4 and entry.decode_u32(0) == voice_type:
@@ -664,18 +664,18 @@ static func _base_arg(args: Array, index: int) -> EsmBase:
 
 ## The NPC_ or CREA record supplying `actor`'s part named by a template
 ## flag, or null when it is not an actor.
-static func _actor_part(actor: EsmReference, template_flag: int) -> EsmBase:
-	if actor == null or actor.base == null or actor.base.get("actor_stats") == null:
+static func _actor_part(actor: EsmReference, template_flag: int) -> ActorBase:
+	if actor == null or not actor.base is ActorBase:
 		return null
-	return ActorStats.template_source(actor.base, template_flag)
+	return ActorBase.template_source(actor.base, template_flag)
 
 ## `actor`'s authored rank in `faction` (ActorFaction.rank), or -1 when it
 ## is not a member. A negative authored rank also reads as not a member.
 static func _faction_rank(actor: EsmReference, faction: EsmBase) -> int:
-	var source := _actor_part(actor, ActorStats.TEMPLATE_USE_FACTIONS)
+	var source := _actor_part(actor, ActorBase.TEMPLATE_USE_FACTIONS)
 	if source == null or faction == null:
 		return -1
-	for entry: ActorFaction in source.get("factions"):
+	for entry: ActorFaction in source.factions:
 		if entry.faction_form_id == faction.form_id:
 			return entry.rank if entry.rank >= 0 else -1
 	return -1

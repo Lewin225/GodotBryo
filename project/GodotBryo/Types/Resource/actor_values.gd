@@ -3,7 +3,7 @@ class_name ActorValues
 extends Resource
 
 ## One actor's actor values. Base values derive from its base record's
-## ActorStats (following templates that supply stats); this stores what scripts
+## record (ActorBase, following templates that supply stats); this stores what scripts
 ## and gameplay change on top of them, per code:
 ##   current = base + permanent + damage
 ## SetAV replaces the base, ModAV and ForceAV change the permanent modifier,
@@ -87,11 +87,10 @@ func get_level() -> int:
 		level = mini(level, stats.calc_max)
 	return level
 
-## The stats the base values derive from: the base record's, or its template
+## The record the base values derive from: the base record, or its template
 ## chain's while each record takes its stats from its template.
-func get_stats() -> ActorStats:
-	var record := ActorStats.template_source(owner.base if owner != null else null, ActorStats.TEMPLATE_USE_STATS)
-	return record.get("actor_stats") if record != null else null
+func get_stats() -> ActorBase:
+	return ActorBase.template_source(owner.base if owner != null else null, ActorBase.TEMPLATE_USE_STATS)
 
 func _is_player() -> bool:
 	var esm_server := EsmReference.get_esm_server()

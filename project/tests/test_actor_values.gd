@@ -45,7 +45,7 @@ func _ready() -> void:
 			"action points 65 + 5 x 3, carry weight 150 + 5 x 10")
 
 	# The player formula at Endurance 10 and level 30: 100 + 10 x 20 + 29 x 5.
-	var max_player := ActorStats.new()
+	var max_player := NpcBase.new()
 	max_player.base_health = 100
 	max_player.attributes[ActorValue.ENDURANCE - ActorValue.STRENGTH] = 10
 	check(ActorValue.derive_base(ActorValue.HEALTH, max_player, 30, true) == 445.0, "player health at Endurance 10, level 30 is 445")
@@ -63,10 +63,9 @@ func _ready() -> void:
 		if String(row.get("record_type", "")) != "NPC_":
 			continue
 		var npc := esm_server.get_base(int(row["form_id"])) as NpcBase
-		var stats := npc.actor_stats
-		if (stats.template_flags & ActorStats.TEMPLATE_USE_STATS) != 0 and esm_server.get_base(stats.template_form_id) is NpcBase:
-			var candidate: NpcBase = esm_server.get_base(stats.template_form_id)
-			if (candidate.actor_stats.template_flags & ActorStats.TEMPLATE_USE_STATS) == 0 and candidate.actor_stats.base_health != stats.base_health:
+		if (npc.template_flags & ActorBase.TEMPLATE_USE_STATS) != 0 and npc.template is NpcBase:
+			var candidate: NpcBase = npc.template
+			if (candidate.template_flags & ActorBase.TEMPLATE_USE_STATS) == 0 and candidate.base_health != npc.base_health:
 				templated = npc
 				template = candidate
 				break
@@ -74,7 +73,7 @@ func _ready() -> void:
 	if templated != null:
 		var templated_reference: EsmReference = esm_server.create_reference_for_base(templated.form_id)
 		var from_template: ActorValues = templated_reference.get_actor_values()
-		check(from_template.get_stats() == template.actor_stats, "templated stats come from the template (%s -> %s)" % [templated.editor_id, template.editor_id])
+		check(from_template.get_stats() == template, "templated stats come from the template (%s -> %s)" % [templated.editor_id, template.editor_id])
 
 	# Modifier layers.
 	doc_values.set_base(ActorValue.STRENGTH, 6)

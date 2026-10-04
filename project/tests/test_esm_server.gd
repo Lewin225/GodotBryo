@@ -67,6 +67,7 @@ func _ready() -> void:
 	_check_reference_index(server, index)
 	_check_base_scripts(server, index)
 	_check_referenced_types(server, index)
+	_check_actor_bases(server, index)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -456,6 +457,74 @@ func _check_referenced_types(server, index: Array) -> void:
 				if form_list.entries.size() != lnam.size(): field_errors.append("%08X LNAM %d/%d" % [form_id, form_list.entries.size(), lnam.size()])
 	_check(wrong.is_empty(), "every VTYP, GLOB, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE and FLST resolves to its typed Base (%s)" % [totals if wrong.is_empty() else wrong])
 	_check(field_errors.is_empty(), "VTYP flags, GLOB type and value, and every FLST's %d entries match their subrecords (%s)" % [flst_entries, field_errors.slice(0, 5)])
+
+## ActorBase, NpcBase and CreatureBase (Plans/Actors/fields.md): over every
+## NPC_ and CREA, each FormID field resolves when set, Items match CNTO and
+## COED, DEST, NIFZ and CSDT match their subrecords; census A1 counts hold; a
+## seeded inventory carries COED's condition.
+func _check_actor_bases(server, index: Array) -> void:
+	var counts := {"NPC_": 0, "CREA": 0, "items": 0, "coed": 0, "destructible": 0, "nifz": 0, "sounds": 0, "packages": 0, "templates": 0}
+	var errors: PackedStringArray = []
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if record_type != "NPC_" and record_type != "CREA":
+			continue
+		var form_id := int(row["form_id"])
+		var actor := server.get_base(form_id) as ActorBase
+		if actor == null or (record_type == "NPC_") != (actor is NpcBase):
+			errors.append("%08X not typed" % form_id); continue
+		counts[record_type] += 1
+		var raw: Dictionary = server.reader.get_record_data(form_id)
+		var cnto := _all_subrecords(raw, "CNTO")
+		counts["items"] += actor.items.size()
+		if actor.items.size() != cnto.size():
+			errors.append("%08X items %d/%d" % [form_id, actor.items.size(), cnto.size()])
+		for entry in actor.items:
+			if entry.item == null: errors.append("%08X item %08X unresolved" % [form_id, entry.item_form_id])
+			if entry.condition >= 0.0: counts["coed"] += 1
+		for pair in [["template", "template_form_id"], ["voice_type", "voice_type_form_id"], ["death_item", "death_item_form_id"], ["combat_style", "combat_style_form_id"], ["unarmed_attack_effect", "unarmed_attack_effect_form_id"]]:
+			if int(actor.get(pair[1])) != 0 and actor.get(pair[0]) == null:
+				errors.append("%08X %s unresolved" % [form_id, pair[0]])
+		if actor.template != null: counts["templates"] += 1
+		counts["packages"] += actor.packages.size()
+		if actor.packages.size() != _all_subrecords(raw, "PKID").size(): errors.append("%08X packages" % form_id)
+		if actor.actor_effects.size() != _all_subrecords(raw, "SPLO").size(): errors.append("%08X actor effects" % form_id)
+		if actor.destructible != null:
+			counts["destructible"] += 1
+			if actor.destructible.stages.size() != _all_subrecords(raw, "DSTD").size(): errors.append("%08X stages" % form_id)
+		var creature := actor as CreatureBase
+		if creature != null:
+			if not creature.model_list.is_empty(): counts["nifz"] += 1
+			counts["sounds"] += creature.sounds.size()
+			if creature.sounds.size() != _all_subrecords(raw, "CSDT").size(): errors.append("%08X sounds" % form_id)
+			if creature.body_part_data_form_id != 0 and creature.body_part_data == null: errors.append("%08X BPTD unresolved" % form_id)
+		else:
+			var npc := actor as NpcBase
+			if npc.head_parts.size() != _all_subrecords(raw, "PNAM").size(): errors.append("%08X head parts" % form_id)
+	_check(errors.is_empty(), "every NPC_ and CREA reads into its ActorBase, every FormID resolved (%s)" % [counts if errors.is_empty() else errors.slice(0, 6)])
+	_check(counts["NPC_"] == 3816 and counts["CREA"] == 1578 and counts["items"] == 16166 + 1568 and counts["coed"] == 1345 + 16
+			and counts["destructible"] == 7 + 55 and counts["nifz"] == 1059 and counts["sounds"] == 735,
+			"census A1 counts: 3,816 NPC_, 1,578 CREA, 17,734 items, 1,361 with COED, 62 destructible, 1,059 with NIFZ, 735 sounds")
+	# A seeded inventory carries COED's condition: an NPC_ with a COED entry that
+	# names a plain item (not a leveled list).
+	var seeded := false
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "NPC_":
+			continue
+		var npc := server.get_base(int(row["form_id"])) as NpcBase
+		var entry: InitialItemCollection = null
+		for candidate in npc.items:
+			if candidate.condition >= 0.0 and not candidate.item is LeveledItemBase:
+				entry = candidate
+				break
+		if entry == null or (npc.template_flags & ActorBase.TEMPLATE_USE_INVENTORY) != 0:
+			continue
+		var reference: EsmReference = server.create_reference_for_base(npc.form_id)
+		for item: InventoryItem in reference.contents.get_items():
+			if item.item_reference != null and item.item_reference.base_form_id == entry.item_form_id:
+				seeded = is_equal_approx(item.health_percent, entry.condition)
+		_check(seeded, "%s's inventory item %s carries COED condition %.2f" % [npc.editor_id, entry.item.editor_id, entry.condition])
+		break
 
 ## FormID -> filing CELL, single-record placements, and editor-ID lookup.
 func _check_reference_index(server, index: Array) -> void:

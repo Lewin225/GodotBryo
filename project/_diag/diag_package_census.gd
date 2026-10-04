@@ -33,12 +33,12 @@ func _ready() -> void:
 	var used_by := {} # package form id -> count of population actors
 	for actor in population:
 		var source_note := ""
-		var source := ActorStats.template_source(actor.base, TEMPLATE_USE_AI_PACKAGES)
+		var source := ActorBase.template_source(actor.base, TEMPLATE_USE_AI_PACKAGES)
 		if source != actor.base:
 			source_note = " (packages from template %s)" % source.editor_id
-		var stats: ActorStats = actor.base.get("actor_stats")
-		if (stats.template_flags & TEMPLATE_USE_AI_PACKAGES) != 0 and source == actor.base:
-			source_note = " (Use AI Packages from %s %s, not followed)" % [_type_of(stats.template_form_id), _edid(stats.template_form_id)]
+		var record := actor.base as ActorBase
+		if (record.template_flags & TEMPLATE_USE_AI_PACKAGES) != 0 and source == actor.base:
+			source_note = " (Use AI Packages from %s %s, not followed)" % [_type_of(record.template_form_id), _edid(record.template_form_id)]
 		var names: Array[String] = []
 		var list: Array = source.get("packages") if source.get("packages") != null else []
 		for package: PackageBase in list:

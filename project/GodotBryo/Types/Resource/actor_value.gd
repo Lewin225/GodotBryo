@@ -3,7 +3,7 @@ class_name ActorValue
 extends RefCounted
 
 ## Actor value codes (the GECK's Actor Value Codes, 0-76), their script names,
-## and how each one's base value derives from an actor's ActorStats.
+## and how each one's base value derives from an actor's record (ActorBase).
 
 enum {
 	AGGRESSION, CONFIDENCE, ENERGY, RESPONSIBILITY, MOOD,
@@ -86,9 +86,10 @@ static func setting(name: String) -> float:
 			return float(value)
 	return float(DEFAULT_SETTINGS.get(name, 0.0))
 
-## An actor's base value of `code`, derived from its stats and level.
-## `is_player` selects the player's Health formula over the NPC one.
-static func derive_base(code: int, stats: ActorStats, level: int, is_player: bool) -> float:
+## An actor's base value of `code`, derived from the record supplying its
+## stats and its level. `is_player` selects the player's Health formula over
+## the NPC one.
+static func derive_base(code: int, stats: ActorBase, level: int, is_player: bool) -> float:
 	if stats == null:
 		return 0.0
 	match code:
@@ -99,7 +100,7 @@ static func derive_base(code: int, stats: ActorStats, level: int, is_player: boo
 		MOOD: return stats.mood
 		ASSISTANCE: return stats.assistance
 		STRENGTH, PERCEPTION, ENDURANCE, CHARISMA, INTELLIGENCE, AGILITY, LUCK:
-			return stats.attributes[code - STRENGTH]
+			return _attribute(stats, code)
 		ACTION_POINTS:
 			return setting("fAVDActionPointsBase") + _attribute(stats, AGILITY) * setting("fAVDActionPointsMult")
 		CARRY_WEIGHT:
@@ -117,7 +118,7 @@ static func derive_base(code: int, stats: ActorStats, level: int, is_player: boo
 			return (_attribute(stats, ENDURANCE) + setting("fAVDPoisonResistEnduranceOffset")) * setting("fAVDPoisonResistEnduranceMult")
 		RAD_RESIST:
 			return (_attribute(stats, ENDURANCE) + setting("fAVDRadResistEnduranceOffset")) * setting("fAVDRadResistEnduranceMult")
-		SPEED_MULT: return stats.speed_mult
+		SPEED_MULT: return stats.speed_multiplier
 		FATIGUE: return stats.fatigue
 		KARMA: return stats.karma
 		PERCEPTION_CONDITION, ENDURANCE_CONDITION, LEFT_ATTACK_CONDITION, RIGHT_ATTACK_CONDITION, \
@@ -125,21 +126,30 @@ static func derive_base(code: int, stats: ActorStats, level: int, is_player: boo
 			return setting("fAVDDefaultBodyPartCondition")
 		UNARMED_DAMAGE:
 			return setting("fAVDUnarmedDamageBase") + derive_base(UNARMED, stats, level, is_player) * setting("fAVDUnarmedDamageMult")
-	if code >= BARTER and code <= UNARMED and code - BARTER < stats.skills.size():
-		return stats.skills[code - BARTER]
+	var npc := stats as NpcBase
+	if npc != null and code >= BARTER and code <= UNARMED and code - BARTER < npc.skill_values.size():
+		return npc.skill_values[code - BARTER]
 	return 0.0
 
 ## Health: the authored base health plus Endurance and level terms. The
 ## player uses fAVDHealth*, other NPCs fAVDNPCHealth*; creatures use their
 ## DATA health alone.
-static func _health(stats: ActorStats, level: int, is_player: bool) -> float:
-	if stats.is_creature:
-		return stats.base_health
+static func _health(stats: ActorBase, level: int, is_player: bool) -> float:
+	if stats is CreatureBase:
+		return (stats as CreatureBase).health
+	var npc := stats as NpcBase
+	if npc == null:
+		return 0.0
 	var prefix := "fAVDHealth" if is_player else "fAVDNPCHealth"
 	var endurance := _attribute(stats, ENDURANCE)
-	return stats.base_health \
+	return npc.base_health \
 			+ (endurance + setting(prefix + "EnduranceOffset")) * setting(prefix + "EnduranceMult") \
 			+ maxi(level - 1, 0) * setting(prefix + "LevelMult")
 
-static func _attribute(stats: ActorStats, code: int) -> int:
-	return stats.attributes[code - STRENGTH]
+## A SPECIAL attribute: DATA's attributes on an NpcBase or a CreatureBase.
+static func _attribute(stats: ActorBase, code: int) -> int:
+	if stats is NpcBase:
+		return (stats as NpcBase).attributes[code - STRENGTH]
+	if stats is CreatureBase:
+		return (stats as CreatureBase).attributes[code - STRENGTH]
+	return 0
