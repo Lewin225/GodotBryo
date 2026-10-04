@@ -44,7 +44,7 @@ enum PackageType {
 ## CTDA conditions choosing whether the package runs, in authored order.
 ## Read; 2992 on 1814 PACK records in FalloutNV.esm. Not used yet (package
 ## selection is not implemented).
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []
 
 ## PACK's Idle Animation block. The non-FormID IDLC/IDLF/IDLT words retain
 ## their subrecord names until their behavior is independently verified.
@@ -63,6 +63,6 @@ var idle_collection_timer_raw: PackedByteArray = PackedByteArray()
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var has_ambush_marker: bool = false
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageDialogueData", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var dialogue_data: PackageDialogueData
 
-@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEvent", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_begin: PackageEvent
-@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEvent", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_end: PackageEvent
-@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEvent", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_change: PackageEvent
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_begin: PackageEventCollection
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_end: PackageEventCollection
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_change: PackageEventCollection

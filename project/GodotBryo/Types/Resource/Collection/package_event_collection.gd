@@ -1,5 +1,5 @@
 @tool
-class_name PackageEvent
+class_name PackageEventCollection
 extends Resource
 
 ## One of PACK's POBA/POEA/POCA event blocks. The embedded script subrecords
@@ -16,6 +16,6 @@ var compiled_script: PackedByteArray = PackedByteArray()
 @export_multiline var script_source: String = ""
 var local_variable_data: Array[PackedByteArray] = []
 var local_variable_names: PackedStringArray = []
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "PackageScriptLocal", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var local_variables: Array[PackageScriptLocal] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ScriptLocalCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var local_variables: Array[ScriptLocalCollection] = []
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "int", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_references: Array[int] = []
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "int", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_local_reference_indices: Array[int] = []

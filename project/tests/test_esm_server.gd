@@ -342,8 +342,8 @@ func _check_quest_bases(server, index: Array) -> void:
 				counts["entries"] += 1
 				counts["scripts"] += int(not entry.script_source.is_empty())
 				counts["conditioned"] += int(not entry.conditions.is_empty())
-				counts["complete"] += int((entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0)
-				counts["fail"] += int((entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0)
+				counts["complete"] += int((entry.flags & QuestLogEntryCollection.FLAG_COMPLETE_QUEST) != 0)
+				counts["fail"] += int((entry.flags & QuestLogEntryCollection.FLAG_FAIL_QUEST) != 0)
 	_check(counts == {"quests": 436, "enabled": 281, "stages": 1028, "entries": 969, "scripts": 737, "conditioned": 20, "complete": 150, "fail": 126},
 			"every QUST resolves as a QuestBase matching the census (%s)" % [counts])
 	_check_quest_objectives(server, index)
@@ -369,8 +369,8 @@ func _check_quest_objectives(server, index: Array) -> void:
 			seen[objective.index] = true
 			for target in objective.targets:
 				counts["targets"] += 1
-				counts["flag_01"] += int(target.flags == QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
-				counts["other_flags"] += int(target.flags > QuestObjectiveTarget.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
+				counts["flag_01"] += int(target.flags == QuestObjectiveTargetCollection.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
+				counts["other_flags"] += int(target.flags > QuestObjectiveTargetCollection.FLAG_COMPASS_MARKER_IGNORES_LOCKS)
 				counts["conditioned"] += int(not target.conditions.is_empty())
 				counts["conditions"] += target.conditions.size()
 	_check(counts == {"quests": 125, "objectives": 1045, "empty_text": 17, "with_targets": 892, "targets": 1469,
@@ -779,7 +779,7 @@ func _check_package_bases(server, index: Array) -> void:
 		else:
 			for condition_index in raw_conditions.size():
 				var condition_data: PackedByteArray = raw_conditions[condition_index]
-				var condition: Condition = package.conditions[condition_index]
+				var condition: ConditionSubrecord = package.conditions[condition_index]
 				if not _condition_matches(condition, condition_data):
 					errors.append("0x%08X CTDA %d differs" % [form_id, condition_index])
 					break
@@ -903,7 +903,7 @@ func _check_package_events(form_id: int, raw: Dictionary, package: PackageBase, 
 		elif tag == "SCRV": expected[marker]["local_references"] = int(expected[marker]["local_references"]) + 1
 	for event_data in [["POBA", package.on_begin], ["POEA", package.on_end], ["POCA", package.on_change]]:
 		var marker_name: String = event_data[0]
-		var event: PackageEvent = event_data[1]
+		var event: PackageEventCollection = event_data[1]
 		if expected[marker_name].is_empty():
 			if event != null: errors.append("0x%08X unexpected %s event" % [form_id, marker_name])
 		elif event == null or event.idle_form_id != int(expected[marker_name]["idle"]) or event.topic_form_id != int(expected[marker_name]["topic"]) or event.script_header != expected[marker_name]["script_header"] or event.compiled_script != expected[marker_name]["compiled"] or event.script_source != String(expected[marker_name]["source"]) or event.local_variables.size() != int(expected[marker_name]["locals"]) or event.local_variable_names.size() != int(expected[marker_name]["names"]) or event.script_references.size() != int(expected[marker_name]["references"]) or event.script_local_reference_indices.size() != int(expected[marker_name]["local_references"]):
@@ -1506,7 +1506,7 @@ func _check_talking_activator_and_terminal_resources(server, index: Array) -> vo
 				var terminal := base as TerminalBase
 				_check(terminal.welcome_text is String and terminal.menu_items is Array, "TERM exposes welcome text and ordered menu data")
 				if not terminal.menu_items.is_empty():
-					_check(terminal.menu_items[0] is TerminalMenuItem, "TERM menu entries use the typed convenience resource")
+					_check(terminal.menu_items[0] is TerminalMenuItemCollection, "TERM menu entries use the typed convenience resource")
 			break
 		_check(found_base, "a real %s Base is available" % tag)
 
@@ -1574,7 +1574,7 @@ func _check_leveled_item_resources(server, index: Array) -> void:
 		found = true
 		_check(list.entries.size() > 0, "LVLI exposes typed entries")
 		if not list.entries.is_empty():
-			var entry: LeveledItemEntry = list.entries[0]
+			var entry: LeveledItemEntryCollection = list.entries[0]
 			_check(entry.item_form_id != 0, "LVLI entry exposes referenced FormID")
 			_check(entry.item_base == server.get_base(entry.item_form_id), "LVLI entry reuses cached item Base")
 		break
@@ -1584,12 +1584,12 @@ func _check_leveled_item_resources(server, index: Array) -> void:
 
 	var synthetic := LeveledItemBase.new()
 	synthetic.form_id = 0x7FFF0001
-	var first := LeveledItemEntry.new()
+	var first := LeveledItemEntryCollection.new()
 	first.level = 1
 	first.item_form_id = 0x000E3778
 	first.item_base = server.get_base(first.item_form_id)
 	first.count = 2
-	var second := LeveledItemEntry.new()
+	var second := LeveledItemEntryCollection.new()
 	second.level = 5
 	second.item_form_id = first.item_form_id
 	second.item_base = first.item_base
@@ -1721,8 +1721,8 @@ func _count_pkid(raw: Dictionary) -> int:
 	return count
 
 
-## Whether a Condition holds exactly the fields of its raw CTDA bytes.
-func _condition_matches(condition: Condition, data: PackedByteArray) -> bool:
+## Whether a ConditionSubrecord holds exactly the fields of its raw CTDA bytes.
+func _condition_matches(condition: ConditionSubrecord, data: PackedByteArray) -> bool:
 	if condition == null:
 		return false
 	var type := _u8(data)
@@ -1738,7 +1738,7 @@ func _condition_matches(condition: Condition, data: PackedByteArray) -> bool:
 	return data.size() < 28 or condition.reference_form_id == _u32(data, 24)
 
 
-## Every CTDA on QUST, TERM and MESG records becomes a Condition on its owner,
+## Every CTDA on QUST, TERM and MESG records becomes a ConditionSubrecord on its owner,
 ## in order, field for field: 1501 on QUST (quest, log entry and objective
 ## target conditions), 405 on TERM menu items and 259 on MESG buttons in
 ## FalloutNV.esm.
@@ -1750,20 +1750,20 @@ func _check_owner_conditions(server, index: Array) -> void:
 		if not totals.has(type):
 			continue
 		var base: EsmBase = server.get_base(int(row["form_id"]))
-		var parsed: Array[Condition] = []
+		var parsed: Array[ConditionSubrecord] = []
 		if base is QuestBase:
 			parsed.append_array(base.conditions)
-			for stage: QuestStage in base.stages:
-				for entry: QuestLogEntry in stage.log_entries:
+			for stage: QuestStageCollection in base.stages:
+				for entry: QuestLogEntryCollection in stage.log_entries:
 					parsed.append_array(entry.conditions)
-			for objective: QuestObjective in base.objectives:
-				for target: QuestObjectiveTarget in objective.targets:
+			for objective: QuestObjectiveCollection in base.objectives:
+				for target: QuestObjectiveTargetCollection in objective.targets:
 					parsed.append_array(target.conditions)
 		elif base is TerminalBase:
-			for item: TerminalMenuItem in base.menu_items:
+			for item: TerminalMenuItemCollection in base.menu_items:
 				parsed.append_array(item.conditions)
 		elif base is MessageBase:
-			for button: MessageButton in base.buttons:
+			for button: MessageButtonCollection in base.buttons:
 				parsed.append_array(button.conditions)
 		var raw: Array = server.reader.get_record_data(int(row["form_id"])).get("subrecords", [])
 		var raw_conditions: Array[PackedByteArray] = []
@@ -1779,7 +1779,7 @@ func _check_owner_conditions(server, index: Array) -> void:
 				mismatches.append("%s 0x%08X CTDA %d differs" % [type, base.form_id, i])
 				break
 	_check(mismatches.is_empty() and totals["QUST"] == 1501 and totals["TERM"] == 405 and totals["MESG"] == 259,
-			"every QUST, TERM and MESG CTDA is a Condition on its owner, field for field (%s; %s)" % [totals, mismatches.slice(0, 3)])
+			"every QUST, TERM and MESG CTDA is a ConditionSubrecord on its owner, field for field (%s; %s)" % [totals, mismatches.slice(0, 3)])
 
 
 ## XLKR reaches the reference: placed terminal REFR 00143990 is linked to
@@ -1795,7 +1795,7 @@ func _check_linked_references(server, _index: Array) -> void:
 ## parameter resolves to the kind its xEdit type says: a reference, a base
 ## resource, or an int. A FormID parameter naming nothing is counted.
 func _check_condition_parameters(server, index: Array) -> void:
-	var conditions: Array[Condition] = []
+	var conditions: Array[ConditionSubrecord] = []
 	for row: Dictionary in index:
 		var type := String(row.get("record_type", ""))
 		if type != "PACK" and type != "QUST" and type != "TERM" and type != "MESG":
@@ -1805,17 +1805,17 @@ func _check_condition_parameters(server, index: Array) -> void:
 			conditions.append_array(base.conditions)
 		elif base is QuestBase:
 			conditions.append_array(base.conditions)
-			for stage: QuestStage in base.stages:
-				for entry: QuestLogEntry in stage.log_entries:
+			for stage: QuestStageCollection in base.stages:
+				for entry: QuestLogEntryCollection in stage.log_entries:
 					conditions.append_array(entry.conditions)
-			for objective: QuestObjective in base.objectives:
-				for target: QuestObjectiveTarget in objective.targets:
+			for objective: QuestObjectiveCollection in base.objectives:
+				for target: QuestObjectiveTargetCollection in objective.targets:
 					conditions.append_array(target.conditions)
 		elif base is TerminalBase:
-			for item: TerminalMenuItem in base.menu_items:
+			for item: TerminalMenuItemCollection in base.menu_items:
 				conditions.append_array(item.conditions)
 		elif base is MessageBase:
-			for button: MessageButton in base.buttons:
+			for button: MessageButtonCollection in base.buttons:
 				conditions.append_array(button.conditions)
 	var unknown := {}
 	var wrong_kind: Array[String] = []

@@ -204,7 +204,7 @@ static func get_script_form_id(reference: EsmReference) -> int:
 	return reference.base.script_form_id if reference != null and reference.base != null else 0
 
 ## Whether a list of CTDA conditions passes for `context` (ConditionEvaluator).
-func evaluate_conditions(conditions: Array[Condition], context: ConditionContext) -> bool:
+func evaluate_conditions(conditions: Array[ConditionSubrecord], context: ConditionContext) -> bool:
 	if _condition_evaluator == null:
 		_condition_evaluator = ConditionEvaluator.new(self)
 	return _condition_evaluator.evaluate(conditions, context)

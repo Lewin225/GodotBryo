@@ -1,5 +1,5 @@
 @tool
-class_name RacePartBaseResource
+class_name RacePartCollection
 extends Resource
 
 ## One authored RACE head/body part descriptor. These entries are derived from

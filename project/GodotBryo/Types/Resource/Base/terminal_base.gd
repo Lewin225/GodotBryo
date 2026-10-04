@@ -26,10 +26,10 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var uses_alternate_colors: bool = false
 ## TERM DNAM hide-welcome-text flag.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hides_welcome_text: bool = false
-## Ordered embedded TERM menu items. TerminalMenuItem is a GodotBryo
+## Ordered embedded TERM menu items. TerminalMenuItemCollection is a GodotBryo
 ## convenience resource, not an ESM record type; linked Note/submenu FormIDs
 ## remain explicit fields on each item.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var menu_items: Array[TerminalMenuItem] = []
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var menu_items: Array[TerminalMenuItemCollection] = []
 
 ## A locked terminal unlocks for an activator carrying its password note.
 ## Without it, a level-5 terminal does nothing; any other locked terminal is

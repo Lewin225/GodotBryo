@@ -76,7 +76,7 @@ func _ready() -> void:
 		if not p.idle_animation_form_ids.is_empty():
 			print("    idles %s" % [p.idle_animation_form_ids.map(func(i): return _edid(i))])
 		for pair in [["on begin", p.on_begin], ["on end", p.on_end], ["on change", p.on_change]]:
-			var e: PackageEvent = pair[1]
+			var e: PackageEventCollection = pair[1]
 			if e != null and (not e.script_source.strip_edges().is_empty() or e.idle_form_id != 0 or e.topic_form_id != 0):
 				print("    %s: idle %s topic %s script %s" % [pair[0], _edid(e.idle_form_id), _edid(e.topic_form_id), e.script_source.strip_edges().replace("\r", "").replace("\n", " | ").left(200)])
 	print("\n## By type")

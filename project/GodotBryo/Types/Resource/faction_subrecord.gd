@@ -1,5 +1,5 @@
 @tool
-class_name ActorFaction
+class_name FactionSubrecord
 extends Resource
 
 ## Not an ESM record. One NPC_ or CREA SNAM (xEdit `wbFaction`); added so a

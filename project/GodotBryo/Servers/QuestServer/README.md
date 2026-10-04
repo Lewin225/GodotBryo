@@ -25,7 +25,7 @@ QuestServer.is_quest_object(item) -> bool / set_quest_object(item, is_quest_item
 QuestServer.get_script_delay(quest) -> float
 QuestServer.set_script_delay(quest, seconds)
 QuestServer.get_stage(quest) -> int
-QuestServer.set_stage(quest, stage) -> QuestLogEntry  # the log entry run, or null
+QuestServer.set_stage(quest, stage) -> QuestLogEntryCollection  # the log entry run, or null
 QuestServer.is_stage_done(quest, stage) -> bool
 QuestServer.is_objective_displayed(quest, index) -> bool
 QuestServer.is_objective_completed(quest, index) -> bool
@@ -68,7 +68,7 @@ stage already done does nothing again unless the quest's DATA flags allow repeat
 (34 of 436 quests), and setting a stage starts a quest that is not running, both per the
 GECK wiki's Quest Data Tab.
 
-**Objectives.** The authored objectives are `QuestBase.objectives` (`QuestObjective`: QOBJ
+**Objectives.** The authored objectives are `QuestBase.objectives` (`QuestObjectiveCollection`: QOBJ
 index, NNAM text, QSTA targets). An objective's state is two independent flags on the
 `QuestState`, displayed and completed, set and cleared only through the methods above:
 completing does not display, and hiding does not uncomplete. An index the QUST does not

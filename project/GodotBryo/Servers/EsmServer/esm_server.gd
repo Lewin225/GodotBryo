@@ -975,7 +975,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		if reader != null:
 			var parsed_terminal: Dictionary = reader.get_terminal_data(terminal.form_id)
 			for item_data in parsed_terminal.get("items", []):
-				var item := TerminalMenuItem.new()
+				var item := TerminalMenuItemCollection.new()
 				item.text = String(item_data.get("text", ""))
 				item.result_text = String(item_data.get("result_text", ""))
 				item.item_flags = int(item_data.get("flags", 0))
@@ -1033,15 +1033,15 @@ func _populate_dialogue_info(info: DialogueInfoBase, raw: Dictionary) -> void:
 	info.end_script_source = ""
 	# A response starts at its TRDT; its NAM1-LNAM follow. The SCTX before NEXT
 	# is the begin script, the one after it the end script.
-	var response: DialogueResponse = null
+	var response: DialogueResponseCollection = null
 	var after_next := false
 	for sub: Dictionary in raw.get("subrecords", []):
 		var tag := String(sub.get("type", ""))
 		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
 		match tag:
 			"TRDT":
-				response = DialogueResponse.new()
-				response.emotion = _u32(bytes) as DialogueResponse.Emotion
+				response = DialogueResponseCollection.new()
+				response.emotion = _u32(bytes) as DialogueResponseCollection.Emotion
 				response.emotion_value = _i32(bytes, 4)
 				response.response_number = _u8(bytes, 12)
 				response.sound_form_id = _u32(bytes, 16)
@@ -1086,7 +1086,7 @@ func _populate_message(message: MessageBase, raw: Dictionary) -> void:
 		var tag := String(sub.get("type", ""))
 		var data: PackedByteArray = sub.get("data", PackedByteArray())
 		if tag == "ITXT":
-			var button := MessageButton.new()
+			var button := MessageButtonCollection.new()
 			button.text = _string(data)
 			message.buttons.append(button)
 		elif tag == "CTDA" and not message.buttons.is_empty():
@@ -1134,7 +1134,7 @@ func _populate_race(race: RaceBase, raw: Dictionary) -> void:
 	for female in [false, true]:
 		var body_parts: Array = reader.get_race_body_parts(race.form_id, female)
 		for item in body_parts:
-			var body := RacePartBaseResource.new()
+			var body := RacePartCollection.new()
 			body.index = int(item.get("index", 0))
 			body.part_type = _race_body_part_type(body.index)
 			body.model_path = String(item.get("model", ""))
@@ -1143,7 +1143,7 @@ func _populate_race(race: RaceBase, raw: Dictionary) -> void:
 			else: race.male_body_parts.append(body)
 		var head_parts: Array = reader.get_race_head_parts(race.form_id, female)
 		for item in head_parts:
-			var head := RacePartBaseResource.new()
+			var head := RacePartCollection.new()
 			head.index = int(item.get("index", 0))
 			head.part_type = _race_head_part_type(head.index)
 			head.model_path = String(item.get("model", ""))
@@ -1207,24 +1207,24 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 	result.conditions.clear()
 	result.stages.clear()
 	result.objectives.clear()
-	var stage: QuestStage = null
-	var entry: QuestLogEntry = null
-	var objective: QuestObjective = null
-	var target: QuestObjectiveTarget = null
+	var stage: QuestStageCollection = null
+	var entry: QuestLogEntryCollection = null
+	var objective: QuestObjectiveCollection = null
+	var target: QuestObjectiveTargetCollection = null
 	for sub: Dictionary in raw.get("subrecords", []):
 		var tag := String(sub.get("type", ""))
 		var bytes: PackedByteArray = sub.get("data", PackedByteArray())
 		if objective != null or tag == "QOBJ":
 			match tag:
 				"QOBJ":
-					objective = QuestObjective.new()
+					objective = QuestObjectiveCollection.new()
 					objective.index = _i32(bytes)
 					result.objectives.append(objective)
 					target = null
 				"NNAM":
 					objective.text = _string(bytes)
 				"QSTA":
-					target = QuestObjectiveTarget.new()
+					target = QuestObjectiveTargetCollection.new()
 					target.reference_form_id = _u32(bytes)
 					target.flags = _u8(bytes, 4)
 					objective.targets.append(target)
@@ -1234,13 +1234,13 @@ func _populate_quest(result: QuestBase, raw: Dictionary) -> void:
 			continue
 		match tag:
 			"INDX":
-				stage = QuestStage.new()
+				stage = QuestStageCollection.new()
 				stage.index = _i16(bytes)
 				result.stages.append(stage)
 				entry = null
 			"QSDT":
 				if stage != null:
-					entry = QuestLogEntry.new()
+					entry = QuestLogEntryCollection.new()
 					entry.flags = _u8(bytes)
 					stage.log_entries.append(entry)
 			"CTDA":
@@ -1269,7 +1269,7 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 		if data.size() < 8:
 			result.diagnostics.append("LVLI 0x%08X has truncated LVLO at %d" % [result.form_id, index])
 			continue
-		var entry := LeveledItemEntry.new()
+		var entry := LeveledItemEntryCollection.new()
 		entry.level = _i16(data)
 		if data.size() >= 12:
 			entry.item_form_id = _u32(data, 4)
@@ -1330,7 +1330,7 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 	result.on_end = null
 	result.on_change = null
 
-	var current_event: PackageEvent = null
+	var current_event: PackageEventCollection = null
 	for subrecord in raw.get("subrecords", []):
 		var tag := String(subrecord.get("type", ""))
 		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
@@ -1377,13 +1377,13 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 			"PKDD":
 				result.dialogue_data = _package_dialogue_data(result, data)
 			"POBA":
-				current_event = PackageEvent.new()
+				current_event = PackageEventCollection.new()
 				result.on_begin = current_event
 			"POEA":
-				current_event = PackageEvent.new()
+				current_event = PackageEventCollection.new()
 				result.on_end = current_event
 			"POCA":
-				current_event = PackageEvent.new()
+				current_event = PackageEventCollection.new()
 				result.on_change = current_event
 			_:
 				if current_event != null:
@@ -1543,16 +1543,16 @@ func _package_target(package: PackageBase, tag: String, data: PackedByteArray) -
 	target.unknown = _f32(data, 12)
 	return target
 
-## One CTDA as a Condition. 28-byte CTDAs carry Run On and Reference, the
+## One CTDA as a ConditionSubrecord. 28-byte CTDAs carry Run On and Reference, the
 ## 24-byte form Run On only, the 20-byte form neither. Null, with a diagnostic
 ## on `record`, for any other size.
-func _condition(record: EsmBase, data: PackedByteArray) -> Condition:
+func _condition(record: EsmBase, data: PackedByteArray) -> ConditionSubrecord:
 	if data.size() != 20 and data.size() != 24 and data.size() != 28:
 		record.diagnostics.append("%s 0x%08X has CTDA with %d bytes; expected 20, 24 or 28" % [record.record_type, record.form_id, data.size()])
 		return null
-	var condition := Condition.new()
+	var condition := ConditionSubrecord.new()
 	var type := _u8(data)
-	condition.comparison = (type >> 5) as Condition.Comparison
+	condition.comparison = (type >> 5) as ConditionSubrecord.Comparison
 	condition.flags = type & 0x1F
 	condition.comparison_value = _f32(data, 4)
 	if condition.uses_global():
@@ -1567,8 +1567,8 @@ func _condition(record: EsmBase, data: PackedByteArray) -> Condition:
 		condition.reference_form_id = _u32(data, 24)
 	return condition
 
-## Appends the Condition parsed from `data` to `conditions`, when it parses.
-func _append_condition(conditions: Array[Condition], record: EsmBase, data: PackedByteArray) -> void:
+## Appends the ConditionSubrecord parsed from `data` to `conditions`, when it parses.
+func _append_condition(conditions: Array[ConditionSubrecord], record: EsmBase, data: PackedByteArray) -> void:
 	var condition := _condition(record, data)
 	if condition != null:
 		conditions.append(condition)
@@ -1606,7 +1606,7 @@ func _package_dialogue_data(package: PackageBase, data: PackedByteArray) -> Pack
 	result.unknown = _u32(data, 20)
 	return result
 
-func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: PackedByteArray) -> void:
+func _populate_package_event_subrecord(event: PackageEventCollection, tag: String, data: PackedByteArray) -> void:
 	match tag:
 		"INAM": event.idle_form_id = _u32(data)
 		"TNAM": event.topic_form_id = _u32(data)
@@ -1621,7 +1621,7 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 		"SCTX": event.script_source = _string(data)
 		"SLSD":
 			event.local_variable_data.append(data.duplicate())
-			var local := PackageScriptLocal.new()
+			var local := ScriptLocalCollection.new()
 			local.index = _u32(data)
 			local.variable_type = _u8(data, 16)
 			local.raw_data = data.duplicate()
@@ -1653,10 +1653,10 @@ func _populate_actor_reference(actor: ActorReference, raw: Dictionary) -> void:
 		creature.owner = get_base(creature.owner_form_id)
 
 ## An NPC_ or CREA's SNAM faction entries: FACT FormID and signed rank.
-func _actor_factions(raw: Dictionary) -> Array[ActorFaction]:
-	var factions: Array[ActorFaction] = []
+func _actor_factions(raw: Dictionary) -> Array[FactionSubrecord]:
+	var factions: Array[FactionSubrecord] = []
 	for data in _all_subrecords(raw, "SNAM"):
-		var entry := ActorFaction.new()
+		var entry := FactionSubrecord.new()
 		entry.faction_form_id = _u32(data)
 		entry.rank = _i8(data, 4)
 		factions.append(entry)
@@ -1883,14 +1883,14 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 	result.skeleton_model_path = _string(_subrecord(raw, "MODL"))
 	result.ragdoll_form_id = _u32(_subrecord(raw, "RAGA"))
 	result.parts.clear()
-	var current: BodyPartDataPart = null
+	var current: BodyPartCollection = null
 	for subrecord in raw.get("subrecords", []):
 		var tag := String(subrecord.get("type", ""))
 		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
 		if tag == "BPTN":
 			if current != null:
 				result.parts.append(current)
-			current = BodyPartDataPart.new()
+			current = BodyPartCollection.new()
 			current.part_name = _string(data)
 		elif tag == "BPNN":
 			# BPTD permits an unnamed collection, which begins at BPNN. A second
@@ -1898,7 +1898,7 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 			if current == null or not current.part_node.is_empty():
 				if current != null:
 					result.parts.append(current)
-				current = BodyPartDataPart.new()
+				current = BodyPartCollection.new()
 			current.part_node = _string(data)
 		elif current != null and tag == "BPNT":
 			current.vats_target = _string(data)
@@ -1915,7 +1915,7 @@ func _populate_body_part_data(result: BodyPartDataBase, raw: Dictionary) -> void
 	if current != null:
 		result.parts.append(current)
 
-func _populate_body_part_numeric_data(part: BodyPartDataPart, data: PackedByteArray, body_part_data: BodyPartDataBase) -> void:
+func _populate_body_part_numeric_data(part: BodyPartCollection, data: PackedByteArray, body_part_data: BodyPartDataBase) -> void:
 	part.raw_bpnd = data.duplicate()
 	if data.size() != 84:
 		body_part_data.diagnostics.append("BPTD 0x%08X BPND has %d bytes; expected 84" % [body_part_data.form_id, data.size()])

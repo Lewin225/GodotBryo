@@ -19,7 +19,7 @@ func _init(script_server: Node) -> void:
 	_server = script_server
 
 ## Whether `conditions` pass for `context`. An empty list passes.
-func evaluate(conditions: Array[Condition], context: ConditionContext) -> bool:
+func evaluate(conditions: Array[ConditionSubrecord], context: ConditionContext) -> bool:
 	var group_passed := false
 	for i in conditions.size():
 		var condition := conditions[i]
@@ -36,9 +36,9 @@ func evaluate(conditions: Array[Condition], context: ConditionContext) -> bool:
 ## Reference, Combat Target) is false; with no subject or target the function
 ## runs with no calling reference, as quest-level functions (GetStage) need
 ## none.
-func evaluate_condition(condition: Condition, context: ConditionContext) -> bool:
+func evaluate_condition(condition: ConditionSubrecord, context: ConditionContext) -> bool:
 	var subject := run_on_reference(condition, context)
-	if subject == null and condition.run_on != Condition.RunOn.SUBJECT and condition.run_on != Condition.RunOn.TARGET:
+	if subject == null and condition.run_on != ConditionSubrecord.RunOn.SUBJECT and condition.run_on != ConditionSubrecord.RunOn.TARGET:
 		return false
 	var name := ScriptConditionFunctions.name_for_index(condition.function_index)
 	var registry: ScriptFunctionRegistry = _server.function_registry
@@ -54,15 +54,15 @@ func evaluate_condition(condition: Condition, context: ConditionContext) -> bool
 
 ## The reference a condition's function runs on, or null (no subject or
 ## target, a Combat Target, a missing reference, no linked reference).
-func run_on_reference(condition: Condition, context: ConditionContext) -> EsmReference:
+func run_on_reference(condition: ConditionSubrecord, context: ConditionContext) -> EsmReference:
 	match condition.run_on:
-		Condition.RunOn.SUBJECT:
+		ConditionSubrecord.RunOn.SUBJECT:
 			return context.subject
-		Condition.RunOn.TARGET:
+		ConditionSubrecord.RunOn.TARGET:
 			return context.target
-		Condition.RunOn.REFERENCE:
+		ConditionSubrecord.RunOn.REFERENCE:
 			return ScriptConditionFunctions.resolve_parameter("ptReference", condition.reference_form_id)
-		Condition.RunOn.LINKED_REFERENCE:
+		ConditionSubrecord.RunOn.LINKED_REFERENCE:
 			var source := context.linked_from if context.linked_from != null else context.subject
 			if source == null or source.linked_reference_form_id == 0:
 				return null
@@ -71,7 +71,7 @@ func run_on_reference(condition: Condition, context: ConditionContext) -> EsmRef
 
 ## The value a condition compares with: its GLOB's current value when it uses
 ## a global, else its comparison value.
-func comparison_value(condition: Condition) -> float:
+func comparison_value(condition: ConditionSubrecord) -> float:
 	if not condition.uses_global():
 		return condition.comparison_value
 	var esm_server := EsmReference.get_esm_server()
@@ -80,14 +80,14 @@ func comparison_value(condition: Condition) -> float:
 		return 0.0
 	return _number(_server.globals.get_global(record.editor_id))
 
-static func compare(value: float, comparison: Condition.Comparison, against: float) -> bool:
+static func compare(value: float, comparison: ConditionSubrecord.Comparison, against: float) -> bool:
 	match comparison:
-		Condition.Comparison.EQUAL: return is_equal_approx(value, against)
-		Condition.Comparison.NOT_EQUAL: return not is_equal_approx(value, against)
-		Condition.Comparison.GREATER: return value > against
-		Condition.Comparison.GREATER_OR_EQUAL: return value >= against or is_equal_approx(value, against)
-		Condition.Comparison.LESS: return value < against
-		Condition.Comparison.LESS_OR_EQUAL: return value <= against or is_equal_approx(value, against)
+		ConditionSubrecord.Comparison.EQUAL: return is_equal_approx(value, against)
+		ConditionSubrecord.Comparison.NOT_EQUAL: return not is_equal_approx(value, against)
+		ConditionSubrecord.Comparison.GREATER: return value > against
+		ConditionSubrecord.Comparison.GREATER_OR_EQUAL: return value >= against or is_equal_approx(value, against)
+		ConditionSubrecord.Comparison.LESS: return value < against
+		ConditionSubrecord.Comparison.LESS_OR_EQUAL: return value <= against or is_equal_approx(value, against)
 	return false
 
 ## A function result as a number: bools as 0/1, a returned object as 1, null

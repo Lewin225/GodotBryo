@@ -715,7 +715,7 @@ static func name_for_index(function_index: int) -> String:
 ## A condition's parameters as the values a script call would pass, by the
 ## function's xEdit parameter types: references, base resources, CELL/WRLD
 ## FormIDs and integers. Parameters the function does not take are omitted.
-static func resolve_parameters(condition: Condition) -> Array:
+static func resolve_parameters(condition: ConditionSubrecord) -> Array:
 	var entry: Array = BY_INDEX.get(condition.function_index, [])
 	var types: Array = entry[1] if not entry.is_empty() else []
 	var raw := [condition.parameter_1, condition.parameter_2]

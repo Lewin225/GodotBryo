@@ -1,5 +1,5 @@
 @tool
-class_name DialogueResponse
+class_name DialogueResponseCollection
 extends Resource
 
 ## Not an ESM record. One INFO response, a TRDT and the NAM1, NAM2, NAM3, SNAM

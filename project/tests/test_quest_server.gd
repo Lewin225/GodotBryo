@@ -66,9 +66,9 @@ func _ready() -> void:
 		if String(row.get("record_type", "")) != "QUST":
 			continue
 		var candidate := esm_server.get_base(int(row["form_id"])) as QuestBase
-		for stage: QuestStage in candidate.stages:
-			for entry: QuestLogEntry in stage.log_entries:
-				if entry.conditions.is_empty() and (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0 and entry.script_source.strip_edges().is_empty():
+		for stage: QuestStageCollection in candidate.stages:
+			for entry: QuestLogEntryCollection in stage.log_entries:
+				if entry.conditions.is_empty() and (entry.flags & QuestLogEntryCollection.FLAG_COMPLETE_QUEST) != 0 and entry.script_source.strip_edges().is_empty():
 					completing_quest = candidate
 					completing_stage = stage.index
 					break
@@ -168,7 +168,7 @@ func _check_quest_state_functions(esm_server, quests, script_server) -> void:
 ## 212's test IsWin32 == 1 (the PC entry) and == 0.
 func _check_stage_entries(esm_server, quests, script_server) -> void:
 	var tops: QuestBase = esm_server.find_quest_by_editor_id("VMQTops")
-	var entries: Array[QuestLogEntry] = tops.get_stage(20).log_entries
+	var entries: Array[QuestLogEntryCollection] = tops.get_stage(20).log_entries
 	var variable: String = script_server.script_variable_name(tops.script_form_id, 0x11)
 	script_server.get_quest_instance(tops).set_local(variable, 0)
 	check(quests.set_stage(tops, 20) == entries[0], "VMQTops stage 20 runs its first entry while %s is 0" % variable)

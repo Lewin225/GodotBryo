@@ -1,9 +1,9 @@
 @tool
-class_name QuestObjectiveTarget
+class_name QuestObjectiveTargetCollection
 extends Resource
 
 ## One target of a QUST objective: a QSTA subrecord and the CTDA conditions
-## that follow it. Not an ESM record; its position in QuestObjective.targets
+## that follow it. Not an ESM record; its position in QuestObjectiveCollection.targets
 ## preserves authored order.
 
 ## QSTA flag 0x01 (xEdit: Compass Marker Ignores Locks).
@@ -21,4 +21,4 @@ const FLAG_COMPASS_MARKER_IGNORES_LOCKS := 0x01
 ## CTDA conditions after this QSTA, before the next QSTA or QOBJ, in authored
 ## order. Read; 772 of 1469 targets have conditions (1229 in all). Not used
 ## yet; compass and map markers would show only targets whose conditions pass.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []

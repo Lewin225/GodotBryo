@@ -1,5 +1,5 @@
 @tool
-class_name Condition
+class_name ConditionSubrecord
 extends Resource
 
 ## One CTDA condition, on whichever record carries it: a dialogue response,

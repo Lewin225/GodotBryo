@@ -35,7 +35,7 @@ func _resolve_list(list: LeveledItemBase, level: int, context: Dictionary, outpu
 	if chance > 0 and rng.randi_range(0, 99) < chance:
 		stack.pop_back()
 		return
-	var eligible: Array[LeveledItemEntry] = []
+	var eligible: Array[LeveledItemEntryCollection] = []
 	for entry in list.entries:
 		if entry == null or entry.item_form_id == 0:
 			continue
@@ -61,7 +61,7 @@ func _resolve_list(list: LeveledItemBase, level: int, context: Dictionary, outpu
 			_emit_entry(chosen, level, context, output, stack, depth, multiplier * count)
 	stack.pop_back()
 
-func _emit_entry(entry: LeveledItemEntry, level: int, context: Dictionary, output: Array[InventoryItem], stack: Array[int], depth: int, multiplier: int) -> void:
+func _emit_entry(entry: LeveledItemEntryCollection, level: int, context: Dictionary, output: Array[InventoryItem], stack: Array[int], depth: int, multiplier: int) -> void:
 	var base := entry.item_base
 	if base == null and server != null and server.has_method("get_base"):
 		base = server.get_base(entry.item_form_id)
@@ -89,25 +89,25 @@ func _emit_entry(entry: LeveledItemEntry, level: int, context: Dictionary, outpu
 	item.compatibility_data["health_percent"] = entry.health_percent
 	output.append(item)
 
-func _nearest_level_entries(entries: Array[LeveledItemEntry], level: int) -> Array[LeveledItemEntry]:
+func _nearest_level_entries(entries: Array[LeveledItemEntryCollection], level: int) -> Array[LeveledItemEntryCollection]:
 	if entries.is_empty():
 		return entries
 	var highest := -2147483648
 	for entry in entries:
 		highest = maxi(highest, entry.level)
-	var result: Array[LeveledItemEntry] = []
+	var result: Array[LeveledItemEntryCollection] = []
 	for entry in entries:
 		if entry.level == highest:
 			result.append(entry)
 	return result
 
-func _within_level_difference(entries: Array[LeveledItemEntry], level: int, limit: int) -> Array[LeveledItemEntry]:
+func _within_level_difference(entries: Array[LeveledItemEntryCollection], level: int, limit: int) -> Array[LeveledItemEntryCollection]:
 	if entries.is_empty():
 		return entries
 	var highest := -2147483648
 	for entry in entries:
 		highest = maxi(highest, entry.level)
-	var result: Array[LeveledItemEntry] = []
+	var result: Array[LeveledItemEntryCollection] = []
 	for entry in entries:
 		if highest - entry.level <= limit:
 			result.append(entry)

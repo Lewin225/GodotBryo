@@ -1,5 +1,5 @@
 @tool
-class_name QuestObjective
+class_name QuestObjectiveCollection
 extends Resource
 
 ## One QUST objective: its QOBJ index, NNAM text and QSTA targets. Not an ESM
@@ -18,4 +18,4 @@ extends Resource
 ## The QSTA targets that follow this objective's NNAM, in authored order. Read;
 ## 892 of 1045 objectives have at least one (up to 23). Not used yet; compass
 ## and map markers would use them.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var targets: Array[QuestObjectiveTarget] = []
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var targets: Array[QuestObjectiveTargetCollection] = []

@@ -128,8 +128,8 @@ instance.
 
 **Quests.** QUST records are `QuestBase`: DATA flags, priority, script delay, stages
 with their log entries and result scripts, and objectives. Stages come before the first
-QOBJ; from it on, each QOBJ opens a `QuestObjective` with its NNAM text, each QSTA a
-`QuestObjectiveTarget` (reference FormID, flags byte) and each CTDA counts toward the
+QOBJ; from it on, each QOBJ opens a `QuestObjectiveCollection` with its NNAM text, each QSTA a
+`QuestObjectiveTargetCollection` (reference FormID, flags byte) and each CTDA counts toward the
 current target. `native/tools/quest_objective_census.cpp` is the census this layout is
 checked against. Quest runtime state is `QuestServer`'s.
 

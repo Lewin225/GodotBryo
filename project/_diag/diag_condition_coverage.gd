@@ -35,9 +35,9 @@ func _ready() -> void:
 			var by_type: Dictionary = uses.get_or_add(index, {})
 			by_type[type] = int(by_type.get(type, 0)) + 1
 			var flags := data[0] & 0x1F
-			if (flags & Condition.FLAG_USE_GLOBAL) != 0:
+			if (flags & ConditionSubrecord.FLAG_USE_GLOBAL) != 0:
 				global_compared[index] = int(global_compared.get(index, 0)) + 1
-			elif ConditionEvaluator.compare(0.0, (data[0] >> 5) as Condition.Comparison, data.decode_float(4)):
+			elif ConditionEvaluator.compare(0.0, (data[0] >> 5) as ConditionSubrecord.Comparison, data.decode_float(4)):
 				var zero_by_type: Dictionary = passes_at_zero.get_or_add(index, {})
 				zero_by_type[type] = int(zero_by_type.get(type, 0)) + 1
 	types.sort_custom(func(a: String, b: String) -> bool: return _type_total(uses, a) > _type_total(uses, b))

@@ -7,10 +7,10 @@ extends EsmBase
 ## Right Eye values; body indices are Upper Body/Left Hand/Right Hand/Upper
 ## Body Texture. Entries without a real mesh remain represented when the
 ## native query returns them (for example icon-only ears).
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartBaseResource", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_head_parts: Array[RacePartBaseResource] = []
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartBaseResource", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_head_parts: Array[RacePartBaseResource] = []
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartBaseResource", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_body_parts: Array[RacePartBaseResource] = []
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartBaseResource", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_body_parts: Array[RacePartBaseResource] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_head_parts: Array[RacePartCollection] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_head_parts: Array[RacePartCollection] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_body_parts: Array[RacePartCollection] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "RacePartCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_body_parts: Array[RacePartCollection] = []
 
 var older_race_form_id: int = 0
 var younger_race_form_id: int = 0
@@ -32,8 +32,8 @@ var female_voice_form_id: int = 0
 var male_default_hair_color: int = 0
 var female_default_hair_color: int = 0
 
-func head_parts(female: bool) -> Array[RacePartBaseResource]:
+func head_parts(female: bool) -> Array[RacePartCollection]:
 	return female_head_parts if female else male_head_parts
 
-func body_parts(female: bool) -> Array[RacePartBaseResource]:
+func body_parts(female: bool) -> Array[RacePartCollection]:
 	return female_body_parts if female else male_body_parts

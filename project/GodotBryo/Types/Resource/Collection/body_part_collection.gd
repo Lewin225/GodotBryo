@@ -1,5 +1,5 @@
 @tool
-class_name BodyPartDataPart
+class_name BodyPartCollection
 extends Resource
 
 ## One BPTD body-part collection. This is authored inside a BodyPartDataBase,

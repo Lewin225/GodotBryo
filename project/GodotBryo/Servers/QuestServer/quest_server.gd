@@ -135,7 +135,7 @@ func is_stage_done(quest: EsmBase, stage: int) -> bool:
 ## all fail runs none. An entry flagged to complete or fail the quest marks it
 ## so. A stage already done does nothing again unless the quest allows repeated
 ## stages. A quest not running starts. Returns the entry run, or null.
-func set_stage(quest: EsmBase, stage: int) -> QuestLogEntry:
+func set_stage(quest: EsmBase, stage: int) -> QuestLogEntryCollection:
 	var state := get_quest_state(quest)
 	if state == null:
 		return null
@@ -154,9 +154,9 @@ func set_stage(quest: EsmBase, stage: int) -> QuestLogEntry:
 	for entry in authored.log_entries:
 		if not ScriptServer.evaluate_conditions(entry.conditions, context):
 			continue
-		if (entry.flags & QuestLogEntry.FLAG_COMPLETE_QUEST) != 0:
+		if (entry.flags & QuestLogEntryCollection.FLAG_COMPLETE_QUEST) != 0:
 			state.completed = true
-		if (entry.flags & QuestLogEntry.FLAG_FAIL_QUEST) != 0:
+		if (entry.flags & QuestLogEntryCollection.FLAG_FAIL_QUEST) != 0:
 			state.failed = true
 		ScriptServer.run_result_script(entry.script_source, null)
 		return entry

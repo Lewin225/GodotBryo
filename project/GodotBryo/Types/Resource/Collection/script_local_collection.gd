@@ -1,5 +1,5 @@
 @tool
-class_name PackageScriptLocal
+class_name ScriptLocalCollection
 extends Resource
 
 ## One embedded-event SLSD/SCVR local variable. xEdit identifies the index

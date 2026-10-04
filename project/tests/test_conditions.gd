@@ -18,8 +18,8 @@ static func index_of(function_name: String) -> int:
 			return index
 	return -1
 
-static func make(function_name: String, comparison: Condition.Comparison, value: float, parameter_1 := 0, parameter_2 := 0, flags := 0) -> Condition:
-	var condition := Condition.new()
+static func make(function_name: String, comparison: ConditionSubrecord.Comparison, value: float, parameter_1 := 0, parameter_2 := 0, flags := 0) -> ConditionSubrecord:
+	var condition := ConditionSubrecord.new()
 	condition.function_index = index_of(function_name)
 	condition.comparison = comparison
 	condition.comparison_value = value
@@ -35,7 +35,7 @@ func _ready() -> void:
 		await esm_server.esm_ready
 	var server = get_node("/root/ScriptServer")
 	var quests = get_node("/root/QuestServer")
-	var eq := Condition.Comparison.EQUAL
+	var eq := ConditionSubrecord.Comparison.EQUAL
 	var none := ConditionContext.new()
 
 	# Comparisons: GetStage on a quest set to stage 5.
@@ -44,51 +44,51 @@ func _ready() -> void:
 	var expected := [true, false, false, true, false, true] # == != > >= < <=
 	var results := []
 	for comparison in 6:
-		results.append(server.evaluate_conditions([make("GetStage", comparison, 5.0, vms20.form_id)] as Array[Condition], none))
+		results.append(server.evaluate_conditions([make("GetStage", comparison, 5.0, vms20.form_id)] as Array[ConditionSubrecord], none))
 	check(results == expected, "each comparison against GetStage VMS20 == 5 (%s)" % [results])
-	check(server.evaluate_conditions([make("GetStage", Condition.Comparison.GREATER, 4.0, vms20.form_id)] as Array[Condition], none),
+	check(server.evaluate_conditions([make("GetStage", ConditionSubrecord.Comparison.GREATER, 4.0, vms20.form_id)] as Array[ConditionSubrecord], none),
 			"a quest-level function needs no subject")
 
 	# A global comparison value: GetStage == CGHealTimer (120).
 	var heal_timer: int = esm_server.find_form_id_by_editor_id("CGHealTimer")
-	var global_condition := make("GetStage", eq, 0.0, vms20.form_id, 0, Condition.FLAG_USE_GLOBAL)
+	var global_condition := make("GetStage", eq, 0.0, vms20.form_id, 0, ConditionSubrecord.FLAG_USE_GLOBAL)
 	global_condition.comparison_global_form_id = heal_timer
 	quests.get_quest_state(vms20).stage = 120
-	check(server.evaluate_conditions([global_condition] as Array[Condition], none), "Use Global compares with the GLOB's current value (120)")
+	check(server.evaluate_conditions([global_condition] as Array[ConditionSubrecord], none), "Use Global compares with the GLOB's current value (120)")
 	server.globals.set_global("CGHealTimer", 7)
-	check(not server.evaluate_conditions([global_condition] as Array[Condition], none), "and follows it when the global changes")
+	check(not server.evaluate_conditions([global_condition] as Array[ConditionSubrecord], none), "and follows it when the global changes")
 	server.globals.set_global("CGHealTimer", 120)
 	check(server.function_registry.call_function("GetGlobalValue", [esm_server.get_base(heal_timer)], ScriptExecutionContext.new(null)) == 120,
 			"GetGlobalValue reads a global")
 
 	# Or grouping: (a OR b) AND c; a trailing Or is ignored.
 	quests.get_quest_state(vms20).stage = 5
-	var yes := func(flags := 0) -> Condition: return make("GetStage", eq, 5.0, vms20.form_id, 0, flags)
-	var no := func(flags := 0) -> Condition: return make("GetStage", eq, 6.0, vms20.form_id, 0, flags)
-	check(server.evaluate_conditions([no.call(Condition.FLAG_OR), yes.call(), yes.call()] as Array[Condition], none), "(false OR true) AND true passes")
-	check(not server.evaluate_conditions([no.call(Condition.FLAG_OR), no.call(), yes.call()] as Array[Condition], none), "(false OR false) AND true fails")
-	check(not server.evaluate_conditions([yes.call(), no.call(Condition.FLAG_OR)] as Array[Condition], none), "a trailing Or does not rescue a false last condition")
-	check(server.evaluate_conditions([yes.call(Condition.FLAG_OR), no.call()] as Array[Condition], none), "true OR false passes")
-	check(server.evaluate_conditions([] as Array[Condition], none), "an empty list passes")
+	var yes := func(flags := 0) -> ConditionSubrecord: return make("GetStage", eq, 5.0, vms20.form_id, 0, flags)
+	var no := func(flags := 0) -> ConditionSubrecord: return make("GetStage", eq, 6.0, vms20.form_id, 0, flags)
+	check(server.evaluate_conditions([no.call(ConditionSubrecord.FLAG_OR), yes.call(), yes.call()] as Array[ConditionSubrecord], none), "(false OR true) AND true passes")
+	check(not server.evaluate_conditions([no.call(ConditionSubrecord.FLAG_OR), no.call(), yes.call()] as Array[ConditionSubrecord], none), "(false OR false) AND true fails")
+	check(not server.evaluate_conditions([yes.call(), no.call(ConditionSubrecord.FLAG_OR)] as Array[ConditionSubrecord], none), "a trailing Or does not rescue a false last condition")
+	check(server.evaluate_conditions([yes.call(ConditionSubrecord.FLAG_OR), no.call()] as Array[ConditionSubrecord], none), "true OR false passes")
+	check(server.evaluate_conditions([] as Array[ConditionSubrecord], none), "an empty list passes")
 
 	# Run On: subject, target, a named reference (0x14 the player), none.
 	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
 	var doc_base: int = doc.base_form_id
 	var is_doc := make("GetIsID", eq, 1.0, doc_base)
-	check(server.evaluate_conditions([is_doc] as Array[Condition], ConditionContext.new(doc)), "Run On Subject calls on the subject")
+	check(server.evaluate_conditions([is_doc] as Array[ConditionSubrecord], ConditionContext.new(doc)), "Run On Subject calls on the subject")
 	var on_target := make("GetIsID", eq, 1.0, doc_base)
-	on_target.run_on = Condition.RunOn.TARGET
-	check(server.evaluate_conditions([on_target] as Array[Condition], ConditionContext.new(null, doc)), "Run On Target calls on the target")
+	on_target.run_on = ConditionSubrecord.RunOn.TARGET
+	check(server.evaluate_conditions([on_target] as Array[ConditionSubrecord], ConditionContext.new(null, doc)), "Run On Target calls on the target")
 	var on_player := make("GetIsReference", eq, 1.0, 0x14)
-	on_player.run_on = Condition.RunOn.REFERENCE
+	on_player.run_on = ConditionSubrecord.RunOn.REFERENCE
 	on_player.reference_form_id = 0x14
-	check(server.evaluate_conditions([on_player] as Array[Condition], none), "Run On Reference 0x14 is the player")
+	check(server.evaluate_conditions([on_player] as Array[ConditionSubrecord], none), "Run On Reference 0x14 is the player")
 	var on_combat := make("GetIsID", eq, 0.0, doc_base)
-	on_combat.run_on = Condition.RunOn.COMBAT_TARGET
-	check(not server.evaluate_conditions([on_combat] as Array[Condition], ConditionContext.new(doc)), "a Combat Target (none yet) makes the condition false")
+	on_combat.run_on = ConditionSubrecord.RunOn.COMBAT_TARGET
+	check(not server.evaluate_conditions([on_combat] as Array[ConditionSubrecord], ConditionContext.new(doc)), "a Combat Target (none yet) makes the condition false")
 
 	# Unimplemented functions read 0.
-	check(server.evaluate_conditions([make("GetIsVoiceType", eq, 0.0)] as Array[Condition], ConditionContext.new(doc)), "an unimplemented function reads 0")
+	check(server.evaluate_conditions([make("GetIsVoiceType", eq, 0.0)] as Array[ConditionSubrecord], ConditionContext.new(doc)), "an unimplemented function reads 0")
 
 	# Script variables by SLSD index.
 	var repcon: QuestBase = esm_server.find_quest_by_editor_id("RepconHQFreeform")
@@ -98,7 +98,7 @@ func _ready() -> void:
 			warning_index = i
 	check(warning_index >= 0, "RepconHQFreeform's script declares WarningActive (SLSD index %d)" % warning_index)
 	server.get_quest_instance(repcon).set_local("WarningActive", 3)
-	check(server.evaluate_conditions([make("GetQuestVariable", eq, 3.0, repcon.form_id, warning_index)] as Array[Condition], none),
+	check(server.evaluate_conditions([make("GetQuestVariable", eq, 3.0, repcon.form_id, warning_index)] as Array[ConditionSubrecord], none),
 			"GetQuestVariable reads a quest variable by SLSD index")
 	server.get_quest_instance(repcon).set_local("WarningActive", 0)
 
@@ -106,8 +106,8 @@ func _ready() -> void:
 	var terminal_ref: EsmReference = esm_server.get_reference("authored:00143990")
 	var linked: EsmReference = esm_server.get_reference("authored:%08X" % terminal_ref.linked_reference_form_id)
 	var terminal_base: TerminalBase = terminal_ref.base
-	var disengage: TerminalMenuItem = terminal_base.menu_items[0]
-	var engage: TerminalMenuItem = terminal_base.menu_items[1]
+	var disengage: TerminalMenuItemCollection = terminal_base.menu_items[0]
+	var engage: TerminalMenuItemCollection = terminal_base.menu_items[1]
 	var context := ConditionContext.new(esm_server.get_player_reference())
 	context.linked_from = terminal_ref
 	check(linked != null and "is_open" in linked, "the terminal's linked reference has an open state (%s)" % (linked.get_class() if linked != null else "missing"))
@@ -122,7 +122,7 @@ func _ready() -> void:
 
 	# A real quest log entry: VMQHouse4 stage 100 needs its GetGlobalValue global == 1.
 	var house4: QuestBase = esm_server.find_quest_by_editor_id("VMQHouse4")
-	var entry: QuestLogEntry = house4.get_stage(100).log_entries[0]
+	var entry: QuestLogEntryCollection = house4.get_stage(100).log_entries[0]
 	var entry_global: EsmBase = esm_server.get_base(entry.conditions[0].parameter_1)
 	server.globals.set_global(entry_global.editor_id, 0)
 	check(not server.evaluate_conditions(entry.conditions, none), "VMQHouse4 stage 100's entry fails while %s is 0" % entry_global.editor_id)

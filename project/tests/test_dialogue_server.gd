@@ -127,7 +127,7 @@ func _check_actor_functions(esm_server, script_server, doc: EsmReference, _playe
 	var doc_base: NpcBase = doc.base
 	check(not doc_base.factions.is_empty(), "Doc's NPC_ lists factions (%d)" % doc_base.factions.size())
 	if not doc_base.factions.is_empty():
-		var first: ActorFaction = doc_base.factions[0]
+		var first: FactionSubrecord = doc_base.factions[0]
 		var faction: EsmBase = esm_server.get_base(first.faction_form_id)
 		check(registry.call_function("GetInFaction", [faction], ctx) == 1 and registry.call_function("GetFactionRank", [faction], ctx) == first.rank,
 				"Doc is in %s at rank %d" % [faction.editor_id, first.rank])

@@ -67,7 +67,7 @@ const TEMPLATE_USE_SCRIPT := 0x200
 ## SNAM: the factions and the actor's rank in each, in authored order. Read;
 ## with the Factions template flag the template's are used. Used by
 ## GetInFaction and GetFactionRank.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ActorFaction", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var factions: Array[ActorFaction] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "FactionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var factions: Array[FactionSubrecord] = []
 
 @export_group("Traits")
 ## INAM: the death item. Read; not used yet.

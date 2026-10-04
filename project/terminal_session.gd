@@ -169,7 +169,7 @@ func _current_terminal() -> Dictionary:
 	return _terminal_stack.back() if not _terminal_stack.is_empty() else {}
 
 ## Whether a menu item's conditions pass for the session's user.
-func _item_available(item: TerminalMenuItem) -> bool:
+func _item_available(item: TerminalMenuItemCollection) -> bool:
 	return item.conditions.is_empty() or ScriptServer.evaluate_conditions(item.conditions, _condition_context)
 
 func _terminal_title() -> String:

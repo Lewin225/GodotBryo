@@ -1,5 +1,5 @@
 @tool
-class_name TerminalMenuItem
+class_name TerminalMenuItemCollection
 extends Resource
 
 ## GodotBryo convenience resource for one embedded TERM menu-item group.
@@ -17,6 +17,6 @@ extends Resource
 ## CTDA conditions of this menu item (after its ITXT, in authored order).
 ## Read; TERM holds 405 in FalloutNV.esm. Used by TerminalSession, which hides
 ## an item whose conditions fail.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []
 ## Placeholder embedded menu-item script source; execution belongs to the script engine.
 @export_multiline var script_source: String = ""

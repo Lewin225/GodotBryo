@@ -1,5 +1,5 @@
 @tool
-class_name LeveledItemEntry
+class_name LeveledItemEntryCollection
 extends Resource
 
 ## GodotBryo convenience resource for one LVLI entry. This is not an ESM

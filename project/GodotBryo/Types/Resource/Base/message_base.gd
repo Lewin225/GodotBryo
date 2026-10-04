@@ -14,4 +14,4 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var display_time: int = 0
 ## ITXT and CTDA: the menu buttons in authored order. Read; used by
 ## ScriptServer's ShowMessage for button conditions.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "MessageButton", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var buttons: Array[MessageButton] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "MessageButtonCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var buttons: Array[MessageButtonCollection] = []

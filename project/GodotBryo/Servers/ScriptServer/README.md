@@ -119,7 +119,7 @@ lists. `GetIsID`, `GetIsReference`, `GetInCell`, `GetInWorldspace`, `GetInSameCe
 `EsmReference.marked_for_delete`, which the streamers do not spawn again.
 
 **Conditions.** `evaluate_conditions(conditions, context)` evaluates a list of CTDA
-`Condition`s through `ConditionEvaluator`, stateless. Each condition calls its function (by
+`ConditionSubrecord`s through `ConditionEvaluator`, stateless. Each condition calls its function (by
 CTDA index, `ScriptConditionFunctions`) on the reference its Run On names from the
 `ConditionContext` (subject, target, the linked reference of `linked_from`, or a named
 reference, 0x14 being the player), with its parameters resolved, and compares the result with

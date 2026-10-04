@@ -28,23 +28,23 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_delay: float = 0.0
 ## CTDA conditions on the quest itself (before its first stage), in authored
 ## order. Read; not used yet.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []
 ## Stages in authored order.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var stages: Array[QuestStage] = []
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var stages: Array[QuestStageCollection] = []
 ## QOBJ objectives with their NNAM text and QSTA targets, in authored order
 ## (not index order). Read; 125 of 436 QUST records in FalloutNV.esm have
 ## objectives, 1045 in all. Used by QuestServer to validate objective indexes.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var objectives: Array[QuestObjective] = []
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var objectives: Array[QuestObjectiveCollection] = []
 
 ## The stage with this index, or null.
-func get_stage(index: int) -> QuestStage:
+func get_stage(index: int) -> QuestStageCollection:
 	for stage in stages:
 		if stage.index == index:
 			return stage
 	return null
 
 ## The objective with this QOBJ index, or null.
-func get_objective(index: int) -> QuestObjective:
+func get_objective(index: int) -> QuestObjectiveCollection:
 	for objective in objectives:
 		if objective.index == index:
 			return objective

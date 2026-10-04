@@ -669,13 +669,13 @@ static func _actor_part(actor: EsmReference, template_flag: int) -> ActorBase:
 		return null
 	return ActorBase.template_source(actor.base, template_flag)
 
-## `actor`'s authored rank in `faction` (ActorFaction.rank), or -1 when it
+## `actor`'s authored rank in `faction` (FactionSubrecord.rank), or -1 when it
 ## is not a member. A negative authored rank also reads as not a member.
 static func _faction_rank(actor: EsmReference, faction: EsmBase) -> int:
 	var source := _actor_part(actor, ActorBase.TEMPLATE_USE_FACTIONS)
 	if source == null or faction == null:
 		return -1
-	for entry: ActorFaction in source.factions:
+	for entry: FactionSubrecord in source.factions:
 		if entry.faction_form_id == faction.form_id:
 			return entry.rank if entry.rank >= 0 else -1
 	return -1

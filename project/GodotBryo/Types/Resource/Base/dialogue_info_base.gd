@@ -41,11 +41,11 @@ const FLAG_HIGH_INTELLIGENCE := 0x20
 @export_custom(PROPERTY_HINT_FLAGS, "Say Once a Day:1,Always Darken:2,Unknown 0x04:4,Unknown 0x08:8,Low Intelligence:16,High Intelligence:32", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags_2: int = 0
 ## TRDT and the subrecords after each: the responses, in the order they are
 ## spoken; 1 on 19,025 INFOs, up to 31, none on 9. Read; not used yet.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "DialogueResponse", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var responses: Array[DialogueResponse] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "DialogueResponseCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var responses: Array[DialogueResponseCollection] = []
 ## CTDA: who may say this and when, on 22,471 INFOs (59,664 conditions). Read;
 ## not used yet (DialogueServer evaluates them with the speaker as subject and
 ## the listener as target).
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []
 ## TCLT: the topics offered as choices after this INFO, on 6,348 INFOs. Read;
 ## not used yet.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "int", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var link_to_form_ids: Array[int] = []

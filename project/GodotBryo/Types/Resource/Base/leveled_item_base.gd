@@ -8,7 +8,7 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
 ## LVLG Global FormID used to override Chance None when present.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var global_form_id: int = 0
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "LeveledItemEntry", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var entries: Array[LeveledItemEntry] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "LeveledItemEntryCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var entries: Array[LeveledItemEntryCollection] = []
 
 func calculate_from_all_levels() -> bool:
 	return (flags & 0x01) != 0

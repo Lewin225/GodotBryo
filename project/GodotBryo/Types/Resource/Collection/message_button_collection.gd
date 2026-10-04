@@ -1,5 +1,5 @@
 @tool
-class_name MessageButton
+class_name MessageButtonCollection
 extends Resource
 
 ## Not an ESM record. One MESG menu button, an ITXT and the CTDAs after it;
@@ -11,4 +11,4 @@ extends Resource
 ## CTDA: the conditions after this button's ITXT. Read; MESG holds 259 in
 ## FalloutNV.esm. Used by ScriptServer's ShowMessage, which hides a button
 ## whose conditions fail.
-@export_custom(PROPERTY_HINT_ARRAY_TYPE, "Condition", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[Condition] = []
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []

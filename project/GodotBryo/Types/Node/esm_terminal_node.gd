@@ -5,7 +5,7 @@ extends EsmNode
 
 ## The menu is immutable Base data. TerminalSession remains the owner of UI
 ## and navigation state when the runtime interaction path is used.
-var menu_items: Array[TerminalMenuItem] = []
+var menu_items: Array[TerminalMenuItemCollection] = []
 
 func _on_reference_ready() -> void:
 	var terminal_ref := reference as TerminalReference
