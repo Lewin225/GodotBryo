@@ -47,7 +47,7 @@ func _ready() -> void:
 	# The player formula at Endurance 10 and level 30: 100 + 10 x 20 + 29 x 5.
 	var max_player := NpcBase.new()
 	max_player.base_health = 100
-	max_player.attributes[ActorValue.ENDURANCE - ActorValue.STRENGTH] = 10
+	max_player.endurance = 10
 	check(ActorValue.derive_base(ActorValue.HEALTH, max_player, 30, true) == 445.0, "player health at Endurance 10, level 30 is 445")
 
 	# Rex (CREA 0x118E71): DATA health 22, level multiplier 0.75 of the player's.

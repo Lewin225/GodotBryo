@@ -134,6 +134,7 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Actor effects | `actor_effects` | SPLO | Array of *EsmBase* (SPEL) | not read |
 | Actor effects | `unarmed_attack_effect_form_id`, `unarmed_attack_effect` | EITM (0 NPC_, 217 CREA) | *EsmBase* (ENCH / SPEL) | not read |
 | Actor effects | `unarmed_attack_animation` | EAMT (enum) | | not read |
+| SPECIAL | `strength` ... `luck` | DATA's attributes: NPC_ offsets 4-10, CREA offsets 10-16, each subclass reading its own | | ActorStats `attributes` |
 | AI Data | `aggression`, `confidence`, `energy`, `responsibility`, `mood`, `services` (flags), `teaches`, `maximum_training_level`, `assistance`, `aggro_radius_behavior`, `aggro_radius` | AIDT | | ActorStats (five of them) |
 | AI | `packages` | PKID, in order | Array[PackageBase] | NpcBase only |
 | Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[InitialItemCollection] | not a field; read raw when a reference is created, COED ignored |
@@ -212,8 +213,8 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Group | Field | Source | Resolves to | Today |
 |---|---|---|---|---|
 | Configuration | `acbs_flags` | ACBS 0 (`@export_flags`, NPC_ names) | | NpcBase |
-| Stats | `base_health`, `attributes` | DATA | | ActorStats |
-| Stats | `skill_values`, `skill_offsets` | DNAM | | ActorStats `skills` (values only) |
+| Stats | `base_health` | DATA offset 0 | | ActorStats |
+| Skills, Skill Offsets | `skill_barter` ... `skill_unarmed`, `skill_offset_barter` ... | DNAM, one named field per value | | ActorStats `skills` (values only) |
 | Appearance | `race_form_id`, `race` | RNAM | RaceBase | NpcBase |
 | Appearance | `class_form_id`, `actor_class` | CNAM | ClassBase | NpcBase |
 | Appearance | `head_parts` | PNAM, repeated | Array of *EsmBase* (HDPT) | not read |
@@ -233,7 +234,7 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Group | Field | Source | Resolves to | Today |
 |---|---|---|---|---|
 | Configuration | `acbs_flags` | ACBS 0 (`@export_flags`, CREA names) | | ActorStats `flags` |
-| Stats | `creature_type`, `combat_skill`, `magic_skill`, `stealth_skill`, `health`, `damage`, `attributes` | DATA | | ActorStats (no type) |
+| Stats | `creature_type`, `combat_skill`, `magic_skill`, `stealth_skill`, `health`, `damage` | DATA | | ActorStats (no type) |
 | Combat | `attack_reach` | RNAM | | not read |
 | Combat | `melee_weapon_list_form_id`, `melee_weapon_list` | LNAM | FormListBase | not read |
 | Body | `model_list` | NIFZ | | `model_list_filenames` / `model_list_paths` |

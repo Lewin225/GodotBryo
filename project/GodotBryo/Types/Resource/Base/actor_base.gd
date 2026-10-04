@@ -63,6 +63,17 @@ const TEMPLATE_USE_SCRIPT := 0x200
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var template_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var template: EsmBase
 
+@export_group("SPECIAL")
+## DATA's attributes (NPC_ offsets 4-10, CREA offsets 10-16; NpcBase and
+## CreatureBase read their own). Read; used by ActorValues.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var strength: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var perception: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var endurance: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var charisma: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var intelligence: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var agility: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var luck: int = 0
+
 @export_group("Factions")
 ## SNAM: the factions and the actor's rank in each, in authored order. Read;
 ## with the Factions template flag the template's are used. Used by
@@ -145,6 +156,18 @@ static func template_source(record: EsmBase, flag: int) -> ActorBase:
 			return actor
 		actor = actor.template as ActorBase
 	return actor
+
+## SPECIAL attribute `index`: 0 Strength through 6 Luck.
+func get_attribute(index: int) -> int:
+	match index:
+		0: return strength
+		1: return perception
+		2: return endurance
+		3: return charisma
+		4: return intelligence
+		5: return agility
+		6: return luck
+	return 0
 
 func has_pc_level_mult() -> bool:
 	return (acbs_flags & FLAG_PC_LEVEL_MULT) != 0

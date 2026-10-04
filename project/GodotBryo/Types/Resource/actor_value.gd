@@ -127,8 +127,8 @@ static func derive_base(code: int, stats: ActorBase, level: int, is_player: bool
 		UNARMED_DAMAGE:
 			return setting("fAVDUnarmedDamageBase") + derive_base(UNARMED, stats, level, is_player) * setting("fAVDUnarmedDamageMult")
 	var npc := stats as NpcBase
-	if npc != null and code >= BARTER and code <= UNARMED and code - BARTER < npc.skill_values.size():
-		return npc.skill_values[code - BARTER]
+	if npc != null and code >= BARTER and code <= UNARMED:
+		return npc.get_skill_value(code - BARTER)
 	return 0.0
 
 ## Health: the authored base health plus Endurance and level terms. The
@@ -146,10 +146,5 @@ static func _health(stats: ActorBase, level: int, is_player: bool) -> float:
 			+ (endurance + setting(prefix + "EnduranceOffset")) * setting(prefix + "EnduranceMult") \
 			+ maxi(level - 1, 0) * setting(prefix + "LevelMult")
 
-## A SPECIAL attribute: DATA's attributes on an NpcBase or a CreatureBase.
 static func _attribute(stats: ActorBase, code: int) -> int:
-	if stats is NpcBase:
-		return (stats as NpcBase).attributes[code - STRENGTH]
-	if stats is CreatureBase:
-		return (stats as CreatureBase).attributes[code - STRENGTH]
-	return 0
+	return stats.get_attribute(code - STRENGTH)

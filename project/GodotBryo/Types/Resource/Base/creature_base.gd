@@ -20,9 +20,7 @@ const ACBS_FLAG_NAMES := "Biped:1,Essential:2,Weapon & Shield?:4,Respawn:8,Swims
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var health: int = 0
 ## DATA offset 8: Damage (s16). Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var damage: int = 0
-## DATA offsets 10-16: Strength, Perception, Endurance, Charisma,
-## Intelligence, Agility, Luck. Read; used by ActorValues.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var attributes := PackedInt32Array([0, 0, 0, 0, 0, 0, 0])
+## DATA offsets 10-16: the SPECIAL attributes, on ActorBase.
 
 @export_group("Combat")
 ## RNAM: Attack reach (u8). Read; not used yet.

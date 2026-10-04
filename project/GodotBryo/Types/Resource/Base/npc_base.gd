@@ -20,14 +20,42 @@ const ACBS_FLAG_NAMES := "Female:1,Essential:2,Is CharGen Face Preset:4,Respawn:
 @export_group("Stats")
 ## DATA offset 0: Base Health (s32). Read; used by ActorValues (Health).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base_health: int = 0
-## DATA offsets 4-10: Strength, Perception, Endurance, Charisma, Intelligence,
-## Agility, Luck. Read; used by ActorValues.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var attributes := PackedInt32Array([0, 0, 0, 0, 0, 0, 0])
-## DNAM offsets 0-13: skill values, Barter (actor value 32) through Unarmed
-## (45). Read; used by ActorValues.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_values := PackedInt32Array()
+
+@export_group("Skills")
+## DNAM offsets 0-13: skill values, in actor value order Barter (32) through
+## Unarmed (45); Big Guns is in the data though FNV does not use it. Read; used
+## by ActorValues.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_barter: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_big_guns: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_energy_weapons: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_explosives: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_lockpick: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_medicine: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_melee_weapons: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_repair: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_science: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_guns: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_sneak: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_speech: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_survival: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_unarmed: int = 0
+
+@export_group("Skill Offsets")
 ## DNAM offsets 14-27: skill offsets, in the same order. Read; not used yet.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offsets := PackedInt32Array()
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_barter: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_big_guns: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_energy_weapons: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_explosives: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_lockpick: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_medicine: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_melee_weapons: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_repair: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_science: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_guns: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_sneak: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_speech: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_survival: int = 0
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var skill_offset_unarmed: int = 0
 
 @export_group("Appearance")
 ## RNAM: the RACE FormID. Read; resolved into `race`.
@@ -75,6 +103,25 @@ var face_gen: FaceGenData
 ## (Child) would decide. Not read; always false, and not used.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var is_child: bool = false
 @export_group("")
+
+## DNAM skill value `index`: 0 Barter through 13 Unarmed (actor values 32-45).
+func get_skill_value(index: int) -> int:
+	match index:
+		0: return skill_barter
+		1: return skill_big_guns
+		2: return skill_energy_weapons
+		3: return skill_explosives
+		4: return skill_lockpick
+		5: return skill_medicine
+		6: return skill_melee_weapons
+		7: return skill_repair
+		8: return skill_science
+		9: return skill_guns
+		10: return skill_sneak
+		11: return skill_speech
+		12: return skill_survival
+		13: return skill_unarmed
+	return 0
 
 func _validate_property(property: Dictionary) -> void:
 	if property.name == "acbs_flags":
