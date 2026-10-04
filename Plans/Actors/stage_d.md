@@ -17,6 +17,15 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
 - `ActorAnimator` loads 125 male locomotion KFs: `mt*` (unarmed: idle, forward, backward, left,
   right, fast*, turnleft / turnright, *_hurt) and the weapon-stance sets (`1gt`, `1hm`, `1hp`,
   `2ha`, `2hh`, `2hl`, `2hm`, `2hr`, `h2h`). It plays `mtidle` and nothing else.
+- `NpcSimulationServer` is built for off-screen simulation: it routes over the authored NAVM and
+  knows nothing of what is physically in the loaded world (other actors, the player, objects in the
+  way, things to flee from).
+- `NavmeshReader` exposes each NAVM record's triangles (`get_record_triangle_points`) and a
+  space's geometry, in metres. A NAVM record is already a triangle mesh, so it can become a Godot
+  `NavigationMesh` directly, without baking.
+- NAVM records do not share vertices at their seams: only 2.10% of boundary edges in NVEX-linked
+  records coincide (`navm_stitch_census.cpp`), which is why the server pairs seam triangles by
+  nearest geometry. Interior cells such as GSDocMitchellHouse are usually one record.
 - Trigger volumes (`EsmPrimitiveVolume`, an `Area3D`) fire OnTrigger for physics bodies inside
   them. VCG01's chair trigger fires `OnTrigger DocMitchellREF`, so Doc has to be something the
   volume detects.
@@ -28,13 +37,23 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
 ```
 NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, turn_speed_degrees,
 ├── EsmActorNode (instance of esm_actor_node.tscn)      arrive_radius, ground_snap_distance
+├── NavigationAgent3D                        ← local path and avoidance (radius, max speed, ...)
 ├── Body (see question 1)                    ← what triggers and the player collide with
 └── GroundRay (RayCast3D)                    ← snaps height while walking
 ```
 
-- **Movement is kinematic.** The controller follows the route's waypoints at walk or run speed,
-  turns toward the next one at `turn_speed_degrees`, and keeps to the ground with `GroundRay`.
-  No `move_and_slide`: the navmesh already says where an actor can walk.
+- **Two-tier pathing.** `NpcSimulationServer` stays the global planner: for a physicalised actor it
+  gives the next destination on the global route (the target, or the next door). The controller
+  paths to that destination locally with a `NavigationAgent3D` on Godot's NavigationServer, which
+  brings avoidance between agents (NPCs and the player) and dynamic obstacles
+  (`NavigationObstacle3D`) the authored navmesh does not know about. Off screen, the server alone
+  moves the actor, as now.
+- **Local navmesh from NAVM.** Each NAVM record of a loaded cell becomes a `NavigationRegion3D`
+  (vertices and triangles from `NavmeshReader`), added and removed with the cell by the streamers.
+- **Movement is kinematic.** The controller moves at walk or run speed along the agent's next path
+  position (with the agent's avoidance velocity), turns toward it at `turn_speed_degrees`, and
+  keeps to the ground with `GroundRay`. No `move_and_slide`: the navmesh says where an actor can
+  walk.
 - **State stays on the reference.** Every physics frame the controller writes position and heading
   to its `ActorReference`, as `PlayerController` does for the possessed actor.
 - **API for packages (stage H):** `move_to(space, position)` requests the route and walks it;
@@ -48,6 +67,12 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   stands in for.
 
 ## Questions
+
+0. **Seams.** Godot joins regions whose free edges lie within `edge_connection_margin`; with
+   non-coincident seam vertices, exterior cells may not connect. Options: rely on the margin
+   (check it against a census of seam gaps), add a `NavigationLink3D` per authored NVEX link, or
+   load a whole exterior area as one region. Not needed for the stage D gate (an interior), but it
+   decides whether the approach holds outdoors; a census of seam gaps would settle it first.
 
 1. **The body.** What triggers detect, and what the player bumps into:
    - an `Area3D` capsule: cheapest; triggers see it (with the volumes monitoring areas too); the
