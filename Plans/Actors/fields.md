@@ -80,7 +80,28 @@ created: an item becomes one InventoryItem, a leveled list is rolled at the acto
 each entry's COED owner and condition carry over (today COED is only carried from leveled-list
 entries). After that the inventory never reads `items` again.
 
-Not read, no field: DEST (destructible: 7 NPC_, 55 CREA).
+| Destructible | `destructible` | DEST, DSTD, DMDL, DMDT, DSTF (7 NPC_, 55 CREA) | Destructible | not read |
+
+## Destructible (new; shared: xEdit gives DEST to 19 record types plus NPC_ and CREA)
+
+| Field | Source | Resolves to |
+|---|---|---|
+| `health` | DEST Health (s32) | |
+| `vats_targetable` | DEST Flags 0x01 | |
+| `stages` | DSTD ... DSTF, one per stage (DEST Count) | Array[DestructionStage] |
+
+**DestructionStage** (new; one per stage):
+
+| Field | Source | Resolves to |
+|---|---|---|
+| `health_percent`, `index`, `damage_stage` | DSTD 0, 1, 2 | |
+| `flags` | DSTD 3 (`@export_flags`: Cap Damage, Disable, Destroy) | |
+| `self_damage_per_second` | DSTD 4 (s32) | |
+| `explosion_form_id`, `explosion` | DSTD 8 | *EsmBase* (EXPL) |
+| `debris_form_id`, `debris` | DSTD 12 | *EsmBase* (DEBR) |
+| `debris_count` | DSTD 16 (s32) | |
+| `model_path` | DMDL | |
+| `model_info` | DMDT (raw; texture hashes, as MODT) | |
 
 ## ContainedObject (new; shared by NPC_, CREA and CONT)
 
@@ -134,13 +155,21 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Combat | `attack_reach` | RNAM | | not read |
 | Combat | `melee_weapon_list_form_id`, `melee_weapon_list` | LNAM | BipedModelListBase (EsmServer maps every FLST to it today, though FLST is a general form list) | not read |
 | Body | `model_list` | NIFZ | | `model_list_filenames` / `model_list_paths` |
-| Body | `model_list_textures` | NIFT (raw) | | not read |
+| Body | `model_list_textures` | NIFT (raw; xEdit `wbModelInfos`, the texture-hash structure MODT has after every MODL, read nowhere) | | not read |
 | Body | `body_part_data_form_id`, `body_part_data` | PNAM | BodyPartDataBase | `pnam_values` (Array[int]) |
 | Body | `turning_speed`, `base_scale`, `foot_weight` | TNAM, BNAM, WNAM | | not read |
 | Sound | `sound_level` | NAM5 (enum) | | not read |
 | Sound | `impact_dataset_form_id`, `impact_dataset` | CNAM | *EsmBase* (IPDS) | not read |
 | Sound | `inherits_sounds_from_form_id`, `inherits_sounds_from` | CSCR | CreatureBase | not read |
-| Sound | `sounds` | CSDT / CSDI / CSDC | | not read |
+| Sound | `sounds` | CSDT, CSDI, CSDC, one group per sound (86 CREA) | Array[CreatureSound] | not read |
+
+**CreatureSound** (new; CREA only, an array entry of three values):
+
+| Field | Source | Resolves to |
+|---|---|---|
+| `sound_type` | CSDT (u32 enum: Left Foot, Right Foot, Left Back Foot, Right Back Foot, Idle, Aware, Attack, Hit, Death, Weapon, Movement Loop, Conscious Loop, Auxiliary 1-8, Jump, PlayRandom/Loop) | |
+| `sound_form_id`, `sound` | CSDI | *EsmBase* (SOUN) |
+| `chance` | CSDC (u8) | |
 
 ## Removed
 
@@ -177,4 +206,8 @@ global.
 
 ## Questions
 
-1. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
+1. These additions reference more record types without a resource: EXPL, DEBR (destruction
+   stages) and SOUN (creature sounds). Typed resources for them too, or plain EsmBase?
+2. NIFT and DMDT hold the model-info structure MODT has after every MODL. Keep them raw (as MODT
+   is everywhere today), or make a shared ModelInfo resource, which would then be the right type
+   for MODT too?
