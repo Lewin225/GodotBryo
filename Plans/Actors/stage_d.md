@@ -82,7 +82,12 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   The NSS tick (main thread) checks the field before writing `position`; worker threads only
   compute routes and never write Resources, so nothing races the flip. The tick keeps the mode it
   last saw per actor (derived, not saved); an actor that comes back `LOW_LEVEL` is re-grounded
-  from `reference.position` and routed again to the same `move_target`. `checkout()` /
+  from `reference.position` and routed again to the same `move_target`.
+  Stale worker results: the tick keeps the position each worker job started from and applies
+  the result only if the actor is still `LOW_LEVEL` and `reference.position` still equals that
+  start point. Anything else that moved the actor meanwhile (`MoveTo`, `SetPos`, a door, the
+  controller's final write) wins: the result is dropped and travel restarts from the new
+  position, so an in-flight result never rolls back a teleport. `checkout()` /
   `checkin()` and their grounded check are removed, and the README's "acknowledged handoff"
   paragraph is rewritten to match. An ungrounded unleased actor is one the tick cannot move yet; a
   physicalised one is always built. The possessed actor is `PHYSICAL_LEASED` while possessed.
