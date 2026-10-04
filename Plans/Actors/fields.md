@@ -10,8 +10,14 @@ says where the value lives now.
   (`esm://FalloutNV.esm/<type>/<FormID>`) they rehydrate from. A field pointing at one keeps the
   FormID and the resolved resource (`race_form_id`, `race`); the record is never copied into its
   parent.
+- **Every valid FormID resolves to a resource**, at any depth: no FormID-only fields. The resource
+  is a typed EsmBase subclass; a record that changes at runtime and must be saved (GLOB's value)
+  is still an EsmBase, marked dirty when changed, so the save system holds it from then on.
 - **No field resolves to a plain EsmBase.** Every record type a field points at gets its typed
   resource; the *EsmBase* marks below are the types that do not have one yet.
+- **Types nothing in this plan uses yet** get a class whose own FormID fields resolve, and whose
+  other subrecords are listed, with their xEdit labels, in the class's doc comment as not read
+  yet. Their fields are added, with descriptions, when a consumer arrives.
 - **Structures without a FormID** (ContainedObject, Destructible, DestructionStage,
   CreatureSound, ActorFaction) are plain Resources inside their parent, filled when the parent is
   built or rehydrated. One becomes a resource only when it groups several values, is shared by
@@ -190,6 +196,25 @@ ContainerBase gains the same `items` when containers are next worked on.
 `ActorStats` (its fields move to ActorBase, NpcBase and CreatureBase as above); NpcBase
 `acbs_template_flags` (becomes ActorBase `template_flags`); CreatureBase `pnam_values`,
 `model_list_filenames` / `paths`, `animation_filenames` / `paths` (renamed).
+
+## The closure
+
+Record types reachable from NPC_, CREA, ACHR and ACRE through FormID fields in xEdit's FNV
+definitions (`wbDefinitionsFNV.pas`, following its shared helper definitions): 97 of its 112.
+CNTO naming every item type, and ACHR / ACRE linking to placed references and cells, carry the
+closure across most of the format.
+
+- **Have a Base class (34):** ACTI, ALCH, AMMO, ARMA, ARMO, BOOK, BPTD, CCRD, CLAS, CMNY, CONT,
+  CREA, DIAL, DOOR, EYES, FLST, FURN, HAIR, INFO, KEYM, LIGH, LVLI, MESG, MISC, MSTT, NPC_, PACK,
+  QUST, RACE, SCOL, STAT, TACT, TERM, WEAP.
+- **Placed references and world structure (10):** ACHR, ACRE, REFR, PGRE, PMIS, PBEA, PLYR resolve
+  to EsmReference subclasses (by `authored:<FormID>`); CELL, WRLD and NAVM are spaces and
+  navmesh, held by EsmServer's cell index and NavmeshReader rather than as Base classes.
+- **New Base classes (53):** ADDN, ALOC, AMEF, ASPC, AVIF, CDCK, CHAL, CHIP, CLMT, CSNO, CSTY,
+  DEBR, ECZN, EFSH, ENCH, EXPL, FACT, GLOB, GRAS, HDPT, IDLE, IDLM, IMAD, IMGS, IMOD, INGR, IPCT,
+  IPDS, LGTM, LTEX, LVLC, LVLN, MGEF, MICN, MSET, MUSC, NOTE, PERK, PROJ, PWAT, RCCT, RCPE, REGN, REPU,
+  RGDL, SCPT, SOUN, SPEL, TREE, TXST, VTYP, WATR, WTHR. The table below describes those the actor
+  records point at directly; the rest follow the "not used yet" rule.
 
 ## Resources for referenced types
 
