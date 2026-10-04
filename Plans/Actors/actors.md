@@ -1,6 +1,6 @@
 # Actors
 
-**Status: stages A and B done (`census.md`, `fields.md`); stage B awaits its inspector check; stage C next.**
+**Status: stages A and B done (`census.md`, `fields.md`); stage C next.**
 
 Actor references, one actor node, an NPC controller, ownership between the simulation server and
 the controller, animation, furniture and AI packages. Done when a new game plays VCG01 from stage
@@ -67,7 +67,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | Stage | Work | Gate |
 |---|---|---|
 | A. Census (done) | VCG01's and Goodsprings' NPCs: their PKID packages, types and data; the IDLE records VCG01 plays; FURN records and the furniture marker data in their NIFs; the ACHR/ACRE and NPC_/CREA subrecords shared and not. | Field lists for B and the package types for H, from counts over the whole population. |
-| B. References (done; inspector check pending) | Abstract `ActorReference`, `NpcReference`, `CreatureReference`; shared fields moved to the base; every caller of today's `ActorReference` checked for NPC versus any actor. | The field list agreed first. Inventory, actor values and every resolved link still show in the inspector; the full test suite passes. |
+| B. References (done) | Abstract `ActorReference`, `NpcReference`, `CreatureReference`; shared fields moved to the base; every caller of today's `ActorReference` checked for NPC versus any actor. | The field list agreed first. Inventory, actor values and every resolved link still show in the inspector; the full test suite passes. |
 | C. Actor node | Split `EsmHumanoidActor` into the shared actor node (skeleton, parts, animation) and its humanoid layer; the parts source per type; the physicaliser routes actors to it. | Doc Mitchell renders and animates as today. |
 | D. NpcController | Movement, ground contact and following a navmesh route, cheaper than `PlayerController`; tells the actor node how it is moving. `PlayerController` does the same for the possessed actor. | An NPC walks a route across GSDocMitchellHouse; the player and the NPC animate from their controllers. |
 | E. Ownership | `EsmServer.get_all_placed_actor_references()` (the server's seed list) widened from ACHR to ACRE; an actor is virtual (`NpcSimulationServer`) or local (`NpcController`); check-out and check-in hand position and package state over; a disabled actor is frozen in both; script moves win over both; the server seeds in the running game. | An NPC leaving the loaded area continues virtually and returns where the server put it. |
