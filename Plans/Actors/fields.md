@@ -10,14 +10,15 @@ says where the value lives now.
   (`esm://FalloutNV.esm/<type>/<FormID>`) they rehydrate from. A field pointing at one keeps the
   FormID and the resolved resource (`race_form_id`, `race`); the record is never copied into its
   parent.
-- **Every valid FormID resolves to a resource**, at any depth: no FormID-only fields. The resource
+- **Every FormID field that is read resolves to a resource**: no FormID-only fields. The resource
   is a typed EsmBase subclass; a record that changes at runtime and must be saved (GLOB's value)
   is still an EsmBase, marked dirty when changed, so the save system holds it from then on.
 - **No field resolves to a plain EsmBase.** Every record type a field points at gets its typed
   resource; the *EsmBase* marks below are the types that do not have one yet.
-- **Types nothing in this plan uses yet** get a class whose own FormID fields resolve, and whose
-  other subrecords are listed, with their xEdit labels, in the class's doc comment as not read
-  yet. Their fields are added, with descriptions, when a consumer arrives.
+- **New classes for referenced types** read what the actor work uses. Their other subrecords,
+  including FormID fields naming types beyond these, are not read: the class's doc comment lists
+  them with their xEdit labels as not read yet, and each becomes a field, with its description
+  and resolved resource, when a consumer arrives.
 - **Structures without a FormID** (ContainedObject, Destructible, DestructionStage,
   CreatureSound, ActorFaction) are plain Resources inside their parent, filled when the parent is
   built or rehydrated. One becomes a resource only when it groups several values, is shared by
