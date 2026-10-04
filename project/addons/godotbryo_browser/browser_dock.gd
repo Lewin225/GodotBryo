@@ -244,8 +244,10 @@ func _preview_selected_list() -> void:
 
 func _find_selected() -> void:
 	if selected_card == null or server == null or not server.is_ready(): return
+	# _clear_grid() clears selected_card, so read what the scan needs first.
 	var target := int(selected_card.row.get("form_id", 0))
 	var base_name := String(selected_card.row.get("display_name", ""))
+	var target_type := String(selected_card.row.get("record_type", ""))
 	_rendering = false
 	_clear_grid()
 	status.text = "Scanning placement records..."
@@ -253,7 +255,7 @@ func _find_selected() -> void:
 	for candidate in rows:
 		var tag := String(candidate.get("record_type", ""))
 		var raw: Dictionary = server.reader.get_record_data(int(candidate.get("form_id", 0)))
-		if String(selected_card.row.get("record_type", "")) == "LVLI":
+		if target_type == "LVLI":
 			var usage := _find_leveled_usage(raw, tag, target)
 			if usage.is_empty(): continue
 			var usage_card = ReferenceCardScript.new()
