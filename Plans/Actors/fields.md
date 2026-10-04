@@ -70,12 +70,33 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Actor effects | `unarmed_attack_animation` | EAMT (enum) | | not read |
 | AI Data | `aggression`, `confidence`, `energy`, `responsibility`, `mood`, `services` (flags), `teaches`, `maximum_training_level`, `assistance`, `aggro_radius_behavior`, `aggro_radius` | AIDT | | ActorStats (five of them) |
 | AI | `packages` | PKID, in order | Array[PackageBase] | NpcBase only |
+| Items | `items` | CNTO (+ COED), in order | Array[ContainedObject] | not a field; read raw when a reference is created, COED ignored |
 
 Methods: `template_source(flag)` (from ActorStats), and a typed accessor ActorValues uses in place
 of `get("actor_stats")`.
 
-Not read, no field: CNTO (the reference's `contents` is seeded from it, as today), DEST
-(destructible: 7 NPC_, 55 CREA).
+A reference's `contents` (its live Inventory) is seeded from `items` when the reference is
+created: an item becomes one InventoryItem, a leveled list is rolled at the actor's level, and
+each entry's COED owner and condition carry over (today COED is only carried from leveled-list
+entries). After that the inventory never reads `items` again.
+
+Not read, no field: DEST (destructible: 7 NPC_, 55 CREA).
+
+## ContainedObject (new; shared by NPC_, CREA and CONT)
+
+One CNTO entry: the authored starting item, shared by every placement of its base. Not
+InventoryItem, which is a live, per-placement item with an instantiated item reference and equip
+state.
+
+| Field | Source | Resolves to |
+|---|---|---|
+| `item_form_id`, `item` | CNTO item | the item's base resource, or LeveledItemBase |
+| `count` | CNTO count (s32) | |
+| `owner_form_id`, `owner` | COED owner | NpcBase or FactionBase / *EsmBase* (FACT) |
+| `global_or_rank` | COED global variable or required rank | |
+| `condition` | COED item condition (float) | |
+
+ContainerBase gains the same `items` when containers are next worked on.
 
 ## NpcBase (NPC_; extends ActorBase)
 
@@ -148,6 +169,4 @@ shared entry resource would serve all three.
 
 1. Which of the resources above to add in stage B: those with a consumer in this plan (VTYP, FACT,
    LVLN, IDLE, HDPT; LVLC with creatures), or all of them?
-2. CNTO on the base: keep reading it raw when a reference is created, or add a base field (CONT
-   has CNTO too, so it would be a shared sub-resource)?
-3. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
+2. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
