@@ -60,7 +60,7 @@ const ACBS_FLAG_NAMES := "Female:1,Essential:2,Is CharGen Face Preset:4,Respawn:
 @export_group("Appearance")
 ## RNAM: the RACE FormID. Read; resolved into `race`.
 var race_form_id: int = 0
-## RNAM's RACE. Used: EsmHumanoidActor takes the body and head parts from it.
+## RNAM's RACE. Used: EsmActorNode takes the body and head parts from it.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "RaceBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var race: RaceBase
 ## CNAM: the CLAS FormID. Read; resolved into `actor_class`.
 var class_form_id: int = 0
@@ -71,7 +71,7 @@ var class_form_id: int = 0
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "HeadPartBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var head_parts: Array[HeadPartBase] = []
 ## HNAM: the HAIR FormID. Read; resolved into `hair`.
 var hair_form_id: int = 0
-## HNAM's HAIR. Used: EsmHumanoidActor loads its mesh.
+## HNAM's HAIR. Used: EsmActorNode loads its mesh.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "HairBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair: HairBase
 ## LNAM: Hair length. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair_length: float = 0.0
@@ -79,11 +79,11 @@ var hair_form_id: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair_color: Color = Color.BLACK
 ## ENAM: the EYES FormID. Read; resolved into `eyes`.
 var eyes_form_id: int = 0
-## ENAM's EYES. Used: EsmHumanoidActor loads its mesh.
+## ENAM's EYES. Used: EsmActorNode loads its mesh.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EyesBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var eyes: EyesBase
 ## FGGS, FGGA and FGTS: FaceGen geometry-symmetric, geometry-asymmetric and
 ## texture-symmetric coefficients, raw and decoded. Read; not used by
-## EsmHumanoidActor yet (only the legacy GamebryoMeshResolver accepts it).
+## EsmActorNode yet (only the legacy GamebryoMeshResolver accepts it).
 var face_gen: FaceGenData
 ## NAM6: Height. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var height: float = 1.0
@@ -135,7 +135,7 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 	DialogueServer.start_conversation(ref, activator)
 
 ## Whether this record's ACBS flags it Female. A template supplying traits is
-## not followed. Used by EsmHumanoidActor (body parts, biped models) and
+## not followed. Used by EsmActorNode (body parts, biped models) and
 ## GetIsSex.
 func is_female() -> bool:
 	return (acbs_flags & FLAG_FEMALE) != 0
@@ -145,6 +145,27 @@ func is_female() -> bool:
 func set_female(female: bool) -> void:
 	acbs_flags = (acbs_flags | FLAG_FEMALE) if female else (acbs_flags & ~FLAG_FEMALE)
 	mark_dirty()
+
+## RNAM's RACE body parts (required) and head parts, then HNAM's hair and
+## ENAM's eyes (optional), for the actor node.
+func get_model_parts(female: bool) -> Array[Dictionary]:
+	var parts: Array[Dictionary] = []
+	if race == null:
+		# A required part with no model: the actor node reports it and builds
+		# nothing.
+		parts.append({"key": "race", "path": "", "required": true, "kind": "body"})
+	else:
+		for part in race.body_parts(female):
+			parts.append({"key": "body:%d" % int(part.index), "path": part.model_path, "required": true, "kind": "body",
+				"race_part_index": int(part.index)})
+		for part in race.head_parts(female):
+			parts.append({"key": "head:%d" % int(part.index), "path": part.model_path, "required": false, "kind": "head",
+				"part_type": String(part.part_type)})
+	if hair != null:
+		parts.append({"key": "hair", "path": hair.model_path, "required": false, "kind": "hair"})
+	if eyes != null:
+		parts.append({"key": "eyes", "path": eyes.model_path, "required": false, "kind": "eyes"})
+	return parts
 
 func animation_search_paths() -> PackedStringArray:
 	return PackedStringArray([DEFAULT_THIRD_PERSON_ANIMATION_SEARCH_PATH])

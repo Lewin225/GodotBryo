@@ -40,7 +40,7 @@ is a convention, which argues for making ownership obvious at the call site —
 `shared(key)` is harder to misuse carelessly than `get(key)`.
 
 The project's existing per-instance variation already avoids the hazard without
-anyone deciding to: `esm_humanoid_actor.gd` builds a *new* material and assigns it
+anyone deciding to: `esm_actor_node.gd` builds a *new* material and assigns it
 through `material_override`, leaving the shared one untouched. That pattern is
 correct but costs the instanced draw for that instance — fine for a handful of
 NPCs, not for a few hundred objects.

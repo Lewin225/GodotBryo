@@ -35,10 +35,10 @@ const SPAWN_CREA := 1 << 2
 @export var tiles_per_frame := 1
 @export var freeze_trace_enabled := false
 
-## Placement categories WorldStreamerV2 is allowed to physicalise. `ACHR`
-## currently takes the retained legacy EsmHumanoidActor assembly path; leave it off
-## when profiling only the new server pipeline. `CREA` is kept separately for
-## the same reason as creature assembly arrives.
+## Placement categories WorldStreamerV2 is allowed to physicalise. `ACHR` and
+## `CREA` build EsmActorNodes (several NIFs per actor); leave them off when
+## profiling only the static placement pipeline. Creatures have no model parts
+## until the actors plan's stage J.
 @export_flags("REFR", "ACHR", "CREA") var spawn_reference_types := SPAWN_REFR | SPAWN_ACHR | SPAWN_CREA
 
 var esm_server: Node = null

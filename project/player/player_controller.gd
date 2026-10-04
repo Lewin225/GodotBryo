@@ -141,7 +141,7 @@ const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 @export_group("Actor")
 ## Visual actor owned by this controller. The controller supplies movement
 ## state; the actor remains responsible for rendering and animation playback.
-@export var actor: EsmHumanoidActor
+@export var actor: EsmActorNode
 @export var drive_actor_animation: bool = true
 @export var motion_data: MotionData = MotionData.new()
 
@@ -234,7 +234,7 @@ func _ready() -> void:
 	if not camera:
 		camera = get_node_or_null("Camera3D")
 	if actor == null:
-		actor = get_node_or_null("EsmHumanoidActor") as EsmHumanoidActor
+		actor = get_node_or_null("EsmActorNode") as EsmActorNode
 	if actor != null:
 		actor.load_actor()
 

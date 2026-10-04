@@ -1,10 +1,13 @@
 @tool
-class_name EsmHumanoidActor
+class_name EsmActorNode
 extends EsmNode
 
-## Reusable, typed visual assembly for a humanoid reference. It has no Player,
-## NPC-controller, WorldStreamer or legacy-resolver dependency. A controller
-## owns gameplay and VWD policy; this node owns only its generated visual tree.
+## The one node that renders an actor (NPC or creature): its MODL skeleton and
+## the model parts its base lists, assembled under Body. Children of the
+## template scene do the specialised work: ActorSkinning binds skinned parts,
+## ActorAnimator loads and plays animation, ActorEquipment attaches what is
+## equipped. It has no Player, NPC-controller, WorldStreamer or legacy-resolver
+## dependency; a controller owns gameplay, this node only its visual tree.
 
 signal visual_load_completed()
 signal visual_load_failed(reason: String)
@@ -53,7 +56,7 @@ const SECTION_CAP_LAST := 113
 const TORSO_CAP_FIRST := 201
 const TORSO_CAP_LAST := 213
 
-var _active_record: NpcBase = null
+var _active_record: ActorBase = null
 var _is_female := false
 
 var _standalone_preview := false
@@ -154,7 +157,7 @@ func _rehydrate_and_build() -> void:
 			return
 
 	if reference.base == null:
-		push_warning("EsmHumanoidActor: reference is not backed by an NPC_ record")
+		push_warning("EsmActorNode: reference has no base record")
 		return
 	if _loading or _humanoid_visual_built:
 		return
@@ -171,17 +174,14 @@ func load_actor() -> void:
 		return
 	if reference == null:
 		return
-	if reference.base is NpcBase:
+	if reference.base is ActorBase:
 		if not _loading and not _humanoid_visual_built:
-			_start_visual_load(reference.base as NpcBase)
+			_start_visual_load(reference.base as ActorBase)
 		return
 	_queue_rehydrate_and_build()
 
 
-func _start_visual_load(reference_base: NpcBase) -> void:
-	if reference_base.race == null:
-		_finish_visual_load(false, "NPC record has no race")
-		return
+func _start_visual_load(reference_base: ActorBase) -> void:
 	_cancel_visual_load()
 	_load_generation += 1
 	_loading = true
@@ -211,24 +211,16 @@ func _start_visual_load(reference_base: NpcBase) -> void:
 		nif_server.request(String(asset.path), self, _on_nif_delivered.bind(generation, String(asset_key)), false)
 
 
-## The source of truth is NpcBase/ActorReference. This only records the exact
-## NIF requests required to assemble that typed reference; it is not a second
-## immutable actor-description layer.
-func _requested_asset_set(record: NpcBase) -> Dictionary:
+## The NIFs this actor is assembled from: its MODL skeleton and the parts its
+## base lists (ActorBase.get_model_parts).
+func _requested_asset_set(record: ActorBase) -> Dictionary:
 	var assets := {}
 	_add_requested_asset(assets, "skeleton", record.model_path, true, "skeleton")
-	for part in record.race.body_parts(_is_female):
-		_add_requested_asset(assets, "body:%d" % int(part.index), part.model_path, true, "body", {
-			"race_part_index": int(part.index),
-		})
-	for part in record.race.head_parts(_is_female):
-		_add_requested_asset(assets, "head:%d" % int(part.index), part.model_path, false, "head", {
-			"part_type": String(part.part_type),
-		})
-	if record.hair != null:
-		_add_requested_asset(assets, "hair", record.hair.model_path, false, "hair")
-	if record.eyes != null:
-		_add_requested_asset(assets, "eyes", record.eyes.model_path, false, "eyes")
+	for part in record.get_model_parts(_is_female):
+		var extra := part.duplicate()
+		for key in ["key", "path", "required", "kind"]:
+			extra.erase(key)
+		_add_requested_asset(assets, String(part.key), String(part.path), bool(part.required), String(part.kind), extra)
 	return assets
 
 
@@ -254,7 +246,7 @@ func _on_nif_delivered(tree: Node3D, generation: int, asset_key: String) -> void
 		if bool(asset.get("required", false)):
 			_load_failures.append(message)
 		else:
-			push_warning("EsmHumanoidActor: optional " + message)
+			push_warning("EsmActorNode: optional " + message)
 	else:
 		tree.name = "Nif_%s" % asset_key.validate_node_name()
 		tree.set_meta("esm_humanoid_asset_key", asset_key)
@@ -346,7 +338,7 @@ func _ensure_humanoid_look_target(skeleton: Skeleton3D) -> void:
 	if skeleton == null or skeleton.get_node_or_null(NodePath(LOOK_TARGET_NODE_NAME)) != null:
 		return
 	if skeleton.find_bone(LOOK_TARGET_BONE_NAME) == -1:
-		push_warning("EsmHumanoidActor: human skeleton has no %s bone for look target" % LOOK_TARGET_BONE_NAME)
+		push_warning("EsmActorNode: human skeleton has no %s bone for look target" % LOOK_TARGET_BONE_NAME)
 		return
 	var look_target := LookAtModifier3D.new()
 	look_target.name = LOOK_TARGET_NODE_NAME
@@ -401,7 +393,7 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 			_move_tree(tree, skinned_parts, "Skinned_%s" % String(asset_key).validate_node_name())
 			skinning.compact_external_skin_part(tree)
 			if not skinning.bind_external_skins(tree, skeleton):
-				push_warning("EsmHumanoidActor: optional appearance has unresolved skeleton binds: " + String(asset.get("path", "")))
+				push_warning("EsmActorNode: optional appearance has unresolved skeleton binds: " + String(asset.get("path", "")))
 				tree.queue_free()
 				continue
 			_tag_appearance_meshes(tree, asset)
@@ -409,7 +401,7 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 		if facial_attachment == null:
 			facial_attachment = _create_facial_attachment(skeleton)
 		if facial_attachment == null:
-			push_warning("EsmHumanoidActor: optional appearance has no usable facial bone: " + String(asset.get("path", "")))
+			push_warning("EsmActorNode: optional appearance has no usable facial bone: " + String(asset.get("path", "")))
 			tree.queue_free()
 			continue
 		_move_tree(tree, facial_attachment, "Attached_%s" % String(asset_key).validate_node_name())
@@ -526,7 +518,7 @@ func _finish_visual_load(success: bool, reason: String) -> void:
 	_loading = false
 	if not success:
 		_clear_staging()
-		push_warning("EsmHumanoidActor: visual load failed: " + reason)
+		push_warning("EsmActorNode: visual load failed: " + reason)
 		visual_load_failed.emit(reason)
 
 
@@ -614,18 +606,18 @@ func _editor_load() -> void:
 		form_id = custom_base_form_id.hex_to_int()
 	var server := get_tree().root.get_node_or_null("EsmServer") if is_inside_tree() else null
 	if server == null or not server.is_ready():
-		push_warning("EsmHumanoidActor: EsmServer is not ready")
+		push_warning("EsmActorNode: EsmServer is not ready")
 		return
 	var candidate: EsmReference = server.create_reference_for_base(form_id)
-	if candidate == null or not candidate is NpcReference:
-		push_error("EsmHumanoidActor: base_form_id 0x%X is not an NPC_" % form_id)
+	if candidate == null or not candidate is ActorReference:
+		push_error("EsmActorNode: base_form_id 0x%X is not an NPC_ or CREA" % form_id)
 		return
 	reference = candidate
 
 
 func _editor_apply_actor_data() -> void:
-	if reference == null or not reference.base is NpcBase:
-		push_warning("EsmHumanoidActor: assign an NpcReference before loading")
+	if reference == null or not reference.base is ActorBase:
+		push_warning("EsmActorNode: assign an ActorReference before loading")
 		return
 	load_actor()
 

@@ -175,7 +175,7 @@ func _ready() -> void:
 func configure(esm_reference: EsmReference) -> void:
 	reference = esm_reference
 
-## Compatibility hook for specialized nodes such as EsmHumanoidActor. Normal nodes
+## Compatibility hook for specialized nodes such as EsmActorNode. Normal nodes
 ## start the shared NifServer lifecycle; specialized nodes may replace it.
 func _reference_changed() -> void:
 	if is_inside_tree():

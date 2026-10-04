@@ -8,6 +8,6 @@ extends EsmBase
 
 ## LNAM, repeated: the listed records, in order, each resolved to its own typed
 ## Base. Declared EsmBase because one list can mix record types. Read; used by
-## EsmHumanoidActor, which takes the ArmorAddonBase entries of an armor's or
+## EsmActorNode, which takes the ArmorAddonBase entries of an armor's or
 ## weapon's biped model list.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var entries: Array[EsmBase] = []

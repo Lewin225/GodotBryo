@@ -3,7 +3,7 @@ class_name ActorSkinning
 extends Node
 
 ## Binds skinned NIF parts to an actor's skeleton. A child of the actor node
-## (esm_humanoid_actor.tscn); the actor node calls it for body parts, skinned
+## (esm_actor_node.tscn); the actor node calls it for body parts, skinned
 ## head parts and skinned equipment alike.
 
 ## Whether any mesh under `root` carries a skin with binds.

@@ -48,6 +48,7 @@ func _ready() -> void:
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
+	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
@@ -79,3 +80,24 @@ func _measure(node: Node, animation_clips: int) -> Dictionary:
 		if path.contains("FacialHeadAssembly"):
 			counts["facial_attached_meshes"] += 1
 	return counts
+
+## A creature gets the same node. CreatureBase lists no model parts until the
+## actors plan's stage J, so Rex (CREA 0x118E71) builds his skeleton and
+## nothing else.
+func _check_creature(esm_server) -> void:
+	var rex: EsmReference = esm_server.create_reference_for_base(0x118E71)
+	var node := EsmReferencePhysicaliser.new().physicalise(rex, self)
+	check(node is EsmActorNode, "a CreatureReference is physicalised as an EsmActorNode (%s)" % node.get_class())
+	if not node is EsmActorNode:
+		return
+	var finished := [false]
+	node.visual_load_completed.connect(func() -> void: finished[0] = true)
+	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
+	for frame in 600:
+		await get_tree().process_frame
+		if finished[0]:
+			break
+	var body := node.get_node_or_null("Body")
+	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
+	check(skeleton != null and skeleton.get_bone_count() > 0, "Rex's skeleton is built (%d bones)" % (skeleton.get_bone_count() if skeleton != null else 0))
+	node.queue_free()

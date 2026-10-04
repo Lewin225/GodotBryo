@@ -3,7 +3,7 @@ class_name ActorAnimator
 extends Node
 
 ## Loads an actor's locomotion KFs, binds them to its skeleton and plays the
-## idle. A child of the actor node (esm_humanoid_actor.tscn). NifServer extracts
+## idle. A child of the actor node (esm_actor_node.tscn). NifServer extracts
 ## and caches the KFs; this only retargets their tracks to this actor's
 ## Skeleton3D. The AnimationPlayer it drives lives under the actor's Body, the
 ## root its track paths are relative to.

@@ -3,7 +3,7 @@ class_name ActorEquipment
 extends Node
 
 ## Builds the models of what an actor has equipped and attaches them to its
-## body. A child of the actor node (esm_humanoid_actor.tscn). It watches the
+## body. A child of the actor node (esm_actor_node.tscn). It watches the
 ## actor reference's inventory, projects the equipped items into
 ## `equipment_state`, requests their NIFs and, once all are delivered, swaps the
 ## Body's "Equipment" child for the new set and emits `committed`. A failed

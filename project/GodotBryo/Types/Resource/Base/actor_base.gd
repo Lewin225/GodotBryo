@@ -23,7 +23,7 @@ const TEMPLATE_USE_INVENTORY := 0x100
 const TEMPLATE_USE_SCRIPT := 0x200
 
 @export_group("Model")
-## MODL: the skeleton NIF. Read; EsmHumanoidActor builds the skeleton from it.
+## MODL: the skeleton NIF. Read; EsmActorNode builds the skeleton from it.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_path: String = ""
 ## OBND: the object bounds' two corners (s16 x, y, z each). Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var bounds_min: Vector3i = Vector3i.ZERO
@@ -168,6 +168,21 @@ func get_attribute(index: int) -> int:
 		5: return agility
 		6: return luck
 	return 0
+
+## The model parts an actor is assembled from besides its MODL skeleton, for
+## the actor node: each {"key", "path", "required", "kind"} plus any extra
+## keys the kind uses. NpcBase and CreatureBase supply theirs; an ActorBase has
+## none.
+func get_model_parts(_female: bool) -> Array[Dictionary]:
+	return []
+
+## Whether the actor uses its female models; an ActorBase is not female.
+func is_female() -> bool:
+	return false
+
+## Where the actor's animation KFs are found, for the actor node; none here.
+func animation_search_paths() -> PackedStringArray:
+	return PackedStringArray()
 
 func has_pc_level_mult() -> bool:
 	return (acbs_flags & FLAG_PC_LEVEL_MULT) != 0
