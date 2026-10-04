@@ -33,9 +33,9 @@ EsmReference already holds NAME (`base`), DATA, XSCL, XLKR, XESP and the enable 
 
 `using_changed` and `get_actor_values()` move here too.
 
-XATO, XAPD, XIBS, XEMI and XMBR are not actor-specific (REFR has them); they would sit better on
-EsmReference. Listed here only because this refactor touches them; moving them is a separate
-choice.
+A subrecord's field sits on the reference types that carry it in the data. XATO, XAPD and XIBS
+are on ACHR and ACRE, so they are ActorReference fields; REFR-based types that carry them get
+their own field when needed, by census.
 
 ## NpcReference (ACHR; extends ActorReference)
 
@@ -125,11 +125,10 @@ Not read, no field: CNTO (the reference's `contents` is seeded from it, as today
 
 1. The six reference fields on no ACHR or ACRE (XHLP, XCNT, XRDS, Patrol Data): keep them, as
    today, or drop them?
-2. XATO, XAPD, XIBS: on ActorReference now, or leave them for a later move onto EsmReference?
-3. Types with no resource (ECZN, VTYP, CSTY, SPEL, ENCH, HDPT, IPDS, LVLN, LVLC, FACT):
+2. Types with no resource (ECZN, VTYP, CSTY, SPEL, ENCH, HDPT, IPDS, LVLN, LVLC, FACT):
    resolve to a plain EsmBase now, or add typed resources for some (VTYP and FACT are read by
    conditions today)?
-4. CNTO on the base: keep reading it raw to seed the reference's `contents` (today's behaviour),
+3. CNTO on the base: keep reading it raw to seed the reference's `contents` (today's behaviour),
    or add a base field (CONT has CNTO too, so it would be a shared sub-resource)?
-5. CSDT sounds, NIFT and DEST: fields now (CSDT would be a small sub-resource list), or "not read"
+4. CSDT sounds, NIFT and DEST: fields now (CSDT would be a small sub-resource list), or "not read"
    until a consumer needs them?
