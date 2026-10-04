@@ -91,7 +91,7 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Actor effects | `unarmed_attack_animation` | EAMT (enum) | | not read |
 | AI Data | `aggression`, `confidence`, `energy`, `responsibility`, `mood`, `services` (flags), `teaches`, `maximum_training_level`, `assistance`, `aggro_radius_behavior`, `aggro_radius` | AIDT | | ActorStats (five of them) |
 | AI | `packages` | PKID, in order | Array[PackageBase] | NpcBase only |
-| Items | `items` | CNTO (+ COED), in order | Array[ContainedObject] | not a field; read raw when a reference is created, COED ignored |
+| Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[ContainedObject] | not a field; read raw when a reference is created, COED ignored |
 
 Methods: `template_source(flag)` (from ActorStats), and a typed accessor ActorValues uses in place
 of `get("actor_stats")`.
@@ -126,13 +126,20 @@ entries). After that the inventory never reads `items` again.
 
 ## ContainedObject (new; shared by NPC_, CREA and CONT)
 
-One CNTO entry: the authored starting item, shared by every placement of its base. Not
-InventoryItem, which is a live, per-placement item with an instantiated item reference and equip
-state.
+One element of xEdit's "Items" array (its "Item"): a CNTO subrecord (item FormID, count) and the
+COED that may follow it, merged into one entry. It is the authored starting item, shared by every
+placement of its base. Not InventoryItem, which is a live, per-placement item with an
+instantiated item reference and equip state. Not LVLO: leveled-list entries live inside LVLI,
+LVLN and LVLC records, never in an actor's Items.
+
+What actor Items name in FalloutNV.esm (top level): LVLI 13,378 NPC_ / 596 CREA, ARMO 1,503 / 4,
+MISC 472 / 14, ALCH 331 / 8, WEAP 213 / 525, KEYM 127 / 12, AMMO 107 / 407, NOTE 29 / 2, CMNY 3 /
+0, LIGH 3 / 0; every FormID resolves. xEdit also allows BOOK, IMOD, CCRD and CHIP, which no actor
+uses.
 
 | Field | Source | Resolves to |
 |---|---|---|
-| `item_form_id`, `item` | CNTO item | the item's base resource, or LeveledItemBase |
+| `item_form_id`, `item` | CNTO item | the item's Base resource (LeveledItemBase, ArmorBase, MiscBase, AlchemyBase, WeaponBase, KeyBase, AmmoBase, NoteBase, CaravanMoneyBase, LightBase) |
 | `count` | CNTO count (s32) | |
 | `owner_form_id`, `owner` | COED offset 0 | NpcBase or FactionBase |
 | `global_variable_form_id`, `global_variable` | COED offset 4 when the owner is an NPC_ (xEdit `wbCOEDOwnerDecider`) | *EsmBase* (GLOB) |
@@ -233,7 +240,7 @@ comment.
 | ZNAM combat style | CSTY | **new** CombatStyleBase |
 | PKID package | PACK | exists |
 | SCRI script | SCPT | **new** ScriptBase (today `script_form_id` stays an int) |
-| CNTO item | ARMO, AMMO, MISC, WEAP, BOOK, LVLI, KEYM, ALCH, NOTE, IMOD, CMNY, CCRD, LIGH | **new** NoteBase, ItemModBase; the rest exist |
+| CNTO item | used: LVLI, ARMO, MISC, ALCH, WEAP, KEYM, AMMO, NOTE, CMNY, LIGH (xEdit also allows BOOK, IMOD, CCRD, CHIP; no actor uses them) | **new** NoteBase; the rest exist |
 | COED owner, global variable | NPC_, FACT; GLOB | FactionBase; **new** GlobalBase |
 | DEST stage explosion, debris | EXPL, DEBR | **new** ExplosionBase, DebrisBase |
 | ACHR / ACRE NAME base | NPC_, CREA | exist |
@@ -242,8 +249,8 @@ comment.
 | XOWN owner (ACRE) | NPC_, FACT | FactionBase |
 | XMRC, XLKR, XESP | placed references | EsmReference subclasses |
 
-**New Base classes: 18.** VTYP, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT,
-NOTE, IMOD, GLOB, EXPL, DEBR, ECZN, IDLE.
+**New Base classes: 17.** VTYP, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT,
+NOTE, GLOB, EXPL, DEBR, ECZN, IDLE.
 
 Not counted: Patrol Data's embedded script references (SCRO) and XEMI emittance (REGN), which
 appear on no ACHR or ACRE in FalloutNV.esm; nothing reaches those types through them.
@@ -272,8 +279,8 @@ plain EsmBase for it.
 | SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSound `sound`, EXPL, IPCT, many others | none yet |
 | IPDS | ImpactDatasetBase | DATA: an IPCT per material (stone, dirt, grass, glass, metal, wood, organic, cloth, water, hollow metal, organic bug, organic glow) | CreatureBase `impact_dataset` | none (combat) |
 
-LVLN and LVLC entries have the same layout as LVLI's, which `LeveledItemEntry` holds today; one
-shared entry resource would serve all three.
+LVLN and LVLC hold their own LVLO entries; they matter to the actor work only when a template is
+a leveled list (the four saloon powder gangers). LVLI's `LeveledItemEntry` is unchanged.
 
 Agreed: every type in the table above becomes a typed resource in stage B, including those
 with no consumer yet (SPEL, ENCH, CSTY, ECZN, IPDS). GLOB stays a plain EsmBase: no COED sets a
