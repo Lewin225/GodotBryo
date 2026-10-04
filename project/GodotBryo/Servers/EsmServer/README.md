@@ -21,7 +21,8 @@ If work elsewhere needs a record field EsmServer does not expose:
 2. Say what is missing and what it is needed for.
 3. Land it as its own change, with a test in `project/tests/`.
 
-The record classes it instantiates live in `GodotBryo/Types/Resource/` and are
+The record classes it instantiates live in `GodotBryo/Types/Resource/` (`Base/`, `Reference/`,
+`Collection/`) and are
 data, not behaviour. Adding a field there is part of the same task as teaching
 EsmServer to populate it — the two are one change, not two.
 
@@ -90,7 +91,7 @@ each record's own Base.
 **Base versus Reference.** An `EsmBase` is the authored record: what a Nuka-Cola
 *is*. An `EsmReference` is one placed or carried instance of it. Two dispatch
 tables map a record type to each — `TYPE_TO_BASE` and `TYPE_TO_REFERENCE`,
-resolved out of `GodotBryo/Types/Resource/`. A type present in one and absent
+resolved out of `GodotBryo/Types/Resource/Base/` and `Reference/`. A type present in one and absent
 from the other is deliberate: not every record type can be placed in a cell.
 
 **Dirty.** Both extend `EsmResource`. A clean one mirrors the ESM, and a base is

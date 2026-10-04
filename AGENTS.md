@@ -113,7 +113,8 @@ any action based on the reported failure.
 
 ## Describing record fields
 
-Every field on a Base or Reference resource (`project/GodotBryo/Types/Resource/`)
+Every field on a Base or Reference resource (`project/GodotBryo/Types/Resource/`: `Base/`,
+`Reference/`, `Collection/` for groups of subrecords, and the rest at the root)
 carries a `##` doc comment that says, in this order:
 
 1. **Where it comes from.** A field read from the ESM starts with its real
@@ -134,8 +135,8 @@ A runtime-only field states that instead of a source (`Runtime state with no
 ESM source.`), and a field whose name could be mistaken for something else
 points to the real one (`Not the actor's health, which is ActorValues'
 Health.`). Keep each description current when a field starts being read or
-used: a stale "not used yet" is as wrong as a missing one. See `npc_base.gd`
-and `actor_reference.gd` for the pattern.
+used: a stale "not used yet" is as wrong as a missing one. See `Base/npc_base.gd`
+and `Reference/actor_reference.gd` for the pattern.
 
 ## Tech stack
 

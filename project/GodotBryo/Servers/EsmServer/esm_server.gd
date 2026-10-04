@@ -13,6 +13,9 @@ const EXTERIOR_CELL_SIZE_METERS := 4096.0 / 70.0
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const ResourceRoot := "res://GodotBryo/Types/Resource/"
+## The subfolders of ResourceRoot holding Base and Reference classes.
+const BaseFolder := "Base/"
+const ReferenceFolder := "Reference/"
 const TYPE_TO_BASE := {
 	"NPC_": "NpcBase", "RACE": "RaceBase", "HAIR": "HairBase", "EYES": "EyesBase",
 	"CLAS": "ClassBase", "PACK": "PackageBase", "ARMO": "ArmorBase", "ARMA": "ArmorAddonBase",
@@ -238,7 +241,7 @@ func get_base(form_id: int) -> EsmBase:
 		return null
 	var type_tag := String(raw.get("record_type", ""))
 	var script_name := String(TYPE_TO_BASE.get(type_tag, "EsmBase"))
-	var script := load(ResourceRoot + _snake_case(script_name) + ".gd")
+	var script := _resource_script(script_name)
 	if script == null:
 		return null
 	var result: EsmBase = script.new()
@@ -282,7 +285,7 @@ func get_base_type(form_id: int) -> Script:
 	if raw.is_empty():
 		return null
 	var script_name := String(TYPE_TO_BASE.get(String(raw.get("record_type", "")), "EsmBase"))
-	return load(ResourceRoot + _snake_case(script_name) + ".gd")
+	return _resource_script(script_name)
 
 func get_reference_type(refr_form_id: int) -> Script:
 	var raw: Dictionary = reader.get_record_data(refr_form_id) if reader != null else {}
@@ -291,7 +294,7 @@ func get_reference_type(refr_form_id: int) -> Script:
 	var base_id := _u32(_subrecord(raw, "NAME"))
 	var base_raw: Dictionary = reader.get_record_data(base_id) if base_id != 0 else {}
 	var script_name := String(TYPE_TO_REFERENCE.get(String(base_raw.get("record_type", "")), "EsmReference"))
-	return load(ResourceRoot + _snake_case(script_name) + ".gd")
+	return _resource_script(script_name)
 
 func get_reference(instance_id: String) -> EsmReference:
 	if _game_session != null:
@@ -389,7 +392,7 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	if base == null:
 		return null
 	var script_name := String(TYPE_TO_REFERENCE.get(base.record_type, "EsmReference"))
-	var script := load(ResourceRoot + _snake_case(script_name) + ".gd")
+	var script := _resource_script(script_name)
 	if script == null:
 		return null
 	var result: EsmReference = script.new()
@@ -601,7 +604,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 		return _authored_reference_cache[id]
 	var type_tag := String(placement.get("base_type", ""))
 	var script_name := String(TYPE_TO_REFERENCE.get(type_tag, "EsmReference"))
-	var script = load(ResourceRoot + _snake_case(script_name) + ".gd")
+	var script = _resource_script(script_name)
 	if script == null:
 		return null
 	var result: EsmReference = script.new()
@@ -768,7 +771,7 @@ func _create_inventory_item_reference(item_base: EsmBase, form_id: int, index: i
 	if item_base == null:
 		return null
 	var script_name := String(TYPE_TO_REFERENCE.get(item_base.record_type, "EsmReference"))
-	var script := load(ResourceRoot + _snake_case(script_name) + ".gd")
+	var script := _resource_script(script_name)
 	if script == null:
 		return null
 	var result: EsmReference = script.new()
@@ -2011,6 +2014,12 @@ func _has_property(object: Object, property_name: String) -> bool:
 		if String(property.get("name", "")) == property_name:
 			return true
 	return false
+
+## The script of the Base or Reference class `script_name` (TYPE_TO_BASE,
+## TYPE_TO_REFERENCE), from its subfolder of ResourceRoot.
+func _resource_script(script_name: String) -> Script:
+	var folder := ReferenceFolder if script_name.ends_with("Reference") else BaseFolder
+	return load(ResourceRoot + folder + _snake_case(script_name) + ".gd")
 
 func _snake_case(value: String) -> String:
 	var out := ""
