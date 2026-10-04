@@ -34,6 +34,10 @@ const RECORD_FLAG_QUEST_ITEM := 0x400
 ## one; for placeable types it is the object script of every placement. Read;
 ## used by ScriptServer to run object and quest scripts.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_form_id: int = 0
+## SCRI's SCPT, resolved; null when the record has none. Named
+## `script_record` because Object already has `script`. Read; not used yet
+## (ScriptServer compiles scripts from script_form_id).
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "ScriptBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var script_record: Resource
 ## Every subrecord of the record, as {"type", "data"}. Read; used through
 ## subrecord_data() / all_subrecord_data() for fields not decoded into typed
 ## properties (CNTO inventory seeds, for one).

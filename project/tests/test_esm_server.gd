@@ -66,6 +66,7 @@ func _ready() -> void:
 	_check_door_links_and_locks(server)
 	_check_reference_index(server, index)
 	_check_base_scripts(server, index)
+	_check_referenced_types(server, index)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -405,15 +406,56 @@ func _check_base_scripts(server, index: Array) -> void:
 		if not expected.has(record_type):
 			continue
 		var base: EsmBase = server.get_base(int(row["form_id"]))
-		if base != null and base.script_form_id != 0:
+		if base != null and base.script_form_id != 0 and base.script_record is ScriptBase and base.script_record.form_id == base.script_form_id:
 			scripted[record_type] = int(scripted.get(record_type, 0)) + 1
 	var mismatched: PackedStringArray = []
 	for record_type: String in expected:
 		if int(scripted.get(record_type, 0)) != int(expected[record_type]):
 			mismatched.append("%s %d/%d" % [record_type, int(scripted.get(record_type, 0)), expected[record_type]])
-	_check(mismatched.is_empty(), "every scripted base record exposes its SCRI (%s) [%d ms]" % [", ".join(mismatched) if not mismatched.is_empty() else "all types match", Time.get_ticks_msec() - started])
+	_check(mismatched.is_empty(), "every scripted base record exposes its SCRI, resolved to its ScriptBase (%s) [%d ms]" % [", ".join(mismatched) if not mismatched.is_empty() else "all types match", Time.get_ticks_msec() - started])
 	var doc: EsmReference = server.find_reference_by_editor_id("DocMitchellREF")
 	_check(doc != null and doc.base.script_form_id != 0, "Doc Mitchell's NPC record has an object script")
+
+## The record types actor records point at (Plans/Actors/fields.md): every
+## record of each resolves to its typed Base; VTYP flags and GLOB type and value
+## match their subrecords; every FLST entry resolves.
+func _check_referenced_types(server, index: Array) -> void:
+	var classes := {"VTYP": "VoiceTypeBase", "GLOB": "GlobalBase", "LVLN": "LeveledNpcBase", "LVLC": "LeveledCreatureBase",
+		"HDPT": "HeadPartBase", "IPDS": "ImpactDatasetBase", "SOUN": "SoundBase", "FACT": "FactionBase",
+		"ENCH": "EnchantmentBase", "SPEL": "SpellBase", "CSTY": "CombatStyleBase", "SCPT": "ScriptBase",
+		"NOTE": "NoteBase", "EXPL": "ExplosionBase", "DEBR": "DebrisBase", "ECZN": "EncounterZoneBase",
+		"IDLE": "IdleBase", "FLST": "FormListBase"}
+	var totals := {}
+	var wrong: PackedStringArray = []
+	var field_errors: PackedStringArray = []
+	var flst_entries := 0
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if not classes.has(record_type):
+			continue
+		var form_id := int(row["form_id"])
+		totals[record_type] = int(totals.get(record_type, 0)) + 1
+		var base: EsmBase = server.get_base(form_id)
+		if base == null or base.get_script().get_global_name() != classes[record_type]:
+			if wrong.size() < 5: wrong.append("%08X %s" % [form_id, record_type])
+			continue
+		var raw: Dictionary = server.reader.get_record_data(form_id)
+		match record_type:
+			"VTYP":
+				var dnam := _subrecord(raw, "DNAM")
+				if (base as VoiceTypeBase).flags != (dnam[0] if dnam.size() > 0 else 0): field_errors.append("%08X DNAM" % form_id)
+			"GLOB":
+				var glob := base as GlobalBase
+				var fnam := _subrecord(raw, "FNAM")
+				if glob.global_type != (char(fnam[0]) if fnam.size() > 0 else "f") or not is_equal_approx(glob.value, _subrecord(raw, "FLTV").decode_float(0)):
+					field_errors.append("%08X FNAM/FLTV" % form_id)
+			"FLST":
+				var lnam := _all_subrecords(raw, "LNAM")
+				flst_entries += lnam.size()
+				var form_list := base as FormListBase
+				if form_list.entries.size() != lnam.size(): field_errors.append("%08X LNAM %d/%d" % [form_id, form_list.entries.size(), lnam.size()])
+	_check(wrong.is_empty(), "every VTYP, GLOB, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE and FLST resolves to its typed Base (%s)" % [totals if wrong.is_empty() else wrong])
+	_check(field_errors.is_empty(), "VTYP flags, GLOB type and value, and every FLST's %d entries match their subrecords (%s)" % [flst_entries, field_errors.slice(0, 5)])
 
 ## FormID -> filing CELL, single-record placements, and editor-ID lookup.
 func _check_reference_index(server, index: Array) -> void:

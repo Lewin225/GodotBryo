@@ -1040,17 +1040,19 @@ func _equipment_model_descriptors() -> Array[Dictionary]:
 	for armor in accepted:
 		var direct := armor.female_biped_model if _is_female else armor.male_biped_model
 		_add_equipment_descriptor(result, direct, armor, armor.biped_flags, "MOD3" if _is_female else "MODL", "armor")
-		var model_list := armor.biped_model_list as BipedModelListBase
+		var model_list := armor.biped_model_list as FormListBase
 		if model_list != null:
-			for addon in model_list.entries:
+			for entry in model_list.entries:
+				var addon := entry as ArmorAddonBase
 				if addon != null:
 					var addon_path := addon.female_biped_model if _is_female else addon.male_biped_model
 					_add_equipment_descriptor(result, addon_path, addon, addon.biped_flags, "MOD3" if _is_female else "MODL", "armor")
 	var weapon := state.get_weapon_base()
 	if weapon != null:
-		var weapon_models := weapon.biped_model_list as BipedModelListBase
+		var weapon_models := weapon.biped_model_list as FormListBase
 		if weapon_models != null:
-			for addon in weapon_models.entries:
+			for entry in weapon_models.entries:
+				var addon := entry as ArmorAddonBase
 				if addon != null:
 					var addon_path := addon.female_biped_model if _is_female else addon.male_biped_model
 					_add_equipment_descriptor(result, addon_path, addon, addon.biped_flags, "BIPL", "weapon")

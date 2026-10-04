@@ -71,6 +71,14 @@ created with its `ActorValues`. `get_game_setting()` reads a GMST by
 editor ID on first use; FalloutNV.esm omits settings left at their engine default, which
 `ActorValue.DEFAULT_SETTINGS` supplies.
 
+**Every FormID field resolves.** A field holding a FormID has its resolved resource beside it
+(`race_form_id`, `race`), built by `get_base()` and typed from `TYPE_TO_BASE`. SCRI resolves to
+`script_record` (a `ScriptBase`) on every record. The record types actor records point at have
+Base classes even where nothing reads their subrecords yet (VTYP, GLOB, LVLN, LVLC, HDPT, IPDS,
+SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE); each class's doc comment lists
+the subrecords it does not read. FLST is `FormListBase`, a general list whose `entries` resolve to
+each record's own Base.
+
 **Base versus Reference.** An `EsmBase` is the authored record: what a Nuka-Cola
 *is*. An `EsmReference` is one placed or carried instance of it. Two dispatch
 tables map a record type to each — `TYPE_TO_BASE` and `TYPE_TO_REFERENCE`,

@@ -16,13 +16,18 @@ const ResourceRoot := "res://GodotBryo/Types/Resource/"
 const TYPE_TO_BASE := {
 	"NPC_": "NpcBase", "RACE": "RaceBase", "HAIR": "HairBase", "EYES": "EyesBase",
 	"CLAS": "ClassBase", "PACK": "PackageBase", "ARMO": "ArmorBase", "ARMA": "ArmorAddonBase",
-	"FLST": "BipedModelListBase", "WEAP": "WeaponBase", "ALCH": "AlchemyBase", "LVLI": "LeveledItemBase",
+	"FLST": "FormListBase", "WEAP": "WeaponBase", "ALCH": "AlchemyBase", "LVLI": "LeveledItemBase",
 	"AMMO": "AmmoBase", "BOOK": "BookBase", "CCRD": "CaravanCardBase", "CMNY": "CaravanMoneyBase",
 	"KEYM": "KeyBase", "MISC": "MiscBase", "DOOR": "DoorBase", "SCOL": "StaticCollectionBase",
 	"LIGH": "LightBase", "CONT": "ContainerBase", "ACTI": "ActivatorBase", "FURN": "FurnitureBase",
 	"TACT": "TalkingActivatorBase", "MSTT": "MovableStaticBase", "TERM": "TerminalBase",
 	"STAT": "StaticBase", "CREA": "CreatureBase", "BPTD": "BodyPartDataBase", "QUST": "QuestBase",
-	"MESG": "MessageBase", "DIAL": "DialogueTopicBase", "INFO": "DialogueInfoBase"
+	"MESG": "MessageBase", "DIAL": "DialogueTopicBase", "INFO": "DialogueInfoBase",
+	"VTYP": "VoiceTypeBase", "GLOB": "GlobalBase", "LVLN": "LeveledNpcBase", "LVLC": "LeveledCreatureBase",
+	"HDPT": "HeadPartBase", "IPDS": "ImpactDatasetBase", "SOUN": "SoundBase", "FACT": "FactionBase",
+	"ENCH": "EnchantmentBase", "SPEL": "SpellBase", "CSTY": "CombatStyleBase", "SCPT": "ScriptBase",
+	"NOTE": "NoteBase", "EXPL": "ExplosionBase", "DEBR": "DebrisBase", "ECZN": "EncounterZoneBase",
+	"IDLE": "IdleBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -781,6 +786,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result.editor_id = _string(_subrecord(raw, "EDID"))
 	result.full_name = _string(_subrecord(raw, "FULL"))
 	result.script_form_id = _u32(_subrecord(raw, "SCRI"))
+	result.script_record = get_base(result.script_form_id) as ScriptBase if result.script_form_id != 0 else null
 	result.record_flags = int(raw.get("record_flags", 0))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
@@ -808,7 +814,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.reload_animation = _u8(weapon_dnam, 15)
 		weapon.attack_animation = _u8(weapon_dnam, 41)
 		weapon.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
-		weapon.biped_model_list = get_base(weapon.biped_model_list_form_id) as BipedModelListBase
+		weapon.biped_model_list = get_base(weapon.biped_model_list_form_id) as FormListBase
 		var weapon_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
 		weapon.inventory_icon = String(weapon_item_data.get("inventory_icon", ""))
 		weapon.message_icon = String(weapon_item_data.get("message_icon", ""))
@@ -875,19 +881,25 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.equipment_type = _u32(_subrecord(raw, "ETYP"))
 		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
 		armor.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
-		armor.biped_model_list = get_base(armor.biped_model_list_form_id) as BipedModelListBase
+		armor.biped_model_list = get_base(armor.biped_model_list_form_id) as FormListBase
 	elif result is ArmorAddonBase:
 		var addon: ArmorAddonBase = result
 		addon.model_path = _string(_subrecord(raw, "MODL"))
 		addon.male_biped_model = addon.model_path
 		addon.female_biped_model = _string(_subrecord(raw, "MOD3"))
 		addon.biped_flags = _u32(_subrecord(raw, "BMDT"))
-	elif result is BipedModelListBase:
-		var biped: BipedModelListBase = result
-		biped.entries.clear()
-		for addon_form_id_data in _all_subrecords(raw, "LNAM"):
-			var addon_base := get_base(_u32(addon_form_id_data)) as ArmorAddonBase
-			if addon_base != null: biped.entries.append(addon_base)
+	elif result is FormListBase:
+		var form_list: FormListBase = result
+		form_list.entries.clear()
+		for entry_data in _all_subrecords(raw, "LNAM"):
+			var entry := get_base(_u32(entry_data))
+			if entry != null: form_list.entries.append(entry)
+	elif result is VoiceTypeBase:
+		(result as VoiceTypeBase).flags = _u8(_subrecord(raw, "DNAM"))
+	elif result is GlobalBase:
+		var global_base: GlobalBase = result
+		global_base.global_type = char(_u8(_subrecord(raw, "FNAM"))) if not _subrecord(raw, "FNAM").is_empty() else GlobalBase.TYPE_FLOAT
+		global_base.value = _f32(_subrecord(raw, "FLTV"))
 	elif result is DoorBase:
 		var door: DoorBase = result
 		door.model_path = _string(_subrecord(raw, "MODL"))
