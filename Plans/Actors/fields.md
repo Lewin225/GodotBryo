@@ -19,10 +19,15 @@ says where the value lives now.
   including FormID fields naming types beyond these, are not read: the class's doc comment lists
   them with their xEdit labels as not read yet, and each becomes a field, with its description
   and resolved resource, when a consumer arrives.
-- **Structures without a FormID** (ContainedObject, Destructible, DestructionStage,
-  CreatureSound, ActorFaction) are plain Resources inside their parent, filled when the parent is
+- **Structures without a FormID** (InitialItemEntry, Destructible, DestructibleStage,
+  CreatureSoundType, ActorFaction) are plain Resources inside their parent, filled when the parent is
   built or rehydrated. One becomes a resource only when it groups several values, is shared by
   record types, or is saved.
+- **Names.** Form types end in `Base` (records) or `Reference` (placed references); formless
+  structures never do. A formless structure owned by one record type is named owner + xEdit
+  label (CreatureSoundType, DestructibleStage, DialogueResponse); one shared by several takes
+  xEdit's label alone (Destructible, Condition). InitialItemEntry (xEdit "Item", shared by NPC_,
+  CREA and CONT) is named for what it is: an initial inventory entry.
 - **Model info** (MODT, NIFT, DMDT: texture hashes) has no FormID and nothing points at it by one,
   so it stays a raw field.
 
@@ -91,7 +96,7 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Actor effects | `unarmed_attack_animation` | EAMT (enum) | | not read |
 | AI Data | `aggression`, `confidence`, `energy`, `responsibility`, `mood`, `services` (flags), `teaches`, `maximum_training_level`, `assistance`, `aggro_radius_behavior`, `aggro_radius` | AIDT | | ActorStats (five of them) |
 | AI | `packages` | PKID, in order | Array[PackageBase] | NpcBase only |
-| Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[ContainedObject] | not a field; read raw when a reference is created, COED ignored |
+| Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[InitialItemEntry] | not a field; read raw when a reference is created, COED ignored |
 
 Methods: `template_source(flag)` (from ActorStats), and a typed accessor ActorValues uses in place
 of `get("actor_stats")`.
@@ -109,9 +114,9 @@ entries). After that the inventory never reads `items` again.
 |---|---|---|
 | `health` | DEST Health (s32) | |
 | `vats_targetable` | DEST Flags 0x01 | |
-| `stages` | DSTD ... DSTF, one per stage (DEST Count) | Array[DestructionStage] |
+| `stages` | DSTD ... DSTF, one per stage (DEST Count) | Array[DestructibleStage] |
 
-**DestructionStage** (new; one per stage):
+**DestructibleStage** (new; one per stage):
 
 | Field | Source | Resolves to |
 |---|---|---|
@@ -124,7 +129,7 @@ entries). After that the inventory never reads `items` again.
 | `model_path` | DMDL | |
 | `model_info` | DMDT (raw; texture hashes, as MODT) | |
 
-## ContainedObject (new; shared by NPC_, CREA and CONT)
+## InitialItemEntry (new; shared by NPC_, CREA and CONT)
 
 One element of xEdit's "Items" array (its "Item"): a CNTO subrecord (item FormID, count) and the
 COED that may follow it, merged into one entry. It is the authored starting item, shared by every
@@ -198,9 +203,9 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Sound | `sound_level` | NAM5 (enum) | | not read |
 | Sound | `impact_dataset_form_id`, `impact_dataset` | CNAM | *EsmBase* (IPDS) | not read |
 | Sound | `inherits_sounds_from_form_id`, `inherits_sounds_from` | CSCR | CreatureBase | not read |
-| Sound | `sounds` | CSDT, CSDI, CSDC, one group per sound (86 CREA) | Array[CreatureSound] | not read |
+| Sound | `sounds` | CSDT, CSDI, CSDC, one group per sound (86 CREA) | Array[CreatureSoundType] | not read |
 
-**CreatureSound** (new; CREA only, an array entry of three values):
+**CreatureSoundType** (new; CREA only, an array entry of three values):
 
 | Field | Source | Resolves to |
 |---|---|---|
@@ -282,10 +287,10 @@ plain EsmBase for it.
 | ENCH | EnchantmentBase | FULL; ENIT type (Weapon, Apparel), flags; effects | ActorBase `unarmed_attack_effect` | none yet |
 | CSTY | CombatStyleBase | CSTD (standard), CSAD (advanced), CSSD (simple): dozens of combat tuning values | ActorBase `combat_style` | none (combat is out of scope) |
 | ECZN | EncounterZoneBase | DATA: owner (NPC_ / FACT), rank, minimum level, flags (Never Resets, Match PC Below Minimum Level) | ActorReference `encounter_zone` | none yet |
-| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | ContainedObject `global_variable`, scripts, conditions | scripts read and set globals today |
-| EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructionStage `explosion` | none yet |
-| DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructionStage `debris` | none yet |
-| SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSound `sound`, EXPL, IPCT, many others | none yet |
+| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | InitialItemEntry `global_variable`, scripts, conditions | scripts read and set globals today |
+| EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructibleStage `explosion` | none yet |
+| DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructibleStage `debris` | none yet |
+| SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSoundType `sound`, EXPL, IPCT, many others | none yet |
 | IPDS | ImpactDatasetBase | DATA: an IPCT per material (stone, dirt, grass, glass, metal, wood, organic, cloth, water, hollow metal, organic bug, organic glow) | CreatureBase `impact_dataset` | none (combat) |
 
 LVLN and LVLC hold their own LVLO entries; they matter to the actor work only when a template is
