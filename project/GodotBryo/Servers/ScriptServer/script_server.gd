@@ -261,7 +261,7 @@ func dispatch_event(reference: EsmReference, block_type: String, action_ref: Esm
 ## A disabled actor's (NPC or creature) script does not run; other disabled
 ## references' scripts do.
 func _is_disabled_actor(reference: EsmReference) -> bool:
-	return (reference is ActorReference or reference is CreatureReference) and reference.is_disabled()
+	return reference is ActorReference and reference.is_disabled()
 
 ## Runs every `block_type` block of the reference's script that accepts
 ## `subject`, which need not be a reference: a menu ID (`Begin MenuMode

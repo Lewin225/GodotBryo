@@ -41,13 +41,13 @@ EsmServer.create_reference_for_base(base_form_id) -> EsmReference
 EsmServer.create_inventory_item_reference(base_form_id, instance_id := "") -> EsmReference
 EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]   # currently in it
 EsmServer.is_relocated(reference) -> bool
-EsmServer.get_all_placed_actor_references() -> Array[ActorReference]
+EsmServer.get_all_placed_actor_references() -> Array[ActorReference]   # ACHR only, for now
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
 EsmServer.get_space_form_id_for_reference(instance_id) -> int
 EsmServer.get_filing_cell_form_id(refr_form_id) -> int
 EsmServer.find_reference_by_editor_id(editor_id) -> EsmReference
-EsmServer.get_player_reference() -> ActorReference              # also get_reference("player")
+EsmServer.get_player_reference() -> NpcReference                # also get_reference("player")
 EsmServer.find_quest_by_editor_id(editor_id) -> EsmBase
 EsmServer.find_global_by_editor_id(editor_id) -> Dictionary     # GLOB type and authored value
 EsmServer.find_base_by_editor_id(editor_id) -> EsmBase          # any non-placement record
@@ -70,7 +70,10 @@ so nothing blocks startup.
 SNAM, VTCK, PKID, CNTO + COED as `items`, DEST as `destructible`, ...). Each subclass reads its
 own DATA, RNAM, PNAM, CNAM, NAM5 and LNAM, and names the ACBS flags its own way.
 `ActorBase.template_source(record, flag)` follows TPLT while the flag says a part comes from the
-template. Every actor and creature reference is created with its `ActorValues`, which derive
+template. Placed ACHR and ACRE are `NpcReference` and `CreatureReference`, both extending
+`ActorReference`, which reads the placement subrecords they share (XLCM, XEZN, XMRC, ragdoll
+data, XATO, XAPD, XIBS); `CreatureReference` adds XOWN. Every actor and creature reference is
+created with its `ActorValues`, which derive
 from the record supplying its stats, and its inventory, seeded from `items` (the template's with
 the Inventory flag) with each COED's owner and condition. `get_game_setting()` reads a GMST by
 editor ID on first use; FalloutNV.esm omits settings left at their engine default, which

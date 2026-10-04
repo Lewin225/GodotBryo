@@ -12,14 +12,14 @@ signal closed
 @onready var _female: Button = $Root/Panel/Margin/VBox/Sex/Female
 @onready var _done: Button = $Root/Panel/Margin/VBox/Done
 
-var _actor: ActorReference = null
+var _actor: NpcReference = null
 
 func _ready() -> void:
 	visible = false
 	_done.pressed.connect(accept)
 
 ## Shows the menu for `actor`, its current sex selected.
-func open(actor: ActorReference, _params: Dictionary = {}) -> void:
+func open(actor: NpcReference, _params: Dictionary = {}) -> void:
 	_actor = actor
 	var female := actor != null and actor.base is NpcBase and (actor.base as NpcBase).is_female()
 	_female.button_pressed = female

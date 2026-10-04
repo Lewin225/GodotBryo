@@ -123,7 +123,7 @@ func _ready() -> void:
 	# An exterior object with a node in the paused exterior moves into the house.
 	var visitor: EsmReference = null
 	for child in (tile_root.get_children() if tile_root != null else []):
-		if child is EsmNode and not child.reference is ActorReference and not child.reference is CreatureReference:
+		if child is EsmNode and not child.reference is ActorReference:
 			visitor = child.reference
 			break
 	check(visitor != null, "the paused exterior tile has a physicalised object")

@@ -49,7 +49,7 @@ func _ready() -> void:
 	streamer.objects_per_frame = 1
 	add_child(streamer)
 	await get_tree().process_frame
-	var actor_reference := ActorReference.new()
+	var actor_reference := NpcReference.new()
 	var creature_reference := CreatureReference.new()
 	var ordinary_reference := EsmReference.new()
 	streamer.spawn_reference_types = WorldStreamerV2.SPAWN_REFR

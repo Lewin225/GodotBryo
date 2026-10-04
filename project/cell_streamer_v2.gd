@@ -238,7 +238,7 @@ func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
 	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
-	if reference is ActorReference:
+	if reference is NpcReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
 		return (spawn_reference_types & SPAWN_CREA) != 0

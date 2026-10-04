@@ -1287,7 +1287,7 @@ func _editor_load() -> void:
 		push_warning("EsmHumanoidActor: EsmServer is not ready")
 		return
 	var candidate: EsmReference = server.create_reference_for_base(form_id)
-	if candidate == null or not candidate is ActorReference:
+	if candidate == null or not candidate is NpcReference:
 		push_error("EsmHumanoidActor: base_form_id 0x%X is not an NPC_" % form_id)
 		return
 	reference = candidate
@@ -1295,7 +1295,7 @@ func _editor_load() -> void:
 
 func _editor_apply_actor_data() -> void:
 	if reference == null or not reference.base is NpcBase:
-		push_warning("EsmHumanoidActor: assign an ActorReference backed by NpcBase before loading")
+		push_warning("EsmHumanoidActor: assign an NpcReference before loading")
 		return
 	load_actor()
 

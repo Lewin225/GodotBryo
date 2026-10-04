@@ -93,7 +93,7 @@ func _ready() -> void:
 	check(truthy_ctx.get_local("z") == 1, "a bare unresolved-ref condition evaluates truthy end-to-end, no crash (got %s)" % str(truthy_ctx.get_local("z")))
 
 	print("--- ScriptInterpreter/IsActionRef: 'player' resolves to the player's reference ---")
-	var player_ref := ActorReference.new()
+	var player_ref := NpcReference.new()
 	var player_ctx := ScriptExecutionContext.new(null)
 	player_ctx.action_ref = player_ref
 	player_ctx.player_reference = player_ref
@@ -103,7 +103,7 @@ func _ready() -> void:
 	check(player_ctx.get_local("z") == 1, "IsActionRef player is true when the action reference is the player's (got %s)" % str(player_ctx.get_local("z")))
 
 	var other_ctx := ScriptExecutionContext.new(null)
-	other_ctx.action_ref = ActorReference.new()
+	other_ctx.action_ref = NpcReference.new()
 	other_ctx.player_reference = player_ref
 	ScriptInterpreter.new(player_program, registry).run_block("OnActivate", other_ctx)
 	check(other_ctx.get_local("z") == 2, "IsActionRef player is false for another actor (got %s)" % str(other_ctx.get_local("z")))

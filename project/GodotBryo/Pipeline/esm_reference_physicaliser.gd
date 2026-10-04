@@ -68,7 +68,7 @@ func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:
 	return physicalise(ref)
 
 func _make_node(ref: EsmReference) -> EsmNode:
-	if ref is ActorReference and ref.base is NpcBase:
+	if ref is NpcReference:
 		return HumanoidActorScene.instantiate()
 	if ref is DoorReference:
 		return DoorNodeScript.new()

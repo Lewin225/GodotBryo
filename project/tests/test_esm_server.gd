@@ -35,10 +35,10 @@ func _ready() -> void:
 		var name_form_id := _u32(_subrecord(raw, "NAME"))
 		if name_form_id == 0: continue
 		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
-		if reference is ActorReference:
+		if reference is NpcReference:
 			found_actor = true
 			var actor_base := reference.base as NpcBase
-			_check(reference.contents is Inventory, "ActorReference owns a typed Inventory")
+			_check(reference.contents is Inventory, "an NpcReference owns a typed Inventory")
 			if reference.contents is Inventory:
 				for item in (reference.contents as Inventory).get_items():
 					_check(item is InventoryItem and item.item_reference is EsmReference, "Actor inventory contains InventoryItem-wrapped references")
@@ -58,7 +58,7 @@ func _ready() -> void:
 			_check(actor_base == null or actor_base.class_form_id == 0 or actor_base.actor_class != null, "NPC Base resolves Class Base when CNAM is present")
 			_check(actor_base == null or actor_base.packages.size() == _count_pkid(server.reader.get_record_data(actor_base.form_id)), "NPC Base resolves every Package Base")
 			break
-	_check(found_actor, "an ACHR resolves as ActorReference")
+	_check(found_actor, "an ACHR resolves as NpcReference")
 	_check_authored_reference_cache(server, index)
 	_check_xemi_reference_fields(server)
 	await _check_xemi_visual_tint(server)
@@ -68,6 +68,7 @@ func _ready() -> void:
 	_check_base_scripts(server, index)
 	_check_referenced_types(server, index)
 	_check_actor_bases(server, index)
+	_check_actor_references(server, index)
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
@@ -288,10 +289,10 @@ func _check_terminal_locks(server, index: Array) -> void:
 	_check(by_level == {0: 44, 1: 19, 2: 44, 3: 21, 4: 18, 5: 5}, "locked terminals by difficulty match the census (%s)" % [by_level])
 	_check(with_note == 21, "21 locked terminals name a password note (%d)" % with_note)
 
-## The player's reference is one canonical ActorReference.
+## The player's reference is one canonical NpcReference.
 func _check_player_reference(server) -> void:
 	var player: ActorReference = server.get_player_reference()
-	_check(player != null and player.base is NpcBase and player.base.form_id == 0x7, "the player reference is an ActorReference on the Player NPC_ record")
+	_check(player != null and player.base is NpcBase and player.base.form_id == 0x7, "the player reference is an NpcReference on the Player NPC_ record")
 	_check(server.get_player_reference() == player and server.get_reference("player") == player, "every lookup returns the same player reference")
 	_check(player.instance_id == "player" and player.current_space_form_id == 0, "the player reference starts unplaced")
 	var instance := ScriptInstance.new()
@@ -525,6 +526,52 @@ func _check_actor_bases(server, index: Array) -> void:
 				seeded = is_equal_approx(item.health_percent, entry.condition)
 		_check(seeded, "%s's inventory item %s carries COED condition %.2f" % [npc.editor_id, entry.item.editor_id, entry.condition])
 		break
+
+## Every ACHR is an NpcReference and every ACRE a CreatureReference, both
+## ActorReferences. The placement subrecords they carry match census A1's
+## counts, and every FormID field among them has its resolved resource.
+func _check_actor_references(server, index: Array) -> void:
+	const TAGS := ["XLCM", "XEZN", "XMRC", "XRGD", "XATO", "XIBS", "XOWN"]
+	var expected := {"ACHR XLCM": 178, "ACRE XLCM": 119, "ACHR XEZN": 5, "ACRE XEZN": 11, "ACHR XMRC": 76, "ACRE XMRC": 1,
+		"ACHR XRGD": 278, "ACRE XRGD": 109, "ACHR XATO": 3, "ACRE XATO": 1, "ACHR XIBS": 6, "ACRE XOWN": 10}
+	var counts := {}
+	var errors: PackedStringArray = []
+	var started := Time.get_ticks_msec()
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if record_type != "ACHR" and record_type != "ACRE":
+			continue
+		var form_id := int(row["form_id"])
+		var reference: EsmReference = server.get_reference("authored:%08X" % form_id)
+		if reference == null:
+			continue
+		var typed := reference is NpcReference if record_type == "ACHR" else reference is CreatureReference
+		if not typed:
+			errors.append("%08X %s is a %s" % [form_id, record_type, reference.get_script().get_global_name()])
+			continue
+		var raw: Dictionary = server.reader.get_record_data(form_id)
+		for tag: String in TAGS:
+			if _has_subrecord(raw, tag):
+				var key := "%s %s" % [record_type, tag]
+				counts[key] = int(counts.get(key, 0)) + 1
+		for field in _unresolved_actor_reference_fields(reference as ActorReference):
+			errors.append("%08X %s unresolved" % [form_id, field])
+	for key: String in expected:
+		if int(counts.get(key, 0)) != int(expected[key]):
+			errors.append("%s %d/%d" % [key, int(counts.get(key, 0)), expected[key]])
+	_check(errors.is_empty(), "every ACHR is an NpcReference and every ACRE a CreatureReference; their placement subrecords match census A1 and resolve (%s) [%d ms]" % [", ".join(errors.slice(0, 6)) if not errors.is_empty() else "all match", Time.get_ticks_msec() - started])
+
+## The ActorReference FormID fields that are set but have no resolved resource.
+func _unresolved_actor_reference_fields(actor: ActorReference) -> PackedStringArray:
+	var unresolved := PackedStringArray()
+	if actor.encounter_zone_form_id != 0 and actor.encounter_zone == null:
+		unresolved.append("XEZN")
+	if actor.merchant_container_form_id != 0 and actor.merchant_container == null:
+		unresolved.append("XMRC")
+	var creature := actor as CreatureReference
+	if creature != null and creature.owner_form_id != 0 and creature.owner == null:
+		unresolved.append("XOWN")
+	return unresolved
 
 ## FormID -> filing CELL, single-record placements, and editor-ID lookup.
 func _check_reference_index(server, index: Array) -> void:
@@ -963,10 +1010,10 @@ func _check_activation(esm_server, script_server) -> void:
 				load_door = reference
 		elif reference is ActorReference:
 			actors.append(reference)
-	var actor := ActorReference.new()
+	var actor := NpcReference.new()
 	actor.instance_id = "test:actor"
 	actor.contents = Inventory.new()
-	var other_actor := ActorReference.new()
+	var other_actor := NpcReference.new()
 	other_actor.instance_id = "test:other"
 
 	# A plain door toggles with no node loaded.
@@ -1061,7 +1108,7 @@ func _check_activation(esm_server, script_server) -> void:
 	if bench != null:
 		var seat := FurnitureReference.new()
 		seat.base = bench
-		var third := ActorReference.new()
+		var third := NpcReference.new()
 		script_server.activate(seat, actor)
 		script_server.activate(seat, other_actor)
 		script_server.activate(seat, third)
@@ -1108,7 +1155,7 @@ func _check_open_door_full_visual_state(server) -> void:
 		_check(not reference.is_open and player.current_animation == "Close" and player.is_playing(),
 			"first activation of an authored-open gate plays Close")
 		player.stop()
-		var picker := ActorReference.new()
+		var picker := NpcReference.new()
 		reference.is_locked = true
 		get_node("/root/ScriptServer").default_activate(reference, picker)
 		_check(not player.is_playing() and not reference.is_open and picker.using == reference,
@@ -1592,8 +1639,13 @@ func _all_subrecords(raw: Dictionary, tag: String) -> Array[PackedByteArray]:
 		if String(sub.get("type", "")) == tag: result.append(sub.get("data", PackedByteArray()))
 	return result
 
+## Whether the record carries subrecord `tag`, including an empty marker
+## (PKED, PUID, PKAM, XIBS).
 func _has_subrecord(raw: Dictionary, tag: String) -> bool:
-	return not _subrecord(raw, tag).is_empty() or (tag in ["PKED", "PUID", "PKAM"] and _all_subrecords(raw, tag).size() > 0)
+	for sub in raw.get("subrecords", []):
+		if String(sub.get("type", "")) == tag:
+			return true
+	return false
 
 func _u8(data: PackedByteArray, offset := 0) -> int:
 	return int(data[offset]) if data.size() > offset else 0

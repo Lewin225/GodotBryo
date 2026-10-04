@@ -75,6 +75,6 @@ static func actor_reference_for(body: Node) -> EsmReference:
 	while node != null:
 		if node is EsmNode:
 			var ref: EsmReference = (node as EsmNode).reference
-			return ref if (ref is ActorReference or ref is CreatureReference) else null
+			return ref if ref is ActorReference else null
 		node = node.get_parent()
 	return null

@@ -520,7 +520,7 @@ func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
 	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
-	if reference is ActorReference:
+	if reference is NpcReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
 		return (spawn_reference_types & SPAWN_CREA) != 0
@@ -538,8 +538,7 @@ func _should_physicalise(reference: EsmReference, detail: EsmNode.VisualDetail) 
 	# the VWD-only ring.
 	return reference.visible_when_distant \
 		and not reference is StaticCollectionReference \
-		and not reference is ActorReference \
-		and not reference is CreatureReference
+		and not reference is ActorReference
 
 
 ## Tells ScriptServer whether a tile root's references are in a loaded CELL:

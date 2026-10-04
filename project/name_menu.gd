@@ -11,7 +11,7 @@ signal closed
 @onready var _name: LineEdit = $Root/Panel/Margin/VBox/Name
 @onready var _ok: Button = $Root/Panel/Margin/VBox/OK
 
-var _actor: ActorReference = null
+var _actor: NpcReference = null
 
 func _ready() -> void:
 	visible = false
@@ -19,7 +19,7 @@ func _ready() -> void:
 	_name.text_submitted.connect(func(_text: String) -> void: accept())
 
 ## Shows the menu for `actor`, its current name filled in.
-func open(actor: ActorReference, _params: Dictionary = {}) -> void:
+func open(actor: NpcReference, _params: Dictionary = {}) -> void:
 	_actor = actor
 	_name.text = actor.base.full_name if actor != null and actor.base != null else ""
 	visible = true

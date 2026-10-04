@@ -30,7 +30,7 @@ const TYPE_TO_BASE := {
 	"IDLE": "IdleBase"
 }
 const TYPE_TO_REFERENCE := {
-	"NPC_": "ActorReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
+	"NPC_": "NpcReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
 	"DOOR": "DoorReference", "SCOL": "StaticCollectionReference", "LIGH": "LightReference",
 	"CONT": "ContainerReference", "ACTI": "ActivatorReference", "FURN": "FurnitureReference",
 	"TACT": "TalkingActivatorReference", "ARMA": "ArmorAddonReference", "ALCH": "AlchemyReference",
@@ -69,7 +69,7 @@ var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 ## CELL -> {EsmReference: true}. They are listed only under that CELL.
 var _relocated_by_cell: Dictionary = {}
 var _relocated: Dictionary = {} # EsmReference -> current CELL
-var _player_reference: ActorReference = null
+var _player_reference: NpcReference = null
 
 ## FormID of the Player NPC_ record. The player's own placed reference
 ## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
@@ -314,11 +314,11 @@ func get_reference(instance_id: String) -> EsmReference:
 		return null
 	return _reference_from_placement(placement, instance_id, cell_id)
 
-## The player's reference: one ActorReference on the Player NPC_ record, the
+## The player's reference: one NpcReference on the Player NPC_ record, the
 ## same instance on every call. Unplaced (space 0) until something moves it.
-func get_player_reference() -> ActorReference:
+func get_player_reference() -> NpcReference:
 	if _player_reference == null and is_ready():
-		_player_reference = create_reference_for_base(PLAYER_BASE_FORM_ID) as ActorReference
+		_player_reference = create_reference_for_base(PLAYER_BASE_FORM_ID) as NpcReference
 		if _player_reference != null:
 			_player_reference.instance_id = PLAYER_INSTANCE_ID
 	return _player_reference
@@ -629,6 +629,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 		var actor: ActorReference = result
 		actor.spawn_cell_form_id = cell_id
 		actor.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
+		_populate_actor_reference(actor, reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {})
 	if result is DoorReference:
 		var door_ref: DoorReference = result
 		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
@@ -684,7 +685,7 @@ func _populate_terminal_lock(reference: EsmReference) -> void:
 
 ## Gives an actor or creature reference its ActorValues.
 func _populate_actor_values(reference: EsmReference) -> void:
-	if reference is ActorReference or reference is CreatureReference:
+	if reference is ActorReference:
 		reference.get_actor_values()
 
 ## Adds `count` of `item_base` to `holder`'s inventory as typed items, as a
@@ -721,7 +722,7 @@ static func _holder_level(holder: EsmReference) -> int:
 ## owner reference as typed item references and is not rebuilt from the base
 ## after the reference has been created.
 func _populate_reference_inventory(reference: EsmReference) -> void:
-	if not (reference is ActorReference or reference is CreatureReference or reference is ContainerReference):
+	if not (reference is ActorReference or reference is ContainerReference):
 		return
 	var inventory := Inventory.new()
 	reference.set("contents", inventory)
@@ -760,7 +761,7 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		item.health_percent = entry.condition
 		inventory.add_item(item)
 		item_index += 1
-	if reference is ActorReference:
+	if reference is NpcReference:
 		inventory.equip_default_armor()
 
 func _create_inventory_item_reference(item_base: EsmBase, form_id: int, index: int) -> EsmReference:
@@ -873,7 +874,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		(result as VoiceTypeBase).flags = _u8(_subrecord(raw, "DNAM"))
 	elif result is GlobalBase:
 		var global_base: GlobalBase = result
-		global_base.global_type = char(_u8(_subrecord(raw, "FNAM"))) if not _subrecord(raw, "FNAM").is_empty() else GlobalBase.TYPE_FLOAT
+		var fnam := _subrecord(raw, "FNAM")
+		global_base.global_type = char(fnam[0]) if not fnam.is_empty() else GlobalBase.TYPE_FLOAT
 		global_base.value = _f32(_subrecord(raw, "FLTV"))
 	elif result is DoorBase:
 		var door: DoorBase = result
@@ -1629,6 +1631,24 @@ func _populate_package_event_subrecord(event: PackageEvent, tag: String, data: P
 		"SCRO": event.script_references.append(_u32(data))
 		"SCRV": event.script_local_reference_indices.append(_u32(data))
 
+## An ACHR or ACRE's own subrecords beyond the placement: XLCM, XEZN, XMRC,
+## ragdoll data, XATO, XAPD, XIBS, and on ACRE XOWN.
+func _populate_actor_reference(actor: ActorReference, raw: Dictionary) -> void:
+	actor.level_modifier = _i32(_subrecord(raw, "XLCM"))
+	actor.encounter_zone_form_id = _u32(_subrecord(raw, "XEZN"))
+	actor.encounter_zone = get_base(actor.encounter_zone_form_id) as EncounterZoneBase
+	actor.merchant_container_form_id = _u32(_subrecord(raw, "XMRC"))
+	actor.merchant_container = get_reference("authored:%08X" % actor.merchant_container_form_id) if actor.merchant_container_form_id != 0 else null
+	actor.ragdoll_data = _subrecord(raw, "XRGD")
+	actor.ragdoll_biped_data = _subrecord(raw, "XRGB")
+	actor.activation_prompt = _string(_subrecord(raw, "XATO"))
+	actor.parent_activate_only = _u8(_subrecord(raw, "XAPD")) != 0
+	actor.ignored_by_sandbox = _subrecord_present(raw, "XIBS")
+	if actor is CreatureReference:
+		var creature: CreatureReference = actor
+		creature.owner_form_id = _u32(_subrecord(raw, "XOWN"))
+		creature.owner = get_base(creature.owner_form_id)
+
 ## An NPC_ or CREA's SNAM faction entries: FACT FormID and signed rank.
 func _actor_factions(raw: Dictionary) -> Array[ActorFaction]:
 	var factions: Array[ActorFaction] = []
@@ -1740,7 +1760,8 @@ func _populate_npc(npc: NpcBase, raw: Dictionary) -> void:
 		face.diagnostics = decoded.get("diagnostics", PackedStringArray())
 	npc.face_gen = face
 	npc.unknown_nam5 = _u16(_subrecord(raw, "NAM5"))
-	npc.height = _f32(_subrecord(raw, "NAM6")) if not _subrecord(raw, "NAM6").is_empty() else 1.0
+	var nam6 := _subrecord(raw, "NAM6")
+	npc.height = _f32(nam6) if not nam6.is_empty() else 1.0
 	npc.weight = _f32(_subrecord(raw, "NAM7"))
 	npc.body_part_data = get_base(NpcBase.DEFAULT_HUMAN_BODY_PART_DATA_FORM_ID) as BodyPartDataBase
 
@@ -1772,7 +1793,8 @@ func _populate_creature(result: CreatureBase, raw: Dictionary) -> void:
 	result.body_part_data_form_id = _u32(_subrecord(raw, "PNAM"))
 	result.body_part_data = get_base(result.body_part_data_form_id) as BodyPartDataBase
 	result.turning_speed = _f32(_subrecord(raw, "TNAM"))
-	result.base_scale = _f32(_subrecord(raw, "BNAM")) if not _subrecord(raw, "BNAM").is_empty() else 1.0
+	var bnam := _subrecord(raw, "BNAM")
+	result.base_scale = _f32(bnam) if not bnam.is_empty() else 1.0
 	result.foot_weight = _f32(_subrecord(raw, "WNAM"))
 	result.sound_level = _u32(_subrecord(raw, "NAM5"))
 	result.impact_dataset_form_id = _u32(_subrecord(raw, "CNAM"))
