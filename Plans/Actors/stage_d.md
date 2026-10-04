@@ -74,21 +74,18 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 - **Spawning.** The physicaliser instances `npc_controller.tscn` for an `ActorReference` (the
   controller owns its `EsmActorNode`), except for the possessed actor, which the player's body
   stands in for.
-- **Check-out / check-in hand-off.** The lease rules are in the NpcSimulationServer README
-  ("Who owns which field"): leased, the controller writes `position` and NSS never does; unleased,
-  the reverse; NSS always owns the package and `move_target`, and keeps ticking a leased actor.
-  Nothing calls `checkout()` / `checkin()` yet outside `test_nav_npc_simulation_server`.
-  - *Check-out*, when the physicaliser instances the controller: `checkout(reference)` stops NSS
-    integrating that actor's travel and acknowledges before the controller moves it (the README's
-    "acknowledged handoff rather than just setting an enum"). The controller starts from
-    `reference.position` and heading, and walks to `move_target` if one is set.
-  - *Check-in*, when the physicaliser removes it (unload, or the actor leaves the loaded area):
-    the controller writes its final position and heading, then `checkin(reference)`. NSS
-    re-grounds the actor from that position and resumes travel to the same `move_target`,
-    requesting a new route.
-  - The possessed actor stays leased for as long as it is possessed (README: the player is
-    permanently leased); possession checks it out and releasing it checks it in.
-
+- **Lease hand-off by field.** The lease rules are in the NpcSimulationServer README ("Who owns
+  which field"): leased, the controller writes `position` and NSS never does; unleased, the
+  reverse; NSS always owns the package and `move_target`, and keeps ticking a leased actor. The
+  physicaliser sets `simulation_mode` directly: `PHYSICAL_LEASED` when it builds the controller,
+  `LOW_LEVEL` when it removes it, after the controller has written its final position and heading.
+  The NSS tick (main thread) checks the field before writing `position`; worker threads only
+  compute routes and never write Resources, so nothing races the flip. The tick keeps the mode it
+  last saw per actor (derived, not saved); an actor that comes back `LOW_LEVEL` is re-grounded
+  from `reference.position` and routed again to the same `move_target`. `checkout()` /
+  `checkin()` and their grounded check are removed, and the README's "acknowledged handoff"
+  paragraph is rewritten to match. An ungrounded unleased actor is one the tick cannot move yet; a
+  physicalised one is always built. The possessed actor is `PHYSICAL_LEASED` while possessed.
 
 ## Decisions
 
@@ -134,6 +131,4 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 
 ## Open
 
-- `checkout()` refuses an actor with no navmesh under it (`is_grounded`). What the physicaliser
-  does then: still build the controller with movement off until it is grounded, or leave the
-  actor to NSS (and unrendered)?
+- Nothing yet.
