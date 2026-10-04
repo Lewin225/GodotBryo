@@ -58,6 +58,7 @@ public:
 	// this is the same data in one.
 	Dictionary get_space_geometry(int space_form_id) const;
 	PackedVector3Array get_space_cross_links(int space_form_id) const;
+	Dictionary get_record_cross_links(int record_index) const;
 
 	// Union of the authored NVGD bounds of every record in a space, as
 	// {found, min, max}, for framing a camera without touching triangles.

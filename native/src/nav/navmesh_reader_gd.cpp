@@ -20,6 +20,7 @@ void NavmeshReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_record_triangle_points", "record_index"), &NavmeshReader::get_record_triangle_points);
 	ClassDB::bind_method(D_METHOD("get_space_geometry", "space_form_id"), &NavmeshReader::get_space_geometry);
 	ClassDB::bind_method(D_METHOD("get_space_cross_links", "space_form_id"), &NavmeshReader::get_space_cross_links);
+	ClassDB::bind_method(D_METHOD("get_record_cross_links", "record_index"), &NavmeshReader::get_record_cross_links);
 	ClassDB::bind_method(D_METHOD("get_space_bounds", "space_form_id"), &NavmeshReader::get_space_bounds);
 	ClassDB::bind_method(D_METHOD("get_coarse_neighbors", "record_index"), &NavmeshReader::get_coarse_neighbors);
 	ClassDB::bind_method(D_METHOD("snap", "space_form_id", "position", "max_distance", "use_coarse_index"),
@@ -135,6 +136,33 @@ PackedVector3Array NavmeshReader::get_space_cross_links(int space_form_id) const
 		}
 	}
 	return out;
+}
+
+// The derived cross-record links leaving one record: "points" holds, per link,
+// the from-triangle centroid (in this record) then the to-triangle centroid;
+// "target_records" holds the record each link reaches.
+Dictionary NavmeshReader::get_record_cross_links(int record_index) const {
+	Dictionary d;
+	PackedVector3Array points;
+	PackedInt32Array target_records;
+	const nav::NavMeshRecord *r = db_.record_at((size_t)record_index);
+	if (r != nullptr) {
+		const auto &links = db_.cross_record_links();
+		for (uint32_t local = 0; local < r->triangles.size(); ++local) {
+			auto found = links.find(r->global_triangle_offset + local);
+			if (found == links.end()) continue;
+			for (const nav::CrossRecordLink &link : found->second) {
+				uint32_t to_record = 0, to_local = 0;
+				if (!db_.resolve_global_triangle(link.to_global_triangle, &to_record, &to_local)) continue;
+				points.push_back(to_godot(db_.triangle_centroid((uint32_t)record_index, local)));
+				points.push_back(to_godot(db_.triangle_centroid(to_record, to_local)));
+				target_records.push_back((int32_t)to_record);
+			}
+		}
+	}
+	d["points"] = points;
+	d["target_records"] = target_records;
+	return d;
 }
 
 Dictionary NavmeshReader::get_space_geometry(int space_form_id) const {

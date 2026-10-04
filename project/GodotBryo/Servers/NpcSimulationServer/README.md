@@ -4,9 +4,12 @@
 authored placed actor and every XTEL door, grounds each actor against real NAVM
 triangles, and routes between them.
 
-- **Lifecycle** — nothing loads until `seed()` is called; `seed_finished` fires when
-  the navmesh, actors and portals are ready. Tests may instantiate the script
-  directly and seed their own instance.
+- **Lifecycle** — nothing loads until `seed()` is called; `game.gd` calls it at
+  boot. `seed_finished` fires when the navmesh, actors and portals are ready.
+  Tests may instantiate the script directly and seed their own instance.
+- **Local navigation** — `local_navigation` (`local_navigation.gd`) holds Godot
+  NavigationServer3D maps for the cells the streamers have loaded, for
+  physicalised actors' local pathing; see "Local navigation" below.
 - **Index** — `actors_by_space_form_id` / `actors_by_cell_form_id` and grounding
   follow `EsmServer.reference_cell_changed`, so an actor that moves or walks into
   another CELL is re-indexed and re-grounded.
@@ -34,7 +37,11 @@ every shipped master once, then serves read-only queries.
 
 Measured on real data (base game + all five DLC masters):
 
-- **6,139 records, 621,256 vertices, 826,632 triangles, 31.2 MB resident.**
+- **6,139 records, 621,256 vertices, 826,632 triangles, 31.2 MB resident** by
+  the database's own count (`resident_bytes`); **42.6 MB** of heap is still
+  allocated after `load()` returns (`native/tools/navmesh_memory.cpp`, glibc
+  `mallinfo2`), the difference being container overhead. Loading briefly takes
+  far more: `EsmFile`'s whole-plugin record index, freed afterwards.
 - **~0.36 s to load**, against a 5 s boot budget. Dominated by opening the
   plugin files (~0.16 s) and the derived cross-record stitch (~0.11 s); the
   actual NAVM parse is ~0.03 s.
@@ -229,6 +236,32 @@ routes start crossing rivers. Centers are only ever a broad-phase filter and an
 A* distance heuristic. A record's center is not even guaranteed walkable — a
 record can be concave or hollow, putting its midpoint off-mesh.
 
+## Local navigation
+
+`LocalNavigation` copies the NAVM of the **local** cells into Godot's
+NavigationServer3D: one map per space, one region per NAVM record, and one
+two-way link per derived cross-record pair (`NavmeshReader.get_record_cross_links`)
+whose two records both have regions. Physicalised actors path and avoid each
+other on these maps; NSS keeps routing every actor over the whole game's NAVM,
+including through doors.
+
+- **Which cells are local** is the streamers' decision, given as a whole set per
+  space with `set_local_cells(space, cells)`. `CellStreamerV2` makes the current
+  interior local. `WorldStreamerV2` does not call it yet.
+- **Builds** — a cell's NavigationMeshes are built on a `WorkerThreadPool` task
+  and applied on the main thread; `cell_ready` follows. A cell made non-local
+  before its build lands is never applied.
+- **Map settings** — edge connections off: NAVM records do not share vertices at
+  their seams, and on the whole of WastelandNV Godot's free-edge search had not
+  finished after a minute. The links join records instead. Cell size 0.1 m: at
+  Godot's 0.25 m default, distinct vertices in GSDocMitchellHouse share a cell
+  and the map reports an edge error.
+- **Why not the whole worldspace in Godot** — measured on WastelandNV
+  (`_diag/diag_navserver_bench`): about 767 MB for Godot's map against NSS's
+  42.6 MB for every space; routes of about 2 km reach 91/100 in 84 ms mean
+  (NSS: 90/100, 91 ms), with Godot's `path_search_max_polygons` lifted from its
+  4,096 default, which otherwise ends every such route short.
+
 ## Planned: the simulation tick
 
 None of this section is implemented. It is the agreed design for when NSS starts
@@ -387,6 +420,7 @@ off-mesh. `checkout()` refuses them, because there is nowhere valid to put them.
 ```bash
 cd project
 ../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_nav_npc_simulation_server.tscn
+../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_local_navigation.tscn
 ```
 
 Requires a current `project/bin/*.so`. A stale one does not fail loudly — the

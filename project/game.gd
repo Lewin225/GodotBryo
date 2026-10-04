@@ -100,6 +100,7 @@ func _ready() -> void:
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
 
 	QuestServer.begin_game()
+	NpcSimulationServer.seed()
 	# VCG00, the cemetery intro, is not played: its stage 0 moves the player to
 	# VCG01PlayerStartMarkerREF and its last stage (100) ends with
 	# `SetStage VCG01 0`, which starts Doc Mitchell's opening; both are done

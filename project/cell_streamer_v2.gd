@@ -101,6 +101,7 @@ func cancel_load(advance_generation := true) -> void:
 func unload_current() -> void:
 	cancel_load()
 	_set_scripts_loaded(_current_refs, false)
+	_set_navigation_local(get_current_cell_form_id(), false)
 	if _current != null and is_instance_valid(_current):
 		_current.free()
 	_current = null
@@ -176,12 +177,14 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	EsmNode.set_collision_disabled(root, false)
 	root.visible = true
 	_set_scripts_loaded(_current_refs, false)
+	_set_navigation_local(get_current_cell_form_id(), false)
 	if _current != null and is_instance_valid(_current):
 		_current.free()
 	root.name = "CurrentCell"
 	_current = root
 	_current_refs = _loading_refs.duplicate()
 	_set_scripts_loaded(_current_refs, true)
+	_set_navigation_local(cell_form_id, true)
 	_loading_root = null
 	_loading_refs.clear()
 	_loading = false
@@ -228,6 +231,14 @@ func _set_scripts_loaded(references: Array[EsmReference], loaded: bool) -> void:
 	for reference in references:
 		if reference != null:
 			ScriptServer.set_reference_loaded(reference, loaded)
+
+## Makes an interior CELL's NAVM local navigation (NpcSimulationServer's maps
+## for physicalised actors) or stops it being. An interior is its own space.
+func _set_navigation_local(cell_form_id: int, local: bool) -> void:
+	if cell_form_id == 0:
+		return
+	var cells := PackedInt32Array([cell_form_id]) if local else PackedInt32Array()
+	NpcSimulationServer.local_navigation.set_local_cells(cell_form_id, cells)
 
 ## Whether a CELL being loaded should spawn `reference`: a reference whose
 ## CELL has changed belongs only to the CELL it is in now.
