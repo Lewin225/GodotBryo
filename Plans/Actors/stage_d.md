@@ -42,19 +42,35 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 └── GroundRay (RayCast3D)                    ← snaps height while walking
 ```
 
-- **Two-tier pathing.** `NpcSimulationServer` stays the global planner: for a physicalised actor it
-  gives the next destination on the global route (the target, or the next door). The controller
-  paths to that destination locally with a `NavigationAgent3D` on Godot's NavigationServer, which
-  brings avoidance between agents (NPCs and the player) and dynamic obstacles
-  (`NavigationObstacle3D`) the authored navmesh does not know about. Off screen, the server alone
-  moves the actor, as now.
-- **Local navmesh from NAVM.** The NAVM records of the lod0 tiles (or the current interior) become
-  NavigationServer3D regions in a map for that space, built from `NavmeshReader`'s triangles and
-  added and removed as tiles load and unload.
+- **Our router decides the path; Godot follows it.** `NpcSimulationServer` computes every route,
+  as it already must for packages, flee, follow and combat targets. For a physicalised actor it
+  hands the controller the route's waypoints, each annotated with the door it crosses, if any.
+  The controller paths with its `NavigationAgent3D` only to the next waypoint: funnelled
+  waypoints see each other along the corridor, so each hop is short and near-straight and the
+  local path cannot stray through another door. Godot adds avoidance between agents (NPCs and the
+  player) and keeps the agent on walkable ground when pushed. Off screen, the server alone moves
+  the actor, as now. The waypoints are derived data (README: never on the Resource) and go from
+  the server to the controller directly.
+- **Doors and obstacles are blocked in our router.** The original engine cuts the navmesh at
+  runtime around doors and objects flagged as obstacles (GECK navmesh tutorial: "Doors, like
+  objects with the 'obstacle' tag, automatically cut the navmesh in game"); NAVM itself marks
+  only load doors (NVDP, measured: every resolved NVDP door has XTEL). `NavmeshReader` keeps,
+  per local door and obstacle reference, the NAVM triangles under its footprint: the base's OBND
+  placed by the reference (record-header bit 25 `0x02000000` "Obstacle" on ACTI, CONT, SCOL,
+  MSTT, LIGH and STAT; every DOOR). `find_route` takes the triangles to avoid per query:
+  obstacles for everyone, a door's for an actor that cannot pass it (locked without the key, or
+  above its lockpicking). Whole triangles or a CSG split of the triangles under a footprint:
+  decided by the census of what lies under real footprints.
+- **Doors along a route.** The controller opens the door a waypoint names on reaching it and
+  waits for it to open. A door whose state changes under a route (locked, unlocked) makes
+  NpcSimulationServer route again.
+- **Local navmesh from NAVM.** The NAVM records of the lod0 tiles (or the current interior) are
+  `NavigationRegion3D` / `NavigationLink3D` nodes under `NpcSimulationServer/LocalNavigation`,
+  unblocked: no door regions or navigation layers. Done for interiors (`CellStreamerV2`).
 - **Movement is kinematic.** The controller moves at walk or run speed along the agent's next path
-  position (with the agent's avoidance velocity), turns toward it at `turn_speed_degrees`, and
-  keeps to the ground with `GroundRay`. No `move_and_slide`: the navmesh says where an actor can
-  walk.
+  position toward the current waypoint (with the agent's avoidance velocity), turns toward it at
+  `turn_speed_degrees`, and keeps to the ground with `GroundRay`. No `move_and_slide`: the
+  navmesh says where an actor can walk.
 - **State stays on the reference.** Every physics frame the controller writes position and heading
   to its `ActorReference`, as `PlayerController` does for the possessed actor.
 - **Movement target on the reference.** `NpcSimulationServer` runs packages for every actor and
@@ -63,7 +79,8 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   signal `move_target_reached` (emitted on arrival, when the target is cleared). The server sets
   the target to the next stop on the global route: the package target, or the next door.
   Off screen (`LOW_LEVEL`) the server walks the actor there itself and emits the signal;
-  physicalised (`PHYSICAL_LEASED`) the `NpcController` paths there locally and reports arrival.
+  physicalised (`PHYSICAL_LEASED`) the `NpcController` follows the server's waypoints there and
+  reports arrival.
   Either way the server then advances the package step. A save mid-walk keeps the target, and a
   hand-off between the two modes carries on to the same point. Stage D sets targets from a test,
   not from packages.
@@ -136,4 +153,7 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 
 ## Open
 
-- Nothing yet.
+- Census before the door and obstacle blocking: obstacle-flagged bases and placements per type;
+  internal doors, total and locked; OBND present on every DOOR and obstacle base; placements
+  rotated other than about the vertical; the size of the triangles under internal door
+  footprints and whether they form a doorway strip.
