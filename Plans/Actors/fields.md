@@ -197,24 +197,47 @@ ContainerBase gains the same `items` when containers are next worked on.
 `acbs_template_flags` (becomes ActorBase `template_flags`); CreatureBase `pnam_values`,
 `model_list_filenames` / `paths`, `animation_filenames` / `paths` (renamed).
 
-## The closure
+## Types the actor records point at
 
-Record types reachable from NPC_, CREA, ACHR and ACRE through FormID fields in xEdit's FNV
-definitions (`wbDefinitionsFNV.pas`, following its shared helper definitions): 97 of its 112.
-CNTO naming every item type, and ACHR / ACRE linking to placed references and cells, carry the
-closure across most of the format.
+Every FormID field of NPC_, CREA, ACHR and ACRE (xEdit `wbDefinitionsFNV.pas`), and the record
+types it can name. The types without a Base class get one in stage B. Types those new classes
+point at in turn are not built: their fields stay unread and are listed in the class's doc
+comment.
 
-- **Have a Base class (34):** ACTI, ALCH, AMMO, ARMA, ARMO, BOOK, BPTD, CCRD, CLAS, CMNY, CONT,
-  CREA, DIAL, DOOR, EYES, FLST, FURN, HAIR, INFO, KEYM, LIGH, LVLI, MESG, MISC, MSTT, NPC_, PACK,
-  QUST, RACE, SCOL, STAT, TACT, TERM, WEAP.
-- **Placed references and world structure (10):** ACHR, ACRE, REFR, PGRE, PMIS, PBEA, PLYR resolve
-  to EsmReference subclasses (by `authored:<FormID>`); CELL, WRLD and NAVM are spaces and
-  navmesh, held by EsmServer's cell index and NavmeshReader rather than as Base classes.
-- **New Base classes (53):** ADDN, ALOC, AMEF, ASPC, AVIF, CDCK, CHAL, CHIP, CLMT, CSNO, CSTY,
-  DEBR, ECZN, EFSH, ENCH, EXPL, FACT, GLOB, GRAS, HDPT, IDLE, IDLM, IMAD, IMGS, IMOD, INGR, IPCT,
-  IPDS, LGTM, LTEX, LVLC, LVLN, MGEF, MICN, MSET, MUSC, NOTE, PERK, PROJ, PWAT, RCCT, RCPE, REGN, REPU,
-  RGDL, SCPT, SOUN, SPEL, TREE, TXST, VTYP, WATR, WTHR. The table below describes those the actor
-  records point at directly; the rest follow the "not used yet" rule.
+| Field | Names | Base class |
+|---|---|---|
+| NPC_ / CREA INAM death item | LVLI | exists |
+| VTCK voice | VTYP | **new** VoiceTypeBase |
+| TPLT template | NPC_, LVLN (NPC_); CREA, LVLC (CREA) | **new** LeveledNpcBase, LeveledCreatureBase |
+| RNAM race (NPC_) | RACE | exists |
+| CNAM class (NPC_) | CLAS | exists |
+| PNAM head part (NPC_) | HDPT | **new** HeadPartBase |
+| HNAM hair, ENAM eyes (NPC_) | HAIR, EYES | exist |
+| PNAM body part data (CREA) | BPTD | exists |
+| CNAM impact dataset (CREA) | IPDS | **new** ImpactDatasetBase |
+| LNAM melee weapon list (CREA) | FLST | exists (as BipedModelListBase) |
+| CSCR inherits sounds from (CREA) | CREA | exists |
+| CSDI sound (CREA) | SOUN | **new** SoundBase |
+| SNAM faction | FACT | **new** FactionBase |
+| EITM unarmed attack effect | ENCH, SPEL | **new** EnchantmentBase, SpellBase |
+| SPLO actor effect | SPEL | SpellBase |
+| ZNAM combat style | CSTY | **new** CombatStyleBase |
+| PKID package | PACK | exists |
+| SCRI script | SCPT | **new** ScriptBase (today `script_form_id` stays an int) |
+| CNTO item | ARMO, AMMO, MISC, WEAP, BOOK, LVLI, KEYM, ALCH, NOTE, IMOD, CMNY, CCRD, LIGH | **new** NoteBase, ItemModBase; the rest exist |
+| COED owner, global variable | NPC_, FACT; GLOB | FactionBase; **new** GlobalBase |
+| DEST stage explosion, debris | EXPL, DEBR | **new** ExplosionBase, DebrisBase |
+| ACHR / ACRE NAME base | NPC_, CREA | exist |
+| XEZN encounter zone | ECZN | **new** EncounterZoneBase |
+| Patrol Data INAM idle, TNAM topic | IDLE, DIAL | **new** IdleBase; DIAL exists |
+| XOWN owner (ACRE) | NPC_, FACT | FactionBase |
+| XMRC, XLKR, XESP | placed references | EsmReference subclasses |
+
+**New Base classes: 18.** VTYP, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT,
+NOTE, IMOD, GLOB, EXPL, DEBR, ECZN, IDLE.
+
+Not counted: Patrol Data's embedded script references (SCRO) and XEMI emittance (REGN), which
+appear on no ACHR or ACRE in FalloutNV.esm; nothing reaches those types through them.
 
 ## Resources for referenced types
 
