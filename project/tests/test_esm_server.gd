@@ -606,7 +606,7 @@ func _unresolved_actor_reference_fields(actor: ActorReference) -> PackedStringAr
 	var unresolved := PackedStringArray()
 	if actor.encounter_zone_form_id != 0 and actor.encounter_zone == null:
 		unresolved.append("XEZN")
-	if actor.merchant_container_form_id != 0 and actor.merchant_container == null:
+	if actor.merchant_container_form_id != 0 and actor.get_merchant_container() == null:
 		unresolved.append("XMRC")
 	var creature := actor as CreatureReference
 	if creature != null and creature.owner_form_id != 0 and creature.owner == null:
@@ -756,129 +756,100 @@ func _check_package_bases(server, index: Array) -> void:
 			errors.append("0x%08X did not resolve as PackageBase" % form_id)
 			continue
 		var raw: Dictionary = server.reader.get_record_data(form_id)
-		var general := _subrecord(raw, "PKDT")
-		if general.size() != 8 and general.size() != 12:
-			errors.append("0x%08X unexpected PKDT size %d" % [form_id, general.size()])
-		elif package.general_flags_raw != _u32(general) or package.package_type != _u8(general, 4):
-			errors.append("0x%08X PKDT general fields differ" % form_id)
-		elif general.size() == 12 and (package.fallout_behavior_flags_raw != _u16(general, 6) or package.type_specific_flags_raw != _u16(general, 8)):
-			errors.append("0x%08X PKDT FNV fields differ" % form_id)
-		_check_decoded_package_flags(form_id, package, errors)
-		var schedule := _subrecord(raw, "PSDT")
-		if schedule.size() != 8 or package.schedule == null:
-			errors.append("0x%08X PSDT was not populated" % form_id)
-		elif package.schedule.month != _i8(schedule) or package.schedule.day_of_week != _i8(schedule, 1) or package.schedule.date != _i8(schedule, 2) or package.schedule.time != _i8(schedule, 3) or package.schedule.duration_hours != _u32(schedule, 4):
-			errors.append("0x%08X PSDT fields differ" % form_id)
-		_check_package_location(form_id, "PLDT", _subrecord(raw, "PLDT"), package.location_1, errors)
-		_check_package_location(form_id, "PLD2", _subrecord(raw, "PLD2"), package.location_2, errors)
-		_check_package_target(form_id, "PTDT", _subrecord(raw, "PTDT"), package.target_1, errors)
-		_check_package_target(form_id, "PTD2", _subrecord(raw, "PTD2"), package.target_2, errors)
-		var raw_conditions := _all_subrecords(raw, "CTDA")
-		if package.conditions.size() != raw_conditions.size():
-			errors.append("0x%08X CTDA count differs" % form_id)
-		else:
-			for condition_index in raw_conditions.size():
-				var condition_data: PackedByteArray = raw_conditions[condition_index]
-				var condition: ConditionSubrecord = package.conditions[condition_index]
-				if not _condition_matches(condition, condition_data):
-					errors.append("0x%08X CTDA %d differs" % [form_id, condition_index])
-					break
-		var raw_idles := _all_subrecords(raw, "IDLA")
-		var idle_count := 0
-		for idle_data in raw_idles:
-			@warning_ignore("integer_division")
-			idle_count += idle_data.size() / 4
-		if package.idle_animation_form_ids.size() != idle_count:
-			errors.append("0x%08X IDLA count differs" % form_id)
-		if package.has_eat_marker != _has_subrecord(raw, "PKED") or package.has_use_item_marker != _has_subrecord(raw, "PUID") or package.has_ambush_marker != _has_subrecord(raw, "PKAM"):
-			errors.append("0x%08X marker fields differ" % form_id)
-		var use_weapon := _subrecord(raw, "PKW3")
-		if (not use_weapon.is_empty()) != (package.use_weapon_data != null):
-			errors.append("0x%08X PKW3 presence differs" % form_id)
-		elif package.use_weapon_data != null and (package.use_weapon_data.flags != _u32(use_weapon) or package.use_weapon_data.pause_between_volleys_max != _f32(use_weapon, 16)):
-			errors.append("0x%08X PKW3 fields differ" % form_id)
-		var dialogue := _subrecord(raw, "PKDD")
-		if (not dialogue.is_empty()) != (package.dialogue_data != null):
-			errors.append("0x%08X PKDD presence differs" % form_id)
-		elif package.dialogue_data != null and (package.dialogue_data.field_of_view != _f32(dialogue) or package.dialogue_data.topic_form_id != _u32(dialogue, 4) or package.dialogue_data.dialogue_type != _u32(dialogue, 16)):
-			errors.append("0x%08X PKDD fields differ" % form_id)
+		for problem in _package_errors(package, raw):
+			errors.append("0x%08X %s" % [form_id, problem])
 		_check_package_events(form_id, raw, package, errors)
 	_check(package_count > 0, "the shipped master contains PACK records")
 	_check(errors.is_empty(), "all %d shipped PACK records populate their typed fields%s" % [package_count, "" if errors.is_empty() else ": " + "; ".join(errors.slice(0, 4))])
 
-func _check_decoded_package_flags(form_id: int, package: PackageBase, errors: PackedStringArray) -> void:
-	if package.general_flags == null or package.fallout_behavior_flags == null or package.type_specific_flags == null:
-		errors.append("0x%08X decoded flag resource is absent" % form_id)
-		return
-	_check_flag_properties(form_id, package.general_flags_raw, package.general_flags, {
-		"offers_services": 0x00000001, "must_reach_location": 0x00000002, "must_complete": 0x00000004,
-		"lock_doors_at_package_start": 0x00000008, "lock_doors_at_package_end": 0x00000010, "lock_doors_at_location": 0x00000020,
-		"unlock_doors_at_package_start": 0x00000040, "unlock_doors_at_package_end": 0x00000080, "unlock_doors_at_location": 0x00000100,
-		"continue_if_player_near": 0x00000200, "once_per_day": 0x00000400, "skip_fallout_behavior": 0x00001000,
-		"always_run": 0x00002000, "always_sneak": 0x00020000, "allow_swimming": 0x00040000,
-		"allow_falls": 0x00080000, "head_tracking_off": 0x00100000, "weapons_unequipped": 0x00200000,
-		"defensive_combat": 0x00400000, "weapon_drawn": 0x00800000, "no_idle_animations": 0x01000000,
-		"pretend_in_combat": 0x02000000, "continue_during_combat": 0x04000000, "no_combat_alert": 0x08000000,
-		"no_warn_or_attack_behavior": 0x10000000
-	}, errors)
-	_check_flag_properties(form_id, package.fallout_behavior_flags_raw, package.fallout_behavior_flags, {
-		"hellos_to_player": 0x0001, "random_conversations": 0x0002, "observe_combat_behavior": 0x0004,
-		"reaction_to_player_actions": 0x0010, "friendly_fire_comments": 0x0020, "aggro_radius_behavior": 0x0040,
-		"allow_idle_chatter": 0x0080, "avoid_radiation": 0x0100
-	}, errors)
-	var type_masks := {}
-	match package.package_type:
-		PackageBase.PackageType.FIND, PackageBase.PackageType.ESCORT, PackageBase.PackageType.EAT:
-			type_masks = {"allow_buying": 0x0100, "allow_killing": 0x0200, "allow_stealing": 0x0400}
-		PackageBase.PackageType.WANDER, PackageBase.PackageType.SANDBOX:
-			type_masks = {"no_eating": 0x0001, "no_sleeping": 0x0002, "no_conversation": 0x0004, "no_idle_markers": 0x0008, "no_furniture": 0x0010, "no_wandering": 0x0020}
-		PackageBase.PackageType.USE_ITEM_AT:
-			type_masks = {"sit_down": 0x0004, "allow_buying": 0x0100, "allow_killing": 0x0200, "allow_stealing": 0x0400}
-		PackageBase.PackageType.AMBUSH:
-			type_masks = {"hide_while_ambushing": 0x0001}
-		PackageBase.PackageType.GUARD:
-			type_masks = {"remain_near_reference_to_guard": 0x0008}
-	_check_flag_properties(form_id, package.type_specific_flags_raw, package.type_specific_flags, type_masks, errors)
+## Where `package` differs from its record `raw`.
+func _package_errors(package: PackageBase, raw: Dictionary) -> PackedStringArray:
+	var problems := PackedStringArray()
+	var general := _subrecord(raw, "PKDT")
+	if general.size() != 8 and general.size() != 12:
+		problems.append("unexpected PKDT size %d" % general.size())
+	elif package.general_flags != _u32(general) or package.package_type != _u8(general, 4):
+		problems.append("PKDT general fields differ")
+	elif general.size() == 12 and (package.fallout_behavior_flags != _u16(general, 6) or package.type_specific_flags != _u16(general, 8)):
+		problems.append("PKDT FNV flag words differ")
+	var schedule := _subrecord(raw, "PSDT")
+	var schedule_matches := schedule.size() == 8 and package.schedule_month == _i8(schedule) \
+			and package.schedule_day_of_week == _i8(schedule, 1) and package.schedule_date == _i8(schedule, 2) \
+			and package.schedule_time == _i8(schedule, 3) and package.schedule_duration_hours == _u32(schedule, 4)
+	if not schedule_matches:
+		problems.append("PSDT fields differ")
+	problems.append_array(_package_location_errors("PLDT", _subrecord(raw, "PLDT"), package.has_location_1, package.location_1_type, package.location_1_form_id, package.location_1_object, package.location_1_object_type, package.location_1_radius))
+	problems.append_array(_package_location_errors("PLD2", _subrecord(raw, "PLD2"), package.has_location_2, package.location_2_type, package.location_2_form_id, package.location_2_object, package.location_2_object_type, package.location_2_radius))
+	problems.append_array(_package_target_errors("PTDT", _subrecord(raw, "PTDT"), package.has_target_1, package.target_1_type, package.target_1_form_id, package.target_1_object, package.target_1_count_or_distance))
+	problems.append_array(_package_target_errors("PTD2", _subrecord(raw, "PTD2"), package.has_target_2, package.target_2_type, package.target_2_form_id, package.target_2_object, package.target_2_count_or_distance))
+	var raw_conditions := _all_subrecords(raw, "CTDA")
+	if package.conditions.size() != raw_conditions.size():
+		problems.append("CTDA count differs")
+	else:
+		for condition_index in raw_conditions.size():
+			if not _condition_matches(package.conditions[condition_index], raw_conditions[condition_index]):
+				problems.append("CTDA %d differs" % condition_index)
+				break
+	var idle_count := 0
+	for idle_data in _all_subrecords(raw, "IDLA"):
+		@warning_ignore("integer_division")
+		idle_count += idle_data.size() / 4
+	if package.idle_animations.size() != idle_count:
+		problems.append("IDLA %d/%d resolved" % [package.idle_animations.size(), idle_count])
+	if package.combat_style_form_id != 0 and package.combat_style == null:
+		problems.append("CNAM unresolved")
+	var markers_match := package.has_eat_marker == _has_subrecord(raw, "PKED") \
+			and package.has_use_item_marker == _has_subrecord(raw, "PUID") and package.has_ambush_marker == _has_subrecord(raw, "PKAM")
+	if not markers_match:
+		problems.append("marker fields differ")
+	var use_weapon := _subrecord(raw, "PKW3")
+	if package.has_use_weapon_data != (not use_weapon.is_empty()):
+		problems.append("PKW3 presence differs")
+	elif package.has_use_weapon_data and (package.use_weapon_flags != _u32(use_weapon) or package.use_weapon_pause_between_volleys_max != _f32(use_weapon, 16)):
+		problems.append("PKW3 fields differ")
+	var dialogue := _subrecord(raw, "PKDD")
+	if package.has_dialogue_data != (not dialogue.is_empty()):
+		problems.append("PKDD presence differs")
+	elif package.has_dialogue_data:
+		var dialogue_matches := package.dialogue_field_of_view == _f32(dialogue) and package.dialogue_topic_form_id == _u32(dialogue, 4) \
+				and package.dialogue_flags == _u32(dialogue, 8) and package.dialogue_type == _u32(dialogue, 16)
+		if not dialogue_matches:
+			problems.append("PKDD fields differ")
+		elif package.dialogue_topic_form_id != 0 and package.dialogue_topic == null:
+			problems.append("PKDD topic unresolved")
+	return problems
 
-func _check_flag_properties(form_id: int, raw_flags: int, flags: Resource, masks: Dictionary, errors: PackedStringArray) -> void:
-	for property_name in masks:
-		var expected := (raw_flags & int(masks[property_name])) != 0
-		if bool(flags.get(property_name)) != expected:
-			errors.append("0x%08X %s differs" % [form_id, property_name])
-			return
+## A PLDT / PLD2 against its subrecord `data`: present when the subrecord is;
+## type and radius match; the named FormID kept for reference, cell and object
+## kinds; an Object ID resolved; an Object Type decoded.
+func _package_location_errors(tag: String, data: PackedByteArray, present: bool, type: int, form_id: int, object: EsmBase, object_type: int, radius: int) -> PackedStringArray:
+	if present != (not data.is_empty()):
+		return PackedStringArray(["%s presence differs" % tag])
+	if not present:
+		return PackedStringArray()
+	var value := _u32(data, 4)
+	var names_record := type == PackageBase.LocationType.NEAR_REFERENCE or type == PackageBase.LocationType.IN_CELL or type == PackageBase.LocationType.OBJECT_ID
+	if type != _i32(data) or radius != _i32(data, 8) or form_id != (value if names_record else 0):
+		return PackedStringArray(["%s fields differ" % tag])
+	if type == PackageBase.LocationType.OBJECT_ID and (object == null or object.form_id != value):
+		return PackedStringArray(["%s object unresolved" % tag])
+	if type == PackageBase.LocationType.OBJECT_TYPE and object_type != value:
+		return PackedStringArray(["%s object type differs" % tag])
+	return PackedStringArray()
 
-func _check_package_location(form_id: int, tag: String, data: PackedByteArray, location: PackageLocation, errors: PackedStringArray) -> void:
-	if data.is_empty():
-		if location != null: errors.append("0x%08X %s should be absent" % [form_id, tag])
-		return
-	if location == null or location.location_type != _i32(data) or location.location_value == null or location.location_value.raw_value != _u32(data, 4) or location.radius != _i32(data, 8):
-		errors.append("0x%08X %s fields differ" % [form_id, tag])
-		return
-	var raw_value := _u32(data, 4)
-	match location.location_type:
-		PackageLocation.LocationType.NEAR_REFERENCE:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.REFERENCE or location.location_value.reference_instance_id != "authored:%08X" % raw_value: errors.append("0x%08X %s reference union differs" % [form_id, tag])
-		PackageLocation.LocationType.IN_CELL:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.CELL or location.location_value.cell_form_id != raw_value: errors.append("0x%08X %s cell union differs" % [form_id, tag])
-		PackageLocation.LocationType.NEAR_CURRENT_LOCATION:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.CURRENT_LOCATION: errors.append("0x%08X %s current-location union differs" % [form_id, tag])
-		PackageLocation.LocationType.NEAR_EDITOR_LOCATION:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.EDITOR_LOCATION: errors.append("0x%08X %s editor-location union differs" % [form_id, tag])
-		PackageLocation.LocationType.OBJECT_ID:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.OBJECT_BASE or location.location_value.object_base_form_id != raw_value: errors.append("0x%08X %s object union differs" % [form_id, tag])
-		PackageLocation.LocationType.OBJECT_TYPE:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.OBJECT_TYPE or location.location_value.object_type != raw_value: errors.append("0x%08X %s object-type union differs" % [form_id, tag])
-		PackageLocation.LocationType.NEAR_LINKED_REFERENCE:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.LINKED_REFERENCE: errors.append("0x%08X %s linked-reference union differs" % [form_id, tag])
-		PackageLocation.LocationType.AT_PACKAGE_LOCATION:
-			if location.location_value.value_kind != PackageLocationValue.ValueKind.PACKAGE_LOCATION: errors.append("0x%08X %s package-location union differs" % [form_id, tag])
-
-func _check_package_target(form_id: int, tag: String, data: PackedByteArray, target: PackageTarget, errors: PackedStringArray) -> void:
-	if data.is_empty():
-		if target != null: errors.append("0x%08X %s should be absent" % [form_id, tag])
-		return
-	if target == null or target.target_type != _i32(data) or target.target_value != _u32(data, 4) or target.count_or_distance != _i32(data, 8) or target.unknown != _f32(data, 12):
-		errors.append("0x%08X %s fields differ" % [form_id, tag])
+## A PTDT / PTD2 against its subrecord `data`, as for locations.
+func _package_target_errors(tag: String, data: PackedByteArray, present: bool, type: int, form_id: int, object: EsmBase, count_or_distance: int) -> PackedStringArray:
+	if present != (not data.is_empty()):
+		return PackedStringArray(["%s presence differs" % tag])
+	if not present:
+		return PackedStringArray()
+	var value := _u32(data, 4)
+	var names_record := type == PackageBase.TargetType.SPECIFIC_REFERENCE or type == PackageBase.TargetType.OBJECT_ID
+	if type != _i32(data) or count_or_distance != _i32(data, 8) or form_id != (value if names_record else 0):
+		return PackedStringArray(["%s fields differ" % tag])
+	if type == PackageBase.TargetType.OBJECT_ID and (object == null or object.form_id != value):
+		return PackedStringArray(["%s object unresolved" % tag])
+	return PackedStringArray()
 
 func _check_package_events(form_id: int, raw: Dictionary, package: PackageBase, errors: PackedStringArray) -> void:
 	var expected := {"POBA": {}, "POEA": {}, "POCA": {}}

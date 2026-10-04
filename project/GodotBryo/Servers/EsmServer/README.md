@@ -81,7 +81,10 @@ editor ID on first use; FalloutNV.esm omits settings left at their engine defaul
 `ActorValue.DEFAULT_SETTINGS` supplies.
 
 **Every FormID field resolves.** A field holding a FormID has its resolved resource beside it
-(`race_form_id`, `race`), built by `get_base()` and typed from `TYPE_TO_BASE`. SCRI resolves to
+(`race_form_id`, `race`), built by `get_base()` and typed from `TYPE_TO_BASE`. A field naming a
+placed reference keeps only its FormID, with a method that builds the reference on demand
+(`ActorReference.get_merchant_container()`, `PackageBase.get_location_reference(n)`), since
+placed references are world state rather than record data. SCRI resolves to
 `script_record` (a `ScriptBase`) on every record. The record types actor records point at have
 Base classes even where nothing reads their subrecords yet (VTYP, GLOB, LVLN, LVLC, HDPT, IPDS,
 SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE); each class's doc comment lists

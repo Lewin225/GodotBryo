@@ -58,23 +58,24 @@ func _ready() -> void:
 	for id: int in packages:
 		var p: PackageBase = packages[id]
 		by_type[TYPES[p.package_type]] = int(by_type.get(TYPES[p.package_type], 0)) + 1
-		print("%08X %s: %s, used by %d; flags 0x%X, type flags 0x%X" % [id, p.editor_id, TYPES[p.package_type], used_by[id], p.general_flags_raw, p.type_specific_flags_raw])
-		for pair in [["loc1", p.location_1], ["loc2", p.location_2]]:
-			if pair[1] != null:
-				print("    %s %s" % [pair[0], _location(pair[1])])
-		for pair in [["target1", p.target_1], ["target2", p.target_2]]:
-			if pair[1] != null:
-				print("    %s %s %s, count/distance %d" % [pair[0], TARGET_TYPES[pair[1].target_type] if pair[1].target_type < TARGET_TYPES.size() else str(pair[1].target_type), _value(pair[1].target_value, pair[1].target_type), pair[1].count_or_distance])
-		if p.schedule != null:
-			print("    schedule month %d, day %d, date %d, hour %d, %d h" % [p.schedule.month, p.schedule.day_of_week, p.schedule.date, p.schedule.time, p.schedule.duration_hours])
+		print("%08X %s: %s, used by %d; flags 0x%X, type flags 0x%X" % [id, p.editor_id, TYPES[p.package_type], used_by[id], p.general_flags, p.type_specific_flags])
+		if p.has_location_1:
+			print("    loc1 %s" % _location(p.location_1_type, p.location_1_form_id, p.location_1_object_type, p.location_1_radius))
+		if p.has_location_2:
+			print("    loc2 %s" % _location(p.location_2_type, p.location_2_form_id, p.location_2_object_type, p.location_2_radius))
+		if p.has_target_1:
+			print("    target1 %s" % _target(p.target_1_type, p.target_1_form_id, p.target_1_object_type, p.target_1_count_or_distance))
+		if p.has_target_2:
+			print("    target2 %s" % _target(p.target_2_type, p.target_2_form_id, p.target_2_object_type, p.target_2_count_or_distance))
+		print("    schedule month %d, day %d, date %d, hour %d, %d h" % [p.schedule_month, p.schedule_day_of_week, p.schedule_date, p.schedule_time, p.schedule_duration_hours])
 		for c in p.conditions:
 			print("    if %s(%s, %s) %s %s%s" % [ScriptConditionFunctions.name_for_index(c.function_index), _edid(c.parameter_1) if c.parameter_1 > 0xFFFF else str(c.parameter_1), str(c.parameter_2), ["==", "!=", ">", ">=", "<", "<="][c.comparison], c.comparison_value, " OR" if c.is_or() else ""])
-		if p.dialogue_data != null:
-			print("    dialogue topic %s, type %d, flags 0x%X" % [_edid(p.dialogue_data.topic_form_id), p.dialogue_data.dialogue_type, p.dialogue_data.flags])
+		if p.has_dialogue_data:
+			print("    dialogue topic %s, type %d, flags 0x%X" % [_edid(p.dialogue_topic_form_id), p.dialogue_type, p.dialogue_flags])
 		if p.has_use_item_marker:
 			print("    use item marker")
-		if not p.idle_animation_form_ids.is_empty():
-			print("    idles %s" % [p.idle_animation_form_ids.map(func(i): return _edid(i))])
+		if not p.idle_animations.is_empty():
+			print("    idles %s" % [p.idle_animations.map(func(idle: IdleBase) -> String: return idle.editor_id)])
 		for pair in [["on begin", p.on_begin], ["on end", p.on_end], ["on change", p.on_change]]:
 			var e: PackageEventCollection = pair[1]
 			if e != null and (not e.script_source.strip_edges().is_empty() or e.idle_form_id != 0 or e.topic_form_id != 0):
@@ -84,22 +85,13 @@ func _ready() -> void:
 		print("%s: %d" % [t, by_type[t]])
 	get_tree().quit()
 
-func _location(l: PackageLocation) -> String:
-	var v: PackageLocationValue = l.location_value
-	var what := ""
-	if v != null:
-		if not v.reference_instance_id.is_empty():
-			what = _edid(v.reference_instance_id.trim_prefix("authored:").hex_to_int())
-		elif v.cell_form_id != 0:
-			what = _edid(v.cell_form_id)
-		elif v.object_base_form_id != 0:
-			what = _edid(v.object_base_form_id)
-		else:
-			what = "object type %d" % v.object_type
-	return "%s %s radius %d" % [LOCATION_TYPES[l.location_type] if l.location_type < LOCATION_TYPES.size() else str(l.location_type), what, l.radius]
+func _location(type: int, form_id: int, object_type: int, radius: int) -> String:
+	var what := "object type %d" % object_type if type == PackageBase.LocationType.OBJECT_TYPE else _edid(form_id)
+	return "%s %s radius %d" % [LOCATION_TYPES[type], what, radius]
 
-func _value(value: int, type: int) -> String:
-	return "object type %d" % value if type == 2 else _edid(value)
+func _target(type: int, form_id: int, object_type: int, count_or_distance: int) -> String:
+	var what := "object type %d" % object_type if type == PackageBase.TargetType.OBJECT_TYPE else _edid(form_id)
+	return "%s %s, count/distance %d" % [TARGET_TYPES[type], what, count_or_distance]
 
 func _type_of(form_id: int) -> String:
 	return String(EsmServer.reader.get_record_data(form_id).get("record_type", "?")) if form_id != 0 else ""

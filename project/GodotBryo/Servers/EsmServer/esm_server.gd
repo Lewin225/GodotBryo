@@ -1300,58 +1300,31 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 ## forms, plus 20- and 28-byte CTDA forms; preserve and decode both rather
 ## than treating either as malformed.
 func _populate_package(result: PackageBase, raw: Dictionary) -> void:
-	result.general_flags_raw = 0
-	result.general_flags = null
-	result.package_type = PackageBase.PackageType.FIND
-	result.fallout_behavior_flags_raw = 0
-	result.fallout_behavior_flags = null
-	result.type_specific_flags_raw = 0
-	result.type_specific_flags = null
-	result.location_1 = null
-	result.location_2 = null
-	result.schedule = null
-	result.target_1 = null
-	result.target_2 = null
-	result.conditions.clear()
-	result.idle_animation_form_ids.clear()
-	result.idle_collection_chance_raw = PackedByteArray()
-	result.idle_collection_flags_raw = PackedByteArray()
-	result.idle_collection_timer_raw = PackedByteArray()
-	result.combat_style_form_id = 0
-	result.has_eat_marker = false
-	result.escort_distance = 0
-	result.follow_start_location_trigger_radius = 0.0
-	result.patrol_repeatable = true
-	result.use_weapon_data = null
-	result.has_use_item_marker = false
-	result.has_ambush_marker = false
-	result.dialogue_data = null
-	result.on_begin = null
-	result.on_end = null
-	result.on_change = null
-
+	_reset_package(result)
 	var current_event: PackageEventCollection = null
 	for subrecord in raw.get("subrecords", []):
 		var tag := String(subrecord.get("type", ""))
 		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
 		match tag:
 			"PKDT":
-				_populate_package_general(result, data)
+				_read_package_general(result, data)
 			"PLDT":
-				result.location_1 = _package_location(result, "PLDT", data)
+				_read_package_location(result, 1, data)
 			"PLD2":
-				result.location_2 = _package_location(result, "PLD2", data)
+				_read_package_location(result, 2, data)
 			"PSDT":
-				result.schedule = _package_schedule(result, data)
+				_read_package_schedule(result, data)
 			"PTDT":
-				result.target_1 = _package_target(result, "PTDT", data)
+				_read_package_target(result, 1, data)
 			"PTD2":
-				result.target_2 = _package_target(result, "PTD2", data)
+				_read_package_target(result, 2, data)
 			"CTDA":
 				_append_condition(result.conditions, result, data)
 			"IDLA":
 				for offset in range(0, data.size() - 3, 4):
-					result.idle_animation_form_ids.append(_u32(data, offset))
+					var idle := get_base(_u32(data, offset)) as IdleBase
+					if idle != null:
+						result.idle_animations.append(idle)
 			"IDLC":
 				result.idle_collection_chance_raw = data.duplicate()
 			"IDLF":
@@ -1360,6 +1333,7 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 				result.idle_collection_timer_raw = data.duplicate()
 			"CNAM":
 				result.combat_style_form_id = _u32(data)
+				result.combat_style = get_base(result.combat_style_form_id) as CombatStyleBase
 			"PKED":
 				result.has_eat_marker = true
 			"PKE2":
@@ -1369,13 +1343,13 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 			"PKPT":
 				result.patrol_repeatable = _u8(data) != 0
 			"PKW3":
-				result.use_weapon_data = _package_use_weapon_data(result, data)
+				_read_package_use_weapon(result, data)
 			"PUID":
 				result.has_use_item_marker = true
 			"PKAM":
 				result.has_ambush_marker = true
 			"PKDD":
-				result.dialogue_data = _package_dialogue_data(result, data)
+				_read_package_dialogue(result, data)
 			"POBA":
 				current_event = PackageEventCollection.new()
 				result.on_begin = current_event
@@ -1389,159 +1363,117 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 				if current_event != null:
 					_populate_package_event_subrecord(current_event, tag, data)
 
-func _populate_package_general(result: PackageBase, data: PackedByteArray) -> void:
+## Clears a package's fields before it is (re)filled from its record.
+func _reset_package(result: PackageBase) -> void:
+	result.general_flags = 0
+	result.package_type = PackageBase.PackageType.FIND
+	result.fallout_behavior_flags = 0
+	result.type_specific_flags = 0
+	result.has_location_1 = false
+	result.has_location_2 = false
+	result.has_target_1 = false
+	result.has_target_2 = false
+	result.has_use_weapon_data = false
+	result.has_dialogue_data = false
+	result.conditions.clear()
+	result.idle_animations.clear()
+	result.idle_collection_chance_raw = PackedByteArray()
+	result.idle_collection_flags_raw = PackedByteArray()
+	result.idle_collection_timer_raw = PackedByteArray()
+	result.combat_style_form_id = 0
+	result.combat_style = null
+	result.has_eat_marker = false
+	result.escort_distance = 0
+	result.follow_start_location_trigger_radius = 0.0
+	result.patrol_repeatable = true
+	result.has_use_item_marker = false
+	result.has_ambush_marker = false
+	result.on_begin = null
+	result.on_end = null
+	result.on_change = null
+
+## PKDT: the 12-byte FNV form, or the old 8-byte form (13 records) without the
+## Fallout Behavior and Type Specific flag words.
+func _read_package_general(result: PackageBase, data: PackedByteArray) -> void:
 	if data.size() != 8 and data.size() != 12:
 		result.diagnostics.append("PACK 0x%08X has PKDT with %d bytes; expected 8 or 12" % [result.form_id, data.size()])
 		return
-	result.general_flags_raw = _u32(data)
-	result.general_flags = _decode_package_general_flags(result.general_flags_raw)
-	# Both forms encode the package type at offset four. The 12-byte FNV form
-	# then carries a padding byte, Fallout Behavior flags, type-specific flags,
-	# and two final unused bytes.
+	result.general_flags = _u32(data)
 	result.package_type = _u8(data, 4) as PackageBase.PackageType
 	if data.size() == 12:
-		result.fallout_behavior_flags_raw = _u16(data, 6)
-		result.type_specific_flags_raw = _u16(data, 8)
-		result.fallout_behavior_flags = _decode_package_fallout_behavior_flags(result.fallout_behavior_flags_raw)
-		result.type_specific_flags = _decode_package_type_specific_flags(result.package_type, result.type_specific_flags_raw)
-	else:
-		result.fallout_behavior_flags = _decode_package_fallout_behavior_flags(0)
-		result.type_specific_flags = _decode_package_type_specific_flags(result.package_type, 0)
+		result.fallout_behavior_flags = _u16(data, 6)
+		result.type_specific_flags = _u16(data, 8)
 
-func _decode_package_general_flags(raw_flags: int) -> PackageGeneralFlags:
-	var result := PackageGeneralFlags.new()
-	result.offers_services = (raw_flags & 0x00000001) != 0
-	result.must_reach_location = (raw_flags & 0x00000002) != 0
-	result.must_complete = (raw_flags & 0x00000004) != 0
-	result.lock_doors_at_package_start = (raw_flags & 0x00000008) != 0
-	result.lock_doors_at_package_end = (raw_flags & 0x00000010) != 0
-	result.lock_doors_at_location = (raw_flags & 0x00000020) != 0
-	result.unlock_doors_at_package_start = (raw_flags & 0x00000040) != 0
-	result.unlock_doors_at_package_end = (raw_flags & 0x00000080) != 0
-	result.unlock_doors_at_location = (raw_flags & 0x00000100) != 0
-	result.continue_if_player_near = (raw_flags & 0x00000200) != 0
-	result.once_per_day = (raw_flags & 0x00000400) != 0
-	result.skip_fallout_behavior = (raw_flags & 0x00001000) != 0
-	result.always_run = (raw_flags & 0x00002000) != 0
-	result.always_sneak = (raw_flags & 0x00020000) != 0
-	result.allow_swimming = (raw_flags & 0x00040000) != 0
-	result.allow_falls = (raw_flags & 0x00080000) != 0
-	result.head_tracking_off = (raw_flags & 0x00100000) != 0
-	result.weapons_unequipped = (raw_flags & 0x00200000) != 0
-	result.defensive_combat = (raw_flags & 0x00400000) != 0
-	result.weapon_drawn = (raw_flags & 0x00800000) != 0
-	result.no_idle_animations = (raw_flags & 0x01000000) != 0
-	result.pretend_in_combat = (raw_flags & 0x02000000) != 0
-	result.continue_during_combat = (raw_flags & 0x04000000) != 0
-	result.no_combat_alert = (raw_flags & 0x08000000) != 0
-	result.no_warn_or_attack_behavior = (raw_flags & 0x10000000) != 0
-	var known_mask := 0x1FFFFFFF & ~0x0001C800
-	result.unknown_mask = raw_flags & ~known_mask
-	return result
-
-func _decode_package_fallout_behavior_flags(raw_flags: int) -> PackageFalloutBehaviorFlags:
-	var result := PackageFalloutBehaviorFlags.new()
-	result.hellos_to_player = (raw_flags & 0x0001) != 0
-	result.random_conversations = (raw_flags & 0x0002) != 0
-	result.observe_combat_behavior = (raw_flags & 0x0004) != 0
-	result.reaction_to_player_actions = (raw_flags & 0x0010) != 0
-	result.friendly_fire_comments = (raw_flags & 0x0020) != 0
-	result.aggro_radius_behavior = (raw_flags & 0x0040) != 0
-	result.allow_idle_chatter = (raw_flags & 0x0080) != 0
-	result.avoid_radiation = (raw_flags & 0x0100) != 0
-	result.unknown_mask = raw_flags & ~0x0177
-	return result
-
-func _decode_package_type_specific_flags(package_type: int, raw_flags: int) -> PackageTypeSpecificFlags:
-	var result := PackageTypeSpecificFlags.new()
-	var known_mask := 0
-	match package_type:
-		PackageBase.PackageType.FIND, PackageBase.PackageType.ESCORT, PackageBase.PackageType.EAT:
-			result.allow_buying = (raw_flags & 0x0100) != 0
-			result.allow_killing = (raw_flags & 0x0200) != 0
-			result.allow_stealing = (raw_flags & 0x0400) != 0
-			known_mask = 0x0700
-		PackageBase.PackageType.WANDER, PackageBase.PackageType.SANDBOX:
-			result.no_eating = (raw_flags & 0x0001) != 0
-			result.no_sleeping = (raw_flags & 0x0002) != 0
-			result.no_conversation = (raw_flags & 0x0004) != 0
-			result.no_idle_markers = (raw_flags & 0x0008) != 0
-			result.no_furniture = (raw_flags & 0x0010) != 0
-			result.no_wandering = (raw_flags & 0x0020) != 0
-			known_mask = 0x003F
-		PackageBase.PackageType.USE_ITEM_AT:
-			result.sit_down = (raw_flags & 0x0004) != 0
-			result.allow_buying = (raw_flags & 0x0100) != 0
-			result.allow_killing = (raw_flags & 0x0200) != 0
-			result.allow_stealing = (raw_flags & 0x0400) != 0
-			known_mask = 0x0704
-		PackageBase.PackageType.AMBUSH:
-			result.hide_while_ambushing = (raw_flags & 0x0001) != 0
-			known_mask = 0x0001
-		PackageBase.PackageType.GUARD:
-			result.remain_near_reference_to_guard = (raw_flags & 0x0008) != 0
-			known_mask = 0x0008
-	result.unknown_mask = raw_flags & ~known_mask
-	return result
-
-func _package_location(package: PackageBase, tag: String, data: PackedByteArray) -> PackageLocation:
+## PLDT (`index` 1) or PLD2 (2): type, the record or object type it names, and
+## radius. A placed reference keeps only its FormID (PackageBase resolves it on
+## demand); an Object ID resolves to its base.
+func _read_package_location(result: PackageBase, index: int, data: PackedByteArray) -> void:
 	if data.size() != 12:
-		package.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 12" % [package.form_id, tag, data.size()])
-		return null
-	var location := PackageLocation.new()
-	location.location_type = _i32(data) as PackageLocation.LocationType
-	location.location_value = _decode_package_location_value(location.location_type, _u32(data, 4))
-	location.radius = _i32(data, 8)
-	return location
+		result.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 12" % [result.form_id, "PLDT" if index == 1 else "PLD2", data.size()])
+		return
+	var type := _i32(data) as PackageBase.LocationType
+	var value := _u32(data, 4)
+	var names_record := type == PackageBase.LocationType.NEAR_REFERENCE or type == PackageBase.LocationType.IN_CELL or type == PackageBase.LocationType.OBJECT_ID
+	var form_id := value if names_record else 0
+	var object: EsmBase = get_base(value) if type == PackageBase.LocationType.OBJECT_ID else null
+	var object_type := (value as PackageBase.ObjectType) if type == PackageBase.LocationType.OBJECT_TYPE else PackageBase.ObjectType.NONE
+	var radius := _i32(data, 8)
+	if index == 1:
+		result.has_location_1 = true
+		result.location_1_type = type
+		result.location_1_form_id = form_id
+		result.location_1_object = object
+		result.location_1_object_type = object_type
+		result.location_1_radius = radius
+	else:
+		result.has_location_2 = true
+		result.location_2_type = type
+		result.location_2_form_id = form_id
+		result.location_2_object = object
+		result.location_2_object_type = object_type
+		result.location_2_radius = radius
 
-func _decode_package_location_value(location_type: PackageLocation.LocationType, raw_value: int) -> PackageLocationValue:
-	var result := PackageLocationValue.new()
-	result.raw_value = raw_value
-	match location_type:
-		PackageLocation.LocationType.NEAR_REFERENCE:
-			result.value_kind = PackageLocationValue.ValueKind.REFERENCE
-			result.reference_instance_id = "authored:%08X" % raw_value
-		PackageLocation.LocationType.IN_CELL:
-			result.value_kind = PackageLocationValue.ValueKind.CELL
-			result.cell_form_id = raw_value
-		PackageLocation.LocationType.NEAR_CURRENT_LOCATION:
-			result.value_kind = PackageLocationValue.ValueKind.CURRENT_LOCATION
-		PackageLocation.LocationType.NEAR_EDITOR_LOCATION:
-			result.value_kind = PackageLocationValue.ValueKind.EDITOR_LOCATION
-		PackageLocation.LocationType.OBJECT_ID:
-			result.value_kind = PackageLocationValue.ValueKind.OBJECT_BASE
-			result.object_base_form_id = raw_value
-		PackageLocation.LocationType.OBJECT_TYPE:
-			result.value_kind = PackageLocationValue.ValueKind.OBJECT_TYPE
-			result.object_type = raw_value as PackageLocation.ObjectType
-		PackageLocation.LocationType.NEAR_LINKED_REFERENCE:
-			result.value_kind = PackageLocationValue.ValueKind.LINKED_REFERENCE
-		PackageLocation.LocationType.AT_PACKAGE_LOCATION:
-			result.value_kind = PackageLocationValue.ValueKind.PACKAGE_LOCATION
-	return result
-
-func _package_schedule(package: PackageBase, data: PackedByteArray) -> PackageSchedule:
+func _read_package_schedule(result: PackageBase, data: PackedByteArray) -> void:
 	if data.size() != 8:
-		package.diagnostics.append("PACK 0x%08X has PSDT with %d bytes; expected 8" % [package.form_id, data.size()])
-		return null
-	var schedule := PackageSchedule.new()
-	schedule.month = _i8(data)
-	schedule.day_of_week = _i8(data, 1)
-	schedule.date = _i8(data, 2)
-	schedule.time = _i8(data, 3)
-	schedule.duration_hours = _u32(data, 4)
-	return schedule
+		result.diagnostics.append("PACK 0x%08X has PSDT with %d bytes; expected 8" % [result.form_id, data.size()])
+		return
+	result.schedule_month = _i8(data)
+	result.schedule_day_of_week = _i8(data, 1)
+	result.schedule_date = _i8(data, 2)
+	result.schedule_time = _i8(data, 3)
+	result.schedule_duration_hours = _u32(data, 4)
 
-func _package_target(package: PackageBase, tag: String, data: PackedByteArray) -> PackageTarget:
+## PTDT (`index` 1) or PTD2 (2): type, the record or object type it names,
+## count / distance and the unknown float. As for locations, a placed reference
+## keeps only its FormID.
+func _read_package_target(result: PackageBase, index: int, data: PackedByteArray) -> void:
 	if data.size() != 16:
-		package.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 16" % [package.form_id, tag, data.size()])
-		return null
-	var target := PackageTarget.new()
-	target.target_type = _i32(data) as PackageTarget.TargetType
-	target.target_value = _u32(data, 4)
-	target.count_or_distance = _i32(data, 8)
-	target.unknown = _f32(data, 12)
-	return target
+		result.diagnostics.append("PACK 0x%08X has %s with %d bytes; expected 16" % [result.form_id, "PTDT" if index == 1 else "PTD2", data.size()])
+		return
+	var type := _i32(data) as PackageBase.TargetType
+	var value := _u32(data, 4)
+	var names_record := type == PackageBase.TargetType.SPECIFIC_REFERENCE or type == PackageBase.TargetType.OBJECT_ID
+	var object: EsmBase = get_base(value) if type == PackageBase.TargetType.OBJECT_ID else null
+	var object_type := (value as PackageBase.ObjectType) if type == PackageBase.TargetType.OBJECT_TYPE else PackageBase.ObjectType.NONE
+	var form_id := value if names_record else 0
+	var count_or_distance := _i32(data, 8)
+	var unknown := _f32(data, 12)
+	if index == 1:
+		result.has_target_1 = true
+		result.target_1_type = type
+		result.target_1_form_id = form_id
+		result.target_1_object = object
+		result.target_1_object_type = object_type
+		result.target_1_count_or_distance = count_or_distance
+		result.target_1_unknown = unknown
+	else:
+		result.has_target_2 = true
+		result.target_2_type = type
+		result.target_2_form_id = form_id
+		result.target_2_object = object
+		result.target_2_object_type = object_type
+		result.target_2_count_or_distance = count_or_distance
+		result.target_2_unknown = unknown
 
 ## One CTDA as a ConditionSubrecord. 28-byte CTDAs carry Run On and Reference, the
 ## 24-byte form Run On only, the 20-byte form neither. Null, with a diagnostic
@@ -1573,43 +1505,40 @@ func _append_condition(conditions: Array[ConditionSubrecord], record: EsmBase, d
 	if condition != null:
 		conditions.append(condition)
 
-func _package_use_weapon_data(package: PackageBase, data: PackedByteArray) -> PackageUseWeaponData:
+func _read_package_use_weapon(result: PackageBase, data: PackedByteArray) -> void:
 	if data.size() != 24:
-		package.diagnostics.append("PACK 0x%08X has PKW3 with %d bytes; expected 24" % [package.form_id, data.size()])
-		return null
-	var result := PackageUseWeaponData.new()
-	result.flags = _u32(data)
-	result.always_hit = (result.flags & 0x00000001) != 0
-	result.does_no_damage = (result.flags & 0x00000100) != 0
-	result.crouch_to_reload = (result.flags & 0x00010000) != 0
-	result.hold_fire_when_blocked = (result.flags & 0x01000000) != 0
-	result.fire_rate = _u8(data, 4)
-	result.fire_count = _u8(data, 5)
-	result.burst_count = _u16(data, 6)
-	result.shots_per_volley_min = _u16(data, 8)
-	result.shots_per_volley_max = _u16(data, 10)
-	result.pause_between_volleys_min = _f32(data, 12)
-	result.pause_between_volleys_max = _f32(data, 16)
-	return result
+		result.diagnostics.append("PACK 0x%08X has PKW3 with %d bytes; expected 24" % [result.form_id, data.size()])
+		return
+	result.has_use_weapon_data = true
+	result.use_weapon_flags = _u32(data)
+	result.use_weapon_fire_rate = _u8(data, 4)
+	result.use_weapon_fire_count = _u8(data, 5)
+	result.use_weapon_burst_count = _u16(data, 6)
+	result.use_weapon_shots_per_volley_min = _u16(data, 8)
+	result.use_weapon_shots_per_volley_max = _u16(data, 10)
+	result.use_weapon_pause_between_volleys_min = _f32(data, 12)
+	result.use_weapon_pause_between_volleys_max = _f32(data, 16)
 
-func _package_dialogue_data(package: PackageBase, data: PackedByteArray) -> PackageDialogueData:
+func _read_package_dialogue(result: PackageBase, data: PackedByteArray) -> void:
 	if data.size() != 24:
-		package.diagnostics.append("PACK 0x%08X has PKDD with %d bytes; expected 24" % [package.form_id, data.size()])
-		return null
-	var result := PackageDialogueData.new()
-	result.field_of_view = _f32(data)
-	result.topic_form_id = _u32(data, 4)
-	result.flags = _u32(data, 8)
-	result.no_headtracking = (result.flags & 0x00000001) != 0
-	result.does_not_control_target_movement = (result.flags & 0x00000100) != 0
+		result.diagnostics.append("PACK 0x%08X has PKDD with %d bytes; expected 24" % [result.form_id, data.size()])
+		return
+	result.has_dialogue_data = true
+	result.dialogue_field_of_view = _f32(data)
+	result.dialogue_topic_form_id = _u32(data, 4)
+	result.dialogue_topic = get_base(result.dialogue_topic_form_id) as DialogueTopicBase
+	result.dialogue_flags = _u32(data, 8)
 	result.dialogue_type = _u32(data, 16)
-	result.unknown = _u32(data, 20)
-	return result
+	result.dialogue_unknown = _u32(data, 20)
 
 func _populate_package_event_subrecord(event: PackageEventCollection, tag: String, data: PackedByteArray) -> void:
 	match tag:
-		"INAM": event.idle_form_id = _u32(data)
-		"TNAM": event.topic_form_id = _u32(data)
+		"INAM":
+			event.idle_form_id = _u32(data)
+			event.idle = get_base(event.idle_form_id) as IdleBase
+		"TNAM":
+			event.topic_form_id = _u32(data)
+			event.topic = get_base(event.topic_form_id) as DialogueTopicBase
 		"SCHR":
 			event.script_header = data.duplicate()
 			event.script_reference_count = _u32(data, 4)
@@ -1641,7 +1570,6 @@ func _populate_actor_reference(actor: ActorReference, raw: Dictionary) -> void:
 	actor.encounter_zone_form_id = _u32(_subrecord(raw, "XEZN"))
 	actor.encounter_zone = get_base(actor.encounter_zone_form_id) as EncounterZoneBase
 	actor.merchant_container_form_id = _u32(_subrecord(raw, "XMRC"))
-	actor.merchant_container = get_reference("authored:%08X" % actor.merchant_container_form_id) if actor.merchant_container_form_id != 0 else null
 	actor.ragdoll_data = _subrecord(raw, "XRGD")
 	actor.ragdoll_biped_data = _subrecord(raw, "XRGB")
 	actor.activation_prompt = _string(_subrecord(raw, "XATO"))

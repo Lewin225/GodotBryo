@@ -13,6 +13,11 @@ says where the value lives now.
 - **Every FormID field that is read resolves to a resource**: no FormID-only fields. The resource
   is a typed EsmBase subclass; a record changed at runtime (the player's NPC_ name and sex) is
   still an EsmBase, marked dirty when changed, so the save system holds it from then on.
+- **Placed references resolve on demand.** A field naming a placed reference (a REFR, ACHR or
+  ACRE: XMRC, a package's Near-reference location or Specific-reference target, XLKR, XESP) keeps
+  its FormID, and a method builds the reference when it is needed (`get_merchant_container()`,
+  `get_location_reference(n)`). Placed references are world state, not record data; building
+  them whenever a record loads would populate unrelated world state. Decided 2026-10-04.
 - **No field resolves to a plain EsmBase.** Every record type a field points at gets its typed
   resource; the *EsmBase* marks below are the types that do not have one yet.
 - **New classes for referenced types** read what the actor work uses. Their other subrecords,

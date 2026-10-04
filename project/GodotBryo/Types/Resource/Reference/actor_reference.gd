@@ -21,9 +21,9 @@ signal using_changed(previous: EsmReference, current: EsmReference)
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var encounter_zone_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EncounterZoneBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var encounter_zone: EncounterZoneBase
 ## XMRC: the placed container holding this actor's merchant inventory (76
-## ACHR, 1 ACRE). Read; not used yet (no barter).
+## ACHR, 1 ACRE), resolved on demand by get_merchant_container(): placed
+## references are world state, not record data. Read; not used yet (no barter).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var merchant_container_form_id: int = 0
-@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var merchant_container: EsmReference
 ## XRGD: Ragdoll Data, raw (278 ACHR, 109 ACRE). Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var ragdoll_data: PackedByteArray = PackedByteArray()
 ## XRGB: Ragdoll Biped Data, raw (277 ACHR, 14 ACRE). Read; not used yet.
@@ -85,6 +85,13 @@ var using: EsmReference = null
 ## Runtime state: the furniture marker index occupied while using furniture,
 ## else -1.
 var using_marker: int = -1
+
+## XMRC's placed container, built on demand; null when there is none.
+func get_merchant_container() -> EsmReference:
+	var server := get_esm_server()
+	if merchant_container_form_id == 0 or server == null:
+		return null
+	return server.get_reference("authored:%08X" % merchant_container_form_id)
 
 func get_actor_values() -> ActorValues:
 	if actor_values == null:

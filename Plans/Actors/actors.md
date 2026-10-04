@@ -79,6 +79,13 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 
 ## Unverified
 
+- Saving a dirty base whose resolved links form a cycle (a CREA inheriting sounds from a creature
+  that inherits back, a template chain, a form list containing itself). Building is safe:
+  `get_base` caches a resource before resolving its links, so a cycle reuses one instance. Such
+  cycles are never freed (reference counting), which is harmless while EsmServer's cache holds
+  every base, but `ResourceSaver` on a cyclic graph reports cyclic resource inclusion. Check when
+  dirty bases are saved. Placed references avoid cycles altogether by resolving on demand.
+
 - That creatures cannot wear clothing.
 
 ## Out of scope
