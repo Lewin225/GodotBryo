@@ -102,6 +102,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_header_info"), &EsmReader::get_header_info);
 	ClassDB::bind_method(D_METHOD("get_record_type_histogram"), &EsmReader::get_record_type_histogram);
 	ClassDB::bind_method(D_METHOD("find_first_stat_model"), &EsmReader::find_first_stat_model);
+	ClassDB::bind_method(D_METHOD("find_stat_by_editor_id", "editor_id"), &EsmReader::find_stat_by_editor_id);
 	ClassDB::bind_method(D_METHOD("get_message_by_editor_id", "editor_id"), &EsmReader::get_message_by_editor_id);
 	ClassDB::bind_method(D_METHOD("get_message_by_form_id", "form_id"), &EsmReader::get_message_by_form_id);
 	ClassDB::bind_method(D_METHOD("find_cell_by_editor_id", "editor_id"), &EsmReader::find_cell_by_editor_id);
