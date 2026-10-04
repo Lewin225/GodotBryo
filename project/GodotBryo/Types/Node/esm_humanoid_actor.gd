@@ -13,14 +13,6 @@ signal animation_load_failed(reason: String)
 
 @export_enum("Custom", "Doc Mitchell (Goodsprings)") var preset: String = "Doc Mitchell (Goodsprings)"
 @export var custom_base_form_id: String = ""
-@export var equipment_state: EsmActorEquipmentState:
-	set(value):
-		_disconnect_equipment_state_signals()
-		equipment_state = value
-		_connect_equipment_state_signals()
-		if _active_record != null and not _rebuilding:
-			refresh_equipment()
-
 @export var wearing_hat: bool = false:
 	set(value):
 		wearing_hat = value
@@ -64,7 +56,6 @@ const TORSO_CAP_LAST := 213
 var _active_record: NpcBase = null
 var _is_female := false
 
-var _rebuilding := false
 var _standalone_preview := false
 var _load_generation := 0
 var _loading := false
@@ -77,18 +68,6 @@ var _requested_assets := {}
 var _delivered_trees := {}
 var _load_failures: Array[String] = []
 var _staging_root: Node3D = null
-var _equipment_generation := 0
-var _equipment_loading := false
-var _equipment_pending := 0
-var _equipment_desired_signature := ""
-var _equipment_applied_signature := ""
-var _equipment_descriptors: Array[Dictionary] = []
-var _equipment_trees := {}
-var _equipment_failures: Array[String] = []
-var _equipment_staging: Node3D = null
-var _observed_equipment_resources: Array[Resource] = []
-var inventory: Inventory = null
-var _observed_inventory: Inventory = null
 var hair_no_hat_meshes: Array[MeshInstance3D] = []
 var hair_hat_meshes: Array[MeshInstance3D] = []
 # Every emitted BSDismember partition is indexed by its raw part ID. This
@@ -107,24 +86,25 @@ var skinning: ActorSkinning:
 var animator: ActorAnimator:
 	get:
 		return get_node_or_null(^"ActorAnimator") as ActorAnimator
+## The child that builds and attaches the equipped items' models (looked up as
+## skinning is).
+var equipment: ActorEquipment:
+	get:
+		return get_node_or_null(^"ActorEquipment") as ActorEquipment
 
 
 
 func _ready() -> void:
 	animator.load_completed.connect(animation_load_completed.emit)
 	animator.load_failed.connect(animation_load_failed.emit)
-	_connect_equipment_state_signals()
-	_ensure_inventory()
-	_connect_inventory_signal()
+	equipment.committed.connect(_on_equipment_committed)
+	equipment.watch(reference as ActorReference)
 	_queue_rehydrate_and_build()
 
 
 func _exit_tree() -> void:
 	_cancel_visual_load()
-	_cancel_equipment_refresh()
 	animator.cancel()
-	_disconnect_inventory_signal()
-	_disconnect_equipment_state_signals()
 
 
 ## Humanoids request several authored NIFs, rather than the one generic model
@@ -135,8 +115,10 @@ func _should_request_nif() -> bool:
 
 func _reference_changed() -> void:
 	_cancel_visual_load()
-	_cancel_equipment_refresh()
-	animator.cancel()
+	if equipment != null:
+		equipment.forget_body()
+	if animator != null:
+		animator.cancel()
 	_active_record = null
 	if not _rehydrating_reference:
 		_load_requested = false
@@ -176,9 +158,7 @@ func _rehydrate_and_build() -> void:
 		return
 	if _loading or _humanoid_visual_built:
 		return
-	_ensure_inventory()
-	_connect_inventory_signal()
-	_project_equipment_from_inventory()
+	equipment.watch(reference as ActorReference)
 	if _load_requested:
 		_start_visual_load(reference.base)
 
@@ -205,7 +185,7 @@ func _start_visual_load(reference_base: NpcBase) -> void:
 	_cancel_visual_load()
 	_load_generation += 1
 	_loading = true
-	_rebuilding = true
+	equipment.forget_body()
 	_active_record = reference_base
 	_is_female = reference_base.is_female()
 	_requested_assets = _requested_asset_set(reference_base)
@@ -531,21 +511,19 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 		old_body.queue_free()
 	_humanoid_visual_built = true
 	_loading = false
-	_rebuilding = false
 	_clear_staging()
 	_track_hair_meshes(body)
 	_rebuild_dismember_partition_index(body)
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
-	_equipment_applied_signature = ""
-	refresh_equipment()
-	animator.load_locomotion(_active_record.animation_search_paths(), body, body.find_child("Skeleton3D", true, false) as Skeleton3D)
+	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
+	equipment.set_body(body, skeleton, _is_female)
+	animator.load_locomotion(_active_record.animation_search_paths(), body, skeleton)
 	visual_load_completed.emit()
 
 
 func _finish_visual_load(success: bool, reason: String) -> void:
 	_loading = false
-	_rebuilding = false
 	if not success:
 		_clear_staging()
 		push_warning("EsmHumanoidActor: visual load failed: " + reason)
@@ -555,7 +533,6 @@ func _finish_visual_load(success: bool, reason: String) -> void:
 func _cancel_visual_load() -> void:
 	_load_generation += 1
 	_loading = false
-	_rebuilding = false
 	_pending_requests = 0
 	_requested_assets.clear()
 	_delivered_trees.clear()
@@ -567,313 +544,6 @@ func _clear_staging() -> void:
 	if _staging_root != null and is_instance_valid(_staging_root):
 		_staging_root.queue_free()
 	_staging_root = null
-
-
-func _ensure_inventory() -> Inventory:
-	var actor_ref := reference as ActorReference
-	if actor_ref == null:
-		return null
-	if actor_ref.contents == null:
-		actor_ref.contents = Inventory.new()
-	inventory = actor_ref.contents
-	return inventory
-
-
-func _connect_inventory_signal() -> void:
-	if inventory == null or not is_instance_valid(inventory):
-		return
-	if not inventory.is_connected("inventory_changed", _on_inventory_changed):
-		inventory.connect("inventory_changed", _on_inventory_changed)
-	_observed_inventory = inventory
-
-
-func _disconnect_inventory_signal() -> void:
-	if _observed_inventory != null and is_instance_valid(_observed_inventory) and _observed_inventory.is_connected("inventory_changed", _on_inventory_changed):
-		_observed_inventory.disconnect("inventory_changed", _on_inventory_changed)
-	_observed_inventory = null
-
-
-func _on_inventory_changed() -> void:
-	_project_equipment_from_inventory()
-
-
-func _project_equipment_from_inventory() -> void:
-	if inventory == null or not is_instance_valid(inventory):
-		return
-	var projected := EsmActorEquipmentState.new()
-	for item in inventory.get_equipped_items():
-		var item_base := item.item_reference.base if item.item_reference != null else null
-		if item_base is ArmorBase:
-			projected.armor_items.append(item)
-		elif item_base is WeaponBase:
-			projected.weapon_item = item
-		else:
-			projected.diagnostics.append("Equipped item has no supported typed resource")
-	equipment_state = projected
-
-
-func _connect_equipment_state_signals() -> void:
-	_disconnect_equipment_state_signals()
-	if equipment_state == null:
-		return
-	var resources: Array[Resource] = [equipment_state]
-	for item in equipment_state.armor_items:
-		_add_equipment_resource(resources, item)
-		if item != null:
-			_add_equipment_resource(resources, item.item_reference)
-			_add_equipment_resource(resources, item.item_reference.base as ArmorBase if item.item_reference != null else null)
-	_add_equipment_resource(resources, equipment_state.weapon_item)
-	for resource in resources:
-		if resource != null and not resource.changed.is_connected(_on_equipment_resource_changed):
-			resource.changed.connect(_on_equipment_resource_changed)
-			_observed_equipment_resources.append(resource)
-
-
-func _add_equipment_resource(resources: Array[Resource], resource: Resource) -> void:
-	if resource != null and not resources.has(resource):
-		resources.append(resource)
-
-
-func _disconnect_equipment_state_signals() -> void:
-	for resource in _observed_equipment_resources:
-		if is_instance_valid(resource) and resource.changed.is_connected(_on_equipment_resource_changed):
-			resource.changed.disconnect(_on_equipment_resource_changed)
-	_observed_equipment_resources.clear()
-
-
-func _on_equipment_resource_changed() -> void:
-	_connect_equipment_state_signals()
-	if _active_record != null and not _rebuilding:
-		refresh_equipment()
-
-
-func refresh_equipment() -> void:
-	var body := get_node_or_null(NodePath(BODY_NODE_NAME)) as Node3D
-	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
-	if body == null or skeleton == null:
-		return
-	var descriptors := _equipment_model_descriptors()
-	var signature := _equipment_signature(descriptors)
-	if signature == _equipment_applied_signature and not _equipment_loading:
-		return
-	if _equipment_loading and signature == _equipment_desired_signature:
-		return
-	_cancel_equipment_refresh()
-	_equipment_desired_signature = signature
-	_equipment_descriptors = descriptors
-	if descriptors.is_empty():
-		_commit_equipment(body, Node3D.new(), signature)
-		return
-	var nif_server := get_tree().root.get_node_or_null("NifServer") if is_inside_tree() else null
-	if nif_server == null:
-		push_warning("EsmHumanoidActor: NifServer autoload is unavailable for equipment refresh")
-		return
-	_equipment_generation += 1
-	_equipment_loading = true
-	_equipment_staging = Node3D.new()
-	_equipment_staging.name = "EquipmentStaging"
-	_equipment_staging.visible = false
-	body.add_child(_equipment_staging)
-	var generation := _equipment_generation
-	for index in descriptors.size():
-		_equipment_pending += 1
-		var descriptor := descriptors[index]
-		nif_server.request(String(descriptor.path), self, _on_equipment_nif_delivered.bind(generation, index), false)
-
-
-func _equipment_model_descriptors() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	var state := equipment_state
-	if state == null:
-		return result
-	var occupied := 0
-	var accepted: Array[ArmorBase] = []
-	for index in range(state.get_armor_bases().size() - 1, -1, -1):
-		var armor := state.get_armor_bases()[index]
-		if armor == null:
-			continue
-		if armor.biped_flags != 0 and (armor.biped_flags & occupied) != 0:
-			push_warning("EsmHumanoidActor: skipped overlapping armor %s (%08X)" % [armor.editor_id, armor.biped_flags])
-			continue
-		accepted.push_front(armor)
-		occupied |= armor.biped_flags
-	for armor in accepted:
-		var direct := armor.female_biped_model if _is_female else armor.male_biped_model
-		_add_equipment_descriptor(result, direct, armor, armor.biped_flags, "MOD3" if _is_female else "MODL", "armor")
-		var model_list := armor.biped_model_list as FormListBase
-		if model_list != null:
-			for entry in model_list.entries:
-				var addon := entry as ArmorAddonBase
-				if addon != null:
-					var addon_path := addon.female_biped_model if _is_female else addon.male_biped_model
-					_add_equipment_descriptor(result, addon_path, addon, addon.biped_flags, "MOD3" if _is_female else "MODL", "armor")
-	var weapon := state.get_weapon_base()
-	if weapon != null:
-		var weapon_models := weapon.biped_model_list as FormListBase
-		if weapon_models != null:
-			for entry in weapon_models.entries:
-				var addon := entry as ArmorAddonBase
-				if addon != null:
-					var addon_path := addon.female_biped_model if _is_female else addon.male_biped_model
-					_add_equipment_descriptor(result, addon_path, addon, addon.biped_flags, "BIPL", "weapon")
-		if not result.any(func(item): return String(item.get("kind", "")) == "weapon"):
-			_add_equipment_descriptor(result, weapon.model_path, weapon, 0, "MODL", "weapon")
-	return result
-
-
-func _add_equipment_descriptor(target: Array[Dictionary], path: String, source: EsmBase, biped_flags: int, field: String, kind: String) -> void:
-	if path.strip_edges().is_empty() or source == null:
-		return
-	target.append({
-		"path": path,
-		"source_form_id": source.form_id,
-		"biped_flags": biped_flags,
-		"field": field,
-		"kind": kind,
-	})
-
-
-func _equipment_signature(descriptors: Array[Dictionary]) -> String:
-	var parts: Array[String] = []
-	for descriptor in descriptors:
-		parts.append("%08X:%X:%s:%s" % [int(descriptor.source_form_id), int(descriptor.biped_flags), String(descriptor.field), String(descriptor.path).to_lower()])
-	return "|".join(parts)
-
-
-func _on_equipment_nif_delivered(tree: Node3D, generation: int, index: int) -> void:
-	if generation != _equipment_generation or not _equipment_loading or _equipment_staging == null or not is_instance_valid(_equipment_staging):
-		if tree != null:
-			tree.free()
-		return
-	var descriptor := _equipment_descriptors[index]
-	if tree == null:
-		_equipment_failures.append(String(descriptor.path))
-	else:
-		tree.name = "Equipment_%d" % index
-		_equipment_staging.add_child(tree)
-		_equipment_trees[index] = tree
-	_equipment_pending -= 1
-	if _equipment_pending == 0:
-		_complete_equipment_refresh(generation)
-
-
-func _complete_equipment_refresh(generation: int) -> void:
-	if generation != _equipment_generation or not _equipment_loading:
-		return
-	if not _equipment_failures.is_empty():
-		push_warning("EsmHumanoidActor: retained current equipment; replacement NIFs failed: " + ", ".join(_equipment_failures))
-		_cancel_equipment_refresh()
-		return
-	var body := get_node_or_null(NodePath(BODY_NODE_NAME)) as Node3D
-	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
-	if body == null or skeleton == null:
-		_cancel_equipment_refresh()
-		return
-	var equipment := Node3D.new()
-	equipment.name = "Equipment"
-	# External BoneAttachment paths need a common ancestor with Skeleton3D.
-	# Keep the replacement hidden but in the live staging subtree until commit.
-	_equipment_staging.add_child(equipment)
-	for index in _equipment_descriptors.size():
-		var descriptor := _equipment_descriptors[index]
-		var tree := _equipment_trees.get(index) as Node3D
-		if tree == null:
-			equipment.free()
-			_cancel_equipment_refresh()
-			return
-		if skinning.tree_has_skin(tree):
-			skinning.compact_external_skin_part(tree)
-			if not skinning.bind_external_skins(tree, skeleton):
-				push_warning("EsmHumanoidActor: retained current equipment; unresolved skeleton binds: " + String(descriptor.path))
-				equipment.free()
-				_cancel_equipment_refresh()
-				return
-			_move_tree(tree, equipment, "Skinned_%d" % index)
-		else:
-			if not _attach_unskinned_equipment(tree, equipment, skeleton, descriptor, index):
-				push_warning("EsmHumanoidActor: retained current equipment; no supported attachment: " + String(descriptor.path))
-				equipment.free()
-				_cancel_equipment_refresh()
-				return
-		_tag_equipment_meshes(tree, descriptor)
-	_commit_equipment(body, equipment, _equipment_desired_signature)
-
-
-func _attach_unskinned_equipment(tree: Node3D, equipment: Node3D, skeleton: Skeleton3D, descriptor: Dictionary, index: int) -> bool:
-	var path := String(descriptor.path).to_lower().replace("/", "\\")
-	var candidates: Array[String] = []
-	if String(descriptor.kind) == "weapon":
-		candidates = ["Weapon", "Bip01 R Hand", "Bip01 R Forearm", "Bip01 Spine"]
-	elif path.contains("\\hair\\") or path.contains("\\head\\") or path.contains("shades") or path.contains("glasses") or path.contains("hat"):
-		candidates = ["HeadAnims", "Bip01 Head"]
-	else:
-		return false
-	var bone_name := ""
-	for candidate in candidates:
-		if skeleton.find_bone(candidate) != -1:
-			bone_name = candidate
-			break
-	if bone_name.is_empty():
-		return false
-	var attachment := BoneAttachment3D.new()
-	attachment.name = "EquipmentAttachment_%d" % index
-	attachment.bone_name = bone_name
-	equipment.add_child(attachment)
-	attachment.use_external_skeleton = true
-	attachment.external_skeleton = attachment.get_path_to(skeleton)
-	attachment.bone_idx = skeleton.find_bone(bone_name)
-	attachment.on_skeleton_update()
-	_move_tree(tree, attachment, "Attached_%d" % index)
-	tree.transform = Transform3D.IDENTITY
-	return true
-
-
-func _tag_equipment_meshes(root: Node3D, descriptor: Dictionary) -> void:
-	for child in root.find_children("*", "MeshInstance3D", true, false):
-		child.set_meta("gamebryo_equipment", true)
-		child.set_meta("gamebryo_equipment_form_id", int(descriptor.source_form_id))
-		child.set_meta("gamebryo_equipment_biped_flags", int(descriptor.biped_flags))
-		child.set_meta("gamebryo_equipment_model_field", String(descriptor.field))
-		child.set_meta("gamebryo_model_path", String(descriptor.path))
-
-
-func _commit_equipment(body: Node3D, equipment: Node3D, signature: String) -> void:
-	var old_equipment := body.get_node_or_null(^"Equipment")
-	if old_equipment != null:
-		body.remove_child(old_equipment)
-	if equipment.get_parent() != null:
-		equipment.get_parent().remove_child(equipment)
-	equipment.name = "Equipment"
-	body.add_child(equipment)
-	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
-		_own_recursive(equipment)
-	if old_equipment != null:
-		old_equipment.queue_free()
-	_equipment_applied_signature = signature
-	_equipment_loading = false
-	_equipment_pending = 0
-	_equipment_trees.clear()
-	_equipment_failures.clear()
-	if _equipment_staging != null and is_instance_valid(_equipment_staging):
-		_equipment_staging.queue_free()
-	_equipment_staging = null
-	# Clothing carries its own SECTIONCAP_/TORSOCAP_ meshes. Re-index after
-	# every successful replacement before restoring ordinary body coverage.
-	_rebuild_dismember_partition_index(body)
-	_apply_equipment_body_coverage(body)
-	_apply_possessed_first_person_render_mode()
-
-
-func _cancel_equipment_refresh() -> void:
-	_equipment_generation += 1
-	_equipment_loading = false
-	_equipment_pending = 0
-	_equipment_descriptors.clear()
-	_equipment_trees.clear()
-	_equipment_failures.clear()
-	if _equipment_staging != null and is_instance_valid(_equipment_staging):
-		_equipment_staging.queue_free()
-	_equipment_staging = null
 
 
 func _apply_equipment_body_coverage(body: Node3D) -> void:
@@ -962,27 +632,34 @@ func _editor_apply_actor_data() -> void:
 
 func _editor_unload_actor() -> void:
 	_cancel_visual_load()
-	_cancel_equipment_refresh()
+	equipment.clear()
 	animator.cancel()
 	_active_record = null
 	_is_female = false
 	hair_no_hat_meshes.clear()
 	hair_hat_meshes.clear()
 	_dismember_meshes_by_part_id.clear()
-	_disconnect_inventory_signal()
-	inventory = null
 	var body := get_node_or_null(NodePath(BODY_NODE_NAME))
 	if body != null:
 		body.queue_free()
 	reference = null
-	equipment_state = null
+	equipment.equipment_state = null
 	_standalone_preview = false
 	_load_requested = false
 	_humanoid_visual_built = false
 
 
 func _editor_refresh_equipment() -> void:
-	refresh_equipment()
+	equipment.refresh()
+
+## New equipment is attached: the dismember index, nude-body coverage and the
+## first-person shadow mode cover it too.
+func _on_equipment_committed(body: Node3D) -> void:
+	# Clothing carries its own SECTIONCAP_/TORSOCAP_ meshes. Re-index after
+	# every replacement before restoring ordinary body coverage.
+	_rebuild_dismember_partition_index(body)
+	_apply_equipment_body_coverage(body)
+	_apply_possessed_first_person_render_mode()
 
 
 func _own_recursive(node: Node) -> void:

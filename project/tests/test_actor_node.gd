@@ -52,7 +52,8 @@ func _ready() -> void:
 	get_tree().quit(0 if failures == 0 else 1)
 
 func _equipment_settled(node: Node) -> bool:
-	return not bool(node.get("_equipment_loading"))
+	var equipment := node.get_node_or_null("ActorEquipment") as ActorEquipment
+	return equipment != null and not equipment.is_loading()
 
 func _measure(node: Node, animation_clips: int) -> Dictionary:
 	var body := node.get_node_or_null("Body")
