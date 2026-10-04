@@ -92,10 +92,15 @@ state.
 |---|---|---|
 | `item_form_id`, `item` | CNTO item | the item's base resource, or LeveledItemBase |
 | `count` | CNTO count (s32) | |
-| `owner_form_id`, `owner` | COED owner | NpcBase or FactionBase / *EsmBase* (FACT) |
+| `owner_form_id`, `owner` | COED offset 0 | NpcBase or FactionBase |
 | `global_variable_form_id`, `global_variable` | COED offset 4 when the owner is an NPC_ (xEdit `wbCOEDOwnerDecider`) | *EsmBase* (GLOB) |
 | `required_rank` | COED offset 4 when the owner is a FACT | |
-| `condition` | COED offset 8, Item Condition (float) | |
+| `condition` | COED offset 8, Item Condition (float; 1.0 when no COED) | |
+
+COED in FalloutNV.esm is item condition: all 1,345 on NPC_ and 16 on CREA set only a condition
+below 1.0 (a dead prospector's weapon at 0.10, for example); of 94 on CONT, 2 set an owner
+(an NPC_). None sets a global variable or a required rank, so those two fields are always
+default.
 
 ContainerBase gains the same `items` when containers are next worked on.
 
@@ -151,7 +156,7 @@ plain EsmBase for it.
 
 | Record | Resource | Fields | Referenced by | Consumer today or in this plan |
 |---|---|---|---|---|
-| VTYP | VoiceTypeBase | DNAM flags (Allow Default Dialog, Female) | ActorBase `voice_type` | GetIsVoiceType; the voice file path (DialogueServer) |
+| VTYP | VoiceTypeBase (agreed: shared, though one value) | DNAM flags (Allow Default Dialog, Female) | ActorBase `voice_type` | GetIsVoiceType; the voice file path (DialogueServer) |
 | FACT | FactionBase | FULL; DATA flags 1 (Hidden from PC, Evil, Special Combat) and 2 (Track Crime, Allow Sell); relations (XNAM: faction, modifier, group combat reaction; layout from fopdoc, its xEdit definition is not in the vendored copy); ranks (RNAM number, MNAM male title, FNAM female title, INAM insignia); WMI1 reputation (REPU) | ActorFaction `faction`, CreatureReference `owner`, ECZN owner | GetInFaction, GetFactionRank |
 | LVLN | LeveledNpcBase | OBND; LVLD chance none; LVLF flags; entries (LVLO: level, NPC_ / LVLN, count; COED) | ActorBase `template` (NPC_) | the four saloon powder gangers' packages (census A3) |
 | LVLC | LeveledCreatureBase | as LVLN, entries CREA / LVLC | ActorBase `template` (CREA) | creatures, stage J |
@@ -166,8 +171,10 @@ plain EsmBase for it.
 LVLN and LVLC entries have the same layout as LVLI's, which `LeveledItemEntry` holds today; one
 shared entry resource would serve all three.
 
+Agreed: every type in the table above becomes a typed resource in stage B, including those
+with no consumer yet (SPEL, ENCH, CSTY, ECZN, IPDS). GLOB stays a plain EsmBase: no COED sets a
+global.
+
 ## Questions
 
-1. Which of the resources above to add in stage B: those with a consumer in this plan (VTYP, FACT,
-   LVLN, IDLE, HDPT; LVLC with creatures), or all of them?
-2. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
+1. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
