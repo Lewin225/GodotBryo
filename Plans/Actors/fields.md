@@ -19,20 +19,55 @@ says where the value lives now.
   including FormID fields naming types beyond these, are not read: the class's doc comment lists
   them with their xEdit labels as not read yet, and each becomes a field, with its description
   and resolved resource, when a consumer arrives.
-- **Structures without a FormID** (InitialItemEntry, Destructible, DestructibleStage,
-  CreatureSoundType, ActorFaction) are plain Resources inside their parent, filled when the parent is
+- **Structures without a FormID** (InitialItemCollection, DestructionCollection, DestructionStageCollection,
+  CreatureSoundCollection, FactionSubrecord) are plain Resources inside their parent, filled when the parent is
   built or rehydrated. One becomes a resource only when it groups several values, is shared by
   record types, or is saved.
-- **Names.** Form types end in `Base` (records) or `Reference` (placed references); formless
-  structures never do. A formless structure owned by one record type is named owner + xEdit
-  label (CreatureSoundType, DestructibleStage, DialogueResponse); one shared by several takes
-  xEdit's label alone (Destructible, Condition). InitialItemEntry (xEdit "Item", shared by NPC_,
-  CREA and CONT) is named for what it is: an initial inventory entry.
+- **Names** follow the shape of what is stored (see "Naming" below).
 - **Model info** (MODT, NIFT, DMDT: texture hashes) has no FormID and nothing points at it by one,
   so it stays a raw field.
 
 Groups are `@export_group`s on the resource. Sub-resources only where another record type uses
 the same structure.
+
+## Naming
+
+| Shape | Name | Examples |
+|---|---|---|
+| A record with a FormID | `<Type>Base`, or `<Type>Reference` for a placed reference | NpcBase, CreatureReference |
+| A group of subrecords that appear together (fopdoc's "<X> Subrecord Collection") | `<X>Collection`, X from fopdoc where it names the group, else owner + xEdit label | InitialItemCollection (fopdoc "Item": CNTO + COED), DestructionCollection (fopdoc "Destruction"), CreatureSoundCollection (CSDT, CSDI, CSDC) |
+| One struct subrecord that repeats | `<X>Subrecord` | FactionSubrecord (SNAM), ConditionSubrecord (CTDA) |
+| One struct subrecord that occurs once | no type: plain `@export_group` fields on the owner, FormIDs resolved beside them | PSDT schedule, PKDD dialogue data |
+| Runtime state with no ESM shape | unchanged by this rule | ActorValues, InventoryItem, QuestState, ScriptInstance, GlobalVariables, EsmActorEquipmentState |
+
+Flag words are `@export_flags` ints with xEdit's names, never a flags resource.
+
+**Renames and removals of existing formless resources** (stage B's naming pass):
+
+| Today | Shape | Becomes |
+|---|---|---|
+| ActorFaction | SNAM, repeats | FactionSubrecord |
+| Condition | CTDA, repeats | ConditionSubrecord |
+| DialogueResponse | TRDT, NAM1, NAM2, NAM3, SNAM | DialogueResponseCollection |
+| MessageButton | ITXT + CTDA | MessageButtonCollection |
+| TerminalMenuItem | ITXT, RNAM, ANAM, INAM, TNAM, embedded script, CTDA | TerminalMenuItemCollection |
+| QuestStage | INDX + its log entries | QuestStageCollection |
+| QuestLogEntry | QSDT, CTDA, CNAM, embedded script, NAM0 | QuestLogEntryCollection |
+| QuestObjective | QOBJ, NNAM, QSTA targets | QuestObjectiveCollection |
+| QuestObjectiveTarget | QSTA + CTDA | QuestObjectiveTargetCollection |
+| LeveledItemEntry | LVLO + COED | LeveledItemEntryCollection |
+| BodyPartDataPart | BPTN, BPNN, BPNT, BPNI, BPND, NAM1, NAM4, NAM5 | BodyPartCollection |
+| RacePartBaseResource | INDX, MODL, ICON | RacePartCollection |
+| PackageEvent | POBA / POEA / POCA, INAM, embedded script, TNAM | PackageEventCollection |
+| PackageScriptLocal | SLSD + SCVR | ScriptLocalCollection |
+| PackageLocation, PackageLocationValue | PLDT / PLD2, once each | plain fields on PackageBase (`location_1_*`, `location_2_*`) |
+| PackageTarget | PTDT / PTD2, once each | plain fields (`target_1_*`, `target_2_*`) |
+| PackageSchedule | PSDT, once | plain fields (`schedule_*`) |
+| PackageDialogueData | PKDD, once | plain fields (`dialogue_*`) |
+| PackageUseWeaponData | PKW3, once | plain fields (`use_weapon_*`) |
+| DoorTeleportLink | XTEL, once | plain fields on DoorReference (`teleport_*`) |
+| PackageGeneralFlags, PackageFalloutBehaviorFlags, PackageTypeSpecificFlags | PKDT flag words | `@export_flags` ints on PackageBase |
+| ActorStats | ACBS, DATA, DNAM, AIDT, TPLT | removed (fields on ActorBase, NpcBase, CreatureBase) |
 
 ## ActorReference (abstract; extends EsmReference)
 
@@ -86,7 +121,7 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Configuration | `fatigue`, `barter_gold`, `level`, `calc_min`, `calc_max`, `speed_multiplier`, `karma`, `disposition_base` | ACBS 4-21 | | ActorStats (no barter gold, disposition) |
 | Configuration | `template_flags` | ACBS 22 (`@export_flags`: Traits, Stats, Factions, Actor Effect List, AI Data, AI Packages, Model/Animation, Base Data, Inventory, Script) | | ActorStats and NpcBase `acbs_template_flags` |
 | Configuration | `template_form_id`, `template` | TPLT | NpcBase / CreatureBase, or *EsmBase* (LVLN / LVLC) | ActorStats |
-| Factions | `factions` | SNAM | Array[ActorFaction] (FACT as *EsmBase*) | NpcBase, CreatureBase |
+| Factions | `factions` | SNAM | Array[FactionSubrecord] (each faction resolved to FactionBase) | NpcBase, CreatureBase (as ActorFaction) |
 | Traits | `death_item_form_id`, `death_item` | INAM | LeveledItemBase | not read |
 | Traits | `voice_type_form_id`, `voice_type` | VTCK | *EsmBase* (VTYP) | NpcBase, CreatureBase (id only) |
 | Traits | `combat_style_form_id`, `combat_style` | ZNAM | *EsmBase* (CSTY) | not read |
@@ -96,7 +131,7 @@ EsmBase already holds EDID, FULL and SCRI (`script_form_id`).
 | Actor effects | `unarmed_attack_animation` | EAMT (enum) | | not read |
 | AI Data | `aggression`, `confidence`, `energy`, `responsibility`, `mood`, `services` (flags), `teaches`, `maximum_training_level`, `assistance`, `aggro_radius_behavior`, `aggro_radius` | AIDT | | ActorStats (five of them) |
 | AI | `packages` | PKID, in order | Array[PackageBase] | NpcBase only |
-| Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[InitialItemEntry] | not a field; read raw when a reference is created, COED ignored |
+| Items | `items` | xEdit "Items": CNTO (+ COED) entries, in order | Array[InitialItemCollection] | not a field; read raw when a reference is created, COED ignored |
 
 Methods: `template_source(flag)` (from ActorStats), and a typed accessor ActorValues uses in place
 of `get("actor_stats")`.
@@ -106,17 +141,17 @@ created: an item becomes one InventoryItem, a leveled list is rolled at the acto
 each entry's COED owner and condition carry over (today COED is only carried from leveled-list
 entries). After that the inventory never reads `items` again.
 
-| Destructible | `destructible` | DEST, DSTD, DMDL, DMDT, DSTF (7 NPC_, 55 CREA) | Destructible | not read |
+| DestructionCollection | `destructible` | DEST, DSTD, DMDL, DMDT, DSTF (7 NPC_, 55 CREA) | DestructionCollection | not read |
 
-## Destructible (new; shared: xEdit gives DEST to 19 record types plus NPC_ and CREA)
+## DestructionCollection (new; shared: xEdit gives DEST to 19 record types plus NPC_ and CREA)
 
 | Field | Source | Resolves to |
 |---|---|---|
 | `health` | DEST Health (s32) | |
 | `vats_targetable` | DEST Flags 0x01 | |
-| `stages` | DSTD ... DSTF, one per stage (DEST Count) | Array[DestructibleStage] |
+| `stages` | DSTD ... DSTF, one per stage (DEST Count) | Array[DestructionStageCollection] |
 
-**DestructibleStage** (new; one per stage):
+**DestructionStageCollection** (new; one per stage):
 
 | Field | Source | Resolves to |
 |---|---|---|
@@ -129,7 +164,7 @@ entries). After that the inventory never reads `items` again.
 | `model_path` | DMDL | |
 | `model_info` | DMDT (raw; texture hashes, as MODT) | |
 
-## InitialItemEntry (new; shared by NPC_, CREA and CONT)
+## InitialItemCollection (new; shared by NPC_, CREA and CONT)
 
 One element of xEdit's "Items" array (its "Item"): a CNTO subrecord (item FormID, count) and the
 COED that may follow it, merged into one entry. It is the authored starting item, shared by every
@@ -203,9 +238,9 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Sound | `sound_level` | NAM5 (enum) | | not read |
 | Sound | `impact_dataset_form_id`, `impact_dataset` | CNAM | *EsmBase* (IPDS) | not read |
 | Sound | `inherits_sounds_from_form_id`, `inherits_sounds_from` | CSCR | CreatureBase | not read |
-| Sound | `sounds` | CSDT, CSDI, CSDC, one group per sound (86 CREA) | Array[CreatureSoundType] | not read |
+| Sound | `sounds` | CSDT, CSDI, CSDC, one group per sound (86 CREA) | Array[CreatureSoundCollection] | not read |
 
-**CreatureSoundType** (new; CREA only, an array entry of three values):
+**CreatureSoundCollection** (new; CREA only, an array entry of three values):
 
 | Field | Source | Resolves to |
 |---|---|---|
@@ -278,7 +313,7 @@ plain EsmBase for it.
 | Record | Resource | Fields | Referenced by | Consumer today or in this plan |
 |---|---|---|---|---|
 | VTYP | VoiceTypeBase (agreed: shared, though one value) | DNAM flags (Allow Default Dialog, Female) | ActorBase `voice_type` | GetIsVoiceType; the voice file path (DialogueServer) |
-| FACT | FactionBase | FULL; DATA flags 1 (Hidden from PC, Evil, Special Combat) and 2 (Track Crime, Allow Sell); relations (XNAM: faction, modifier, group combat reaction; layout from fopdoc, its xEdit definition is not in the vendored copy); ranks (RNAM number, MNAM male title, FNAM female title, INAM insignia); WMI1 reputation (REPU) | ActorFaction `faction`, CreatureReference `owner`, ECZN owner | GetInFaction, GetFactionRank |
+| FACT | FactionBase | FULL; DATA flags 1 (Hidden from PC, Evil, Special Combat) and 2 (Track Crime, Allow Sell); relations (XNAM: faction, modifier, group combat reaction; layout from fopdoc, its xEdit definition is not in the vendored copy); ranks (RNAM number, MNAM male title, FNAM female title, INAM insignia); WMI1 reputation (REPU) | FactionSubrecord `faction`, CreatureReference `owner`, ECZN owner | GetInFaction, GetFactionRank |
 | LVLN | LeveledNpcBase | OBND; LVLD chance none; LVLF flags; entries (LVLO: level, NPC_ / LVLN, count; COED) | ActorBase `template` (NPC_) | the four saloon powder gangers' packages (census A3) |
 | LVLC | LeveledCreatureBase | as LVLN, entries CREA / LVLC | ActorBase `template` (CREA) | creatures, stage J |
 | IDLE | IdleBase | MODL (KF); conditions; ANAM parent, previous; DATA section, loop min/max, replay delay, flags | PACK idle lists and events, `PlayIdle`, ActorReference `idle` | stage F |
@@ -287,10 +322,10 @@ plain EsmBase for it.
 | ENCH | EnchantmentBase | FULL; ENIT type (Weapon, Apparel), flags; effects | ActorBase `unarmed_attack_effect` | none yet |
 | CSTY | CombatStyleBase | CSTD (standard), CSAD (advanced), CSSD (simple): dozens of combat tuning values | ActorBase `combat_style` | none (combat is out of scope) |
 | ECZN | EncounterZoneBase | DATA: owner (NPC_ / FACT), rank, minimum level, flags (Never Resets, Match PC Below Minimum Level) | ActorReference `encounter_zone` | none yet |
-| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | InitialItemEntry `global_variable`, scripts, conditions | scripts read and set globals today |
-| EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructibleStage `explosion` | none yet |
-| DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructibleStage `debris` | none yet |
-| SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSoundType `sound`, EXPL, IPCT, many others | none yet |
+| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | InitialItemCollection `global_variable`, scripts, conditions | scripts read and set globals today |
+| EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructionStageCollection `explosion` | none yet |
+| DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructionStageCollection `debris` | none yet |
+| SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSoundCollection `sound`, EXPL, IPCT, many others | none yet |
 | IPDS | ImpactDatasetBase | DATA: an IPCT per material (stone, dirt, grass, glass, metal, wood, organic, cloth, water, hollow metal, organic bug, organic glow) | CreatureBase `impact_dataset` | none (combat) |
 
 LVLN and LVLC hold their own LVLO entries; they matter to the actor work only when a template is
@@ -302,4 +337,7 @@ global.
 
 ## Questions
 
-None open.
+1. GlobalVariables holds the runtime values of every GLOB by name today. With GlobalBase a
+   record resource that is marked dirty when a script sets it, the two overlap: should
+   GlobalVariables be replaced by GlobalBase values (dirty, saved), or stay the runtime store with
+   GlobalBase holding only the authored type and value?
