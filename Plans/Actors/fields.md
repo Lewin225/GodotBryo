@@ -1,9 +1,23 @@
 # Actor field lists (stage B draft)
 
-For agreement before any code. Sources are census A1 and A2 (`census.md`) and xEdit. Every
-FormID field keeps its id and resolves to a resource beside it, named in "Resolves to". A type
-with no typed resource yet resolves to a plain `EsmBase` (editor ID and name, nothing decoded);
-those are marked *EsmBase*. "Today" says where the value lives now.
+For agreement before any code. Sources are census A1 and A2 (`census.md`) and xEdit. "Today"
+says where the value lives now.
+
+## Rules
+
+- **Records with a FormID are EsmBase subclasses**, as RaceBase and ClassBase are: registered in
+  `EsmServer.TYPE_TO_BASE`, built and cached by `EsmServer.get_base`, with a `source_uri`
+  (`esm://FalloutNV.esm/<type>/<FormID>`) they rehydrate from. A field pointing at one keeps the
+  FormID and the resolved resource (`race_form_id`, `race`); the record is never copied into its
+  parent.
+- **No field resolves to a plain EsmBase.** Every record type a field points at gets its typed
+  resource; the *EsmBase* marks below are the types that do not have one yet.
+- **Structures without a FormID** (ContainedObject, Destructible, DestructionStage,
+  CreatureSound, ActorFaction) are plain Resources inside their parent, filled when the parent is
+  built or rehydrated. One becomes a resource only when it groups several values, is shared by
+  record types, or is saved.
+- **Model info** (MODT, NIFT, DMDT: texture hashes) has no FormID and nothing points at it by one,
+  so it stays a raw field.
 
 Groups are `@export_group`s on the resource. Sub-resources only where another record type uses
 the same structure.
@@ -195,6 +209,10 @@ plain EsmBase for it.
 | ENCH | EnchantmentBase | FULL; ENIT type (Weapon, Apparel), flags; effects | ActorBase `unarmed_attack_effect` | none yet |
 | CSTY | CombatStyleBase | CSTD (standard), CSAD (advanced), CSSD (simple): dozens of combat tuning values | ActorBase `combat_style` | none (combat is out of scope) |
 | ECZN | EncounterZoneBase | DATA: owner (NPC_ / FACT), rank, minimum level, flags (Never Resets, Match PC Below Minimum Level) | ActorReference `encounter_zone` | none yet |
+| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | ContainedObject `global_variable`, scripts, conditions | scripts read and set globals today |
+| EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructionStage `explosion` | none yet |
+| DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructionStage `debris` | none yet |
+| SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSound `sound`, EXPL, IPCT, many others | none yet |
 | IPDS | ImpactDatasetBase | DATA: an IPCT per material (stone, dirt, grass, glass, metal, wood, organic, cloth, water, hollow metal, organic bug, organic glow) | CreatureBase `impact_dataset` | none (combat) |
 
 LVLN and LVLC entries have the same layout as LVLI's, which `LeveledItemEntry` holds today; one
@@ -206,8 +224,12 @@ global.
 
 ## Questions
 
-1. These additions reference more record types without a resource: EXPL, DEBR (destruction
-   stages) and SOUN (creature sounds). Typed resources for them too, or plain EsmBase?
-2. NIFT and DMDT hold the model-info structure MODT has after every MODL. Keep them raw (as MODT
-   is everywhere today), or make a shared ModelInfo resource, which would then be the right type
-   for MODT too?
+1. Where the typed-resource cascade stops. Each new resource's own FormID fields point at more
+   types: EXPL at IMAD and IPDS, IPDS at twelve IPCT, IPCT at TXST and SOUN, SPEL and ENCH effects
+   at MGEF, MGEF at projectiles, explosions, shaders, spells and more, FACT at REPU. Build every
+   type reachable from the actor records (a large closure), or build the types the actor records
+   point at directly and keep FormID-only fields (no resolved resource yet) one level further
+   down?
+2. FLST: EsmServer maps every FLST to BipedModelListBase today, but FLST is a general FormID
+   list (CREA's melee weapon list is one). Rename that resource to FormListBase, or add
+   FormListBase beside it?
