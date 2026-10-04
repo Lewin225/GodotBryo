@@ -42,8 +42,6 @@ signal animation_load_failed(reason: String)
 		possessed_first_person = value
 		_apply_possessed_first_person_render_mode()
 
-## Opt-in construction/animation timing for profilling actor load time
-@export var construction_profiling_enabled: bool = false
 
 @export_tool_button("Import Actor Data From Preset Or FormID") var load_button: Callable = _editor_load
 @export_tool_button("Load Actor") var apply_data_button: Callable = _editor_apply_actor_data
@@ -55,9 +53,6 @@ const BODY_NODE_NAME := "Body"
 const STAGING_NODE_NAME := "HumanoidStaging"
 const LOOK_TARGET_NODE_NAME := "Look Target"
 const LOOK_TARGET_BONE_NAME := "Bip01 Head"
-const LOCOMOTION_SUBDIRECTORY := "locomotion/"
-const ANIMATION_CLIPS_PER_FRAME := 4
-const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 
 
 # This is a placeholder for hiding gore, not the real implementation
@@ -82,16 +77,6 @@ var _requested_assets := {}
 var _delivered_trees := {}
 var _load_failures: Array[String] = []
 var _staging_root: Node3D = null
-var _construction_profile_started_usec := 0
-var _construction_profile_last_usec := 0
-var _animation_load_generation := 0
-var _animation_loading := false
-var _animation_root_path := ""
-var _animation_pending_requests := 0
-var _animation_requests_being_submitted := false
-var _animation_binding_scheduled := false
-var _pending_animation_libraries: Array[Dictionary] = []
-var _locomotion_animation_player: AnimationPlayer = null
 var _equipment_generation := 0
 var _equipment_loading := false
 var _equipment_pending := 0
@@ -111,12 +96,23 @@ var hair_hat_meshes: Array[MeshInstance3D] = []
 # separate debug-visual policy below, not a NifServer concern.
 var _dismember_meshes_by_part_id := {}
 
-## The child that binds skinned parts to the skeleton.
-@onready var skinning: ActorSkinning = $ActorSkinning
+## The child that binds skinned parts to the skeleton. Looked up on each
+## access: the template's children exist from instantiation, before _ready(),
+## and reference changes reach this node before it enters the tree.
+var skinning: ActorSkinning:
+	get:
+		return get_node_or_null(^"ActorSkinning") as ActorSkinning
+## The child that loads, binds and plays the actor's animation (looked up as
+## skinning is).
+var animator: ActorAnimator:
+	get:
+		return get_node_or_null(^"ActorAnimator") as ActorAnimator
 
 
 
 func _ready() -> void:
+	animator.load_completed.connect(animation_load_completed.emit)
+	animator.load_failed.connect(animation_load_failed.emit)
 	_connect_equipment_state_signals()
 	_ensure_inventory()
 	_connect_inventory_signal()
@@ -126,7 +122,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_cancel_visual_load()
 	_cancel_equipment_refresh()
-	_cancel_animation_load()
+	animator.cancel()
 	_disconnect_inventory_signal()
 	_disconnect_equipment_state_signals()
 
@@ -140,7 +136,7 @@ func _should_request_nif() -> bool:
 func _reference_changed() -> void:
 	_cancel_visual_load()
 	_cancel_equipment_refresh()
-	_cancel_animation_load()
+	animator.cancel()
 	_active_record = null
 	if not _rehydrating_reference:
 		_load_requested = false
@@ -203,7 +199,6 @@ func load_actor() -> void:
 
 
 func _start_visual_load(reference_base: NpcBase) -> void:
-	_begin_construction_profile(reference_base)
 	if reference_base.race == null:
 		_finish_visual_load(false, "NPC record has no race")
 		return
@@ -234,37 +229,6 @@ func _start_visual_load(reference_base: NpcBase) -> void:
 		# NifServer owns parsing, cache sharing, coordinate conversion and pacing.
 		# Humanoid parts must never request flattened/static or paired LOD trees.
 		nif_server.request(String(asset.path), self, _on_nif_delivered.bind(generation, String(asset_key)), false)
-	_construction_profile("NIF requests queued (%d assets)" % _pending_requests)
-
-
-func _begin_construction_profile(record: NpcBase) -> void:
-	if not construction_profiling_enabled:
-		return
-	_construction_profile_started_usec = Time.get_ticks_usec()
-	_construction_profile_last_usec = _construction_profile_started_usec
-	var label := record.editor_id if record != null else "<unknown NPC>"
-	_construction_profile("load requested for " + label)
-
-
-func _construction_profile(stage: String) -> void:
-	if not construction_profiling_enabled or _construction_profile_started_usec == 0:
-		return
-	var now := Time.get_ticks_usec()
-	var total_ms := float(now - _construction_profile_started_usec) / 1000.0
-	var delta_ms := float(now - _construction_profile_last_usec) / 1000.0
-	_construction_profile_last_usec = now
-	print("EsmHumanoidActor construction [%s frame=%d total=%.2fms delta=%.2fms] %s" % [
-		name, Engine.get_process_frames(), total_ms, delta_ms, stage,
-	])
-
-
-func _animation_profile(stage: String) -> void:
-	if not construction_profiling_enabled or _construction_profile_started_usec == 0:
-		return
-	var total_ms := float(Time.get_ticks_usec() - _construction_profile_started_usec) / 1000.0
-	print("EsmHumanoidActor animation [%s frame=%d total=%.2fms] %s" % [
-		name, Engine.get_process_frames(), total_ms, stage,
-	])
 
 
 ## The source of truth is NpcBase/ActorReference. This only records the exact
@@ -318,7 +282,6 @@ func _on_nif_delivered(tree: Node3D, generation: int, asset_key: String) -> void
 		_staging_root.add_child(tree)
 		_delivered_trees[asset_key] = tree
 	_pending_requests -= 1
-	_construction_profile("NIF delivered: %s (pending=%d)" % [asset_key, _pending_requests])
 	if _pending_requests == 0:
 		_complete_nif_requests(generation)
 
@@ -329,7 +292,6 @@ func _complete_nif_requests(generation: int) -> void:
 	if not _load_failures.is_empty():
 		_finish_visual_load(false, "; ".join(_load_failures))
 		return
-	_construction_profile("all NIFs delivered; beginning main-thread assembly")
 	_assemble_staged_body(generation)
 
 
@@ -338,7 +300,6 @@ func _complete_nif_requests(generation: int) -> void:
 ## would compose the R_x(-90) conversion twice.
 func _assemble_staged_body(generation: int) -> void:
 	if generation != _load_generation or _staging_root == null: return
-	_construction_profile("assembly begin")
 
 	var skeleton_tree := _delivered_trees.get("skeleton") as Node3D
 	if skeleton_tree == null:
@@ -360,7 +321,6 @@ func _assemble_staged_body(generation: int) -> void:
 
 	#Attach a look at node to the skeleton head and configure it
 	_ensure_humanoid_look_target(skeleton)
-	_construction_profile("skeleton attached and configured")
 
 	# Nude body stores the meshes used when no armour is equipped, but it's actually a vest and shorts
 	# This is allways built, and just left as not visible
@@ -375,23 +335,19 @@ func _assemble_staged_body(generation: int) -> void:
 		if part_tree == null:
 			_finish_visual_load(false, "required body tree is missing: " + String(asset.get("path", "")))
 			return
-		_construction_profile("body part begin: " + String(asset_key))
 		_move_tree(part_tree, nude_body, "BodyPart_%s" % String(asset_key).validate_node_name())
 		skinning.compact_external_skin_part(part_tree)
 		if not skinning.bind_external_skins(part_tree, skeleton):
 			_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
 			return
 		_tag_nude_body_meshes(part_tree, asset)
-		_construction_profile("body part complete: " + String(asset_key))
 
 	# Attach the head and setup it's face/eyes/teeth/hair
 	var appearance := Node3D.new()
 	appearance.name = "AppearanceStaging"
 	appearance.visible = false
 	body.add_child(appearance)
-	_construction_profile("appearance assembly begin")
 	_assemble_staged_appearance(body, skeleton, appearance)
-	_construction_profile("appearance assembly complete")
 	_commit_staged_body(body, generation)
 	# The base body is now constructed
 	# Whoo
@@ -563,17 +519,14 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	if generation != _load_generation or not _loading:
 		body.queue_free()
 		return
-	_construction_profile("commit begin")
 	var old_body := get_node_or_null(NodePath(BODY_NODE_NAME))
 	if old_body != null:
 		remove_child(old_body)
 	body.get_parent().remove_child(body)
 	body.visible = true
 	add_child(body)
-	_construction_profile("committed body hierarchy")
 	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
 		_own_recursive(body)
-	_construction_profile("editor ownership complete")
 	if old_body != null:
 		old_body.queue_free()
 	_humanoid_visual_built = true
@@ -584,14 +537,10 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_rebuild_dismember_partition_index(body)
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
-	_construction_profile("post-assembly visual policies complete")
 	_equipment_applied_signature = ""
 	refresh_equipment()
-	_construction_profile("equipment refresh requested")
-	_start_default_animation_load(_active_record, body, body.find_child("Skeleton3D", true, false) as Skeleton3D)
-	_construction_profile("locomotion load requested")
+	animator.load_locomotion(_active_record.animation_search_paths(), body, body.find_child("Skeleton3D", true, false) as Skeleton3D)
 	visual_load_completed.emit()
-	_construction_profile("visual load complete")
 
 
 func _finish_visual_load(success: bool, reason: String) -> void:
@@ -612,220 +561,6 @@ func _cancel_visual_load() -> void:
 	_delivered_trees.clear()
 	_load_failures.clear()
 	_clear_staging()
-
-
-## The skeleton NIF supplies the rig but no default humanoid KF list. NpcBase
-## owns the verified search root. NifServer owns KF extraction and its shared
-## cross-run cache; this actor only binds raw authored targets to this specific
-## composed rig. The eventual NPC/player controller decides which loaded
-## clip/group to play.
-func _start_default_animation_load(record: NpcBase, body: Node3D, skeleton: Skeleton3D) -> void:
-	_cancel_animation_load()
-	if record == null or body == null or skeleton == null or not is_inside_tree():
-		return
-	# The actor owns a stable playback endpoint as soon as its body exists.
-	# NifServer resolves the external KFs asynchronously, so delaying this node
-	# until those callbacks complete made a loaded actor look as if it had no
-	# animation support at all.
-	_ensure_locomotion_animation_player(body)
-	var archive := get_tree().root.get_node_or_null("ArchiveServer")
-	if archive == null or not archive.is_ready():
-		animation_load_failed.emit("ArchiveServer is unavailable")
-		return
-	var discovery_started_usec := Time.get_ticks_usec()
-	var paths := PackedStringArray()
-	for search_path in record.animation_search_paths():
-		for path in archive.list_files_with_prefix(String(search_path) + LOCOMOTION_SUBDIRECTORY):
-			var canonical := String(path).replace("\\", "/").to_lower()
-			if canonical.ends_with(".kf") and not paths.has(canonical):
-				paths.append(canonical)
-	paths.sort()
-	_animation_profile("locomotion discovery: %d KF paths in %.2fms" % [
-		paths.size(), float(Time.get_ticks_usec() - discovery_started_usec) / 1000.0,
-	])
-	if paths.is_empty():
-		animation_load_failed.emit("no locomotion KFs found below NpcBase animation search paths")
-		return
-	var nif_server := get_tree().root.get_node_or_null("NifServer")
-	if nif_server == null:
-		animation_load_failed.emit("NifServer autoload is unavailable")
-		return
-	_animation_load_generation += 1
-	_animation_loading = true
-	_animation_root_path = String(record.animation_search_paths()[0]).replace("\\", "/").to_lower()
-	var generation := _animation_load_generation
-	_animation_pending_requests = paths.size()
-	_animation_requests_being_submitted = true
-	for path in paths:
-		# The callback is owner-bound, coalesced, worker-built and cached by
-		# NifServer. This actor must not read or parse raw KF data itself.
-		nif_server.request_kf(path, self, _on_kf_library_delivered.bind(generation, path))
-	_animation_requests_being_submitted = false
-	_animation_profile("NifServer KF requests queued (%d assets)" % _animation_pending_requests)
-	_schedule_animation_binding()
-
-
-func _on_kf_library_delivered(raw_library: AnimationLibrary, generation: int, source_path: String) -> void:
-	if generation != _animation_load_generation or not _animation_loading:
-		return
-	_animation_pending_requests = maxi(0, _animation_pending_requests - 1)
-	if raw_library == null:
-		push_warning("EsmHumanoidActor: NifServer could not load locomotion KF " + source_path)
-	else:
-		_pending_animation_libraries.append({"path": source_path, "library": raw_library})
-	if not _animation_requests_being_submitted:
-		_schedule_animation_binding()
-
-
-func _schedule_animation_binding() -> void:
-	if not _animation_loading or _animation_requests_being_submitted or _animation_binding_scheduled:
-		return
-	if _pending_animation_libraries.is_empty():
-		_finish_animation_load_if_ready()
-		return
-	_animation_binding_scheduled = true
-	call_deferred("_process_pending_animation_libraries")
-
-
-## NifServer does the expensive authored-key conversion in its worker. Binding
-## copies only the resulting resource and changes its track paths for this
-## actor's Skeleton3D. A real process-frame yield is deliberate: call_deferred
-## alone drains recursive batches inside the same frame.
-func _process_pending_animation_libraries() -> void:
-	while _animation_loading and not _pending_animation_libraries.is_empty():
-		var body := get_node_or_null(NodePath(BODY_NODE_NAME)) as Node3D
-		var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
-		if body == null or skeleton == null:
-			_cancel_animation_load()
-			return
-		var player := _ensure_locomotion_animation_player(body)
-		var library := player.get_animation_library("")
-		var batch_started_usec := Time.get_ticks_usec()
-		var processed := 0
-		while not _pending_animation_libraries.is_empty() and processed < ANIMATION_CLIPS_PER_FRAME:
-			var entry: Dictionary = _pending_animation_libraries.pop_front()
-			var raw_library := entry.get("library") as AnimationLibrary
-			if raw_library != null:
-				_bind_external_animation_library(library, String(entry.get("path", "")), raw_library, body, skeleton)
-			processed += 1
-		_animation_profile("locomotion bind batch: %d KF libraries, %.2fms (%d queued, %d pending)" % [
-			processed, float(Time.get_ticks_usec() - batch_started_usec) / 1000.0,
-			_pending_animation_libraries.size(), _animation_pending_requests,
-		])
-		if not _pending_animation_libraries.is_empty():
-			await get_tree().process_frame
-	_animation_binding_scheduled = false
-	_finish_animation_load_if_ready()
-
-
-func _finish_animation_load_if_ready() -> void:
-	if not _animation_loading or _animation_pending_requests > 0 or not _pending_animation_libraries.is_empty():
-		return
-	_animation_loading = false
-	var body := get_node_or_null(NodePath(BODY_NODE_NAME)) as Node3D
-	var player := _ensure_locomotion_animation_player(body) if body != null else null
-	var library := player.get_animation_library("") if player != null else null
-	if library == null:
-		animation_load_failed.emit("locomotion animation player was unavailable")
-		return
-	var idle_clip := _animation_clip_name(_animation_root_path + "locomotion/mtidle.kf", 0)
-	if library.has_animation(idle_clip):
-		var play_started_usec := Time.get_ticks_usec()
-		player.play(idle_clip)
-		_animation_profile("idle play requested: %s in %.2fms" % [
-			idle_clip, float(Time.get_ticks_usec() - play_started_usec) / 1000.0,
-		])
-		_profile_idle_activation_next_frame(_animation_load_generation,
-			Engine.get_process_frames(), play_started_usec)
-	else:
-		push_warning("EsmHumanoidActor: default idle clip was not loaded: " + idle_clip)
-	animation_load_completed.emit(library.get_animation_list().size())
-
-
-func _profile_idle_activation_next_frame(generation: int, requested_frame: int,
-		requested_usec: int) -> void:
-	await get_tree().process_frame
-	if generation != _animation_load_generation:
-		return
-	_animation_profile("idle first process frame: %d -> %d, %.2fms since play, process delta=%.2fms" % [
-		requested_frame, Engine.get_process_frames(),
-		float(Time.get_ticks_usec() - requested_usec) / 1000.0,
-		get_process_delta_time() * 1000.0,
-	])
-
-
-func _ensure_locomotion_animation_player(body: Node3D) -> AnimationPlayer:
-	if _locomotion_animation_player != null and is_instance_valid(_locomotion_animation_player):
-		return _locomotion_animation_player
-	var player := AnimationPlayer.new()
-	player.name = "LocomotionAnimationPlayer"
-	# Track paths below are relative to Body, the same assembly root that owns
-	# SkeletonModel and will later own equipment animation targets.
-	player.root_node = NodePath("..")
-	player.add_animation_library("", AnimationLibrary.new())
-	body.add_child(player)
-	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
-		_own_recursive(player)
-	_locomotion_animation_player = player
-	return player
-
-
-func _bind_external_animation_library(library: AnimationLibrary, source_path: String,
-		raw_library: AnimationLibrary, body: Node3D, skeleton: Skeleton3D) -> void:
-	var sequence_index := 0
-	for raw_name in raw_library.get_animation_list():
-		var raw_animation := raw_library.get_animation(raw_name)
-		var animation := _bind_external_skeleton_animation(raw_animation, body, skeleton)
-		if animation != null:
-			var clip_name := _animation_clip_name(source_path, sequence_index)
-			while library.has_animation(clip_name):
-				clip_name += "_"
-			animation.set_meta("nif_source_path", source_path)
-			library.add_animation(clip_name, animation)
-		sequence_index += 1
-
-
-func _animation_clip_name(source_path: String, sequence_index: int) -> String:
-	var relative := source_path.trim_prefix(_animation_root_path)
-	if relative.is_empty():
-		relative = source_path.get_file()
-	var clip_name := relative.replace("/", "__")
-	return clip_name if sequence_index == 0 else "%s__%d" % [clip_name, sequence_index]
-
-
-func _bind_external_skeleton_animation(raw_animation: Animation, body: Node3D,
-		skeleton: Skeleton3D) -> Animation:
-	if raw_animation == null:
-		return null
-	var animation := raw_animation.duplicate(true) as Animation
-	var skeleton_path := body.get_path_to(skeleton)
-	var tracks := 0
-	for track_index in animation.get_track_count():
-		var authored_target := String(animation.track_get_path(track_index))
-		if skeleton.find_bone(authored_target) == -1:
-			animation.track_set_enabled(track_index, false)
-			continue
-		# Root motion must later drive the controller, not deform the in-place
-		# visual rig. The authored non-accumulation helper has the same role.
-		if authored_target == "Bip01" or authored_target == NifNamesScript.escape("Bip01 NonAccum"):
-			animation.track_set_enabled(track_index, false)
-			continue
-		animation.track_set_path(track_index, NodePath("%s:%s" % [skeleton_path, authored_target]))
-		tracks += 1
-	return animation if tracks > 0 else null
-
-
-func _cancel_animation_load() -> void:
-	_animation_load_generation += 1
-	_animation_loading = false
-	_animation_root_path = ""
-	_animation_pending_requests = 0
-	_animation_requests_being_submitted = false
-	_animation_binding_scheduled = false
-	_pending_animation_libraries.clear()
-	if _locomotion_animation_player != null and is_instance_valid(_locomotion_animation_player):
-		_locomotion_animation_player.queue_free()
-	_locomotion_animation_player = null
 
 
 func _clear_staging() -> void:
@@ -1228,7 +963,7 @@ func _editor_apply_actor_data() -> void:
 func _editor_unload_actor() -> void:
 	_cancel_visual_load()
 	_cancel_equipment_refresh()
-	_cancel_animation_load()
+	animator.cancel()
 	_active_record = null
 	_is_female = false
 	hair_no_hat_meshes.clear()
