@@ -111,6 +111,9 @@ var hair_hat_meshes: Array[MeshInstance3D] = []
 # separate debug-visual policy below, not a NifServer concern.
 var _dismember_meshes_by_part_id := {}
 
+## The child that binds skinned parts to the skeleton.
+@onready var skinning: ActorSkinning = $ActorSkinning
+
 
 
 func _ready() -> void:
@@ -374,8 +377,8 @@ func _assemble_staged_body(generation: int) -> void:
 			return
 		_construction_profile("body part begin: " + String(asset_key))
 		_move_tree(part_tree, nude_body, "BodyPart_%s" % String(asset_key).validate_node_name())
-		_compact_external_skin_part(part_tree)
-		if not _bind_external_skins(part_tree, skeleton):
+		skinning.compact_external_skin_part(part_tree)
+		if not skinning.bind_external_skins(part_tree, skeleton):
 			_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
 			return
 		_tag_nude_body_meshes(part_tree, asset)
@@ -430,76 +433,6 @@ func _ensure_humanoid_look_target(skeleton: Skeleton3D) -> void:
 	skeleton.add_child(look_target)
 
 
-# Gamebyro does not have the concept of skeletons in the way that godot and other engines do
-# Gamebyro animations are simply targeted against NiNodes(Node3D) and skinned meshes target NiNodes
-# like you would target a bone. NifServer detects possible skeletons and does the conversion for us
-# but it's honest return policy also returns the original NiNodes that the skleton was built from which
-# have no function for us, so this goes through the nodes and collapses the unneeded ones
-func _compact_external_skin_part(root: Node3D) -> void:
-	if root == null or not _tree_has_skin(root):
-		return
-	var leaves: Array[Dictionary] = []
-	var stack: Array[Dictionary] = [{"node": root, "transform": Transform3D.IDENTITY}]
-	while not stack.is_empty():
-		var entry: Dictionary = stack.pop_back()
-		var node := entry["node"] as Node
-		var accumulated: Transform3D = entry["transform"]
-		for child in node.get_children():
-			var child_transform := accumulated
-			if child is Node3D:
-				child_transform = accumulated * (child as Node3D).transform
-			stack.append({"node": child, "transform": child_transform})
-		if node != root and node is MeshInstance3D:
-			leaves.append({"mesh": node, "transform": accumulated})
-	if leaves.is_empty():
-		return
-
-	# Detach every leaf before freeing the source nodes. Do not use global
-	# transforms here: NifRoot's R_x(-90) conversion remains on the wrapper and
-	# must not be composed into a child a second time.
-	for leaf in leaves:
-		var mesh := leaf["mesh"] as MeshInstance3D
-		mesh.get_parent().remove_child(mesh)
-	for child in root.get_children():
-		child.free()
-	for leaf in leaves:
-		var mesh := leaf["mesh"] as MeshInstance3D
-		root.add_child(mesh)
-		mesh.transform = leaf["transform"]
-	root.set_meta("esm_humanoid_external_skin_compacted", true)
-	root.set_meta("esm_humanoid_external_skin_mesh_count", leaves.size())
-
-
-## NifServer supplies named Skin binds for flat external skins but deliberately
-## leaves MeshInstance3D.skeleton empty. The shared humanoid skeleton resolves
-## those names here without altering any bind pose.
-func _bind_external_skins(root: Node3D, skeleton: Skeleton3D) -> bool:
-	var found_skin := false
-	for child in root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := child as MeshInstance3D
-		if mesh.skin == null or mesh.skin.get_bind_count() == 0:
-			continue
-		found_skin = true
-		for bind_index in mesh.skin.get_bind_count():
-			if skeleton.find_bone(String(mesh.skin.get_bind_name(bind_index))) == -1:
-				return false
-		mesh.skeleton = mesh.get_path_to(skeleton)
-		# A partitioned BSDismember shape keeps the old MeshInstance3D's
-		# authored local transform on its Node3D source container. External
-		# skins are still positioned solely by their bind poses, so reset that
-		# exact replacement for the old mesh-local transform too.
-		var partition_source := mesh.get_parent() as Node3D
-		if mesh.has_meta("nif_dismember_source_shape") and partition_source != null \
-				and not bool(root.get_meta("esm_humanoid_external_skin_compacted", false)):
-			partition_source.transform = Transform3D.IDENTITY
-		# External body/equipment skins are positioned solely by their bind poses
-		# against the shared skeleton. Retaining this NIF node's local transform
-		# would compose it a second time; the legacy humanoid path uses identity
-		# here for the same Skin/Skeleton3D contract.
-		mesh.transform = Transform3D.IDENTITY
-	return found_skin
-
-
 func _tag_nude_body_meshes(root: Node3D, asset: Dictionary) -> void:
 	for child in root.find_children("*", "MeshInstance3D", true, false):
 		child.set_meta("gamebryo_nude_body", true)
@@ -525,13 +458,13 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 		var tree := _delivered_trees.get(asset_key) as Node3D
 		if tree == null:
 			continue
-		if _tree_has_skin(tree):
+		if skinning.tree_has_skin(tree):
 			# MeshInstance3D.skeleton is a relative NodePath. Reparent before
 			# deriving it so it remains valid after this appearance tree leaves
 			# HumanoidStaging (the body-part path already follows this order).
 			_move_tree(tree, skinned_parts, "Skinned_%s" % String(asset_key).validate_node_name())
-			_compact_external_skin_part(tree)
-			if not _bind_external_skins(tree, skeleton):
+			skinning.compact_external_skin_part(tree)
+			if not skinning.bind_external_skins(tree, skeleton):
 				push_warning("EsmHumanoidActor: optional appearance has unresolved skeleton binds: " + String(asset.get("path", "")))
 				tree.queue_free()
 				continue
@@ -555,14 +488,6 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 	if skinned_parts.get_child_count() == 0:
 		skinned_parts.queue_free()
 	staging.queue_free()
-
-
-func _tree_has_skin(root: Node3D) -> bool:
-	for child in root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := child as MeshInstance3D
-		if mesh.skin != null and mesh.skin.get_bind_count() > 0:
-			return true
-	return false
 
 
 func _create_facial_attachment(skeleton: Skeleton3D) -> BoneAttachment3D:
@@ -1121,9 +1046,9 @@ func _complete_equipment_refresh(generation: int) -> void:
 			equipment.free()
 			_cancel_equipment_refresh()
 			return
-		if _tree_has_skin(tree):
-			_compact_external_skin_part(tree)
-			if not _bind_external_skins(tree, skeleton):
+		if skinning.tree_has_skin(tree):
+			skinning.compact_external_skin_part(tree)
+			if not skinning.bind_external_skins(tree, skeleton):
 				push_warning("EsmHumanoidActor: retained current equipment; unresolved skeleton binds: " + String(descriptor.path))
 				equipment.free()
 				_cancel_equipment_refresh()
