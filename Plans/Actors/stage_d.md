@@ -48,8 +48,9 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   brings avoidance between agents (NPCs and the player) and dynamic obstacles
   (`NavigationObstacle3D`) the authored navmesh does not know about. Off screen, the server alone
   moves the actor, as now.
-- **Local navmesh from NAVM.** Each NAVM record of a loaded cell becomes a `NavigationRegion3D`
-  (vertices and triangles from `NavmeshReader`), added and removed with the cell by the streamers.
+- **Local navmesh from NAVM.** The NAVM records of the lod0 tiles (or the current interior) become
+  NavigationServer3D regions in a map for that space, built from `NavmeshReader`'s triangles and
+  added and removed as tiles load and unload.
 - **Movement is kinematic.** The controller moves at walk or run speed along the agent's next path
   position (with the agent's avoidance velocity), turns toward it at `turn_speed_degrees`, and
   keeps to the ground with `GroundRay`. No `move_and_slide`: the navmesh says where an actor can
@@ -68,6 +69,22 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 
 ## Decisions
 
+- **Split navigation.** `NpcSimulationServer` keeps the whole game's navmesh and plans every
+  actor's global route, including through doors, so door state (locked, unlocked) stays its
+  concern; Godot's navigation has no notion of doors. Godot's NavigationServer3D holds only the
+  lod0 tiles or the current interior, for local pathing and avoidance of physicalised actors.
+  Measured (`_diag/diag_navserver_bench`, `native/tools/navmesh_memory.cpp`):
+
+  | | Heap | Routes (100, about 2 km) | 
+  |---|---|---|
+  | `NavmeshReader`, all six plugins (6,139 records, 826,632 triangles) | 42.6 MB | 90 found, 91 ms mean |
+  | NavigationServer3D, WastelandNV only (4,037 regions, 589,723 polygons, 92,646 links) | about 767 MB | 91 reached, 84 ms mean, 3% longer |
+
+  100 avoidance agents cost 0.09 ms per physics frame. The Godot map needs
+  `map_set_use_edge_connections(false)` (its free-edge search over the unstitched seams never
+  finished on WastelandNV) and is joined by the NVEX links below; a path search stops after
+  `path_search_max_polygons` (default 4,096), enough for local paths.
+
 - **Body:** an `AnimatableBody3D` capsule, moved kinematically: trigger volumes detect it and the
   player is blocked by NPCs, without per-frame sliding.
 - **Speed:** from the actor's record (ACBS Speed Multiplier, `ActorBase.speed_multiplier`, through
@@ -77,17 +94,17 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   frame (move input, current velocity, grounded, running, crouching, turning) and hand it to their
   `EsmActorNode`. The node's `ActorAnimator` reads it and picks clips or blends as suits the
   actor: humanoid locomotion sets for NPCs, its own for creatures. Controllers never name a clip.
-- **Seams.** Godot connects regions by touching edges; NAVM records do not touch. Proposed:
-   stitch by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
+- **Seams.** Godot connects regions by touching edges; NAVM records do not touch. They are
+   stitched by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
    record is one region. Across records, each NVEX link names its target record and triangle
    (resolving 100%); the source triangle is not authored, and
    `NavmeshDatabase::build_cross_record_links()` pairs it with the nearest triangle, as the
    server's A* already uses. Each pair becomes a bidirectional link
    (`NavigationServer3D.link_create`, no nodes) between the two triangles' centres, so local and
    global pathing join records in the same places. Needs `NavmeshReader` to expose the derived
-   pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
+   pairs (`NavmeshReader.get_space_cross_links`). Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
    can cross a little way into the next record.
 
 ## Open
 
-- The seam stitching above needs `NavmeshReader` to expose the derived cross-record pairs.
+- Nothing yet.
