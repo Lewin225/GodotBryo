@@ -93,8 +93,9 @@ state.
 | `item_form_id`, `item` | CNTO item | the item's base resource, or LeveledItemBase |
 | `count` | CNTO count (s32) | |
 | `owner_form_id`, `owner` | COED owner | NpcBase or FactionBase / *EsmBase* (FACT) |
-| `global_or_rank` | COED global variable or required rank | |
-| `condition` | COED item condition (float) | |
+| `global_variable_form_id`, `global_variable` | COED offset 4 when the owner is an NPC_ (xEdit `wbCOEDOwnerDecider`) | *EsmBase* (GLOB) |
+| `required_rank` | COED offset 4 when the owner is a FACT | |
+| `condition` | COED offset 8, Item Condition (float) | |
 
 ContainerBase gains the same `items` when containers are next worked on.
 
