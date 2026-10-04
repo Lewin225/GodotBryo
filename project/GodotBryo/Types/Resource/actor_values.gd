@@ -2,9 +2,9 @@
 class_name ActorValues
 extends Resource
 
-## One actor's actor values. Base values derive from its base record's
-## record (ActorBase, following templates that supply stats); this stores what scripts
-## and gameplay change on top of them, per code:
+## One actor's actor values. Base values derive from its base record (an
+## ActorBase, following templates that supply stats) through ActorValue; this
+## stores what scripts and gameplay change on top of them, per code:
 ##   current = base + permanent + damage
 ## SetAV replaces the base, ModAV and ForceAV change the permanent modifier,
 ## DamageAV and RestoreAV the damage modifier, which is never above 0.
