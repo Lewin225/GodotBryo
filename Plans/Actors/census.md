@@ -297,3 +297,50 @@ behind it), take the marker's offset and orientation in the furniture's space, a
 animation its posRef names. The marker offsets lie beside or in front of the seat, about 35 units
 below the NIF origin; whether the actor stands there before the enter animation or ends there is
 not established, and is for stage F's animations to settle.
+
+## A5. Idles
+
+From `native/tools/idle_census` over every IDLE in FalloutNV.esm.
+
+**IDLE records: 1,597**, each with MODL, CTDA conditions (1,098 have some), ANAM (Parent and
+Previous IDLE: a tree with siblings in order; 512 have no parent) and DATA (animation group
+section, loop min/max, replay delay, flags). 1,203 MODLs name a KF found in the BSAs; the other
+394 name only a folder (`Characters\_Male\IdleAnims`) and are grouping nodes of the tree (340 of
+them have children).
+
+DATA's first byte is the animation group section (xEdit `wbIdleAnam`): the low six bits name the
+section (0 Idle, 1 Movement, 2 Left Arm, 3 Left Hand, 4 Weapon, 5 Weapon Up, 6 Weapon Down,
+7 Special Idle, 20 Whole Body, 21 Upper Body), 0x40 marks a loose idle and 0x80 clear means "must
+return a file". Counts: 7 (748), 0x47 (346), 20 (151), 0x87 (72), 1 (123), 4 (55), 0 (37), others
+under 20 each.
+
+**What VCG00 and VCG01 play.** The Rorschach test's `PlayIdle VCG01DocRorschachTest1-3` lines are
+commented out in their INFOs. Live:
+
+| IDLE | Played by | KF | Length | Bones driven |
+|---|---|---|---|---|
+| VCG01DocGiveMirror | VCG01 stage script, `DocMitchellREF.PlayIdle` | SpecialIdle_NVCG01DocGiveMirror.kf | 3.00 s | 61 |
+| NPCSmokingIdle | VCG01 Doc Travel packages' idle list | SmokingStanding.kf | 8.37 s | 52 |
+| NVOpenPlayerKnockedDown | VCG00PlayerSection0 On Begin | SpecialIdle_NVopen_PlayerKnockDown.kf | 28.93 s | 19 |
+| nvopenplayercamidle | VCG00PlayerSection1 On Begin | SpecialIdle_NVopen_PlayerCamIdle.kf | 3.33 s, loops | 75 |
+| NVopenPlayerPickedUp | VCG00PlayerSection2 On Begin | SpecialIdle_NVopen_PlayerPickedUp.kf | 12.33 s | 19 |
+| LooseVCG01PlayerWakeup | VCG01PlayerSection0 On Begin | SpecialIdle_NVCG01PlayerWakeup.kf | 6.00 s | 15 |
+| LooseVCG01PlayerSitup | VCG01PlayerSection1 On Begin | SpecialIdle_NVCG01PlayerSitUp.kf | 5.40 s | 15 |
+| LooseVCG01PlayerBedsit | VCG01PlayerSection1 On Change | SpecialIdle_NVCG01PlayerBedsit.kf | 8.17 s | 15 |
+| LooseVCG01PlayerStandup | VCG01PlayerSection2 On Begin | SpecialIdle_NVCG01PlayerStandup.kf | 11.13 s | 15 |
+| CowerIdles | GoodspringsFleePackage's idle list | 3rdP_Cowering.kf | 12.13 s | 60 |
+
+All KFs are under `Characters\_Male\IdleAnims\`, in the BSAs, with one NiControllerSequence whose
+accum root is Bip01. All but nvopenplayercamidle (cycle 0, loop) are cycle type 2 (clamp: play
+once and hold).
+
+Every VCG idle above is section 0x47 (Special Idle, loose) with no parent and no conditions: played
+by name, outside the idle tree. NPCSmokingIdle and CowerIdles are section 7 (Special Idle, not
+loose) with four conditions each; NPCSmokingIdle sits in the tree at GeneralIdles > NPCOnlyIdles >
+NPCNonWeaponIdles.
+
+**Result.** VCG01 needs direct playback of a named IDLE's KF on the actor's skeleton (PlayIdle,
+and package On Begin / On Change idles), and a package's idle list. The idle tree (parent,
+sibling order, conditions; 1,098 IDLEs with conditions) is for the general idles actors play while
+idling, which VCG01 does not depend on. The player's idles drive 15-19 bones: the opening plays
+them on the player's body, likely the camera and head; what they move is for stage F.
