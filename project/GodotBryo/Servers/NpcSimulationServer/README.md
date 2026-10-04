@@ -7,8 +7,8 @@ triangles, and routes between them.
 - **Lifecycle** — nothing loads until `seed()` is called; `game.gd` calls it at
   boot. `seed_finished` fires when the navmesh, actors and portals are ready.
   Tests may instantiate the script directly and seed their own instance.
-- **Local navigation** — `local_navigation` (`local_navigation.gd`) holds Godot
-  NavigationServer3D maps for the cells the streamers have loaded, for
+- **Local navigation** — `local_navigation` (`local_navigation.gd`, the
+  `LocalNavigation` child node) holds Godot NavigationServer3D maps for the cells the streamers have loaded, for
   physicalised actors' local pathing; see "Local navigation" below.
 - **Index** — `actors_by_space_form_id` / `actors_by_cell_form_id` and grounding
   follow `EsmServer.reference_cell_changed`, so an actor that moves or walks into
@@ -239,9 +239,11 @@ record can be concave or hollow, putting its midpoint off-mesh.
 ## Local navigation
 
 `LocalNavigation` copies the NAVM of the **local** cells into Godot's
-NavigationServer3D: one map per space, one region per NAVM record, and one
-two-way link per derived cross-record pair (`NavmeshReader.get_record_cross_links`)
-whose two records both have regions. Physicalised actors path and avoid each
+NavigationServer3D: one map per space, a `NavigationRegion3D` per NAVM record
+(`NAVM_<form id>`), and a two-way `NavigationLink3D` per derived cross-record
+pair (`NavmeshReader.get_record_cross_links`) whose two records both have
+regions, grouped under a `Space_<form id>` node per space. Being nodes, they
+show in the remote scene tree and under Debug > Visible Navigation. Physicalised actors path and avoid each
 other on these maps; NSS keeps routing every actor over the whole game's NAVM,
 including through doors.
 
@@ -249,7 +251,7 @@ including through doors.
   space with `set_local_cells(space, cells)`. `CellStreamerV2` makes the current
   interior local. `WorldStreamerV2` does not call it yet.
 - **Builds** — a cell's NavigationMeshes are built on a `WorkerThreadPool` task
-  and applied on the main thread; `cell_ready` follows. A cell made non-local
+  and its nodes added on the main thread; `cell_ready` follows. A cell made non-local
   before its build lands is never applied.
 - **Map settings** — edge connections off: NAVM records do not share vertices at
   their seams, and on the whole of WastelandNV Godot's free-edge search had not

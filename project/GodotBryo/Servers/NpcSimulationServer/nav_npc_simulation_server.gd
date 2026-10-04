@@ -48,9 +48,9 @@ const PLUGIN_FILES := [
 @export_range(1, 1024, 1) var records_per_frame := 32
 
 var navmesh: NavmeshReader
-## Godot navigation maps for the cells the streamers have loaded, for
-## physicalised actors' local pathing. Filled once the navmesh has loaded;
-## cells made local before then are built when it has.
+## Child node holding Godot navigation for the cells the streamers have
+## loaded, for physicalised actors' local pathing. Filled once the navmesh has
+## loaded; cells made local before then are built when it has.
 var local_navigation := LocalNavigation.new()
 var actors_by_instance_id: Dictionary = {}
 var actors_by_space_form_id: Dictionary = {}
@@ -86,6 +86,8 @@ var _route_tasks: Dictionary = {}
 var _indexed_space_by_instance_id: Dictionary = {}
 
 func _ready() -> void:
+	local_navigation.name = "LocalNavigation"
+	add_child(local_navigation)
 	var esm_server := get_tree().root.get_node_or_null("EsmServer")
 	if esm_server != null:
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
@@ -101,7 +103,6 @@ func _exit_tree() -> void:
 		if not WorkerThreadPool.is_task_completed(task_id):
 			WorkerThreadPool.wait_for_task_completion(task_id)
 	_route_tasks.clear()
-	local_navigation.clear()
 
 func seed() -> void:
 	if is_seeded:

@@ -26,6 +26,7 @@ func _ready() -> void:
 	var data_dir := String(preload("res://game_data_config.gd").resolve().get("data_dir", ""))
 	_check(navmesh.load_plugins(PackedStringArray([data_dir + "FalloutNV.esm"])), "NavmeshReader loads FalloutNV.esm")
 	local_navigation = LocalNavigation.new()
+	add_child(local_navigation)
 	local_navigation.set_navmesh(navmesh)
 
 	await _check_doc_house()

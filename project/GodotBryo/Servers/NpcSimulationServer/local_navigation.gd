@@ -1,13 +1,15 @@
 class_name LocalNavigation
-extends RefCounted
+extends Node
 
-## NavigationServer3D maps holding the NAVM of the cells the streamers have
-## loaded: one map per space, one region per NAVM record, and one two-way link
-## per derived cross-record pair whose two records both have regions.
-## Physicalised actors path on these maps; NpcSimulationServer routes on the
-## whole game's NAVM.
+## Godot navigation for the cells the streamers have loaded: one
+## NavigationServer3D map per space, a NavigationRegion3D per NAVM record and a
+## NavigationLink3D per derived cross-record pair whose two records both have
+## regions. Physicalised actors path on these maps; NpcSimulationServer routes
+## on the whole game's NAVM.
 ##
-## A cell's navigation meshes are built on a worker thread and applied on the
+## Children are grouped per space (`Space_<form id>`), so the remote scene tree
+## and Debug > Visible Navigation show exactly what is local. A cell's
+## navigation meshes are built on a worker thread and its nodes added on the
 ## main thread. Maps never use Godot's edge connections: NAVM records do not
 ## share vertices at their seams, and on a worldspace-sized map Godot's
 ## free-edge search does not finish (`_diag/diag_navserver_bench`). The links
@@ -32,19 +34,28 @@ var _records_by_cell: Dictionary = {}
 var _space_by_cell: Dictionary = {}
 ## space_form_id -> map RID.
 var _maps_by_space: Dictionary = {}
+## space_form_id -> the Node3D holding that space's regions and links.
+var _roots_by_space: Dictionary = {}
 ## space_form_id -> { cell_form_id: true } the streamers want local.
 var _wanted_cells_by_space: Dictionary = {}
 ## cell_form_id -> true once its regions are on the map.
 var _built_cells: Dictionary = {}
 ## cell_form_id -> WorkerThreadPool task id, while its meshes are built.
 var _build_tasks: Dictionary = {}
-## record index -> region RID.
+## record index -> its NavigationRegion3D.
 var _regions_by_record: Dictionary = {}
-## record index -> Array of link RIDs touching it (each link is listed under
-## both of its records).
+## record index -> the NavigationLink3Ds touching it (each link is listed
+## under both of its records).
 var _links_by_record: Dictionary = {}
-## link RID -> the two record indices it joins.
+## NavigationLink3D -> the two record indices it joins.
 var _records_by_link: Dictionary = {}
+
+func _exit_tree() -> void:
+	_wait_for_builds()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_free_maps()
 
 ## Indexes the reader's records by cell and builds any cells already wanted.
 func set_navmesh(navmesh: NavmeshReader) -> void:
@@ -102,25 +113,43 @@ func get_region_count() -> int:
 func get_link_count() -> int:
 	return _records_by_link.size()
 
-## Waits for running builds and frees every map, region and link.
+## Waits for running builds and removes every region, link and map.
 func clear() -> void:
-	for task_id: int in _build_tasks.values():
-		WorkerThreadPool.wait_for_task_completion(task_id)
-	_build_tasks.clear()
+	_wait_for_builds()
 	for cell_form_id: int in _built_cells.keys():
 		_remove_cell(cell_form_id)
-	for map: RID in _maps_by_space.values():
-		NavigationServer3D.free_rid(map)
-	_maps_by_space.clear()
 	_wanted_cells_by_space.clear()
+	for root: Node in _roots_by_space.values():
+		root.free()
+	_roots_by_space.clear()
+	_free_maps()
 
 static func to_godot(point: Vector3) -> Vector3:
 	return GAMEBRYO_TO_GODOT_BASIS * point
+
+func _wait_for_builds() -> void:
+	for task_id: int in _build_tasks.values():
+		WorkerThreadPool.wait_for_task_completion(task_id)
+	_build_tasks.clear()
+
+func _free_maps() -> void:
+	for map: RID in _maps_by_space.values():
+		NavigationServer3D.free_rid(map)
+	_maps_by_space.clear()
 
 func _is_wanted(cell_form_id: int) -> bool:
 	var space_form_id := int(_space_by_cell.get(cell_form_id, 0))
 	var wanted: Dictionary = _wanted_cells_by_space.get(space_form_id, {})
 	return wanted.has(cell_form_id)
+
+## The node holding a space's regions and links, created on first use.
+func _space_root(space_form_id: int) -> Node3D:
+	if not _roots_by_space.has(space_form_id):
+		var root := Node3D.new()
+		root.name = "Space_%X" % space_form_id
+		add_child(root)
+		_roots_by_space[space_form_id] = root
+	return _roots_by_space[space_form_id]
 
 func _start_build(cell_form_id: int) -> void:
 	if not _records_by_cell.has(cell_form_id):
@@ -143,26 +172,28 @@ func _apply_build(cell_form_id: int, records: PackedInt32Array, meshes: Array[Na
 	_build_tasks.erase(cell_form_id)
 	if task_id != -1:
 		WorkerThreadPool.wait_for_task_completion(task_id)
-	if not _is_wanted(cell_form_id) or _built_cells.has(cell_form_id):
+	if not is_inside_tree() or not _is_wanted(cell_form_id) or _built_cells.has(cell_form_id):
 		return
-	var map := get_map(int(_space_by_cell[cell_form_id]))
+	var space_form_id := int(_space_by_cell[cell_form_id])
 	for index in records.size():
-		_add_region(map, records[index], meshes[index])
+		_add_region(space_form_id, records[index], meshes[index])
 	_built_cells[cell_form_id] = true
 	cell_ready.emit(cell_form_id)
 
-func _add_region(map: RID, record_index: int, mesh: NavigationMesh) -> void:
-	var region := NavigationServer3D.region_create()
-	NavigationServer3D.region_set_map(region, map)
-	NavigationServer3D.region_set_navigation_mesh(region, mesh)
+func _add_region(space_form_id: int, record_index: int, mesh: NavigationMesh) -> void:
+	var region := NavigationRegion3D.new()
+	region.name = "NAVM_%08X" % int(_navmesh.get_record_info(record_index)["form_id"])
+	region.navigation_mesh = mesh
+	region.set_navigation_map(get_map(space_form_id))
+	_space_root(space_form_id).add_child(region)
 	_regions_by_record[record_index] = region
 	_links_by_record[record_index] = []
-	_add_links(map, record_index)
+	_add_links(space_form_id, record_index)
 
 ## Links from `record_index` to records that already have regions. A pair is
 ## stored in both directions, so each link is made once: by whichever of its
 ## two records gets its region second.
-func _add_links(map: RID, record_index: int) -> void:
+func _add_links(space_form_id: int, record_index: int) -> void:
 	var cross_links: Dictionary = _navmesh.get_record_cross_links(record_index)
 	var points: PackedVector3Array = cross_links["points"]
 	var target_records: PackedInt32Array = cross_links["target_records"]
@@ -170,11 +201,13 @@ func _add_links(map: RID, record_index: int) -> void:
 		var target_record := target_records[index]
 		if target_record == record_index or not _regions_by_record.has(target_record):
 			continue
-		var link := NavigationServer3D.link_create()
-		NavigationServer3D.link_set_map(link, map)
-		NavigationServer3D.link_set_bidirectional(link, true)
-		NavigationServer3D.link_set_start_position(link, to_godot(points[index * 2]))
-		NavigationServer3D.link_set_end_position(link, to_godot(points[index * 2 + 1]))
+		var link := NavigationLink3D.new()
+		link.name = "Link_%s_%s" % [_regions_by_record[record_index].name, _regions_by_record[target_record].name]
+		link.bidirectional = true
+		link.start_position = to_godot(points[index * 2])
+		link.end_position = to_godot(points[index * 2 + 1])
+		link.set_navigation_map(get_map(space_form_id))
+		_space_root(space_form_id).add_child(link)
 		_links_by_record[record_index].append(link)
 		_links_by_record[target_record].append(link)
 		_records_by_link[link] = [record_index, target_record]
@@ -187,16 +220,16 @@ func _remove_cell(cell_form_id: int) -> void:
 		_remove_region(record_index)
 
 func _remove_region(record_index: int) -> void:
-	for link: RID in _links_by_record.get(record_index, []):
+	for link: NavigationLink3D in _links_by_record.get(record_index, []):
 		for joined_record: int in _records_by_link[link]:
 			if joined_record != record_index:
 				_links_by_record[joined_record].erase(link)
 		_records_by_link.erase(link)
-		NavigationServer3D.free_rid(link)
+		link.free()
 	_links_by_record.erase(record_index)
-	var region: RID = _regions_by_record.get(record_index, RID())
-	if region.is_valid():
-		NavigationServer3D.free_rid(region)
+	var region: NavigationRegion3D = _regions_by_record.get(record_index)
+	if region != null:
+		region.free()
 	_regions_by_record.erase(record_index)
 
 ## One record's triangles in Godot axes, vertices welded by position, each
