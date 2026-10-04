@@ -1,6 +1,6 @@
 # Actors
 
-**Status: proposed.**
+**Status: stage A done (`census.md`); stage B next, starting with the field lists.**
 
 Actor references, one actor node, an NPC controller, ownership between the simulation server and
 the controller, animation, furniture and AI packages. Done when a new game plays VCG01 from stage
@@ -66,21 +66,20 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 
 | Stage | Work | Gate |
 |---|---|---|
-| A. Census | VCG01's and Goodsprings' NPCs: their PKID packages, types and data; the IDLE records VCG01 plays; FURN records and the furniture marker data in their NIFs; the ACHR/ACRE and NPC_/CREA subrecords shared and not. | Field lists for B and the package types for H, from counts over the whole population. |
+| A. Census (done) | VCG01's and Goodsprings' NPCs: their PKID packages, types and data; the IDLE records VCG01 plays; FURN records and the furniture marker data in their NIFs; the ACHR/ACRE and NPC_/CREA subrecords shared and not. | Field lists for B and the package types for H, from counts over the whole population. |
 | B. References | Abstract `ActorReference`, `NpcReference`, `CreatureReference`; shared fields moved to the base; every caller of today's `ActorReference` checked for NPC versus any actor. | The field list agreed first. Inventory, actor values and every resolved link still show in the inspector; the full test suite passes. |
 | C. Actor node | Split `EsmHumanoidActor` into the shared actor node (skeleton, parts, animation) and its humanoid layer; the parts source per type; the physicaliser routes actors to it. | Doc Mitchell renders and animates as today. |
 | D. NpcController | Movement, ground contact and following a navmesh route, cheaper than `PlayerController`; tells the actor node how it is moving. `PlayerController` does the same for the possessed actor. | An NPC walks a route across GSDocMitchellHouse; the player and the NPC animate from their controllers. |
 | E. Ownership | An actor is virtual (`NpcSimulationServer`) or local (`NpcController`); check-out and check-in hand position and package state over; a disabled actor is frozen in both; script moves win over both; the server seeds in the running game. | An NPC leaving the loaded area continues virtually and returns where the server put it. |
-| F. Animation | Locomotion from the controller's movement; furniture enter, sit and exit; `PlayIdle` from IDLE records; `Look` / `StopLook`. | Doc plays VCG01's idles and looks at the player. |
+| F. Animation | Locomotion from the controller's movement; furniture enter, sit and exit; `PlayIdle` and package idles from IDLE records (VCG01's are loose special idles played by name; the idle tree is not needed); `Look` / `StopLook`. | Doc plays VCG01DocGiveMirror and NPCSmokingIdle, the player plays the VCG01 wake-up idles, and Doc looks at the player. |
 | G. Furniture | FURN markers; entering and leaving a seat for the player and for NPCs; `IsCurrentFurnitureRef`, `GetSitting`. | The player sitting on the couch completes objective 40. |
-| H. Packages | Typed `PackageBase`; the package stack (PKID, quest-added); selection by order, schedule and conditions; `evp`; the types A names, expected to include Travel, Use Item At or Sandbox, and Dialogue. Generic over actors, in both `NpcController` and `NpcSimulationServer`. | The done-condition. |
+| H. Packages | Typed `PackageBase`; the package stack (PKID, quest-added); selection by order, schedule and conditions; `evp`; Travel (using furniture at a radius-0 FURN destination, as Use Item At does) and Dialogue (force-greet), per census A3; `AddScriptPackage` / `RemoveScriptPackage`; packages on the player too (VCG00/VCG01 add them). Generic over actors, in both `NpcController` and `NpcSimulationServer`. | The done-condition. |
 | I. Positional voice | Speech plays at the speaker's actor node. | Doc's lines come from Doc. |
 | J. Creatures | CREA parts from `NIFZ`/`TPLT` through the actor node; creatures through D-H unchanged. | A Goodsprings creature renders, animates and runs its packages. |
 
 ## Unverified
 
 - That creatures cannot wear clothing.
-- Which package type puts Doc in his chair.
 
 ## Out of scope
 
