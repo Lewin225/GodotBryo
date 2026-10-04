@@ -95,6 +95,10 @@ public:
 	RouteResult route(uint32_t space_form_id, const Vec3 &from, const Vec3 &to,
 			float snap_radius, bool use_coarse_index = true) const;
 
+	// The derived cross-record links, keyed by their from-triangle (global
+	// index); every pair is stored once in each direction.
+	const std::unordered_map<uint32_t, std::vector<CrossRecordLink>> &cross_record_links() const { return cross_links_; }
+
 	// Coarse record-level connectivity, straight from authored NVEX targets.
 	const std::vector<uint32_t> &coarse_neighbors(uint32_t record_index) const;
 

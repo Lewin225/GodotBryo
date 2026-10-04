@@ -19,6 +19,7 @@ void NavmeshReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_record_info", "record_index"), &NavmeshReader::get_record_info);
 	ClassDB::bind_method(D_METHOD("get_record_triangle_points", "record_index"), &NavmeshReader::get_record_triangle_points);
 	ClassDB::bind_method(D_METHOD("get_space_geometry", "space_form_id"), &NavmeshReader::get_space_geometry);
+	ClassDB::bind_method(D_METHOD("get_space_cross_links", "space_form_id"), &NavmeshReader::get_space_cross_links);
 	ClassDB::bind_method(D_METHOD("get_space_bounds", "space_form_id"), &NavmeshReader::get_space_bounds);
 	ClassDB::bind_method(D_METHOD("get_coarse_neighbors", "record_index"), &NavmeshReader::get_coarse_neighbors);
 	ClassDB::bind_method(D_METHOD("snap", "space_form_id", "position", "max_distance", "use_coarse_index"),
@@ -112,6 +113,26 @@ PackedVector3Array NavmeshReader::get_record_triangle_points(int record_index) c
 	for (const nav::Triangle &t : r->triangles) {
 		if (t.vertex[0] >= r->vertices.size() || t.vertex[1] >= r->vertices.size() || t.vertex[2] >= r->vertices.size()) continue;
 		for (int i = 0; i < 3; ++i) out.push_back(to_godot(r->vertices[t.vertex[i]]));
+	}
+	return out;
+}
+
+// The derived cross-record links between records of one space, each pair once
+// (lower global triangle first), as consecutive points: from-triangle centroid,
+// then to-triangle centroid.
+PackedVector3Array NavmeshReader::get_space_cross_links(int space_form_id) const {
+	PackedVector3Array out;
+	for (const auto &entry : db_.cross_record_links()) {
+		for (const nav::CrossRecordLink &link : entry.second) {
+			if (link.from_global_triangle > link.to_global_triangle) continue;
+			uint32_t from_record = 0, from_local = 0, to_record = 0, to_local = 0;
+			if (!db_.resolve_global_triangle(link.from_global_triangle, &from_record, &from_local)) continue;
+			if (!db_.resolve_global_triangle(link.to_global_triangle, &to_record, &to_local)) continue;
+			if (db_.record_at(from_record)->space_form_id != (uint32_t)space_form_id) continue;
+			if (db_.record_at(to_record)->space_form_id != (uint32_t)space_form_id) continue;
+			out.push_back(to_godot(db_.triangle_centroid(from_record, from_local)));
+			out.push_back(to_godot(db_.triangle_centroid(to_record, to_local)));
+		}
 	}
 	return out;
 }
