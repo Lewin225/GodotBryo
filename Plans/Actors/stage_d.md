@@ -57,8 +57,16 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   walk.
 - **State stays on the reference.** Every physics frame the controller writes position and heading
   to its `ActorReference`, as `PlayerController` does for the possessed actor.
-- **API for packages (stage H):** `move_to(space, position)` requests the route and walks it;
-  `stop()`; signal `arrived`. Stage D drives it from a test or diagnostic, not from packages.
+- **Movement target on the reference.** `NpcSimulationServer` runs packages for every actor and
+  sets where it is heading; the controller only moves. `ActorReference` gains runtime state with no
+  ESM source: `move_target: Vector3` (in the actor's current space), `has_move_target: bool`, and
+  signal `move_target_reached` (emitted on arrival, when the target is cleared). The server sets
+  the target to the next stop on the global route: the package target, or the next door.
+  Off screen (`LOW_LEVEL`) the server walks the actor there itself and emits the signal;
+  physicalised (`PHYSICAL_LEASED`) the `NpcController` paths there locally and reports arrival.
+  Either way the server then advances the package step. A save mid-walk keeps the target, and a
+  hand-off between the two modes carries on to the same point. Stage D sets targets from a test,
+  not from packages.
 - **Motion to animation, shared with the player.** A `MotionData`-like state (actor-local velocity,
   grounded, running) goes to the actor node's `ActorAnimator.set_motion()`, which picks the
   `mt*` clip for direction and speed (and turns in place). `PlayerController` calls the same
@@ -68,6 +76,10 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   stands in for.
 
 ## Decisions
+
+- **Packages stay in the server.** `NpcSimulationServer` runs package execution for physicalised
+  and off-screen actors alike; it and the controller communicate only through the reference's
+  movement target (see above).
 
 - **Split navigation.** `NpcSimulationServer` keeps the whole game's navmesh and plans every
   actor's global route, including through doors, so door state (locked, unlocked) stays its
