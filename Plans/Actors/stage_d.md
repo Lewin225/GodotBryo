@@ -66,9 +66,18 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   controller owns its `EsmActorNode`), except for the possessed actor, which the player's body
   stands in for.
 
-## Questions
+## Decisions
 
-0. **Seams.** Godot connects regions by touching edges; NAVM records do not touch. Proposed:
+- **Body:** an `AnimatableBody3D` capsule, moved kinematically: trigger volumes detect it and the
+  player is blocked by NPCs, without per-frame sliding.
+- **Speed:** from the actor's record (ACBS Speed Multiplier, `ActorBase.speed_multiplier`, through
+  the SpeedMult actor value), scaled by an exported factor on the controller to tweak by eye.
+- **Animation input:** controllers publish their motion; the actor chooses its own clips. Both
+  `PlayerController` and `NpcController` keep an `ActorMotion` resource up to date every physics
+  frame (move input, current velocity, grounded, running, crouching, turning) and hand it to their
+  `EsmActorNode`. The node's `ActorAnimator` reads it and picks clips or blends as suits the
+  actor: humanoid locomotion sets for NPCs, its own for creatures. Controllers never name a clip.
+- **Seams.** Godot connects regions by touching edges; NAVM records do not touch. Proposed:
    stitch by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
    record is one region. Across records, each NVEX link names its target record and triangle
    (resolving 100%); the source triangle is not authored, and
@@ -78,16 +87,7 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
    global pathing join records in the same places. Needs `NavmeshReader` to expose the derived
    pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
    can cross a little way into the next record.
-1. **The body.** What triggers detect, and what the player bumps into:
-   - an `Area3D` capsule: cheapest; triggers see it (with the volumes monitoring areas too); the
-     player walks through NPCs;
-   - an `AnimatableBody3D` capsule moved kinematically: triggers see it and the player is blocked
-     by NPCs, still without per-frame sliding.
-2. **Speeds.** Fallout derives walk and run speed from GMSTs (`fMoveCharWalkMin`/`Max`,
-   `fMoveCharRunMin`/`Max`, scaled by the actor's SpeedMult and the clip's own speed). Read those,
-   with a scene multiplier to tweak, or start from plain exported speeds?
-3. **Clip selection.** Code in `ActorAnimator` switching clips by direction and speed with a short
-   crossfade, or an `AnimationTree` (a BlendSpace2D of the `mt*` clips) authored in the actor
-   template scene, tweakable in the editor? The tree is the "human touch" option; an earlier
-   locomotion AnimationTree in the legacy path had bugs (wrong player path, a missing Z-up fix,
-   root-motion drift from uneven track sets), which the rebuilt node would have to avoid.
+
+## Open
+
+- The seam stitching above needs `NavmeshReader` to expose the derived cross-record pairs.
