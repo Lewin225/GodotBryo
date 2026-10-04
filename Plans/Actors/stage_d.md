@@ -101,8 +101,8 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
    `NavmeshDatabase::build_cross_record_links()` pairs it with the nearest triangle, as the
    server's A* already uses. Each pair becomes a bidirectional link
    (`NavigationServer3D.link_create`, no nodes) between the two triangles' centres, so local and
-   global pathing join records in the same places. Needs `NavmeshReader` to expose the derived
-   pairs (`NavmeshReader.get_space_cross_links`). Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
+   global pathing join records in the same places. `NavmeshReader.get_space_cross_links` returns the
+   pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
    can cross a little way into the next record.
 
 ## Open
