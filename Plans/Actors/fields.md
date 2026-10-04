@@ -22,7 +22,7 @@ EsmReference already holds NAME (`base`), DATA, XSCL, XLKR, XESP and the enable 
 | Activation | `activation_prompt` | XATO: 3 ACHR, 1 ACRE | | not read |
 | Activation | `parent_activate_only` | XAPD: 3 ACHR, 1 ACRE | | not read |
 | Activation | `ignored_by_sandbox` | XIBS: 6 ACHR, 0 ACRE | | not read |
-| Unused in FalloutNV.esm | `health`, `count`, `radius`, `idle_time`, `idle_form_id`, `topic_form_id` | XHLP, XCNT, XRDS, XPRD, INAM, TNAM: on no ACHR or ACRE | (idle: *EsmBase* IDLE; topic: DialogueTopicBase) | both reference types, documented as unused |
+| Unused in FalloutNV.esm | `health`, `count`, `radius`, `idle_time`, `idle_form_id`, `topic_form_id` | XHLP, XCNT, XRDS, XPRD, INAM, TNAM | (idle: IdleBase; topic: DialogueTopicBase) | both reference types; kept, each described "Present on no ACHR or ACRE in FalloutNV.esm; not read." |
 | State | `contents` | runtime, seeded from the base's CNTO | Inventory | both |
 | State | `actor_values` | runtime | ActorValues | both |
 | State | `alive` | runtime | | both, unused |
@@ -46,7 +46,7 @@ No fields of its own. `base` is an NpcBase.
 | Group | Field | Source | Resolves to | Today |
 |---|---|---|---|---|
 | Ownership | `owner_form_id`, `owner` | XOWN: 10 ACRE | NpcBase or *EsmBase* (FACT) | CreatureReference, not read |
-| Ownership | `owner_faction_rank` | XRNK: on no ACRE | | `faction_rank`, documented as unused |
+| Ownership | `owner_faction_rank` | XRNK | | `faction_rank`; kept, "Present on no ACRE in FalloutNV.esm; not read." |
 
 ## ActorBase (abstract; extends EsmBase)
 
@@ -121,14 +121,33 @@ Not read, no field: CNTO (the reference's `contents` is seeded from it, as today
 `acbs_template_flags` (becomes ActorBase `template_flags`); CreatureBase `pnam_values`,
 `model_list_filenames` / `paths`, `animation_filenames` / `paths` (renamed).
 
+## Resources for referenced types
+
+Record types the fields above point at that have no typed resource. Each would be an EsmBase
+subclass with the fields below (xEdit layouts). Until one exists, `EsmServer.get_base` gives a
+plain EsmBase for it.
+
+| Record | Resource | Fields | Referenced by | Consumer today or in this plan |
+|---|---|---|---|---|
+| VTYP | VoiceTypeBase | DNAM flags (Allow Default Dialog, Female) | ActorBase `voice_type` | GetIsVoiceType; the voice file path (DialogueServer) |
+| FACT | FactionBase | FULL; DATA flags 1 (Hidden from PC, Evil, Special Combat) and 2 (Track Crime, Allow Sell); relations (XNAM: faction, modifier, group combat reaction; layout from fopdoc, its xEdit definition is not in the vendored copy); ranks (RNAM number, MNAM male title, FNAM female title, INAM insignia); WMI1 reputation (REPU) | ActorFaction `faction`, CreatureReference `owner`, ECZN owner | GetInFaction, GetFactionRank |
+| LVLN | LeveledNpcBase | OBND; LVLD chance none; LVLF flags; entries (LVLO: level, NPC_ / LVLN, count; COED) | ActorBase `template` (NPC_) | the four saloon powder gangers' packages (census A3) |
+| LVLC | LeveledCreatureBase | as LVLN, entries CREA / LVLC | ActorBase `template` (CREA) | creatures, stage J |
+| IDLE | IdleBase | MODL (KF); conditions; ANAM parent, previous; DATA section, loop min/max, replay delay, flags | PACK idle lists and events, `PlayIdle`, ActorReference `idle` | stage F |
+| HDPT | HeadPartBase | FULL; MODL; DATA playable; HNAM extra parts (HDPT) | NpcBase `head_parts` | the humanoid head (stage C) |
+| SPEL | SpellBase | FULL; SPIT type (Actor Effect, Disease, Power, Lesser Power, Ability, Poison, Addiction), flags; effects (EFID, EFIT, conditions) | ActorBase `actor_effects` | none yet (abilities would change actor values) |
+| ENCH | EnchantmentBase | FULL; ENIT type (Weapon, Apparel), flags; effects | ActorBase `unarmed_attack_effect` | none yet |
+| CSTY | CombatStyleBase | CSTD (standard), CSAD (advanced), CSSD (simple): dozens of combat tuning values | ActorBase `combat_style` | none (combat is out of scope) |
+| ECZN | EncounterZoneBase | DATA: owner (NPC_ / FACT), rank, minimum level, flags (Never Resets, Match PC Below Minimum Level) | ActorReference `encounter_zone` | none yet |
+| IPDS | ImpactDatasetBase | DATA: an IPCT per material (stone, dirt, grass, glass, metal, wood, organic, cloth, water, hollow metal, organic bug, organic glow) | CreatureBase `impact_dataset` | none (combat) |
+
+LVLN and LVLC entries have the same layout as LVLI's, which `LeveledItemEntry` holds today; one
+shared entry resource would serve all three.
+
 ## Questions
 
-1. The six reference fields on no ACHR or ACRE (XHLP, XCNT, XRDS, Patrol Data): keep them, as
-   today, or drop them?
-2. Types with no resource (ECZN, VTYP, CSTY, SPEL, ENCH, HDPT, IPDS, LVLN, LVLC, FACT):
-   resolve to a plain EsmBase now, or add typed resources for some (VTYP and FACT are read by
-   conditions today)?
-3. CNTO on the base: keep reading it raw to seed the reference's `contents` (today's behaviour),
-   or add a base field (CONT has CNTO too, so it would be a shared sub-resource)?
-4. CSDT sounds, NIFT and DEST: fields now (CSDT would be a small sub-resource list), or "not read"
-   until a consumer needs them?
+1. Which of the resources above to add in stage B: those with a consumer in this plan (VTYP, FACT,
+   LVLN, IDLE, HDPT; LVLC with creatures), or all of them?
+2. CNTO on the base: keep reading it raw when a reference is created, or add a base field (CONT
+   has CNTO too, so it would be a shared sub-resource)?
+3. CSDT, NIFT and DEST: fields now, or "not read" until a consumer needs them?
