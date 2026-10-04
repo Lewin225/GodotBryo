@@ -132,6 +132,15 @@ placement of its base. Not InventoryItem, which is a live, per-placement item wi
 instantiated item reference and equip state. Not LVLO: leveled-list entries live inside LVLI,
 LVLN and LVLC records, never in an actor's Items.
 
+**Immutable.** Items exist only to construct a reference's runtime inventory (`contents`): read
+once when the reference is created, and again only if the reference respawns and its inventory
+is rebuilt (the ACBS Respawn flag; not implemented). With the Inventory template flag (0x100) set,
+the items come from the TPLT template's Items instead. Nothing changes a base's Items at runtime:
+the inventory functions ScriptServer implements (AddItem, RemoveItem, RemoveAllItems, EquipItem,
+UnequipItem, GetItemCount) all act on the calling reference's `contents`. Not checked against the
+full GECK function list.
+Items are therefore never dirty and never saved; a changed inventory lives in `contents`.
+
 What actor Items name in FalloutNV.esm (top level): LVLI 13,378 NPC_ / 596 CREA, ARMO 1,503 / 4,
 MISC 472 / 14, ALCH 331 / 8, WEAP 213 / 525, KEYM 127 / 12, AMMO 107 / 407, NOTE 29 / 2, CMNY 3 /
 0, LIGH 3 / 0; every FormID resolves. xEdit also allows BOOK, IMOD, CCRD and CHIP, which no actor
