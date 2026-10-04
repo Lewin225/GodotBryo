@@ -49,6 +49,22 @@ the door.
 - **State on resources.** Actor state lives on the reference resources, never on nodes; nodes
   exist only for physicalised actors.
 
+## Stage C design
+
+The actor node keeps the lifecycle, the editor buttons and the order of the steps: ask the base
+for its parts list, request the NIFs, assemble, commit. Everything else is a child node in the
+actor template scene, so every script shows in the scene graph:
+
+| Child node | Owns |
+|---|---|
+| `ActorSkinning` | binding skinned parts to the skeleton, compacting external skin parts |
+| `ActorAnimator` | the AnimationPlayer / AnimationTree and KF loading; later the controller's movement (D) and `PlayIdle` (F) |
+| `ActorEquipment` | equipment attachments and body coverage, reading the reference's `EsmActorEquipmentState` |
+
+The parts list comes from the base: NpcBase lists its RACE body parts, head, hair and eyes;
+CreatureBase its NIFZ (stage J). Construction and animation profiling are removed, to be rebuilt
+later if needed. Actor state stays on resources; these nodes are presentation only.
+
 ## Facts
 
 - CREA `NIFZ` (xEdit "Model List"): 1,059 of 1,578 CREA in FalloutNV.esm; 468 of the rest are
