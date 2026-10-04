@@ -11,8 +11,8 @@ says where the value lives now.
   FormID and the resolved resource (`race_form_id`, `race`); the record is never copied into its
   parent.
 - **Every FormID field that is read resolves to a resource**: no FormID-only fields. The resource
-  is a typed EsmBase subclass; a record that changes at runtime and must be saved (GLOB's value)
-  is still an EsmBase, marked dirty when changed, so the save system holds it from then on.
+  is a typed EsmBase subclass; a record changed at runtime (the player's NPC_ name and sex) is
+  still an EsmBase, marked dirty when changed, so the save system holds it from then on.
 - **No field resolves to a plain EsmBase.** Every record type a field points at gets its typed
   resource; the *EsmBase* marks below are the types that do not have one yet.
 - **New classes for referenced types** read what the actor work uses. Their other subrecords,
@@ -322,7 +322,7 @@ plain EsmBase for it.
 | ENCH | EnchantmentBase | FULL; ENIT type (Weapon, Apparel), flags; effects | ActorBase `unarmed_attack_effect` | none yet |
 | CSTY | CombatStyleBase | CSTD (standard), CSAD (advanced), CSSD (simple): dozens of combat tuning values | ActorBase `combat_style` | none (combat is out of scope) |
 | ECZN | EncounterZoneBase | DATA: owner (NPC_ / FACT), rank, minimum level, flags (Never Resets, Match PC Below Minimum Level) | ActorReference `encounter_zone` | none yet |
-| GLOB | GlobalBase | FNAM type (short, long, float); FLTV value (runtime-changed by scripts) | InitialItemCollection `global_variable`, scripts, conditions | scripts read and set globals today |
+| GLOB | GlobalBase | FNAM type (short, long, float); FLTV authored value. Immutable: script changes live in ScriptServer's GlobalVariables, the engine's runtime store, which seeds each global from its record on first use and is what is saved | InitialItemCollection `global_variable`, scripts, conditions | scripts read and set globals today |
 | EXPL | ExplosionBase | OBND, FULL, MODL, EITM enchantment, MNAM image space modifier (IMAD); DATA force, damage, radius, light (LIGH), sounds (SOUN), flags, IS radius, impact dataset (IPDS), radiation | DestructionStageCollection `explosion` | none yet |
 | DEBR | DebrisBase | models: a list of xEdit `wbDebrisModel` entries, each with MODT (the entry layout's definition is not in the vendored xEdit copy) | DestructionStageCollection `debris` | none yet |
 | SOUN | SoundBase | OBND, FNAM file, RNAM random chance, SNDD attenuation, frequency, flags, static attenuation, start/end time | CreatureSoundCollection `sound`, EXPL, IPCT, many others | none yet |
@@ -337,7 +337,4 @@ global.
 
 ## Questions
 
-1. GlobalVariables holds the runtime values of every GLOB by name today. With GlobalBase a
-   record resource that is marked dirty when a script sets it, the two overlap: should
-   GlobalVariables be replaced by GlobalBase values (dirty, saved), or stay the runtime store with
-   GlobalBase holding only the authored type and value?
+None open.
