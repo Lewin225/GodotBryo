@@ -174,7 +174,7 @@ ContainerBase gains the same `items` when containers are next worked on.
 | Configuration | `acbs_flags` | ACBS 0 (`@export_flags`, CREA names) | | ActorStats `flags` |
 | Stats | `creature_type`, `combat_skill`, `magic_skill`, `stealth_skill`, `health`, `damage`, `attributes` | DATA | | ActorStats (no type) |
 | Combat | `attack_reach` | RNAM | | not read |
-| Combat | `melee_weapon_list_form_id`, `melee_weapon_list` | LNAM | BipedModelListBase (EsmServer maps every FLST to it today, though FLST is a general form list) | not read |
+| Combat | `melee_weapon_list_form_id`, `melee_weapon_list` | LNAM | FormListBase | not read |
 | Body | `model_list` | NIFZ | | `model_list_filenames` / `model_list_paths` |
 | Body | `model_list_textures` | NIFT (raw; xEdit `wbModelInfos`, the texture-hash structure MODT has after every MODL, read nowhere) | | not read |
 | Body | `body_part_data_form_id`, `body_part_data` | PNAM | BodyPartDataBase | `pnam_values` (Array[int]) |
@@ -191,6 +191,14 @@ ContainerBase gains the same `items` when containers are next worked on.
 | `sound_type` | CSDT (u32 enum: Left Foot, Right Foot, Left Back Foot, Right Back Foot, Idle, Aware, Attack, Hit, Death, Weapon, Movement Loop, Conscious Loop, Auxiliary 1-8, Jump, PlayRandom/Loop) | |
 | `sound_form_id`, `sound` | CSDI | *EsmBase* (SOUN) |
 | `chance` | CSDC (u8) | |
+
+## FormListBase (renamed from BipedModelListBase)
+
+FLST is a general FormID list; resources take the record's generic name. `BipedModelListBase`
+becomes `FormListBase`, and its `entries` hold every LNAM resolved to its own typed resource. The
+array is declared `Array[EsmBase]` because one list can mix record types; no element is a plain
+EsmBase. ArmorBase, WeaponBase and EsmHumanoidActor, which use it for biped model lists today,
+take the ArmorAddonBase entries from it.
 
 ## Removed
 
@@ -216,7 +224,7 @@ comment.
 | HNAM hair, ENAM eyes (NPC_) | HAIR, EYES | exist |
 | PNAM body part data (CREA) | BPTD | exists |
 | CNAM impact dataset (CREA) | IPDS | **new** ImpactDatasetBase |
-| LNAM melee weapon list (CREA) | FLST | exists (as BipedModelListBase) |
+| LNAM melee weapon list (CREA) | FLST | FormListBase (renamed from BipedModelListBase) |
 | CSCR inherits sounds from (CREA) | CREA | exists |
 | CSDI sound (CREA) | SOUN | **new** SoundBase |
 | SNAM faction | FACT | **new** FactionBase |
@@ -273,12 +281,4 @@ global.
 
 ## Questions
 
-1. Where the typed-resource cascade stops. Each new resource's own FormID fields point at more
-   types: EXPL at IMAD and IPDS, IPDS at twelve IPCT, IPCT at TXST and SOUN, SPEL and ENCH effects
-   at MGEF, MGEF at projectiles, explosions, shaders, spells and more, FACT at REPU. Build every
-   type reachable from the actor records (a large closure), or build the types the actor records
-   point at directly and keep FormID-only fields (no resolved resource yet) one level further
-   down?
-2. FLST: EsmServer maps every FLST to BipedModelListBase today, but FLST is a general FormID
-   list (CREA's melee weapon list is one). Rename that resource to FormListBase, or add
-   FormListBase beside it?
+None open.
