@@ -69,14 +69,14 @@ func _ready() -> void:
 				"authored_heading inverts the COC marker's placement yaw")
 	var teleport_door: DoorReference = null
 	for reference in streamer.get_current_refs():
-		if reference is DoorReference and reference.teleport != null:
+		if reference is DoorReference and reference.has_teleport:
 			teleport_door = reference
 			break
 	if teleport_door != null:
-		var expected_xtel := EsmReferencePhysicaliser.placement_transform(teleport_door.teleport.position, teleport_door.teleport.rotation)
-		check(EsmReferencePhysicaliser.authored_position(expected_xtel.origin).is_equal_approx(teleport_door.teleport.position),
+		var expected_xtel := EsmReferencePhysicaliser.placement_transform(teleport_door.teleport_position, teleport_door.teleport_rotation)
+		check(EsmReferencePhysicaliser.authored_position(expected_xtel.origin).is_equal_approx(teleport_door.teleport_position),
 				"authored_position inverts an XTEL landing's placement translation")
-		check(is_zero_approx(angle_difference(EsmReferencePhysicaliser.authored_heading(expected_xtel.basis.get_euler().y).z, teleport_door.teleport.rotation.z)),
+		check(is_zero_approx(angle_difference(EsmReferencePhysicaliser.authored_heading(expected_xtel.basis.get_euler().y).z, teleport_door.teleport_rotation.z)),
 				"authored_heading inverts an XTEL landing's placement yaw")
 	else:
 		check(false, "Doc Mitchell's house contains a typed teleport door fixture")

@@ -43,7 +43,7 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 		else:
 			ScriptServer.begin_use(activator, door)
 			return
-	if door.teleport != null:
-		ScriptServer.move_reference(activator, door.teleport.get_destination_space_form_id(), door.teleport.position, door.teleport.rotation)
+	if door.has_teleport:
+		ScriptServer.move_reference(activator, door.get_teleport_destination_space_form_id(), door.teleport_position, door.teleport_rotation)
 	else:
 		door.is_open = not door.is_open

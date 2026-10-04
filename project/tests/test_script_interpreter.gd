@@ -242,7 +242,7 @@ func _test_items_and_location(esm_server, server) -> void:
 	check(float(run.call("GetDistance VictorREF", doc)) >= 1.0e9, "GetDistance across spaces is very large")
 
 	var door: DoorReference = esm_server.find_reference_by_editor_id("V21PlayerRoomDoorREF") as DoorReference
-	check(door != null and door.teleport == null, "V21PlayerRoomDoorREF is a non-teleport door")
+	check(door != null and not door.has_teleport, "V21PlayerRoomDoorREF is a non-teleport door")
 	run.call("SetOpenState 1", door)
 	check(door.is_open and run.call("GetOpenState", door) == 1, "SetOpenState 1 opens; GetOpenState 1")
 	run.call("SetOpenState 0", door)

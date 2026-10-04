@@ -21,7 +21,7 @@ var _shown_open := false
 ## shown. A teleporting door has no open state to show.
 func on_activated(_activator: EsmReference) -> void:
 	var door_reference := reference as DoorReference
-	if door_reference == null or door_reference.teleport != null or door_reference.is_open == _shown_open:
+	if door_reference == null or door_reference.has_teleport or door_reference.is_open == _shown_open:
 		return
 	_shown_open = door_reference.is_open
 	var player := get_nif_animation_player()

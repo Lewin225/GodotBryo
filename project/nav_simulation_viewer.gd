@@ -343,7 +343,7 @@ func _build_portals(space_form_id: int) -> void:
 		if entry["is_destination"]:
 			# Where arriving through that door puts you, with the authored XTEL
 			# arrival orientation.
-			transforms.append(EsmReferencePhysicaliser.placement_transform(portal.destination_position, door.teleport.rotation))
+			transforms.append(EsmReferencePhysicaliser.placement_transform(portal.destination_position, door.teleport_rotation))
 			colors.append(Color(0.3, 0.75, 1.0, 0.85))
 
 	multimesh.instance_count = transforms.size()

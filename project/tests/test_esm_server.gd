@@ -709,18 +709,17 @@ func _check_door_links_and_locks(server) -> void:
 	var locked := 0
 	var locked_level_zero_keyless := 0
 	for door in doors:
-		var link := door.teleport
-		var target: DoorReference = by_id.get(link.destination_id)
+		var target: DoorReference = by_id.get(door.get_teleport_destination_id())
 		if target != null:
 			destination_known += 1
-			if target.teleport.destination_id == door.instance_id:
+			if target.get_teleport_destination_id() == door.instance_id:
 				reciprocal += 1
-		var space := link.get_destination_space_form_id()
+		var space := door.get_teleport_destination_space_form_id()
 		if space != 0 and server._persistent_cell_by_worldspace.has(space):
 			exterior_landings += 1
-			if server.cell_at(space, link.position) != server._persistent_cell_by_worldspace[space]:
+			if server.cell_at(space, door.teleport_position) != server._persistent_cell_by_worldspace[space]:
 				landing_on_grid += 1
-		if link.no_alarm:
+		if door.teleport_no_alarm:
 			no_alarm += 1
 		if door.is_locked:
 			locked += 1
@@ -738,9 +737,9 @@ func _check_door_links_and_locks(server) -> void:
 	var back_door: DoorReference = by_id.get("authored:0010901D")
 	_check(back_door != null and back_door.is_locked and back_door.lock_level == 0, "Prospector Saloon back door (0010901D) is locked at Very Easy")
 	var interior := int(server.reader.find_cell_by_editor_id("GSProspectorSaloonInterior").get("form_id", 0))
-	var inside: DoorReference = back_door.teleport.destination if back_door != null else null
-	_check(inside != null and inside.instance_id == back_door.teleport.destination_id, "the back door's link resolves its destination door")
-	_check(inside != null and inside.current_space_form_id == interior and back_door.teleport.get_destination_space_form_id() == interior, "the back door lands in the saloon interior")
+	var inside: DoorReference = back_door.get_teleport_destination() if back_door != null else null
+	_check(inside != null and inside.instance_id == back_door.get_teleport_destination_id(), "the back door's link resolves its destination door")
+	_check(inside != null and inside.current_space_form_id == interior and back_door.get_teleport_destination_space_form_id() == interior, "the back door lands in the saloon interior")
 	_check(inside == null or inside == by_id.get(inside.instance_id), "a resolved destination is the shared cached DoorReference")
 
 func _check_package_bases(server, index: Array) -> void:
@@ -978,7 +977,7 @@ func _check_door_resources(server, index: Array) -> void:
 			found_door_reference = true
 			_check(reference.base is DoorBase, "DoorReference points to DoorBase")
 			_check(reference.lock_key_form_id == 0 or reference.lock_key != null, "DoorReference resolves its lock key Base")
-			_check(reference.teleport == null or not reference.teleport.destination_id.is_empty(), "DoorReference XTEL link names its destination")
+			_check(not reference.has_teleport or not reference.get_teleport_destination_id().is_empty(), "DoorReference XTEL link names its destination")
 			var node: EsmNode = _physicalise_in_tree(reference)
 			_check(node is EsmDoorNode, "Door physicalizer returns its semantic node immediately")
 			_check_interact_ray_resolves_esm_node(node)
@@ -1015,9 +1014,9 @@ func _check_activation(esm_server, script_server) -> void:
 	var actors: Array[ActorReference] = []
 	for reference in esm_server.get_references_in_cell(interior):
 		if reference is DoorReference and not reference.is_locked:
-			if reference.teleport == null and plain_door == null:
+			if not reference.has_teleport and plain_door == null:
 				plain_door = reference
-			elif reference.teleport != null and load_door == null:
+			elif reference.has_teleport and load_door == null:
 				load_door = reference
 		elif reference is ActorReference:
 			actors.append(reference)
@@ -1040,8 +1039,8 @@ func _check_activation(esm_server, script_server) -> void:
 	if load_door != null:
 		script_server.activate(load_door, actor)
 		var move: Dictionary = script_server.get_pending_move(actor)
-		_check(int(move.get("space_form_id", 0)) == load_door.teleport.get_destination_space_form_id()
-				and move.get("position") == load_door.teleport.position and move.get("rotation") == load_door.teleport.rotation,
+		_check(int(move.get("space_form_id", 0)) == load_door.get_teleport_destination_space_form_id()
+				and move.get("position") == load_door.teleport_position and move.get("rotation") == load_door.teleport_rotation,
 				"activating a load door queues the activator's move to its landing")
 
 	# Locks, over every locked XTEL door.
@@ -1069,7 +1068,7 @@ func _check_activation(esm_server, script_server) -> void:
 		script_server.end_use(other_actor)
 		actor.contents.add_item(keyed.lock_key.form_id)
 		script_server.activate(keyed, actor)
-		_check(not keyed.is_locked and int(script_server.get_pending_move(actor).get("space_form_id", 0)) == keyed.teleport.get_destination_space_form_id(),
+		_check(not keyed.is_locked and int(script_server.get_pending_move(actor).get("space_form_id", 0)) == keyed.get_teleport_destination_space_form_id(),
 				"carrying the key unlocks the door and goes through it")
 		script_server.lock(keyed)
 	if requires_key != null:
@@ -1090,10 +1089,10 @@ func _check_activation(esm_server, script_server) -> void:
 		var door := player_only[0]
 		script_server.player_reference = actor
 		script_server.activate(door, actor)
-		_check(int(script_server.get_pending_move(actor).get("space_form_id", 0)) == door.teleport.get_destination_space_form_id(),
+		_check(int(script_server.get_pending_move(actor).get("space_form_id", 0)) == door.get_teleport_destination_space_form_id(),
 				"the player goes through an OnActivate Player door via its script")
 		script_server.activate(door, other_actor)
-		_check(int(script_server.get_pending_move(other_actor).get("space_form_id", 0)) == door.teleport.get_destination_space_form_id(),
+		_check(int(script_server.get_pending_move(other_actor).get("space_form_id", 0)) == door.get_teleport_destination_space_form_id(),
 				"another actor goes through it via the built-in activation")
 		script_server.player_reference = null
 

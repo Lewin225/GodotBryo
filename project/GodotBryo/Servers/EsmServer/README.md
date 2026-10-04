@@ -136,11 +136,10 @@ QOBJ; from it on, each QOBJ opens a `QuestObjectiveCollection` with its NNAM tex
 current target. `native/tools/quest_objective_census.cpp` is the census this layout is
 checked against. Quest runtime state is `QuestServer`'s.
 
-**Doors.** A `DoorReference` with XTEL has `teleport: DoorTeleportLink`: the
-destination door's instance id, the landing position and rotation, and the
-no-alarm flag. The link resolves its destination door and space through this
-server on demand and never stores the door, since most XTEL doors lead to each
-other. A door with XLOC is locked at any level; level 0 is Very Easy.
+**Doors.** A `DoorReference` with XTEL has `has_teleport`, the destination door's FormID, the
+landing position and rotation, and the no-alarm flag. `get_teleport_destination()` and
+`get_teleport_destination_space_form_id()` resolve the destination door and its space through
+this server on demand; the door is never stored, since most XTEL doors lead to each other. A door with XLOC is locked at any level; level 0 is Very Easy.
 
 **Resources, not dictionaries.** The return is a typed `Resource` with real
 properties, inspectable in the editor and serialisable. `rehydrate()` refills

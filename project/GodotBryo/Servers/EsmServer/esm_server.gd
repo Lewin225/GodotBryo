@@ -484,7 +484,7 @@ func get_all_xtel_door_references() -> Array[DoorReference]:
 			"authored:%08X" % int(placement.get("refr_form_id", 0)),
 			int(placement.get("cell_form_id", 0))
 		) as DoorReference
-		if reference != null and reference.teleport != null:
+		if reference != null and reference.has_teleport:
 			result.append(reference)
 	return result
 
@@ -520,7 +520,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
 		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as DoorReference
-		if reference != null and reference.teleport != null:
+		if reference != null and reference.has_teleport:
 			result.append(reference)
 	return result
 
@@ -638,13 +638,12 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
 		var destination_form_id := int(placement.get("dest_refr_form_id", 0))
 		if bool(placement.get("has_xtel", false)) and destination_form_id != 0:
-			var link := DoorTeleportLink.new()
-			link.destination_id = "authored:%08X" % destination_form_id
-			link.position = placement.get("dest_position", Vector3.ZERO)
-			link.rotation = placement.get("dest_rotation", Vector3.ZERO)
+			door_ref.has_teleport = true
+			door_ref.teleport_destination_form_id = destination_form_id
+			door_ref.teleport_position = placement.get("dest_position", Vector3.ZERO)
+			door_ref.teleport_rotation = placement.get("dest_rotation", Vector3.ZERO)
 			var xtel := _subrecord(ref_raw, "XTEL")
-			link.no_alarm = xtel.size() >= 32 and (_u32(xtel, 28) & 0x01) != 0
-			door_ref.teleport = link
+			door_ref.teleport_no_alarm = xtel.size() >= 32 and (_u32(xtel, 28) & 0x01) != 0
 		# XLOC presence means locked, at any level (level 0 is Very Easy).
 		var lock_data := _subrecord(ref_raw, "XLOC")
 		if lock_data.size() >= 9:
