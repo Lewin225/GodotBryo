@@ -121,6 +121,12 @@ func get_map(space_form_id: int) -> RID:
 		_maps_by_space[space_form_id] = map
 	return _maps_by_space[space_form_id]
 
+## Whether any cell of `space_form_id` is local: the space is physically
+## loaded (a streamer holds it and is not paused).
+func has_local_cells(space_form_id: int) -> bool:
+	var wanted: Dictionary = _wanted_cells_by_space.get(space_form_id, {})
+	return not wanted.is_empty()
+
 ## Whether a cell's regions are on its map. A cell with no NAVM is never ready.
 func is_cell_ready(cell_form_id: int) -> bool:
 	return _built_cells.has(cell_form_id)

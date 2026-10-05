@@ -535,6 +535,22 @@ func _register_defaults() -> void:
 		if node != null:
 			node.on_activated(null)
 		return 1)
+	# `[Actor.]AddScriptPackage Package`: makes Package the actor's active
+	# package; NpcSimulationServer's PackageRunner runs it.
+	register("AddScriptPackage", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var package := _base_arg(a, 0) as PackageBase
+		if actor == null or package == null:
+			return 0
+		NpcSimulationServer.package_runner.set_package(actor, package)
+		return 1)
+	# `[Actor.]RemoveScriptPackage`: drops the package AddScriptPackage gave.
+	register("RemoveScriptPackage", func(_a, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		if actor == null:
+			return 0
+		NpcSimulationServer.package_runner.set_package(actor, null)
+		return 1)
 	# The reference is not spawned again once its CELL next loads.
 	register("MarkForDelete", func(_a, ctx: ScriptExecutionContext):
 		if ctx.calling_reference == null:

@@ -15,10 +15,13 @@ extends EsmNode
 ## the navmesh says where an actor can walk, so there is no move_and_slide. The
 ## Body capsule is what trigger volumes and the player collide with.
 ##
-## In the tree the controller holds the lease: the reference is
-## PHYSICAL_LEASED, and this writes its position and heading every physics
-## frame and publishes an ActorMotion to the actor node. Leaving the tree
-## hands it back to NpcSimulationServer (LOW_LEVEL).
+## The controller holds the lease while it is in the tree and its space is
+## physically loaded (has local navigation): the reference is PHYSICAL_LEASED,
+## and this writes its position and heading every physics frame and publishes
+## an ActorMotion to the actor node. Otherwise (left the tree, or its streamer
+## paused for an interior visit) the actor is NpcSimulationServer's
+## (LOW_LEVEL), whose LowLevelTravel moves it; taking the lease back places the
+## controller where the reference has got to.
 
 ## Walk speed at SpeedMult 100, metres per second.
 @export var walk_speed := 1.6
@@ -42,15 +45,6 @@ extends EsmNode
 ## See `stuck_seconds`.
 @export var stuck_distance := 0.25
 
-@export_group("Debug")
-## A test stand-in for packages: keeps the reference's move_target on the
-## player (the possessed actor) while both are in the same space.
-@export var debug_follow_player := false
-## Stops following within this distance of the player, metres.
-@export var debug_follow_distance := 1.5
-## Re-targets once the player is this far from the current target, metres.
-@export var debug_retarget_distance := 1.0
-@export_group("")
 
 ## How this controller moves its actor, handed to the EsmActorNode once and
 ## updated in place.
@@ -100,18 +94,15 @@ func _ready() -> void:
 	ground_ray.add_exception(body)
 	NpcSimulationServer.route_ready.connect(_on_route_ready)
 
-func _enter_tree() -> void:
-	_take_lease()
 
 func _exit_tree() -> void:
 	_release_lease()
 
 func _physics_process(delta: float) -> void:
+	_update_lease()
 	var actor_ref := actor_reference
 	if actor_ref == null or actor_ref != _leased or actor_ref.is_disabled():
 		return
-	if debug_follow_player:
-		_update_debug_follow()
 	_update_route()
 	var desired := _desired_velocity()
 	var velocity := desired
@@ -159,8 +150,6 @@ func _reference_changed() -> void:
 	agent.set_navigation_map(NpcSimulationServer.local_navigation.get_map(reference.current_space_form_id))
 	actor.configure(reference)
 	actor.load_actor()
-	if is_inside_tree():
-		_take_lease()
 
 ## A teleport moves the controller to the reference's new placement, drops the
 ## route and points the agent at the new space's map. Across spaces the
@@ -172,11 +161,23 @@ func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) ->
 	_last_yaw = rotation.y
 	agent.set_navigation_map(NpcSimulationServer.local_navigation.get_map(new_space_form_id))
 
+## Holds the lease while the reference's space is physically loaded, and
+## hands it back when it is not.
+func _update_lease() -> void:
+	var loaded := actor_reference != null and NpcSimulationServer.local_navigation.has_local_cells(actor_reference.current_space_form_id)
+	if loaded and _leased != actor_reference:
+		_release_lease()
+		_take_lease()
+	elif not loaded and _leased != null:
+		_release_lease()
+
+## Takes the lease and places the controller where the reference has got to.
 func _take_lease() -> void:
-	if actor_reference == null or _leased == actor_reference:
-		return
 	_leased = actor_reference
 	_leased.simulation_mode = ActorReference.SimulationMode.PHYSICAL_LEASED
+	transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
+	_last_yaw = rotation.y
+	_reset_route()
 
 ## Writes the final placement and hands the actor back to NpcSimulationServer.
 func _release_lease() -> void:
@@ -222,18 +223,6 @@ func _reset_route() -> void:
 	_waypoint_index = 0
 	_routed_target = Vector3.INF
 	_route_request_id = -1
-
-## Points move_target at the player, or clears it once close enough.
-func _update_debug_follow() -> void:
-	var player := ScriptServer.player_reference
-	if player == null or player.current_space_form_id != reference.current_space_form_id:
-		return
-	if reference.position.distance_to(player.position) <= debug_follow_distance:
-		if actor_reference.has_move_target:
-			actor_reference.clear_move_target()
-		return
-	if not actor_reference.has_move_target or actor_reference.move_target.distance_to(player.position) > debug_retarget_distance:
-		actor_reference.set_move_target(player.position)
 
 ## Requests a route when move_target changes; drops the route when there is no
 ## target.

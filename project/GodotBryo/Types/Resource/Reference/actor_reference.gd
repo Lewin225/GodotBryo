@@ -75,8 +75,10 @@ signal move_target_reached
 ## Runtime state with no ESM source: whether `move_target` is set.
 @export var has_move_target: bool = false
 ## Runtime state with no ESM source: the selected PACK, one of the base's
-## `packages` or one AddScriptPackage gave. Package selection is not
-## implemented yet.
+## `packages` or one AddScriptPackage gave. Set through
+## NpcSimulationServer.package_runner.set_package(), whose PackageRunner runs
+## it (FOLLOW so far); selection from the base's `packages` is not implemented
+## yet.
 @export var active_package: PackageBase
 ## Runtime state with no ESM source. Nothing sets or reads it yet.
 @export var alive: bool = true

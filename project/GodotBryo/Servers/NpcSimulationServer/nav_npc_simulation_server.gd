@@ -52,6 +52,10 @@ var navmesh: NavmeshReader
 ## loaded, for physicalised actors' local pathing. Filled once the navmesh has
 ## loaded; cells made local before then are built when it has.
 var local_navigation := LocalNavigation.new()
+## Child node running actors' active packages (AddScriptPackage).
+var package_runner := PackageRunner.new()
+## Child node moving the actors this server owns toward their move_target.
+var low_level_travel := LowLevelTravel.new()
 var actors_by_instance_id: Dictionary = {}
 var actors_by_space_form_id: Dictionary = {}
 var actors_by_cell_form_id: Dictionary = {}
@@ -88,6 +92,10 @@ var _indexed_space_by_instance_id: Dictionary = {}
 func _ready() -> void:
 	local_navigation.name = "LocalNavigation"
 	add_child(local_navigation)
+	package_runner.name = "PackageRunner"
+	add_child(package_runner)
+	low_level_travel.name = "LowLevelTravel"
+	add_child(low_level_travel)
 	var esm_server := get_tree().root.get_node_or_null("EsmServer")
 	if esm_server != null:
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)

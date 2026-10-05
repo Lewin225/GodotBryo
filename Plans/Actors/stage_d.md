@@ -20,11 +20,19 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
    reference (streamers free, reparent and place it), tells its `EsmActorNode` to load and
    unload, and holds the lease while in the tree. `checkout()` / `checkin()` removed; the
    README's hand-off section rewritten.
-5. **Gate in play.** Done: with `NpcController.debug_follow_player`, Doc follows the player
+5. **Gate in play.** Done: with `NpcController.debug_follow_player` (since replaced by the
+   Follow package), Doc follows the player
    across GSDocMitchellHouse and the Goodsprings saloon's NPCs follow in theirs, turning, walking
    and idling from their controllers. The player's own body is not visible (no third person
    yet); its `ActorMotion` is covered by `test_actor_node`.
-6. **Deferred:** the door and obstacle cut (below), after the gate.
+6. **Follow package.** Done: `NpcSimulationServer` runs FOLLOW for actors given it by
+   `AddScriptPackage` (`PackageRunner`), moves unleased ones itself (`LowLevelTravel`), and
+   goes through load doors to reach a target in another space; an `NpcController` holds its
+   lease only while its space is physically loaded. `test_package_follow` has Doc follow the
+   player across his house, out into WastelandNV and back. Replaces the controller's
+   `debug_follow_player` stub. Gate: Doc follows the player across the wasteland into other
+   interiors in play.
+7. **Deferred:** the door and obstacle cut (below), after the gate.
 
 ## Facts
 
@@ -125,9 +133,10 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 - **Lease hand-off by field.** The lease rules are in the NpcSimulationServer README ("Who owns
   which field"): leased, the controller writes `position` and NSS never does; unleased, the
   reverse; NSS always owns the package and `move_target`, and keeps ticking a leased actor. The
-  lease is the controller's tree lifetime: it sets `simulation_mode` to `PHYSICAL_LEASED` on
-  entering the tree (or on taking a reference while in it), and on leaving writes its final
-  position and heading, then sets `LOW_LEVEL`.
+  lease follows physical presence: the controller holds it (`PHYSICAL_LEASED`) while it is in
+  the tree and its space has local navigation, placing itself where the reference has got to on
+  taking it; leaving the tree, or its streamer pausing, writes its final position and heading,
+  then sets `LOW_LEVEL`.
   The NSS tick (main thread) checks the field before writing `position`; worker threads only
   compute routes and never write Resources, so nothing races the flip. The tick keeps the mode it
   last saw per actor (derived, not saved); an actor that comes back `LOW_LEVEL` is re-grounded

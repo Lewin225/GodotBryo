@@ -269,6 +269,37 @@ including through doors.
   (NSS: 90/100, 91 ms), with Godot's `path_search_max_polygons` lifted from its
   4,096 default, which otherwise ends every such route short.
 
+## Packages and low-level travel (first slice)
+
+Two more child nodes run every physics frame on the main thread, for the actors
+given a package through `PackageRunner.set_package()` (the script functions
+`AddScriptPackage` / `RemoveScriptPackage`); package selection from a base's
+`packages` is not implemented yet.
+
+- **`PackageRunner`** (`package_runner.gd`) runs each such actor's
+  `active_package` and decides where it goes (`ActorReference.move_target`).
+  FOLLOW only: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
+  specific reference, 0x14 the player, or the actor's XLKR linked reference)
+  it clears the target, else sends the actor to the target, again once the
+  target has moved 1 m. When the target is in another space it walks to the
+  first load door of `route_across_spaces` and activates it through
+  `ScriptServer.activate`, which moves it to the door's destination; the
+  streamers physicalise it there if that space is loaded. Locked doors are not
+  handled.
+- **`LowLevelTravel`** (`low_level_travel.gd`) moves those actors while
+  `LOW_LEVEL`: a route from `request_route` to `move_target`, walked at the
+  NpcController's walk speed times SpeedMult, writing `position` and the
+  heading, then `reach_move_target()`. Routes are derived and never saved.
+- **The lease follows physical presence.** An `NpcController` holds its
+  actor's lease while it is in the tree and the actor's space has local
+  navigation; a streamer paused for an interior visit clears its local cells,
+  so its controllers hand their actors to `LowLevelTravel`, and take them back
+  (placed where the reference has got to) when it resumes.
+
+This is the start of the tick planned below, on the main thread for the few
+actors that run a package; the worker-thread travel and round-robin sweep are
+still to come.
+
 ## Planned: the simulation tick
 
 None of this section is implemented. It is the agreed design for when NSS starts
@@ -315,8 +346,9 @@ A leased actor *executes* the package it is given — walks to the supplied
 target, fights, eats. It never selects one. Package and target selection is
 always NSS's job.
 
-The lease is the controller's tree lifetime: an `NpcController` sets its
-reference `PHYSICAL_LEASED` when it enters the tree, and on leaving writes its
+The lease follows physical presence: an `NpcController` sets its reference
+`PHYSICAL_LEASED` while it is in the tree and the reference's space has local
+navigation, and on leaving the tree, or when its streamer pauses, writes its
 final position and heading and sets it back to `LOW_LEVEL`. There is no
 `checkout()` / `checkin()`: the field alone hands the actor over.
 
