@@ -69,16 +69,29 @@ func _ready() -> void:
 	check(not doc.has_move_target, "the target is cleared on arrival")
 	check(_planar(doc.position).distance_to(_planar(target)) < 0.6, "Doc's reference is at the target (%.2f m off)" % _planar(doc.position).distance_to(_planar(target)))
 	check(walk_clips.has("locomotion__male__mtforward.kf"), "the walk clip played on the way (%s)" % ", ".join(walk_clips.keys()))
+	await get_tree().physics_frame
+	var body_transform: Transform3D = PhysicsServer3D.body_get_state(controller.body.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM)
+	var capsule_offset := body_transform.origin.distance_to(controller.body.global_position)
+	check(capsule_offset < 0.05, "the physics server's capsule walked with Doc (%.2f m from his body node)" % capsule_offset)
 	check(not walk_clips.has("locomotion__male__mtbackward.kf") and not walk_clips.has("locomotion__male__mtleft.kf") and not walk_clips.has("locomotion__male__mtright.kf"), "Doc turns before walking: no backward or sideways clip")
 	for frame in 30:
 		await get_tree().physics_frame
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "Doc idles after arriving (%s)" % (player.current_animation if player != null else "no player"))
 
+	_check_avoidance_follows_enable_state(controller, doc)
 	await _check_seam_crossing(controller, doc)
 	await _check_stuck_recovery(controller, doc)
 	doc.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## A disabled actor is hidden; its agent must not steer others either.
+func _check_avoidance_follows_enable_state(controller: NpcController, doc: ActorReference) -> void:
+	check(controller.agent.avoidance_enabled, "a leased, enabled Doc takes part in avoidance")
+	doc.set_disabled(true)
+	check(not controller.agent.avoidance_enabled, "disabled, he does not")
+	doc.set_disabled(false)
+	check(controller.agent.avoidance_enabled, "enabled again, he does")
 
 ## Interior 0x10D629's NAVM records meet at seams 1.12-3.84 m wide, which
 ## only LocalNavigation's seam links join: Doc walks from beside a seam across

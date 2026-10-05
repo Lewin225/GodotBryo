@@ -13,7 +13,10 @@ extends EsmNode
 ## waypoints one hop at a time with its NavigationAgent3D on the space's local
 ## navigation map, which adds avoidance between agents. Movement is kinematic:
 ## the navmesh says where an actor can walk, so there is no move_and_slide. The
-## Body capsule is what trigger volumes and the player collide with.
+## Body capsule is what trigger volumes and the player collide with. Its
+## `sync_to_physics` is off: with it on, an AnimatableBody3D only sends its own
+## local transform to the physics server, so the capsule stayed where the
+## actor was physicalised while the controller moved.
 ##
 ## The controller holds the lease while it is in the tree and its space is
 ## physically loaded (has local navigation): the reference is PHYSICAL_LEASED,
@@ -72,10 +75,20 @@ var _waypoint_index := 0
 var _routed_target := Vector3.INF
 var _route_request_id := -1
 var _avoidance_velocity := Vector3.ZERO
+## SpeedMult, read when a route arrives rather than every frame.
+var _speed_mult := 100.0
+## The waypoint the agent was last given, so its path is requested only when
+## it changes (setting `target_position` always requests a new path).
+var _agent_target := Vector3.INF
 ## While crossing a NavigationLink3D: where it goes in and comes out, Godot
 ## axes; `_link_exit` is INF otherwise.
 var _link_entry := Vector3.INF
 var _link_exit := Vector3.INF
+## Set for the frame the actor steps off a link onto its exit.
+var _left_link := false
+## Where the current route segment starts: the previous waypoint, or where
+## the actor was when the route arrived.
+var _segment_start := Vector3.ZERO
 ## Where the actor was when it last made progress, and how long since.
 var _progress_position := Vector3.INF
 var _stalled_seconds := 0.0
@@ -88,6 +101,7 @@ func _ready() -> void:
 	super()
 	actor.motion = motion
 	agent.velocity_computed.connect(_on_velocity_computed)
+	_update_avoidance()
 	agent.link_reached.connect(_on_link_reached)
 	ground_ray.add_exception(body)
 	NpcSimulationServer.route_ready.connect(_on_route_ready)
@@ -102,6 +116,9 @@ func _physics_process(delta: float) -> void:
 	if actor_ref == null or actor_ref != _leased or actor_ref.is_disabled():
 		return
 	_update_route()
+	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
+		_publish_idle(delta)
+		return
 	var desired := _desired_velocity()
 	var velocity := desired
 	if absf(_yaw_difference(desired)) > deg_to_rad(turn_in_place_degrees):
@@ -113,7 +130,8 @@ func _physics_process(delta: float) -> void:
 	if _link_exit != Vector3.INF:
 		_follow_link_height()
 	else:
-		_snap_to_ground()
+		_snap_to_ground(_left_link)
+	_left_link = false
 	_turn_toward(desired, delta)
 	_recover_if_stuck(delta)
 	_publish_motion(desired, velocity, delta)
@@ -123,8 +141,21 @@ func _physics_process(delta: float) -> void:
 ## speed_scale.
 func get_speed() -> float:
 	var speed := run_speed if actor_reference != null and actor_reference.move_running else walk_speed
-	var speed_mult := actor_reference.get_actor_values().get_current(ActorValue.SPEED_MULT) if actor_reference != null else 100.0
-	return speed * speed_mult / 100.0 * speed_scale
+	return speed * _speed_mult / 100.0 * speed_scale
+
+## Hides a disabled actor and turns its collision off (EsmNode), and takes
+## it out of avoidance.
+func _apply_enable_state() -> void:
+	super()
+	_update_avoidance()
+
+## An actor takes part in avoidance, as an agent others steer around, only
+## while this controller holds its lease and it is enabled: a hidden or
+## off-site controller's agent would otherwise still push visible actors.
+func _update_avoidance() -> void:
+	if agent == null:
+		return
+	agent.avoidance_enabled = _leased != null and reference != null and not reference.is_disabled()
 
 ## Activation is presented by the actor node.
 func on_activated(activator: EsmReference) -> void:
@@ -176,6 +207,7 @@ func _take_lease() -> void:
 	transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
 	_last_yaw = rotation.y
 	_reset_route()
+	_update_avoidance()
 
 ## Writes the final placement and hands the actor back to NpcSimulationServer.
 func _release_lease() -> void:
@@ -185,6 +217,7 @@ func _release_lease() -> void:
 		_write_placement()
 	_leased.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	_leased = null
+	_update_avoidance()
 
 func _write_placement() -> void:
 	reference.position = EsmReferencePhysicaliser.authored_position(global_position)
@@ -208,11 +241,18 @@ func _recover_if_stuck(delta: float) -> void:
 	global_position = _waypoints[_waypoint_index]
 	_link_entry = Vector3.INF
 	_link_exit = Vector3.INF
-	_snap_to_ground()
+	_snap_to_ground(true)
 	_progress_position = global_position
 	_stalled_seconds = 0.0
 
+## Nowhere to go: publishes standing still, turning on the spot if the actor
+## was, and leaves the reference as it is.
+func _publish_idle(delta: float) -> void:
+	_recover_if_stuck(delta)
+	_publish_motion(Vector3.ZERO, Vector3.ZERO, delta)
+
 func _reset_route() -> void:
+	_agent_target = Vector3.INF
 	_progress_position = Vector3.INF
 	_stalled_seconds = 0.0
 	_link_entry = Vector3.INF
@@ -233,7 +273,7 @@ func _update_route() -> void:
 		return
 	_routed_target = actor_reference.move_target
 	_waypoints.clear()
-	_route_request_id = NpcSimulationServer.request_route(reference.current_space_form_id, reference.position, actor_reference.move_target)
+	_route_request_id = NpcSimulationServer.request_route(reference.current_space_form_id, reference.position, actor_reference.move_target, true)
 
 func _on_route_ready(request_id: int, result: Dictionary) -> void:
 	if request_id != _route_request_id:
@@ -246,12 +286,16 @@ func _on_route_ready(request_id: int, result: Dictionary) -> void:
 		return
 	for point: Vector3 in result["waypoints"]:
 		_waypoints.append(EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * point)
+	_agent_target = Vector3.INF
+	_segment_start = global_position
+	_speed_mult = actor_reference.get_actor_values().get_current(ActorValue.SPEED_MULT)
 
 ## Toward the current waypoint along the agent's local path, at this actor's
 ## speed; zero when there is nowhere to go. Advances past reached waypoints
 ## and reports arrival at the last one.
 func _desired_velocity() -> Vector3:
 	while _waypoint_index < _waypoints.size() and _planar_distance(_waypoints[_waypoint_index]) <= arrive_radius:
+		_segment_start = _waypoints[_waypoint_index]
 		_waypoint_index += 1
 		if _waypoint_index == _waypoints.size():
 			_waypoints.clear()
@@ -264,8 +308,12 @@ func _desired_velocity() -> Vector3:
 		if _planar_distance(_link_exit) > arrive_radius:
 			return _toward(_link_exit)
 		global_position = _link_exit
+		_segment_start = _link_exit
 		_link_exit = Vector3.INF
-	agent.target_position = _waypoints[_waypoint_index]
+		_left_link = true
+	if _agent_target != _waypoints[_waypoint_index]:
+		_agent_target = _waypoints[_waypoint_index]
+		agent.target_position = _agent_target
 	var next := agent.get_next_path_position()
 	# The agent stops within its own target distance; the last step to the
 	# waypoint is straight.
@@ -300,17 +348,24 @@ func _on_velocity_computed(safe_velocity: Vector3) -> void:
 func _planar_distance(point: Vector3) -> float:
 	return Vector2(point.x - global_position.x, point.z - global_position.z).length()
 
-## Stands the actor on the collision under it, or on the local navmesh where
-## there is none.
-func _snap_to_ground() -> void:
-	ground_ray.force_raycast_update()
+## Stands the actor on the collision under it, or where there is none on its
+## route: waypoints lie on the navmesh, so the height along the current
+## segment is the navmesh's, with no query (a navigation map's closest-point
+## query scans every polygon). The ray's hit is from the last physics step
+## unless `jumped` (the actor was just moved more than a step), which casts it
+## afresh.
+func _snap_to_ground(jumped := false) -> void:
+	if jumped:
+		ground_ray.force_raycast_update()
 	if ground_ray.is_colliding():
 		global_position.y = ground_ray.get_collision_point().y
 		return
-	var map := agent.get_navigation_map()
-	if NavigationServer3D.map_get_regions(map).is_empty():
+	if _waypoint_index >= _waypoints.size():
 		return
-	global_position.y = NavigationServer3D.map_get_closest_point(map, global_position).y
+	var to := _waypoints[_waypoint_index]
+	var span := Vector2(to.x - _segment_start.x, to.z - _segment_start.z).length()
+	var progress := 1.0 - _planar_distance(to) / span if span > 0.001 else 1.0
+	global_position.y = lerpf(_segment_start.y, to.y, clampf(progress, 0.0, 1.0))
 
 ## How far `direction` is from the actor's facing, radians, positive to the
 ## left; 0 for no direction.

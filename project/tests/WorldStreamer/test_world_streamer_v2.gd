@@ -181,7 +181,7 @@ func _check_local_navigation_follows_tiles(streamer: WorldStreamerV2) -> void:
 		if local_navigation.is_cell_ready(cell):
 			ready += 1
 	check(not with_navmesh.is_empty() and ready == with_navmesh.size(), "every full-detail tile with NAVM is local navigation (%d of %d; %d full-detail tiles)" % [ready, with_navmesh.size(), full_cells.size()])
-	check(_local_regions(streamer) == _record_count(with_navmesh), "only those tiles' records have regions (%d regions, %d links)" % [_local_regions(streamer), local_navigation.get_link_count()])
+	check(_local_regions(streamer) == _record_count(with_navmesh), "only those tiles' records have regions (%d)" % _local_regions(streamer))
 
 ## Regions on the streamer's worldspace map.
 func _local_regions(streamer: WorldStreamerV2) -> int:

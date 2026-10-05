@@ -22,6 +22,7 @@ max_speed = 6.0
 avoidance_enabled = true
 
 [node name="Body" type="AnimatableBody3D" parent="."]
+sync_to_physics = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Body"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
