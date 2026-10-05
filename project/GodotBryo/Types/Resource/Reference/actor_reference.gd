@@ -74,6 +74,10 @@ signal move_target_reached
 @export var move_target: Vector3 = Vector3.ZERO
 ## Runtime state with no ESM source: whether `move_target` is set.
 @export var has_move_target: bool = false
+## Runtime state with no ESM source: whether the actor runs rather than walks
+## to `move_target`. Set by NpcSimulationServer's PackageRunner from the active
+## package's Always Run flag; NpcController and LowLevelTravel read it.
+@export var move_running: bool = false
 ## Runtime state with no ESM source: the selected PACK, one of the base's
 ## `packages` or one AddScriptPackage gave. Set through
 ## NpcSimulationServer.package_runner.set_package(), whose PackageRunner runs

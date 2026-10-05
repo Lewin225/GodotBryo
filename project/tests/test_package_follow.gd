@@ -6,6 +6,8 @@ extends Node
 ## door into WastelandNV, and back in.
 
 const FOLLOW_PACKAGE_EDITOR_ID := "DefaultFollowPlayerClose"
+## A companion's follow package, with Always Run.
+const RUNNING_FOLLOW_PACKAGE_EDITOR_ID := "FollowersBooneFollowPlayerDEFAULT"
 const DOC_HOUSE_EDITOR_ID := "GSDocMitchellHouse"
 ## GSDocMitchellHouse's load door to WastelandNV.
 const FRONT_DOOR_FORM_ID := 0x00103E61
@@ -58,8 +60,14 @@ func _ready() -> void:
 	_move_player(house, far)
 	await _check_follows("back into his house")
 
+	check(not doc.move_running, "%s walks: no Always Run flag" % FOLLOW_PACKAGE_EDITOR_ID)
+	var running_package := EsmServer.find_base_by_editor_id(RUNNING_FOLLOW_PACKAGE_EDITOR_ID) as PackageBase
+	NpcSimulationServer.package_runner.set_package(doc, running_package)
+	await get_tree().physics_frame
+	check(doc.move_running, "%s runs: Always Run" % RUNNING_FOLLOW_PACKAGE_EDITOR_ID)
+
 	NpcSimulationServer.package_runner.set_package(doc, null)
-	check(doc.active_package == null and not doc.has_move_target, "RemoveScriptPackage's path clears the package and the target")
+	check(doc.active_package == null and not doc.has_move_target and not doc.move_running, "RemoveScriptPackage's path clears the package, the target and running")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 

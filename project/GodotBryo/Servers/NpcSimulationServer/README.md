@@ -285,10 +285,12 @@ given a package through `PackageRunner.set_package()` (the script functions
   first load door of `route_across_spaces` and activates it through
   `ScriptServer.activate`, which moves it to the door's destination; the
   streamers physicalise it there if that space is loaded. Locked doors are not
-  handled.
+  handled. A package with PKDT's Always Run flag sets the actor's
+  `move_running`, so it runs wherever it moves (26 of 29 companion follow
+  packages carry it, 13 of 103 other FOLLOW packages).
 - **`LowLevelTravel`** (`low_level_travel.gd`) moves those actors while
   `LOW_LEVEL`: a route from `request_route` to `move_target`, walked at the
-  NpcController's walk speed times SpeedMult, writing `position` and the
+  NpcController's walk or run speed (`move_running`) times SpeedMult, writing `position` and the
   heading, then `reach_move_target()`. Routes are derived and never saved.
 - **The lease follows physical presence.** An `NpcController` holds its
   actor's lease while it is in the tree and the actor's space has local

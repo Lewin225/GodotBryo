@@ -13,6 +13,9 @@ extends Node
 
 ## Walk speed at SpeedMult 100, metres per second (NpcController's default).
 @export var walk_speed := 1.6
+## Run speed at SpeedMult 100, metres per second (NpcController's default),
+## used while the actor's `move_running` is set.
+@export var run_speed := 4.0
 ## Scales the speed, for tests.
 @export var speed_scale := 1.0
 ## A waypoint counts as reached within this distance, metres.
@@ -56,7 +59,8 @@ func _travel(actor: ActorReference, delta: float) -> void:
 	var index: int = route["index"]
 	if index >= waypoints.size():
 		return
-	var budget := walk_speed * _speed_mult(actor) / 100.0 * speed_scale * delta
+	var speed := run_speed if actor.move_running else walk_speed
+	var budget := speed * _speed_mult(actor) / 100.0 * speed_scale * delta
 	var position := actor.position
 	while budget > 0.0 and index < waypoints.size():
 		var to_next := waypoints[index] - position

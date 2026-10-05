@@ -29,8 +29,6 @@ extends EsmNode
 @export var run_speed := 4.0
 ## Scales both speeds, to tune against the original game by eye.
 @export var speed_scale := 1.0
-## Whether the actor runs rather than walks. Packages will set it.
-@export var running := false
 ## How fast the actor turns toward where it moves, degrees per second.
 @export var turn_speed_degrees := 360.0
 ## A waypoint counts as reached within this distance across the ground,
@@ -124,7 +122,7 @@ func _physics_process(delta: float) -> void:
 ## Walk or run speed for this actor: the export times SpeedMult / 100 times
 ## speed_scale.
 func get_speed() -> float:
-	var speed := run_speed if running else walk_speed
+	var speed := run_speed if actor_reference != null and actor_reference.move_running else walk_speed
 	var speed_mult := actor_reference.get_actor_values().get_current(ActorValue.SPEED_MULT) if actor_reference != null else 100.0
 	return speed * speed_mult / 100.0 * speed_scale
 
@@ -336,5 +334,5 @@ func _publish_motion(desired: Vector3, velocity: Vector3, delta: float) -> void:
 	motion.move_input = Vector2(local_desired.x, -local_desired.z).normalized()
 	motion.turn_rate = yaw_change / delta if delta > 0.0 else 0.0
 	motion.grounded = true
-	motion.running = running
+	motion.running = actor_reference.move_running
 	motion.sneaking = false

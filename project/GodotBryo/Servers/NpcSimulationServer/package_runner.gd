@@ -7,7 +7,8 @@ extends Node
 ## through `set_package()` (AddScriptPackage) run; package selection from the
 ## base's packages is not implemented yet.
 ##
-## Implemented package types: FOLLOW. Others leave the actor where it is.
+## Implemented package types: FOLLOW. Others leave the actor where it is. The
+## Always Run flag makes the actor run wherever it moves.
 
 ## PTDT Count / Distance is in Gamebryo units (common/units.h).
 const UNITS_TO_METERS := 1.0 / 70.0
@@ -34,6 +35,7 @@ func set_package(actor: ActorReference, package: PackageBase) -> void:
 		_actors.erase(actor)
 		travel.untrack(actor)
 		actor.clear_move_target()
+		actor.move_running = false
 		return
 	_actors[actor] = true
 	travel.track(actor)
@@ -42,6 +44,7 @@ func _physics_process(_delta: float) -> void:
 	for actor: ActorReference in _actors.keys():
 		if actor.is_disabled() or actor.active_package == null:
 			continue
+		actor.move_running = (actor.active_package.general_flags & PackageBase.GENERAL_FLAG_ALWAYS_RUN) != 0
 		match actor.active_package.package_type:
 			PackageBase.PackageType.FOLLOW:
 				_follow(actor, actor.active_package)

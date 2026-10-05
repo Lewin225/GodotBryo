@@ -56,6 +56,8 @@ enum ObjectType {
 
 ## The player's placed-reference FormID (PLYR), which targets name directly.
 const PLAYER_REFERENCE_FORM_ID := 0x14
+## PKDT General Flags bit 0x2000, Always Run.
+const GENERAL_FLAG_ALWAYS_RUN := 0x2000
 
 ## Type Specific Flags names by package type (xEdit), for the inspector.
 const TYPE_SPECIFIC_FLAG_NAMES := {
