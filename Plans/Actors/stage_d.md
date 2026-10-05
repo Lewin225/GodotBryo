@@ -93,7 +93,7 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   NpcSimulationServer route again.
 - **Local navmesh from NAVM.** The NAVM records of the lod0 tiles (or the current interior) are
   `NavigationRegion3D` / `NavigationLink3D` nodes under `NpcSimulationServer/LocalNavigation`,
-  unblocked: no door regions or navigation layers. Done for interiors (`CellStreamerV2`).
+  unblocked: no door regions or navigation layers.
 - **Movement is kinematic.** The controller moves at walk or run speed along the agent's next path
   position toward the current waypoint (with the agent's avoidance velocity), turns toward it at
   `turn_speed_degrees`, and keeps to the ground with `GroundRay`. No `move_and_slide`: the
