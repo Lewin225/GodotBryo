@@ -37,6 +37,16 @@ extends EsmNode
 ## it turns on the spot before moving.
 @export var turn_in_place_degrees := 45.0
 
+@export_group("Debug")
+## A test stand-in for packages: keeps the reference's move_target on the
+## player (the possessed actor) while both are in the same space.
+@export var debug_follow_player := false
+## Stops following within this distance of the player, metres.
+@export var debug_follow_distance := 1.5
+## Re-targets once the player is this far from the current target, metres.
+@export var debug_retarget_distance := 1.0
+@export_group("")
+
 ## How this controller moves its actor, handed to the EsmActorNode once and
 ## updated in place.
 var motion := ActorMotion.new()
@@ -87,6 +97,8 @@ func _physics_process(delta: float) -> void:
 	var actor_ref := actor_reference
 	if actor_ref == null or actor_ref != _leased or actor_ref.is_disabled():
 		return
+	if debug_follow_player:
+		_update_debug_follow()
 	_update_route()
 	var desired := _desired_velocity()
 	var velocity := desired
@@ -165,6 +177,18 @@ func _reset_route() -> void:
 	_waypoint_index = 0
 	_routed_target = Vector3.INF
 	_route_request_id = -1
+
+## Points move_target at the player, or clears it once close enough.
+func _update_debug_follow() -> void:
+	var player := ScriptServer.player_reference
+	if player == null or player.current_space_form_id != reference.current_space_form_id:
+		return
+	if reference.position.distance_to(player.position) <= debug_follow_distance:
+		if actor_reference.has_move_target:
+			actor_reference.clear_move_target()
+		return
+	if not actor_reference.has_move_target or actor_reference.move_target.distance_to(player.position) > debug_retarget_distance:
+		actor_reference.set_move_target(player.position)
 
 ## Requests a route when move_target changes; drops the route when there is no
 ## target.
