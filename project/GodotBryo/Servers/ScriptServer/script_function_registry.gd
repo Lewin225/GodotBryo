@@ -551,6 +551,24 @@ func _register_defaults() -> void:
 			return 0
 		NpcSimulationServer.package_runner.set_package(actor, null)
 		return 1)
+	# Not FNV functions; console debugging. `DebugAddScriptPackageAll Package`
+	# gives Package to every placed actor, `DebugRemoveScriptPackageAll` clears
+	# theirs. Both return the count.
+	register("DebugAddScriptPackageAll", func(a: Array, _ctx: ScriptExecutionContext):
+		var package := _base_arg(a, 0) as PackageBase
+		if package == null:
+			return 0
+		return NpcSimulationServer.package_runner.set_package_for_all(package))
+	register("DebugRemoveScriptPackageAll", func(_a, _ctx: ScriptExecutionContext):
+		return NpcSimulationServer.package_runner.set_package_for_all(null))
+	# `DebugSetLowLevelSpeed Multiplier`: scales how fast actors move while
+	# NpcSimulationServer moves them (off screen); returns the previous
+	# multiplier.
+	register("DebugSetLowLevelSpeed", func(a: Array, _ctx: ScriptExecutionContext):
+		var travel := NpcSimulationServer.low_level_travel
+		var previous := travel.speed_scale
+		travel.speed_scale = maxf(_number(a, 0), 0.0)
+		return previous)
 	# The reference is not spawned again once its CELL next loads.
 	register("MarkForDelete", func(_a, ctx: ScriptExecutionContext):
 		if ctx.calling_reference == null:

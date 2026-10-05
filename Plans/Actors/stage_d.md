@@ -311,6 +311,18 @@ routes ignore internal doors and obstacles: a controller walks into a closed int
 
 ## Open
 
+- **Templated and leveled appearance (parked).** 1,582 of the 3,386 placed actors (all NPC_
+  bases) take their traits from a template (ACBS Traits flag + TPLT): 149 from another NPC_,
+  1,433 from a leveled list (LVLN), and all render invisible (`_diag/diag_actor_templates`).
+  `NpcBase.get_model_parts()` uses the record's own `race`, which a templated NPC_ lacks, and
+  `LeveledNpcBase` does not read its LVLO entries. Proposed shape, not agreed: `LeveledNpcBase`
+  reads LVLD, LVLF and LVLO (mirroring `LeveledItemBase` / `LeveledItemResolver`); each placed
+  actor chooses once from a leveled template into a saved runtime field on `ActorReference`
+  (e.g. `leveled_template`), at the player's level per LVLF (inferred from the flag name, not
+  verified); the actor node takes race, sex, hair, eyes and head parts from
+  `template_source(base, Traits)`, continuing into that choice. Stats, inventory and packages
+  follow template flags too and are not covered.
+
 - **Router seams (NavmeshReader / NpcSimulationServer).** Its A* crosses between records only by
   the derived NVEX pairs (`build_cross_record_links`), so it likely cannot route across the 538
   record seams NVEX does not record, which Godot joins; and it bridges the 1,062 NVEX pairs

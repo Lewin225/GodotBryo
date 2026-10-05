@@ -26,6 +26,7 @@ signal seed_progress(status: String, completed: int, total: int)
 signal seed_finished
 signal route_ready(request_id: int, result: Dictionary)
 signal cross_space_route_ready(request_id: int, result: Dictionary)
+signal door_sequence_ready(request_id: int, portals: Array)
 
 const NpcPortalScript := preload("res://GodotBryo/Servers/NpcSimulationServer/npc_portal.gd")
 const GameDataConfigScript := preload("res://game_data_config.gd")
@@ -56,6 +57,8 @@ var local_navigation := LocalNavigation.new()
 var package_runner := PackageRunner.new()
 ## Child node moving the actors this server owns toward their move_target.
 var low_level_travel := LowLevelTravel.new()
+## This server's own background thread for off-screen route work.
+var worker := NpcSimulationWorker.new()
 var actors_by_instance_id: Dictionary = {}
 var actors_by_space_form_id: Dictionary = {}
 var actors_by_cell_form_id: Dictionary = {}
@@ -63,6 +66,9 @@ var actors_by_cell_form_id: Dictionary = {}
 ## actors that actually snapped appear here.
 var grounding_by_instance_id: Dictionary = {}
 var portals: Array = []
+## Load doors with lock data (XLOC), each once: the ones `blocked_doors_for`
+## checks.
+var lockable_doors: Array[DoorReference] = []
 ## space_form_id -> Array[NpcPortal] leaving that space. Portals are stored
 ## directed (source -> destination); a real door's other side is its own
 ## authored XTEL record, so traversing this directed graph finds genuine door
@@ -96,6 +102,7 @@ func _ready() -> void:
 	add_child(package_runner)
 	low_level_travel.name = "LowLevelTravel"
 	add_child(low_level_travel)
+	worker.start()
 	var esm_server := get_tree().root.get_node_or_null("EsmServer")
 	if esm_server != null:
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
@@ -107,6 +114,7 @@ func _exit_tree() -> void:
 	if _load_thread != null and _load_thread.is_started():
 		_load_thread.wait_to_finish()
 	_load_thread = null
+	worker.stop()
 	for task_id in _route_tasks.values():
 		if not WorkerThreadPool.is_task_completed(task_id):
 			WorkerThreadPool.wait_for_task_completion(task_id)
@@ -131,6 +139,7 @@ func seed() -> void:
 	_indexed_space_by_instance_id.clear()
 	grounding_by_instance_id.clear()
 	portals.clear()
+	lockable_doors.clear()
 	portals_by_source_space.clear()
 	portals_by_source_component.clear()
 	space_by_component.clear()
@@ -219,6 +228,8 @@ func _seed_portals(esm_server, total: int) -> void:
 				portal.destination_space_form_id = destination_space
 				portal.destination_position = door.teleport_position
 				portals.append(portal)
+				if door.is_locked or door.lock_key_form_id != 0:
+					lockable_doors.append(door)
 				if not portals_by_source_space.has(portal.source_space_form_id):
 					portals_by_source_space[portal.source_space_form_id] = []
 				portals_by_source_space[portal.source_space_form_id].append(portal)
@@ -343,13 +354,19 @@ func route(space_form_id: int, from: Vector3, to: Vector3) -> Dictionary:
 ## Async route. Returns a request id; the result arrives on [signal route_ready].
 ## Low-level simulation is never blocked on this -- a route is computed once and
 ## the actor keeps moving on its previous one until the new one lands.
-func request_route(space_form_id: int, from: Vector3, to: Vector3) -> int:
+## `on_screen` routes for an actor on screen (NpcController) run on
+## WorkerThreadPool at high priority; the rest queue on this server's own
+## thread (`worker`), so a backlog of off-screen routes never delays them.
+func request_route(space_form_id: int, from: Vector3, to: Vector3, on_screen := false) -> int:
 	var request_id := _next_request_id
 	_next_request_id += 1
 	if navmesh == null:
 		route_ready.emit.call_deferred(request_id, {"found": false})
 		return request_id
-	var task_id := WorkerThreadPool.add_task(_run_route_task.bind(request_id, space_form_id, from, to))
+	if not on_screen:
+		worker.post(_run_route_task.bind(request_id, space_form_id, from, to))
+		return request_id
+	var task_id := WorkerThreadPool.add_task(_run_route_task.bind(request_id, space_form_id, from, to), true)
 	_route_tasks[request_id] = task_id
 	return request_id
 
@@ -378,7 +395,7 @@ func find_portal_path(from_space: int, to_space: int, max_doors := 8) -> Array:
 
 ## Door sequences between two SPACES, kept for callers that only know spaces.
 ## Prefer [method find_component_paths]: a space is not one walkable region.
-func find_portal_paths(from_space: int, to_space: int, max_doors := 8, max_paths := 4) -> Array:
+func find_portal_paths(from_space: int, to_space: int, max_doors := 8, max_paths := 4, blocked_doors: Dictionary = {}) -> Array:
 	if from_space == to_space:
 		return [[]]
 	var found: Array = []
@@ -392,6 +409,8 @@ func find_portal_paths(from_space: int, to_space: int, max_doors := 8, max_paths
 		var seen: Dictionary = node["seen"]
 		for portal in portals_by_source_space.get(node["space"], []):
 			expansions += 1
+			if blocked_doors.has(portal.source_reference):
+				continue
 			var next_space: int = portal.destination_space_form_id
 			if seen.has(next_space):
 				continue
@@ -415,7 +434,7 @@ func find_portal_paths(from_space: int, to_space: int, max_doors := 8, max_paths
 ## only route to the rest of the Mojave runs out through a building and back
 ## into the open. Space-level search called that "same space, no doors needed",
 ## found no walkable path, and produced a straight line through the fence.
-func find_component_paths(from_component: int, to_component: int, max_doors := 8, max_paths := 4) -> Array:
+func find_component_paths(from_component: int, to_component: int, max_doors := 8, max_paths := 4, blocked_doors: Dictionary = {}) -> Array:
 	if from_component < 0 or to_component < 0:
 		return []
 	if from_component == to_component:
@@ -431,6 +450,8 @@ func find_component_paths(from_component: int, to_component: int, max_doors := 8
 		var seen: Dictionary = node["seen"]
 		for portal in portals_by_source_component.get(node["component"], []):
 			expansions += 1
+			if blocked_doors.has(portal.source_reference):
+				continue
 			var next_component: int = portal.destination_component
 			if next_component < 0:
 				continue
@@ -538,15 +559,70 @@ func _build_leg(space_form_id: int, from_position: Vector3, to_position: Vector3
 		leg["length"] = float(leg_route.get("length", leg["length"]))
 	return leg
 
-## Async cross-space route. Result arrives on [signal cross_space_route_ready].
+## The doors (NpcPortal, in order) from `from_position` in `from_space` to
+## `to_position` in `to_space`: one sequence from the walkable-region door
+## graph, whose legs are walkable by construction (a region is connected
+## navmesh, and only doors join regions); the space-level search when an end
+## is off navmesh. Empty when the two are already in one region, or no
+## sequence exists (`found` tells which). Only the doors, no walking routes:
+## a follower walks each leg's route when it starts that leg. Doors in
+## `blocked_doors` (DoorReference -> true, from `blocked_doors_for`) are not
+## used.
+func find_door_sequence(from_space: int, from_position: Vector3, to_space: int, to_position: Vector3, blocked_doors: Dictionary = {}) -> Dictionary:
+	var from_component := get_component_at(from_space, from_position, ground_snap_radius * 4.0)
+	var to_component := get_component_at(to_space, to_position, ground_snap_radius * 4.0)
+	var paths: Array = []
+	if from_component >= 0 and to_component >= 0:
+		paths = find_component_paths(from_component, to_component, 8, 1, blocked_doors)
+	if paths.is_empty():
+		paths = find_portal_paths(from_space, to_space, 8, 1, blocked_doors)
+	if paths.is_empty():
+		return {"found": false, "portals": []}
+	return {"found": true, "portals": paths[0]}
+
+## Whether `actor` may route through `door`: it is not locked, or the actor
+## carries its key. Ownership (REFR XOWN / XRNK) is not read yet, so an owner
+## without the key is not let through; lockpicking is not considered
+## (Plans/Actors/stage_d.md, "Door passability").
+func can_pass_door(actor: ActorReference, door: DoorReference) -> bool:
+	if not door.is_locked:
+		return true
+	return door.lock_key_form_id != 0 and EsmBase.carries(actor, door.lock_key_form_id)
+
+## The load doors `actor` may not route through, as find_door_sequence's
+## `blocked_doors`. Built on the main thread: it reads the actor's inventory.
+func blocked_doors_for(actor: ActorReference) -> Dictionary:
+	var blocked := {}
+	for door in lockable_doors:
+		if not can_pass_door(actor, door):
+			blocked[door] = true
+	return blocked
+
+## find_door_sequence on this server's own thread (`worker`); the result
+## arrives on [signal door_sequence_ready], with no portals when none was
+## found.
+func request_door_sequence(from_space: int, from_position: Vector3, to_space: int, to_position: Vector3, blocked_doors: Dictionary = {}) -> int:
+	var request_id := _next_request_id
+	_next_request_id += 1
+	if navmesh == null:
+		door_sequence_ready.emit.call_deferred(request_id, [])
+		return request_id
+	worker.post(_run_door_sequence_task.bind(request_id, from_space, from_position, to_space, to_position, blocked_doors))
+	return request_id
+
+func _run_door_sequence_task(request_id: int, from_space: int, from_position: Vector3, to_space: int, to_position: Vector3, blocked_doors: Dictionary) -> void:
+	var result := find_door_sequence(from_space, from_position, to_space, to_position, blocked_doors)
+	door_sequence_ready.emit.call_deferred(request_id, result["portals"])
+
+## Async cross-space route, computed on this server's own thread (`worker`).
+## Result arrives on [signal cross_space_route_ready].
 func request_cross_space_route(from_space: int, from_position: Vector3, to_space: int, to_position: Vector3) -> int:
 	var request_id := _next_request_id
 	_next_request_id += 1
 	if navmesh == null:
 		cross_space_route_ready.emit.call_deferred(request_id, {"found": false})
 		return request_id
-	var task_id := WorkerThreadPool.add_task(_run_cross_space_task.bind(request_id, from_space, from_position, to_space, to_position))
-	_route_tasks[request_id] = task_id
+	worker.post(_run_cross_space_task.bind(request_id, from_space, from_position, to_space, to_position))
 	return request_id
 
 func _run_cross_space_task(request_id: int, from_space: int, from_position: Vector3, to_space: int, to_position: Vector3) -> void:
@@ -560,9 +636,6 @@ func _finish_cross_space_route(request_id: int, result: Dictionary) -> void:
 		_route_tasks.erase(request_id)
 	cross_space_route_ready.emit(request_id, result)
 
-## A lease changes only mutual-execution ownership, exactly as in the original
-## NSS. The one addition is that an actor with no ground under it cannot be
-## leased for physical simulation -- there is nowhere valid to put it.
 func _is_tracked(reference: ActorReference) -> bool:
 	return reference != null and actors_by_instance_id.get(reference.instance_id) == reference
 

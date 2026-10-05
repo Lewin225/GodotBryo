@@ -14,6 +14,8 @@ enum SimulationMode { LOW_LEVEL, PHYSICAL_LEASED }
 signal using_changed(previous: EsmReference, current: EsmReference)
 ## Emitted when the actor reaches `move_target`, which is cleared first.
 signal move_target_reached
+## Emitted when `simulation_mode` changes.
+signal simulation_mode_changed
 
 @export_group("Placement")
 ## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm). Read; not
@@ -67,7 +69,12 @@ signal move_target_reached
 ## Runtime state with no ESM source: who moves the actor. LOW_LEVEL:
 ## NpcSimulationServer; PHYSICAL_LEASED: its NpcController (or the player's
 ## PlayerController), which writes `position` and `rotation`.
-@export var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL
+@export var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL:
+	set(value):
+		if simulation_mode == value:
+			return
+		simulation_mode = value
+		simulation_mode_changed.emit()
 ## Runtime state with no ESM source: where the actor is heading, metres in
 ## Gamebryo axes in its current space, while `has_move_target`. Set by
 ## NpcSimulationServer (and tests); NpcController follows a route to it.

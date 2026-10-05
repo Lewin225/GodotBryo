@@ -271,25 +271,53 @@ including through doors.
 
 ## Packages and low-level travel (first slice)
 
-Two more child nodes run every physics frame on the main thread, for the actors
-given a package through `PackageRunner.set_package()` (the script functions
-`AddScriptPackage` / `RemoveScriptPackage`); package selection from a base's
-`packages` is not implemented yet.
+Two more child nodes run on the main thread, for the actors given a package
+through `PackageRunner.set_package()` (the script functions `AddScriptPackage`
+/ `RemoveScriptPackage`, and the debug console's `DebugAddScriptPackageAll` /
+`DebugRemoveScriptPackageAll`); package selection from a base's `packages` is
+not implemented yet.
+
+**Budget**, per "Tick rates" below: leased actors run every physics frame;
+unleased ones in a round-robin sweep that visits each once per
+`unleased_sweep_seconds` (1 s), `ceil(actors / (sweep_seconds * fps))` a
+frame, and `LowLevelTravel` moves each on its turn by the time since its last.
+Off-screen route work (`LowLevelTravel`'s routes and every door sequence)
+runs on the server's own thread (`worker`, `simulation_worker.gd`), one job at
+a time; only an on-screen `NpcController`'s route (`request_route(...,
+on_screen = true)`) uses `WorkerThreadPool`, at high priority. With every
+placed actor following and 1,671 jobs queued on that thread, a controller's
+route still answers the next frame; through the shared pool it took 28 s. A
+plan that finds no doors is not retried for `plan_retry_seconds` (10 s) unless
+the target changes space. With every placed actor following, 897 off-screen
+actors are moving within 5 s and 1,553 by 50 s, with the thread's queue
+draining (`_diag/diag_package_cycle`). With all
+3,386 placed actors following the player, physics processing costs under 1 ms
+a frame (`_diag/diag_package_load`); before the budget the first frame planned
+every cross-space route synchronously (143 s headless) and frames grew past
+700 ms.
 
 - **`PackageRunner`** (`package_runner.gd`) runs each such actor's
   `active_package` and decides where it goes (`ActorReference.move_target`).
   FOLLOW only: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
   specific reference, 0x14 the player, or the actor's XLKR linked reference)
   it clears the target, else sends the actor to the target, again once the
-  target has moved 1 m. When the target is in another space it walks to the
-  first load door of `route_across_spaces` and activates it through
-  `ScriptServer.activate`, which moves it to the door's destination; the
-  streamers physicalise it there if that space is loaded. Locked doors are not
-  handled. A package with PKDT's Always Run flag sets the actor's
+  target has moved 1 m. When the target is in another space,
+  `find_door_sequence` (on the server's thread) gives the load doors to its
+  space: one sequence from the walkable-region door graph, whose legs are
+  walkable by construction, and no walking routes. The actor walks to each
+  door and activates it through `ScriptServer.activate` (which runs the door's
+  script and moves it to the destination; the streamers physicalise it there if
+  that space is loaded); each leg's route is computed when the leg starts. An
+  unleased actor keeps to its sequence until it reaches the space it was
+  planned for; a leased one plans again when its target changes space. A
+  door sequence costs about 13 ms, against 110 ms for `route_across_spaces`,
+  which walks every leg and tries alternative sequences
+  (`_diag/diag_plan_cost`). Locked doors are not handled. A package with PKDT's Always Run flag sets the actor's
   `move_running`, so it runs wherever it moves (26 of 29 companion follow
   packages carry it, 13 of 103 other FOLLOW packages).
 - **`LowLevelTravel`** (`low_level_travel.gd`) moves those actors while
-  `LOW_LEVEL`: a route from `request_route` to `move_target`, walked at the
+  `LOW_LEVEL`, on their sweep turns: a route from `request_route` to
+  `move_target`, walked at the
   NpcController's walk or run speed (`move_running`) times SpeedMult, writing `position` and the
   heading, then `reach_move_target()`. Routes are derived and never saved.
 - **The lease follows physical presence.** An `NpcController` holds its
