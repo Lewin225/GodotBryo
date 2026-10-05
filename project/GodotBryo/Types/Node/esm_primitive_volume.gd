@@ -22,7 +22,9 @@ func configure(ref: EsmReference) -> void:
 	name = "PrimitiveVolume"
 	monitorable = false
 	collision_layer = 0
-	collision_mask = 1
+	# The world and the player (layer 1) and NPC capsules (NpcController's
+	# layer), so an OnTrigger names the NPCs that enter.
+	collision_mask = 1 | NpcController.ACTOR_COLLISION_LAYER
 	var shape := CollisionShape3D.new()
 	var bounds: Vector3 = ref.primitive_bounds
 	if ref.primitive_type == EsmReference.PrimitiveType.SPHERE:
