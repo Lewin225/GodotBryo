@@ -1,8 +1,24 @@
-# Stage D: NpcController (draft for review)
+# Stage D: NpcController
 
 A controller for physicalised NPCs and creatures, cheaper than `PlayerController`, built as a
 template scene to open and tweak like the actor template. Gate: an NPC walks a route across
 GSDocMitchellHouse, and the player and the NPC animate from their controllers.
+
+## Build order
+
+1. **Local navigation.** Interiors done (`LocalNavigation`, `CellStreamerV2`,
+   `test_local_navigation`); `WorldStreamerV2`'s full-detail tiles not yet.
+2. **`ActorMotion`.** Done: `PlayerController` publishes it, `ActorAnimator` chooses the
+   unarmed clip (`test_actor_node`).
+3. **`npc_controller.tscn`.** Done: follows NpcSimulationServer's route to the reference's
+   `move_target` (fields added here rather than in step 4), turns on the spot before walking,
+   writes position and heading while leased (`test_npc_controller` walks Doc 27.4 m across his
+   house).
+4. **Spawning and hand-off.** The physicaliser builds the controller for actors and sets
+   `simulation_mode`; `checkout()` / `checkin()` removed; the README's hand-off paragraph
+   rewritten.
+5. **Gate in play.** Doc walks across GSDocMitchellHouse in the running game.
+6. **Deferred:** the door and obstacle cut (below), after the gate.
 
 ## Facts
 

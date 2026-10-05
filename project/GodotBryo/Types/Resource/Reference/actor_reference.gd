@@ -12,6 +12,8 @@ enum SimulationMode { LOW_LEVEL, PHYSICAL_LEASED }
 ## Emitted when this actor starts or stops using a reference.
 @warning_ignore("unused_signal")
 signal using_changed(previous: EsmReference, current: EsmReference)
+## Emitted when the actor reaches `move_target`, which is cleared first.
+signal move_target_reached
 
 @export_group("Placement")
 ## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm). Read; not
@@ -62,9 +64,16 @@ signal using_changed(previous: EsmReference, current: EsmReference)
 ## save loading restores an overlay onto this shared Resource and must never
 ## rewrite it.
 @export var spawn_cell_form_id: int = 0
-## Runtime state with no ESM source: NpcSimulationServer's hand-off state. No
-## controller or simulation behaviour is attached yet.
+## Runtime state with no ESM source: who moves the actor. LOW_LEVEL:
+## NpcSimulationServer; PHYSICAL_LEASED: its NpcController (or the player's
+## PlayerController), which writes `position` and `rotation`.
 @export var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL
+## Runtime state with no ESM source: where the actor is heading, metres in
+## Gamebryo axes in its current space, while `has_move_target`. Set by
+## NpcSimulationServer (and tests); NpcController follows a route to it.
+@export var move_target: Vector3 = Vector3.ZERO
+## Runtime state with no ESM source: whether `move_target` is set.
+@export var has_move_target: bool = false
 ## Runtime state with no ESM source: the selected PACK, one of the base's
 ## `packages` or one AddScriptPackage gave. Package selection is not
 ## implemented yet.
@@ -92,6 +101,20 @@ func get_merchant_container() -> EsmReference:
 	if merchant_container_form_id == 0 or server == null:
 		return null
 	return server.get_reference("authored:%08X" % merchant_container_form_id)
+
+## Sends the actor toward `target` (metres, Gamebryo axes, current space).
+func set_move_target(target: Vector3) -> void:
+	move_target = target
+	has_move_target = true
+
+## Clears the target without arriving.
+func clear_move_target() -> void:
+	has_move_target = false
+
+## The actor arrived: clears the target and emits move_target_reached.
+func reach_move_target() -> void:
+	has_move_target = false
+	move_target_reached.emit()
 
 func get_actor_values() -> ActorValues:
 	if actor_values == null:

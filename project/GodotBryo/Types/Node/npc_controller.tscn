@@ -1,0 +1,31 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://GodotBryo/Types/Node/npc_controller.gd" id="1_controller"]
+[ext_resource type="PackedScene" uid="uid://cv8jrt6nbed3v" path="res://GodotBryo/Types/Node/esm_actor_node.tscn" id="2_actor"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.35
+height = 1.8
+
+[node name="NpcController" type="Node3D"]
+script = ExtResource("1_controller")
+
+[node name="EsmActorNode" parent="." instance=ExtResource("2_actor")]
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.5
+target_desired_distance = 0.3
+radius = 0.35
+height = 1.8
+max_speed = 6.0
+avoidance_enabled = true
+
+[node name="Body" type="AnimatableBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="GroundRay" type="RayCast3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+target_position = Vector3(0, -1.5, 0)
