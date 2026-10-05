@@ -21,6 +21,8 @@ void NavmeshReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_space_geometry", "space_form_id"), &NavmeshReader::get_space_geometry);
 	ClassDB::bind_method(D_METHOD("get_space_cross_links", "space_form_id"), &NavmeshReader::get_space_cross_links);
 	ClassDB::bind_method(D_METHOD("get_record_cross_links", "record_index"), &NavmeshReader::get_record_cross_links);
+	ClassDB::bind_method(D_METHOD("get_record_door_links", "record_index"), &NavmeshReader::get_record_door_links);
+	ClassDB::bind_method(D_METHOD("get_record_triangle_flags", "record_index"), &NavmeshReader::get_record_triangle_flags);
 	ClassDB::bind_method(D_METHOD("get_space_bounds", "space_form_id"), &NavmeshReader::get_space_bounds);
 	ClassDB::bind_method(D_METHOD("get_coarse_neighbors", "record_index"), &NavmeshReader::get_coarse_neighbors);
 	ClassDB::bind_method(D_METHOD("snap", "space_form_id", "position", "max_distance", "use_coarse_index"),
@@ -163,6 +165,33 @@ Dictionary NavmeshReader::get_record_cross_links(int record_index) const {
 	d["points"] = points;
 	d["target_records"] = target_records;
 	return d;
+}
+
+// One record's NVDP door links: "door_form_ids" (the door REFR) and
+// "triangles" (the record's triangle index), entry for entry.
+Dictionary NavmeshReader::get_record_door_links(int record_index) const {
+	Dictionary d;
+	PackedInt32Array door_form_ids;
+	PackedInt32Array triangles;
+	const nav::NavMeshRecord *r = db_.record_at((size_t)record_index);
+	if (r != nullptr) {
+		for (const nav::DoorLink &link : r->door_links) {
+			door_form_ids.push_back((int32_t)link.door_reference_form_id);
+			triangles.push_back((int32_t)link.triangle_index);
+		}
+	}
+	d["door_form_ids"] = door_form_ids;
+	d["triangles"] = triangles;
+	return d;
+}
+
+// One record's NVTR triangle Flags, in triangle order.
+PackedInt32Array NavmeshReader::get_record_triangle_flags(int record_index) const {
+	PackedInt32Array out;
+	const nav::NavMeshRecord *r = db_.record_at((size_t)record_index);
+	if (r == nullptr) return out;
+	for (const nav::Triangle &t : r->triangles) out.push_back((int32_t)t.flags);
+	return out;
 }
 
 Dictionary NavmeshReader::get_space_geometry(int space_form_id) const {

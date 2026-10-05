@@ -54,13 +54,14 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
 - **Doors and obstacles are blocked in our router.** The original engine cuts the navmesh at
   runtime around doors and objects flagged as obstacles (GECK navmesh tutorial: "Doors, like
   objects with the 'obstacle' tag, automatically cut the navmesh in game"); NAVM itself marks
-  only load doors (NVDP, measured: every resolved NVDP door has XTEL). `NavmeshReader` keeps,
-  per local door and obstacle reference, the NAVM triangles under its footprint: the base's OBND
-  placed by the reference (record-header bit 25 `0x02000000` "Obstacle" on ACTI, CONT, SCOL,
-  MSTT, LIGH and STAT; every DOOR). `find_route` takes the triangles to avoid per query:
-  obstacles for everyone, a door's for an actor that cannot pass it (locked without the key, or
-  above its lockpicking). Whole triangles or a CSG split of the triangles under a footprint:
-  decided by the census of what lies under real footprints.
+  only load doors (NVDP, measured: every resolved NVDP door has XTEL). `NavmeshDatabase`
+  CSG-splits the NAVM under each internal door and obstacle reference's footprint (the base's
+  OBND placed by the reference; record-header bit 25 `0x02000000` "Obstacle" on ACTI, CONT,
+  SCOL, MSTT, LIGH and STAT; every DOOR) and tags the pieces inside it with the reference.
+  `find_route` skips the pieces of references blocked for the query: obstacles for everyone, a
+  door for an actor that cannot pass it (locked without the key, or above its lockpicking).
+  Deferred until after stage D's gate; specified in full under "Deferred: the door and obstacle
+  cut".
 - **Doors along a route.** The controller opens the door a waypoint names on reaching it and
   waits for it to open. A door whose state changes under a route (locked, unlocked) makes
   NpcSimulationServer route again.
@@ -151,9 +152,95 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
    pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
    can cross a little way into the next record.
 
+## Deferred: the door and obstacle cut
+
+Not needed for stage D's gate (Doc's walk crosses no door); done after steps 2-4. Until then
+routes ignore internal doors and obstacles: a controller walks into a closed internal door.
+
+### Facts (FalloutNV.esm unless stated; `native/tools/door_obstacle_census.cpp`,
+`project/_diag/diag_nvdp_census.gd`, `project/_diag/diag_doc_house_doors.gd`)
+
+- The original engine cuts the navmesh at runtime: "Doors, like objects with the 'obstacle' tag,
+  automatically cut the navmesh in game for us so we don't need to do anything special for them"
+  (GECK navmesh tutorial). Authors run the navmesh through doorways "as if the door isn't even
+  there".
+- **No authored link between an internal door and NAVM.** NVDP (door links) names only load
+  doors: across the six masters, 1,365 links to 1,360 references; the 1,099 that EsmServer
+  resolves all have XTEL (64 locked), the other 261 are DLC references (load-order byte 01) not
+  in EsmServer. NVDP triangles carry NVTR flag `0x0400` (100% of them; 0.16% of all triangles).
+  Triangles under internal door footprints carry no distinguishing flag: every bit is at or below
+  its overall rate, `0x0040` and `0x0400` at about 0.3% (some 8 triangles each).
+- **Doors.** 320 DOOR bases, none with the obstacle bit; 296 have a non-zero OBND (24 have an
+  all-zero OBND). 2,758 placed: 1,108 XTEL, 1,650 internal (1,478 in interiors, 177 locked, in
+  83 spaces, at most 11 in one); 106 rotated off the vertical.
+- **What lies under the 1,650 internal door footprints** (OBND x/y, scaled, rotated about Z, at
+  the REFR; triangles within the OBND z range plus 1 m): 153 doors are in spaces with no NAVM; 98
+  have no usable OBND; 545 have no triangle under them because the navmesh does not pass the door
+  (114 `BathroomStallDoor01`, 20 `UtlDoor01`, 19 `VStallDoor01`, ...: the mesh stops short, as at
+  stall door `000E7285`); about 850 have triangles under them, 701 of those exactly 2; 4 have 20
+  or more. Under doors with 1-4 triangles, most triangles are 0-40% inside the footprint: a door
+  slab is thin (Doc's bathroom door `001062AC`, `NVCraftsmanHomeDoor`: 0.23 x 1.83 m), and the
+  triangles under it reach into the rooms (one 3.4 m past the door).
+- The navmesh tends to have an edge along a doorway (Doc's: x 23.43, y 10.99-12.74, 0.24 m from
+  the slab at x 23.67-23.90), but it can lie outside the door's bounds or be several edges, so
+  it is not used as the cut.
+- **Obstacles.** Record-header bit 25 (`0x02000000`, xEdit "Obstacle") on 361 bases: ACTI 11,
+  CONT 19, MSTT 20, SCOL 7, STAT 304 (LIGH allows it; none set). Placed: STAT 59,473 (37,500
+  rotated off the vertical, 46,605 scaled), MSTT 292 (176 off vertical), SCOL 108 (35), ACTI 36
+  (8), CONT 16 (0). 13 STAT and 3 CONT obstacle bases have no usable OBND. Mostly exterior
+  scenery (rocks); off-vertical placements make the footprint the ground projection of a rotated
+  box (up to 8 corners: a convex hull), not a rectangle.
+
+### What to build
+
+1. **Footprints (native).** For each placed internal door (DOOR without XTEL) and each placed
+   obstacle-flagged reference with a usable OBND: the OBND box scaled by XSCL, rotated by the
+   REFR rotation (the basis EsmReferencePhysicaliser uses), projected to the ground as a convex
+   polygon (rectangle for a vertical door; convex hull otherwise), with the box's z range. Read
+   from the ESM at seed; doors and statics do not move (a scripted `MoveTo` on a door is not
+   handled).
+2. **CSG split in `NavmeshDatabase`, once at load.** For each footprint, every triangle of its
+   space within its z range and overlapping it is replaced by convex pieces: the inside piece
+   (Sutherland-Hodgman against the footprint) and the outside remainder split along each
+   footprint edge line in turn; every piece is triangulated (fan). Heights come from the
+   original triangle's plane. Where a footprint edge crosses a shared triangle edge, both
+   triangles are cut, so the cut point must be computed from that edge's endpoints in a fixed
+   order (lower vertex index first) to give both sides bit-identical vertices. NVTR adjacency
+   for the affected triangles is rebuilt among the pieces and their uncut neighbours; global
+   triangle numbering, components, cross-record links and NVDP triangle indices are remapped.
+   Inside pieces are tagged with the reference's FormID.
+3. **Blocking in `find_route`.** A per-query set of blocked reference FormIDs: obstacles are
+   always blocked; a door is blocked for an actor that cannot pass it (locked without the key,
+   lock level above its Lockpick skill; NpcSimulationServer decides). A* skips triangles tagged
+   with a blocked FormID. `route_across_spaces` passes the same set. Route results annotate the
+   waypoint where a route crosses an unblocked door's pieces with that door, for the controller
+   to open it.
+4. **Door state changes.** A door locked or unlocked while routes cross it makes
+   NpcSimulationServer route the affected actors again.
+5. **Godot's copy stays uncut.** `LocalNavigation` keeps building from the original triangles;
+   blocking is never Godot's.
+
+### Tests
+
+- With Doc's bathroom door `001062AC` blocked, no route crosses from one side of it to the
+  other; unblocked, the route crosses and names the door at the crossing waypoint.
+- Every cut shared edge has identical vertices on both sides (no T-junctions): the rebuilt
+  adjacency is symmetric across all cut triangles.
+- Triangle area is conserved: the pieces of each cut triangle sum to its area.
+- Census numbers above re-run unchanged.
+
+### Open
+
+- Whether a slab always spans the navmesh doorway. Doc's does (slab y 10.97-12.80, doorway
+  10.99-12.74); if one falls short a route slips around its end. Widening footprints along the
+  door's width is the fallback, tuned against the blocked-door test over every door with
+  triangles under it.
+- Obstacle footprints: OBND is a box; a rock's real footprint is smaller. Whether that cuts
+  walkable ground the game keeps needs a comparison in play.
+- DLC: the 261 unresolved NVDP references and DLC obstacles wait on EsmServer loading the DLC
+  masters; `NavmeshReader` keeps each DLC's file-local `01xxxxxx` FormIDs, which can collide
+  between DLCs.
+
 ## Open
 
-- Census before the door and obstacle blocking: obstacle-flagged bases and placements per type;
-  internal doors, total and locked; OBND present on every DOOR and obstacle base; placements
-  rotated other than about the vertical; the size of the triangles under internal door
-  footprints and whether they form a doorway strip.
+- Nothing yet beyond the deferred cut's own open questions.
