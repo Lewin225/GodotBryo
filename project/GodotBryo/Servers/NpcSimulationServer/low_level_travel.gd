@@ -16,7 +16,7 @@ extends Node
 ## Walk speed at SpeedMult 100, metres per second (NpcController's default).
 @export var walk_speed := 1.6
 ## Run speed at SpeedMult 100, metres per second (NpcController's default),
-## used while the actor's `move_running` is set.
+## used while the actor's active package has Always Run.
 @export var run_speed := 4.0
 ## Scales the speed: for tests, and the console's DebugSetLowLevelSpeed.
 @export var speed_scale := 1.0
@@ -54,7 +54,7 @@ func advance(actor: ActorReference, elapsed: float) -> void:
 	var index: int = route["index"]
 	if index >= waypoints.size():
 		return
-	var speed := run_speed if actor.move_running else walk_speed
+	var speed := run_speed if _is_running(actor) else walk_speed
 	var budget := speed * _speed_mult(actor) / 100.0 * speed_scale * elapsed
 	var position := actor.position
 	while budget > 0.0 and index < waypoints.size():
@@ -103,6 +103,10 @@ func _on_route_ready(request_id: int, result: Dictionary) -> void:
 func _should_retry(route: Dictionary) -> bool:
 	var failed: int = route.get("failed_msec", -1)
 	return failed >= 0 and Time.get_ticks_msec() - failed >= get_parent().route_retry_seconds * 1000.0
+
+## Whether the actor's active package has Always Run.
+func _is_running(actor: ActorReference) -> bool:
+	return actor.active_package != null and actor.active_package.is_always_run()
 
 func _speed_mult(actor: ActorReference) -> float:
 	return actor.get_actor_values().get_current(ActorValue.SPEED_MULT)

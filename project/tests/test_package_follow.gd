@@ -49,7 +49,7 @@ func _ready() -> void:
 
 	var far := _far_point(house, doc.position)
 	_move_player(house, far)
-	NpcSimulationServer.package_runner.set_package(doc, package)
+	NpcSimulationServer.package_runner.set_script_package(doc, package)
 	await _check_follows("across his house")
 
 	var front_door := EsmServer.get_reference("authored:%08X" % FRONT_DOOR_FORM_ID) as DoorReference
@@ -62,17 +62,19 @@ func _ready() -> void:
 	_check_avoids_locked_door(wasteland)
 	await _check_disabled_is_inert(house, package)
 
-	check(not doc.move_running, "%s walks: no Always Run flag" % FOLLOW_PACKAGE_EDITOR_ID)
+	check(not NpcSimulationServer.low_level_travel._is_running(doc), "%s walks: no Always Run flag" % FOLLOW_PACKAGE_EDITOR_ID)
 	var running_package := EsmServer.find_base_by_editor_id(RUNNING_FOLLOW_PACKAGE_EDITOR_ID) as PackageBase
-	NpcSimulationServer.package_runner.set_package(doc, running_package)
+	NpcSimulationServer.package_runner.set_script_package(doc, running_package)
 	await get_tree().physics_frame
-	check(doc.move_running, "%s runs: Always Run" % RUNNING_FOLLOW_PACKAGE_EDITOR_ID)
+	check(NpcSimulationServer.low_level_travel._is_running(doc), "%s runs: Always Run" % RUNNING_FOLLOW_PACKAGE_EDITOR_ID)
 
-	NpcSimulationServer.package_runner.set_package(doc, null)
-	check(doc.active_package == null and not doc.has_move_target and not doc.move_running, "RemoveScriptPackage's path clears the package, the target and running")
+	var follow_package := doc.script_package
+	NpcSimulationServer.package_runner.set_script_package(doc, null)
+	await get_tree().physics_frame
+	check(doc.script_package == null and doc.active_package != follow_package, "RemoveScriptPackage's path clears the script package, and Doc chooses from his own (%s)" % (doc.active_package.editor_id if doc.active_package != null else "none"))
 	var reply: Dictionary = ScriptServer.run_debug_line("DebugAddScriptPackageAll %s" % FOLLOW_PACKAGE_EDITOR_ID)
 	var actors: int = NpcSimulationServer.actors_by_instance_id.size()
-	check(bool(reply.get("ok", false)) and int(reply.get("result", -1)) >= actors - 1 and doc.active_package != null, "DebugAddScriptPackageAll gives every placed actor the package (%s of %d)" % [reply.get("result"), actors])
+	check(bool(reply.get("ok", false)) and int(reply.get("result", -1)) >= actors - 1 and doc.script_package != null, "DebugAddScriptPackageAll gives every placed actor the package (%s of %d)" % [reply.get("result"), actors])
 	reply = ScriptServer.run_debug_line("DebugNpcLog 10")
 	check(bool(reply.get("ok", false)) and NpcSimulationServer.debug_log.interval_seconds == 10.0 and NpcSimulationServer.debug_log._line().begins_with("at "), "DebugNpcLog switches the log on and a line builds: %s" % NpcSimulationServer.debug_log._line().left(90))
 	check(NpcSimulationServer.debug_log._nif_line().begins_with("requests "), "and its NifServer line builds: %s" % NpcSimulationServer.debug_log._nif_line().left(90))
@@ -92,14 +94,14 @@ func _ready() -> void:
 	check(bool(reply.get("ok", false)) and NpcSimulationServer.low_level_travel.speed_scale == 3.0, "DebugSetLowLevelSpeed sets the off-screen speed multiplier (was %s)" % reply.get("result"))
 	NpcSimulationServer.low_level_travel.speed_scale = SPEED_SCALE
 	reply = ScriptServer.run_debug_line("DebugRemoveScriptPackageAll")
-	check(bool(reply.get("ok", false)) and doc.active_package == null, "DebugRemoveScriptPackageAll clears them (%s)" % reply.get("result"))
+	check(bool(reply.get("ok", false)) and doc.script_package == null, "DebugRemoveScriptPackageAll clears them (%s)" % reply.get("result"))
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
 ## A disabled actor keeps its package but is inert: it neither gets a target
 ## nor moves when the player walks away.
 func _check_disabled_is_inert(house: int, package: PackageBase) -> void:
-	NpcSimulationServer.package_runner.set_package(doc, package)
+	NpcSimulationServer.package_runner.set_script_package(doc, package)
 	doc.set_disabled(true)
 	var resting_space := doc.current_space_form_id
 	var resting := doc.position
@@ -108,7 +110,7 @@ func _check_disabled_is_inert(house: int, package: PackageBase) -> void:
 		await get_tree().physics_frame
 	check(not doc.has_move_target and doc.current_space_form_id == resting_space and doc.position.distance_to(resting) < 0.01, "a disabled Doc with a follow package stays put")
 	doc.set_disabled(false)
-	NpcSimulationServer.package_runner.set_package(doc, null)
+	NpcSimulationServer.package_runner.set_script_package(doc, null)
 
 ## The Prospector Saloon has four load doors to WastelandNV; one (00108BC7)
 ## has lock data and no key. Sunny's door sequence out uses one of the others.

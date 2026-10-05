@@ -94,6 +94,8 @@ var _route_request_id := -1
 ## When the route to `_routed_target` came back not found
 ## (Time.get_ticks_msec()), or -1.
 var _route_failed_msec := -1
+## Whether the active package has Always Run (active_package_changed).
+var _running := false
 var _avoidance_velocity := Vector3.ZERO
 ## SpeedMult, read when a route arrives rather than every frame.
 var _speed_mult := 100.0
@@ -176,7 +178,7 @@ func _physics_process(delta: float) -> void:
 ## Walk or run speed for this actor: the export times SpeedMult / 100 times
 ## speed_scale.
 func get_speed() -> float:
-	var speed := run_speed if actor_reference != null and actor_reference.move_running else walk_speed
+	var speed := run_speed if _running else walk_speed
 	return speed * _speed_mult / 100.0 * speed_scale
 
 ## Hides a disabled actor and turns its collision off (EsmNode), and takes
@@ -205,7 +207,12 @@ func _should_request_nif() -> bool:
 ## the actor node drop the old actor and load the new one.
 func _reference_changed() -> void:
 	_release_lease()
+	if _actor != null and _actor.active_package_changed.is_connected(_on_active_package_changed):
+		_actor.active_package_changed.disconnect(_on_active_package_changed)
 	_actor = reference as ActorReference
+	if _actor != null:
+		_actor.active_package_changed.connect(_on_active_package_changed)
+	_on_active_package_changed(null, _actor.active_package if _actor != null else null)
 	_reset_route()
 	if actor != null:
 		actor.unload_actor()
@@ -218,6 +225,10 @@ func _reference_changed() -> void:
 	actor.load_actor()
 	if is_inside_tree():
 		_update_lease()
+
+## Reads the flags the controller acts on from the actor's new package.
+func _on_active_package_changed(_old_package: PackageBase, new_package: PackageBase) -> void:
+	_running = new_package != null and new_package.is_always_run()
 
 ## A teleport moves the controller to the reference's new placement, drops the
 ## route and points the agent at the new space's map. Across spaces the
@@ -454,5 +465,5 @@ func _publish_motion(desired: Vector3, velocity: Vector3, delta: float) -> void:
 	motion.move_input = Vector2(local_desired.x, -local_desired.z).normalized()
 	motion.turn_rate = yaw_change / delta if delta > 0.0 else 0.0
 	motion.grounded = true
-	motion.running = actor_reference.move_running
+	motion.running = _running
 	motion.sneaking = false

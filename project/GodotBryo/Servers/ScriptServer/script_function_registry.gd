@@ -538,21 +538,31 @@ func _register_defaults() -> void:
 		if node != null:
 			node.on_activated(null)
 		return 1)
-	# `[Actor.]AddScriptPackage Package`: makes Package the actor's active
-	# package; NpcSimulationServer's PackageRunner runs it.
+	# `[Actor.]AddScriptPackage Package`: makes Package the actor's script
+	# package, which NpcSimulationServer's PackageRunner chooses ahead of the
+	# actor's own packages.
 	register("AddScriptPackage", func(a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		var package := _base_arg(a, 0) as PackageBase
 		if actor == null or package == null:
 			return 0
-		NpcSimulationServer.package_runner.set_package(actor, package)
+		NpcSimulationServer.package_runner.set_script_package(actor, package)
 		return 1)
-	# `[Actor.]RemoveScriptPackage`: drops the package AddScriptPackage gave.
+	# `[Actor.]RemoveScriptPackage`: drops the package AddScriptPackage gave;
+	# the actor chooses from its own packages again.
 	register("RemoveScriptPackage", func(_a, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		if actor == null:
 			return 0
-		NpcSimulationServer.package_runner.set_package(actor, null)
+		NpcSimulationServer.package_runner.set_script_package(actor, null)
+		return 1)
+	# `[Actor.]EvaluatePackage` / `evp`: the actor chooses its package again at
+	# once.
+	register(["EvaluatePackage", "evp"], func(_a, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		if actor == null:
+			return 0
+		NpcSimulationServer.package_runner.evaluate_now(actor)
 		return 1)
 	# Not FNV functions; console debugging. `DebugAddScriptPackageAll Package`
 	# gives Package to every placed actor, `DebugRemoveScriptPackageAll` clears
@@ -561,9 +571,9 @@ func _register_defaults() -> void:
 		var package := _base_arg(a, 0) as PackageBase
 		if package == null:
 			return 0
-		return NpcSimulationServer.package_runner.set_package_for_all(package))
+		return NpcSimulationServer.package_runner.set_script_package_for_all(package))
 	register("DebugRemoveScriptPackageAll", func(_a, _ctx: ScriptExecutionContext):
-		return NpcSimulationServer.package_runner.set_package_for_all(null))
+		return NpcSimulationServer.package_runner.set_script_package_for_all(null))
 	# `DebugNpcReport [Radius]`: prints NpcSimulationServer.debug_report for
 	# actors within Radius metres of the player, or the player's whole space
 	# when no radius is given; returns 1.

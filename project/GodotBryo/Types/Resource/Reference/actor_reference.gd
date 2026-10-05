@@ -16,6 +16,9 @@ signal using_changed(previous: EsmReference, current: EsmReference)
 signal move_target_reached
 ## Emitted when `simulation_mode` changes.
 signal simulation_mode_changed
+## `active_package` changed; controllers read the new package's flags (Always
+## Run and the like) from it.
+signal active_package_changed(old_package: PackageBase, new_package: PackageBase)
 
 @export_group("Placement")
 ## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm). Read; not
@@ -81,16 +84,22 @@ signal simulation_mode_changed
 @export var move_target: Vector3 = Vector3.ZERO
 ## Runtime state with no ESM source: whether `move_target` is set.
 @export var has_move_target: bool = false
-## Runtime state with no ESM source: whether the actor runs rather than walks
-## to `move_target`. Set by NpcSimulationServer's PackageRunner from the active
-## package's Always Run flag; NpcController and LowLevelTravel read it.
-@export var move_running: bool = false
-## Runtime state with no ESM source: the selected PACK, one of the base's
-## `packages` or one AddScriptPackage gave. Set through
-## NpcSimulationServer.package_runner.set_package(), whose PackageRunner runs
-## it (FOLLOW so far); selection from the base's `packages` is not implemented
-## yet.
-@export var active_package: PackageBase
+## Runtime state with no ESM source: the package selection chose, the
+## `script_package` or else the first of the base's `packages` whose schedule
+## and conditions hold. Set only by NpcSimulationServer's PackageRunner, which
+## runs it (FOLLOW so far). Emits active_package_changed.
+@export var active_package: PackageBase:
+	set(value):
+		if active_package == value:
+			return
+		var old_package := active_package
+		active_package = value
+		active_package_changed.emit(old_package, value)
+## Runtime state with no ESM source: the package AddScriptPackage gave, which
+## selection chooses ahead of the base's `packages` until RemoveScriptPackage
+## clears it. Set through NpcSimulationServer.package_runner
+## .set_script_package(); read by its selection.
+@export var script_package: PackageBase
 ## Runtime state with no ESM source. Nothing sets or reads it yet.
 @export var alive: bool = true
 ## Runtime state: the actor's live inventory, seeded from its base's Items.

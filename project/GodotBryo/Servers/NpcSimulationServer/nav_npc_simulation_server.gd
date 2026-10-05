@@ -277,6 +277,7 @@ func _index_actor(actor: ActorReference) -> void:
 	var grounding := ground(actor)
 	if not grounding.is_empty():
 		grounding_by_instance_id[actor.instance_id] = grounding
+	package_runner.track(actor)
 
 func _add_to_index(index: Dictionary, key: int, actor: ActorReference) -> void:
 	if not index.has(key):

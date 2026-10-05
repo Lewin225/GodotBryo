@@ -42,7 +42,7 @@ func _ready() -> void:
 		if actor.current_space_form_id == wasteland:
 			in_wasteland_at_start += 1
 	print("%d actors, %d of them in WastelandNV at the start" % [actors.size(), in_wasteland_at_start])
-	NpcSimulationServer.package_runner.set_package_for_all(EsmServer.find_base_by_editor_id("DefaultFollowPlayerClose") as PackageBase)
+	NpcSimulationServer.package_runner.set_script_package_for_all(EsmServer.find_base_by_editor_id("DefaultFollowPlayerClose") as PackageBase)
 	var started := Time.get_ticks_msec()
 	var next_report := 5000
 	var origin := player.position
@@ -69,5 +69,5 @@ func _ready() -> void:
 		print("t=%2d s: within 20 m %d; in WastelandNV %d; queue %d; routes %d (not found %d); door sequences %d (empty %d); waiting forever on a failed route %d" % [
 			elapsed / 1000, near, in_wasteland, NpcSimulationServer.worker.get_pending_count(), counts["routes"], counts["routes_failed"],
 			counts["sequences"], counts["sequences_empty"], stuck_no_route])
-	NpcSimulationServer.package_runner.set_package_for_all(null)
+	NpcSimulationServer.package_runner.set_script_package_for_all(null)
 	get_tree().quit()

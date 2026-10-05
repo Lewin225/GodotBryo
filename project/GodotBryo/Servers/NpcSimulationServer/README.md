@@ -320,13 +320,14 @@ every cross-space route synchronously (143 s headless) and frames grew past
   door sequence costs about 13 ms, against 110 ms for `route_across_spaces`,
   which walks every leg and tries alternative sequences
   (`_diag/diag_plan_cost`). A door with lock data the actor cannot pass (no key
-  in its inventory) is left out of the sequence (`blocked_doors_for`). A package with PKDT's Always Run flag sets the actor's
-  `move_running`, so it runs wherever it moves (26 of 29 companion follow
+  in its inventory) is left out of the sequence (`blocked_doors_for`). An actor whose active package has PKDT's Always Run
+  flag runs wherever it moves: `NpcController` reads the flag when the actor's
+  `active_package_changed` fires, `LowLevelTravel` from the active package (26 of 29 companion follow
   packages carry it, 13 of 103 other FOLLOW packages).
 - **`LowLevelTravel`** (`low_level_travel.gd`) moves those actors while
   `LOW_LEVEL`, on their sweep turns: a route from `request_route` to
   `move_target`, walked at the
-  NpcController's walk or run speed (`move_running`) times SpeedMult, writing `position` and the
+  NpcController's walk or run speed (run under Always Run) times SpeedMult, writing `position` and the
   heading, then `reach_move_target()`. Routes are derived and never saved.
 - **The lease follows physical presence.** An `NpcController` holds its
   actor's lease while it is in the tree and the actor's space has local

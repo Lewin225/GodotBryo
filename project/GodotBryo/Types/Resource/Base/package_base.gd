@@ -59,6 +59,11 @@ const PLAYER_REFERENCE_FORM_ID := 0x14
 ## PKDT General Flags bit 0x2000, Always Run.
 const GENERAL_FLAG_ALWAYS_RUN := 0x2000
 
+## Whether the package's General Flags have Always Run: an actor running it
+## runs wherever it moves.
+func is_always_run() -> bool:
+	return (general_flags & GENERAL_FLAG_ALWAYS_RUN) != 0
+
 ## Type Specific Flags names by package type (xEdit), for the inspector.
 const TYPE_SPECIFIC_FLAG_NAMES := {
 	PackageType.FIND: "Allow Buying:256,Allow Killing:512,Allow Stealing:1024",

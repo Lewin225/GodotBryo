@@ -81,11 +81,25 @@ func _ready() -> void:
 	_check_avoidance_follows_enable_state(controller, doc)
 	await _check_seam_crossing(controller, doc)
 	await _check_stuck_recovery(controller, doc)
+	_check_running_follows_package(controller, doc)
 	doc.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
 ## A disabled actor is hidden; its agent must not steer others either.
+## The controller runs while the active package has Always Run, read when
+## active_package_changed fires.
+func _check_running_follows_package(controller: NpcController, doc: ActorReference) -> void:
+	var previous := doc.active_package
+	var running := PackageBase.new()
+	running.general_flags = PackageBase.GENERAL_FLAG_ALWAYS_RUN
+	doc.active_package = running
+	var runs := controller.get_speed()
+	doc.active_package = PackageBase.new()
+	var walks := controller.get_speed()
+	doc.active_package = previous
+	check(runs > walks, "the controller runs under an Always Run package and walks otherwise (%.2f against %.2f m/s)" % [runs, walks])
+
 func _check_avoidance_follows_enable_state(controller: NpcController, doc: ActorReference) -> void:
 	check(controller.agent.avoidance_enabled, "a leased, enabled Doc takes part in avoidance")
 	doc.set_disabled(true)

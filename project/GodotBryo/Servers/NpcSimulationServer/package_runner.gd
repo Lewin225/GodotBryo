@@ -1,11 +1,17 @@
 class_name PackageRunner
 extends Node
 
-## Runs actors' active packages, for actors on screen and off alike: it
+## Chooses and runs every tracked actor's package, on screen and off alike: it
 ## decides where an actor goes (`ActorReference.move_target`) and NpcController
-## or LowLevelTravel moves it there. Only actors given a package through
-## `set_package()` (AddScriptPackage) run; package selection from the base's
-## packages is not implemented yet.
+## or LowLevelTravel moves it there. NpcSimulationServer tracks every actor it
+## indexes (`track()`).
+##
+## Selection (GECK "How Are Packages Evaluated"): the actor's `script_package`
+## (AddScriptPackage) if it has one, else the first of its packages, top to
+## bottom, whose schedule and conditions hold, into `active_package`. Packages
+## come from the base, or its template when the template flag Use AI Packages is
+## set. An actor is evaluated on its sweep turn every `evaluation_seconds`, and
+## at once on EvaluatePackage and when its script package changes.
 ##
 ## Budget (README "Tick rates"): actors run in two round-robin sweeps, each
 ## visiting every member once per its period however many there are: leased
@@ -23,9 +29,18 @@ extends Node
 ##
 ## Implemented package types: FOLLOW. Others leave the actor where it is. The
 ## Always Run flag makes the actor run wherever it moves.
+##
+## Schedules (PSDT; over FalloutNV.esm's 4,163 PACK, month is always Any and date
+## always 0): a package with an hour is due from it for its duration in hours,
+## wrapping past midnight, so a duration of 0 is never due; one without an hour
+## is always due, whatever its duration. Day of week (set on 53 packages, none of
+## VCG01's) is not checked yet. With no game clock, only packages without an hour
+## are due.
 
 enum { PLAN_PENDING, PLAN_READY, PLAN_FAILED }
 
+## ACBS template flag 0x20, Use AI Packages: packages come from the template.
+const TEMPLATE_USE_AI_PACKAGES := 0x20
 ## PTDT Count / Distance is in Gamebryo units (common/units.h).
 const UNITS_TO_METERS := 1.0 / 70.0
 ## A follower is sent toward its target again once the target has moved this
@@ -49,6 +64,8 @@ const RETARGET_FRACTION := 0.25
 ## A route between spaces that was not found is planned again after this many
 ## seconds, unless the target changes space first.
 @export var plan_retry_seconds := 10.0
+## Each actor's package is chosen again this often (GECK: about every 10 s).
+@export var evaluation_seconds := 10.0
 
 ## Leased and unleased actors with a package.
 var _leased := Sweep.new(0.1)
@@ -64,6 +81,9 @@ var _mode_handlers: Dictionary = {}
 var _door_plans: Dictionary = {}
 ## Door sequence request id -> the actor it is for.
 var _actors_by_request: Dictionary = {}
+## ActorReference -> Time.get_ticks_msec() when it is next evaluated; 0 means
+## on its next turn.
+var _next_evaluation_msec: Dictionary = {}
 
 var travel: LowLevelTravel:
 	get:
@@ -72,34 +92,71 @@ var travel: LowLevelTravel:
 func _ready() -> void:
 	get_parent().door_sequence_ready.connect(_on_door_sequence_ready)
 
-## Gives `actor` `package` as its active package (AddScriptPackage), or clears
-## it with null (RemoveScriptPackage).
-func set_package(actor: ActorReference, package: PackageBase) -> void:
-	actor.active_package = package
-	_drop_plan(actor)
-	if package == null:
-		_forget(actor)
-		actor.clear_move_target()
-		actor.move_running = false
-		return
-	if _mode_handlers.has(actor):
+## Has PackageRunner choose and run `actor`'s packages from now on.
+func track(actor: ActorReference) -> void:
+	if actor == null or _mode_handlers.has(actor):
 		return
 	_last_run_msec[actor] = Time.get_ticks_msec()
+	_next_evaluation_msec[actor] = 0
 	var handler := _on_simulation_mode_changed.bind(actor)
 	_mode_handlers[actor] = handler
 	actor.simulation_mode_changed.connect(handler)
 	_file(actor)
 
-## Debug: gives `package` (null clears it) to every actor NpcSimulationServer
-## tracks, the player excepted. Returns how many actors it set.
-func set_package_for_all(package: PackageBase) -> int:
+## Gives `actor` `package` as its script package (AddScriptPackage), or clears
+## it with null (RemoveScriptPackage); either way the actor chooses again at once.
+func set_script_package(actor: ActorReference, package: PackageBase) -> void:
+	actor.script_package = package
+	track(actor)
+	evaluate_now(actor)
+
+## Has `actor` choose its package at once (EvaluatePackage).
+func evaluate_now(actor: ActorReference) -> void:
+	if _next_evaluation_msec.has(actor):
+		_evaluate(actor)
+
+## Debug: gives `package` (null clears it) as the script package of every actor
+## NpcSimulationServer tracks, the player excepted. Returns how many actors it
+## set.
+func set_script_package_for_all(package: PackageBase) -> int:
 	var count := 0
 	for actor: ActorReference in get_parent().actors_by_instance_id.values():
 		if actor == ScriptServer.player_reference:
 			continue
-		set_package(actor, package)
+		set_script_package(actor, package)
 		count += 1
 	return count
+
+## The package `actor` would run now: its script package, else the first of its
+## packages whose schedule and conditions hold; null when none does.
+func choose_package(actor: ActorReference) -> PackageBase:
+	if actor.script_package != null:
+		return actor.script_package
+	var source := ActorBase.template_source(actor.base, TEMPLATE_USE_AI_PACKAGES)
+	if source == null:
+		return null
+	var hour := _game_hour()
+	for package: PackageBase in source.packages:
+		if package == null or not is_scheduled(package, hour):
+			continue
+		if ScriptServer.evaluate_conditions(package.conditions, ConditionContext.new(actor)):
+			return package
+	return null
+
+## Whether `package`'s schedule lets it run at `hour` (-1: no game clock).
+static func is_scheduled(package: PackageBase, hour: float) -> bool:
+	if package.schedule_time < 0:
+		return true
+	if hour < 0.0:
+		return false
+	var since_start := fposmod(hour - float(package.schedule_time), 24.0)
+	return since_start < float(package.schedule_duration_hours)
+
+func _game_hour() -> float:
+	var clock = ScriptServer.function_registry.game_time_manager
+	if clock == null:
+		return -1.0
+	return clock.game_hour
 
 func _physics_process(_delta: float) -> void:
 	for actor in _leased.take():
@@ -109,16 +166,31 @@ func _physics_process(_delta: float) -> void:
 		_run(actor)
 		travel.advance(actor, elapsed)
 
-## One run of an actor's package.
+## One run of an actor's package, choosing it first when its evaluation is due.
 func _run(actor: ActorReference) -> void:
 	_last_run_msec[actor] = Time.get_ticks_msec()
-	var package := actor.active_package
-	if actor.is_disabled() or package == null:
+	if actor.is_disabled():
 		return
-	actor.move_running = (package.general_flags & PackageBase.GENERAL_FLAG_ALWAYS_RUN) != 0
+	if Time.get_ticks_msec() >= int(_next_evaluation_msec.get(actor, 0)):
+		_evaluate(actor)
+	var package := actor.active_package
+	if package == null:
+		return
 	match package.package_type:
 		PackageBase.PackageType.FOLLOW:
 			_follow(actor, package)
+
+## Chooses `actor`'s package; a different one replaces the old one's plan and
+## target.
+func _evaluate(actor: ActorReference) -> void:
+	_next_evaluation_msec[actor] = Time.get_ticks_msec() + int(evaluation_seconds * 1000.0)
+	var chosen := choose_package(actor)
+	if chosen == actor.active_package:
+		return
+	actor.active_package = chosen
+	_drop_plan(actor)
+	travel.forget(actor)
+	actor.clear_move_target()
 
 ## Follow: stays within the package's Count / Distance of Target 1, going
 ## through load doors when the target is in another space.
@@ -249,15 +321,6 @@ func _on_simulation_mode_changed(actor: ActorReference) -> void:
 	_last_run_msec[actor] = Time.get_ticks_msec()
 	travel.forget(actor)
 	_file(actor)
-
-func _forget(actor: ActorReference) -> void:
-	if _mode_handlers.has(actor):
-		actor.simulation_mode_changed.disconnect(_mode_handlers[actor])
-		_mode_handlers.erase(actor)
-	_leased.remove(actor)
-	_unleased.remove(actor)
-	_last_run_msec.erase(actor)
-	travel.forget(actor)
 
 ## Seconds since `actor` last ran, at most two sweeps.
 func _seconds_since_last_run(actor: ActorReference) -> float:

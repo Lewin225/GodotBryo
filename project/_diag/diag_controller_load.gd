@@ -53,7 +53,7 @@ func _ready() -> void:
 	if not OS.get_cmdline_user_args().has("cluster"):
 		var package := EsmServer.find_base_by_editor_id("DefaultFollowPlayerClose") as PackageBase
 		for actor in actors:
-			NpcSimulationServer.package_runner.set_package(actor, package)
+			NpcSimulationServer.package_runner.set_script_package(actor, package)
 	for frame in 120:
 		await get_tree().physics_frame
 	_inventory(self)
@@ -85,7 +85,7 @@ func _ready() -> void:
 			moving += 1
 	print("%d controllers (%d still walking): physics process %.2f ms, process %.2f ms a frame" % [actors.size(), moving, physics_total / FRAMES, process_total / FRAMES])
 	for actor in actors:
-		NpcSimulationServer.package_runner.set_package(actor, null)
+		NpcSimulationServer.package_runner.set_script_package(actor, null)
 	get_tree().quit()
 
 ## Triangle centres of the cells' NAVM, Gamebryo axes.
