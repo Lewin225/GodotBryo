@@ -110,6 +110,10 @@ func _ready() -> void:
 		"a persistent-only population queue never selects an invalid regular-job index")
 	persistent_only_root.free()
 
+	NpcSimulationServer.records_per_frame = 512
+	NpcSimulationServer.seed()
+	if not NpcSimulationServer.is_seeded:
+		await NpcSimulationServer.seed_finished
 	streamer.activate(int(world.form_id))
 	check(streamer.is_active(), "active immediately after activate()")
 	check(await _await_settled(streamer), "initial semantic residency settles without awaiting NIF callbacks")
@@ -127,6 +131,7 @@ func _ready() -> void:
 		check(physicalised.transform.origin.is_equal_approx(converted_position), "EsmNode converts its authored placement into Godot space")
 		check(physicalised.get_authored_transform().origin.is_equal_approx(physicalised.reference.position), "authored transform inverts placement conversion for future dirty checks")
 
+	await _check_local_navigation_follows_tiles(streamer)
 	await _check_references_follow_moves(streamer, esm_server, int(world.form_id))
 
 	streamer.set_paused(true, false)
@@ -135,14 +140,65 @@ func _ready() -> void:
 	streamer.set_paused(true)
 	check(streamer.is_paused() and not streamer.visible and streamer.is_pause_hiding(),
 		"Pause & Hide retains roots while suppressing the exterior")
+	await get_tree().process_frame
+	check(_local_regions(streamer) == 0, "a paused worldspace has no local navigation")
 	streamer.activate(int(world.form_id))
 	check(await _await_settled(streamer), "same-worldspace resume emits settlement again for Game's player-release handshake")
 	check(not streamer.is_paused(), "activate() resumes the retained worldspace")
+	await get_tree().process_frame
+	check(_local_regions(streamer) > 0, "resuming makes the full-detail tiles local navigation again")
 
+	var wasteland_root := NpcSimulationServer.local_navigation.get_node_or_null("Space_%X" % int(world.form_id))
 	streamer.deactivate()
 	check(not streamer.is_active() and streamer._resident.is_empty(), "deactivate frees v2 semantic tile roots")
+	check(wasteland_root == null or wasteland_root.get_child_count() == 0, "deactivate drops the worldspace's local navigation")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## The resident full-detail tiles' CELLs, and only those, become local
+## navigation once their builds land.
+func _check_local_navigation_follows_tiles(streamer: WorldStreamerV2) -> void:
+	await get_tree().process_frame
+	var local_navigation := NpcSimulationServer.local_navigation
+	var full_cells := []
+	for root: Node3D in streamer._resident.values():
+		if int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL:
+			full_cells.append(int(root.get_meta("cell_form_id", 0)))
+	var with_navmesh := []
+	for cell: int in full_cells:
+		if local_navigation._records_by_cell.has(cell):
+			with_navmesh.append(cell)
+	for frame in 600:
+		var all_ready := true
+		for cell: int in with_navmesh:
+			if not local_navigation.is_cell_ready(cell):
+				all_ready = false
+		if all_ready:
+			break
+		await get_tree().process_frame
+	var ready := 0
+	for cell: int in with_navmesh:
+		if local_navigation.is_cell_ready(cell):
+			ready += 1
+	check(not with_navmesh.is_empty() and ready == with_navmesh.size(), "every full-detail tile with NAVM is local navigation (%d of %d; %d full-detail tiles)" % [ready, with_navmesh.size(), full_cells.size()])
+	check(_local_regions(streamer) == _record_count(with_navmesh), "only those tiles' records have regions (%d regions, %d links)" % [_local_regions(streamer), local_navigation.get_link_count()])
+
+## Regions on the streamer's worldspace map.
+func _local_regions(streamer: WorldStreamerV2) -> int:
+	var root := NpcSimulationServer.local_navigation.get_node_or_null("Space_%X" % streamer._active_wrld_form_id)
+	if root == null:
+		return 0
+	var regions := 0
+	for child in root.get_children():
+		if child is NavigationRegion3D:
+			regions += 1
+	return regions
+
+func _record_count(cells: Array) -> int:
+	var count := 0
+	for cell: int in cells:
+		count += NpcSimulationServer.local_navigation._records_by_cell[cell].size()
+	return count
 
 ## Resident tiles gain and lose nodes as references move in and out of them.
 func _check_references_follow_moves(streamer: WorldStreamerV2, esm_server, wasteland: int) -> void:

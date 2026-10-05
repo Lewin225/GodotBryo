@@ -76,6 +76,7 @@ var _persistent_load_queue: Array[Vector2i] = []
 var _persistent_imposter_queue: Array[EsmReference] = []
 
 var _tile_population_jobs: Array[Dictionary] = []
+var _local_navigation_sync_queued := false
 var _persistent_population_jobs: Array[Dictionary] = []
 
 
@@ -100,6 +101,7 @@ func deactivate() -> void:
 	if _active_wrld_form_id == -1:
 		return
 	_set_all_scripts_loaded(false)
+	NpcSimulationServer.local_navigation.set_local_cells(_active_wrld_form_id, PackedInt32Array())
 	_active_wrld_form_id = -1
 	_generation += 1
 	_paused = false
@@ -548,6 +550,28 @@ func _set_root_scripts_loaded(root: Node, loaded: bool) -> void:
 	for reference in root.get_meta("references", []):
 		if reference != null:
 			ScriptServer.set_reference_loaded(reference, loaded)
+	_queue_local_navigation_sync()
+
+## Local navigation (NpcSimulationServer's maps for physicalised actors) follows
+## the tiles whose scripts are loaded: the resident full-detail tiles, none
+## while paused. Synced once at the end of the frame, after the tile set has
+## settled.
+func _queue_local_navigation_sync() -> void:
+	if _local_navigation_sync_queued:
+		return
+	_local_navigation_sync_queued = true
+	_sync_local_navigation.call_deferred()
+
+func _sync_local_navigation() -> void:
+	_local_navigation_sync_queued = false
+	if not is_active():
+		return
+	var cells := PackedInt32Array()
+	if not _paused:
+		for root: Node3D in _resident.values():
+			if int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL:
+				cells.append(int(root.get_meta("cell_form_id", 0)))
+	NpcSimulationServer.local_navigation.set_local_cells(_active_wrld_form_id, cells)
 
 func _set_all_scripts_loaded(loaded: bool) -> void:
 	for root: Node3D in _resident.values():

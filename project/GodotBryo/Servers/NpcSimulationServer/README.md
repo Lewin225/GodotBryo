@@ -249,7 +249,8 @@ including through doors.
 
 - **Which cells are local** is the streamers' decision, given as a whole set per
   space with `set_local_cells(space, cells)`. `CellStreamerV2` makes the current
-  interior local. `WorldStreamerV2` does not call it yet.
+  interior local; `WorldStreamerV2` its resident full-detail tiles, none while
+  paused, synced at the end of a frame in which a tile's scripts load or unload.
 - **Builds** — a cell's NavigationMeshes are built on a `WorkerThreadPool` task
   and its nodes added on the main thread; `cell_ready` follows. A cell made non-local
   before its build lands is never applied.

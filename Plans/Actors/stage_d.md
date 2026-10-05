@@ -6,8 +6,9 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
 
 ## Build order
 
-1. **Local navigation.** Interiors done (`LocalNavigation`, `CellStreamerV2`,
-   `test_local_navigation`); `WorldStreamerV2`'s full-detail tiles not yet.
+1. **Local navigation.** Done: the current interior (`CellStreamerV2`) and `WorldStreamerV2`'s
+   resident full-detail tiles (none while paused) are local (`LocalNavigation`,
+   `test_local_navigation`, `test_world_streamer_v2`).
 2. **`ActorMotion`.** Done: `PlayerController` publishes it, `ActorAnimator` chooses the
    unarmed clip (`test_actor_node`).
 3. **`npc_controller.tscn`.** Done: follows NpcSimulationServer's route to the reference's
