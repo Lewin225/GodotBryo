@@ -176,16 +176,21 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   `running`, `sneaking`. Not in it: weapon stance (equipment), crippled-leg `*_hurt` clips and
   health (actor values), which the animator reads from the actor. Replaces the legacy
   `MotionData` / `ActorAnimationComponent` path in `PlayerController`.
-- **Seams.** Godot connects regions by touching edges; NAVM records do not touch. They are
-   stitched by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
-   record is one region. Across records, each NVEX link names its target record and triangle
-   (resolving 100%); the source triangle is not authored, and
-   `NavmeshDatabase::build_cross_record_links()` pairs it with the nearest triangle, as the
-   server's A* already uses. Each pair becomes a bidirectional link
-   (`NavigationServer3D.link_create`, no nodes) between the two triangles' centres, so local and
-   global pathing join records in the same places. `NavmeshReader.get_space_cross_links` returns the
-   pairs. Caveat: target triangles are generally interior (10.6% have a boundary edge), so a link
-   can cross a little way into the next record.
+- **Seams.** NAVM records join where their open edges (NVTR neighbour -1) meet; they rarely
+  share vertices. Measured over FalloutNV.esm (`native/tools/navm_seam_gap_census.cpp`): of 6,252
+  NVEX-joined record pairs, 5,009 have open edges within 0.25 m, 177 (exterior) at 0.25-4 m, the
+  4 interior ones (0x10D629) at 1.12-3.84 m, and 1,062 farther than 4 m. 538 pairs NVEX does
+  not join have open edges within 0.25 m, 427 of them coincident; no pair within 0.25 m looks
+  like a cliff top over the ground below. NVEX's target triangle is no measure of where the
+  records meet: it is over 4 m from the source record's open edges for most entries.
+  `LocalNavigation` therefore uses Godot's edge connections at the default 0.25 m margin, plus a
+  `NavigationLink3D` for each NVEX-joined pair 0.25-4 m apart, between the two closest points
+  on their open edges (`NavmeshReader.get_record_seam_links`), so it crosses at the seam.
+  On 49 cells around Goodsprings, edge connections alone reach the same 94 of 100 cross-cell
+  routes as links between triangle centres, without the detour through each centre
+  (`_diag/diag_local_seams`). The controller crosses a link deliberately: on
+  `NavigationAgent3D.link_reached` it walks straight to the exit, its height going from the
+  entry's to the exit's, and resumes the agent's path there.
 
 ## Deferred: the door and obstacle cut
 
@@ -293,4 +298,9 @@ routes ignore internal doors and obstacles: a controller walks into a closed int
 
 ## Open
 
-- Nothing yet beyond the deferred cut's own open questions.
+- **Router seams (NavmeshReader / NpcSimulationServer).** Its A* crosses between records only by
+  the derived NVEX pairs (`build_cross_record_links`), so it likely cannot route across the 538
+  record seams NVEX does not record, which Godot joins; and it bridges the 1,062 NVEX pairs
+  whose open edges are over 4 m apart, whatever lies between. Neither is checked against the
+  game. Its nearest-triangle pairing also makes routes cross the same seam back and forth
+  (interior 0x10D629: a 53 m route goes up onto a record and down again).

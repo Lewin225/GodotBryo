@@ -4,6 +4,7 @@
 #include "esm/esm_file.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -510,6 +511,81 @@ bool NavmeshDatabase::triangle_corners(uint32_t record_index, uint32_t local_tri
 	*b = r.vertices[t.vertex[1]];
 	*c = r.vertices[t.vertex[2]];
 	return true;
+}
+
+namespace {
+
+Vec3 subtract(const Vec3 &p, const Vec3 &q) { return { p.x - q.x, p.y - q.y, p.z - q.z }; }
+float dot_product(const Vec3 &p, const Vec3 &q) { return p.x * q.x + p.y * q.y + p.z * q.z; }
+
+// Closest points between segments p1-q1 and p2-q2 (Ericson, Real-Time
+// Collision Detection 5.1.9); returns their distance.
+float closest_segment_points(const Vec3 &p1, const Vec3 &q1, const Vec3 &p2, const Vec3 &q2, Vec3 *c1, Vec3 *c2) {
+	Vec3 d1 = subtract(q1, p1), d2 = subtract(q2, p2), r = subtract(p1, p2);
+	float a = dot_product(d1, d1), e = dot_product(d2, d2), f = dot_product(d2, r);
+	float s = 0.0f, t = 0.0f;
+	if (a > 1e-9f || e > 1e-9f) {
+		if (a <= 1e-9f) {
+			t = std::clamp(f / e, 0.0f, 1.0f);
+		} else {
+			float c = dot_product(d1, r);
+			if (e <= 1e-9f) {
+				s = std::clamp(-c / a, 0.0f, 1.0f);
+			} else {
+				float b = dot_product(d1, d2), denominator = a * e - b * b;
+				s = denominator != 0.0f ? std::clamp((b * f - c * e) / denominator, 0.0f, 1.0f) : 0.0f;
+				t = (b * s + f) / e;
+				if (t < 0.0f) {
+					t = 0.0f;
+					s = std::clamp(-c / a, 0.0f, 1.0f);
+				} else if (t > 1.0f) {
+					t = 1.0f;
+					s = std::clamp((b - c) / a, 0.0f, 1.0f);
+				}
+			}
+		}
+	}
+	*c1 = { p1.x + d1.x * s, p1.y + d1.y * s, p1.z + d1.z * s };
+	*c2 = { p2.x + d2.x * t, p2.y + d2.y * t, p2.z + d2.z * t };
+	Vec3 gap = subtract(*c1, *c2);
+	return std::sqrt(dot_product(gap, gap));
+}
+
+// Each open edge of a record as its two end points.
+std::vector<std::pair<Vec3, Vec3>> open_edges(const NavMeshRecord &record) {
+	std::vector<std::pair<Vec3, Vec3>> edges;
+	for (const Triangle &t : record.triangles) {
+		for (int e = 0; e < 3; ++e) {
+			if (t.edge[e] != -1) continue;
+			uint16_t i0 = t.vertex[e], i1 = t.vertex[(e + 1) % 3];
+			if (i0 >= record.vertices.size() || i1 >= record.vertices.size()) continue;
+			edges.push_back({ record.vertices[i0], record.vertices[i1] });
+		}
+	}
+	return edges;
+}
+
+} // namespace
+
+float NavmeshDatabase::closest_open_edge_points(uint32_t record_a, uint32_t record_b, Vec3 *point_a, Vec3 *point_b) const {
+	const NavMeshRecord *a = record_at(record_a);
+	const NavMeshRecord *b = record_at(record_b);
+	if (a == nullptr || b == nullptr) return FLT_MAX;
+	auto edges_a = open_edges(*a);
+	auto edges_b = open_edges(*b);
+	float best = FLT_MAX;
+	for (auto &edge_a : edges_a) {
+		for (auto &edge_b : edges_b) {
+			Vec3 c1, c2;
+			float distance = closest_segment_points(edge_a.first, edge_a.second, edge_b.first, edge_b.second, &c1, &c2);
+			if (distance < best) {
+				best = distance;
+				*point_a = c1;
+				*point_b = c2;
+			}
+		}
+	}
+	return best;
 }
 
 Vec3 NavmeshDatabase::triangle_centroid(uint32_t record_index, uint32_t local_triangle) const {

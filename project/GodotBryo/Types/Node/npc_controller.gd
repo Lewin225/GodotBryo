@@ -75,6 +75,10 @@ var _waypoint_index := 0
 var _routed_target := Vector3.INF
 var _route_request_id := -1
 var _avoidance_velocity := Vector3.ZERO
+## While crossing a NavigationLink3D: where it goes in and comes out, Godot
+## axes; `_link_exit` is INF otherwise.
+var _link_entry := Vector3.INF
+var _link_exit := Vector3.INF
 var _last_yaw := 0.0
 ## The reference this controller has leased, handed back on leaving the tree
 ## or changing reference.
@@ -84,6 +88,7 @@ func _ready() -> void:
 	super()
 	actor.motion = motion
 	agent.velocity_computed.connect(_on_velocity_computed)
+	agent.link_reached.connect(_on_link_reached)
 	ground_ray.add_exception(body)
 	NpcSimulationServer.route_ready.connect(_on_route_ready)
 
@@ -108,7 +113,10 @@ func _physics_process(delta: float) -> void:
 		agent.velocity = desired
 		velocity = _avoidance_velocity
 	global_position += velocity * delta
-	_snap_to_ground()
+	if _link_exit != Vector3.INF:
+		_follow_link_height()
+	else:
+		_snap_to_ground()
 	_turn_toward(desired, delta)
 	_publish_motion(desired, velocity, delta)
 	_write_placement()
@@ -145,10 +153,12 @@ func _reference_changed() -> void:
 	if is_inside_tree():
 		_take_lease()
 
-## Same-space teleports move the controller (EsmNode); either way the route is
-## dropped and the agent follows the new space's map.
+## A teleport moves the controller to the reference's new placement, drops the
+## route and points the agent at the new space's map. Across spaces the
+## streamer that owns the controller moves or frees it as well.
 func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) -> void:
 	super(old_space_form_id, new_space_form_id)
+	transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
 	_reset_route()
 	_last_yaw = rotation.y
 	agent.set_navigation_map(NpcSimulationServer.local_navigation.get_map(new_space_form_id))
@@ -173,6 +183,8 @@ func _write_placement() -> void:
 	reference.rotation = EsmReferencePhysicaliser.authored_heading(rotation.y)
 
 func _reset_route() -> void:
+	_link_entry = Vector3.INF
+	_link_exit = Vector3.INF
 	_waypoints.clear()
 	_waypoint_index = 0
 	_routed_target = Vector3.INF
@@ -228,12 +240,39 @@ func _desired_velocity() -> Vector3:
 			return Vector3.ZERO
 	if _waypoint_index >= _waypoints.size():
 		return Vector3.ZERO
+	if _link_exit != Vector3.INF:
+		if _planar_distance(_link_exit) > arrive_radius:
+			return _toward(_link_exit)
+		global_position = _link_exit
+		_link_exit = Vector3.INF
 	agent.target_position = _waypoints[_waypoint_index]
-	var toward := agent.get_next_path_position() - global_position
+	var next := agent.get_next_path_position()
+	# The agent stops within its own target distance; the last step to the
+	# waypoint is straight.
+	if agent.is_navigation_finished():
+		next = _waypoints[_waypoint_index]
+	return _toward(next)
+
+## This actor's speed across the ground toward `point`; zero once there.
+func _toward(point: Vector3) -> Vector3:
+	var toward := point - global_position
 	toward.y = 0.0
 	if toward.length() < 0.001:
 		return Vector3.ZERO
 	return toward.normalized() * get_speed()
+
+## The agent reached a link's entry: walk straight to its exit, which may lie
+## behind the actor, before following the agent's path again.
+func _on_link_reached(details: Dictionary) -> void:
+	_link_entry = details["link_entry_position"]
+	_link_exit = details["link_exit_position"]
+
+## On a link the ground under the actor belongs to neither record: its height
+## goes from the entry's to the exit's with its progress across the ground.
+func _follow_link_height() -> void:
+	var span := Vector2(_link_exit.x - _link_entry.x, _link_exit.z - _link_entry.z).length()
+	var progress := 1.0 - _planar_distance(_link_exit) / span if span > 0.001 else 1.0
+	global_position.y = lerpf(_link_entry.y, _link_exit.y, clampf(progress, 0.0, 1.0))
 
 func _on_velocity_computed(safe_velocity: Vector3) -> void:
 	_avoidance_velocity = safe_velocity

@@ -240,9 +240,8 @@ record can be concave or hollow, putting its midpoint off-mesh.
 
 `LocalNavigation` copies the NAVM of the **local** cells into Godot's
 NavigationServer3D: one map per space, a `NavigationRegion3D` per NAVM record
-(`NAVM_<form id>`), and a two-way `NavigationLink3D` per derived cross-record
-pair (`NavmeshReader.get_record_cross_links`) whose two records both have
-regions, grouped under a `Space_<form id>` node per space. Being nodes, they
+(`NAVM_<form id>`) and the seam links below, grouped under a `Space_<form id>`
+node per space. Being nodes, they
 show in the remote scene tree and under Debug > Visible Navigation. Physicalised actors path and avoid each
 other on these maps; NSS keeps routing every actor over the whole game's NAVM,
 including through doors.
@@ -254,11 +253,16 @@ including through doors.
 - **Builds** — a cell's NavigationMeshes are built on a `WorkerThreadPool` task
   and its nodes added on the main thread; `cell_ready` follows. A cell made non-local
   before its build lands is never applied.
-- **Map settings** — edge connections off: NAVM records do not share vertices at
-  their seams, and on the whole of WastelandNV Godot's free-edge search had not
-  finished after a minute. The links join records instead. Cell size 0.1 m: at
-  Godot's 0.25 m default, distinct vertices in GSDocMitchellHouse share a cell
-  and the map reports an edge error.
+- **Seams** — Godot's edge connections at its default 0.25 m margin join the
+  record seams within it (80% of NVEX-joined pairs, and 538 coincident or
+  near-coincident pairs NVEX does not record); a `NavigationLink3D` named
+  `Seam_...` joins each NVEX-joined pair 0.25-4 m apart, between the two closest
+  points on their open edges (`NavmeshReader.get_record_seam_links`). See
+  `native/tools/navm_seam_gap_census.cpp` and `_diag/diag_local_seams`. Edge
+  connections stall only on a whole worldspace (on WastelandNV the free-edge
+  search had not finished after a minute), which local maps never hold.
+- **Cell size 0.1 m** — at Godot's 0.25 m default, distinct vertices in
+  GSDocMitchellHouse share a cell and the map reports an edge error.
 - **Why not the whole worldspace in Godot** — measured on WastelandNV
   (`_diag/diag_navserver_bench`): about 767 MB for Godot's map against NSS's
   42.6 MB for every space; routes of about 2 km reach 91/100 in 84 ms mean

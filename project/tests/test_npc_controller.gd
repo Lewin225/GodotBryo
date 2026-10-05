@@ -8,8 +8,10 @@ const NpcControllerScene := preload("res://GodotBryo/Types/Node/npc_controller.t
 const DOC_HOUSE_EDITOR_ID := "GSDocMitchellHouse"
 ## The farthest point Doc is sent to is at least this far away, metres.
 const MINIMUM_WALK := 6.0
-## Physics frames allowed for the walk.
-const WALK_FRAMES := 60 * 60
+## Doc walks this many times faster than authored, so the walks take seconds.
+const SPEED_SCALE := 5.0
+## Physics frames allowed for each walk.
+const WALK_FRAMES := 20 * 60
 
 var failures := 0
 
@@ -42,6 +44,7 @@ func _ready() -> void:
 	doc.simulation_mode = ActorReference.SimulationMode.PHYSICAL_LEASED
 	var controller := NpcControllerScene.instantiate() as NpcController
 	add_child(controller)
+	controller.speed_scale = SPEED_SCALE
 	controller.reference = doc
 	var clips := [-1]
 	controller.actor.animation_load_completed.connect(func(count: int) -> void: clips[0] = count)
@@ -71,9 +74,62 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "Doc idles after arriving (%s)" % (player.current_animation if player != null else "no player"))
 
+	await _check_seam_crossing(controller, doc)
 	doc.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Interior 0x10D629's NAVM records meet at seams 1.12-3.84 m wide, which
+## only LocalNavigation's seam links join: Doc walks from beside a seam across
+## it into the other record.
+func _check_seam_crossing(controller: NpcController, doc: ActorReference) -> void:
+	var cell := 0x10D629
+	var navmesh := NpcSimulationServer.navmesh
+	var local_navigation := NpcSimulationServer.local_navigation
+	local_navigation.set_local_cells(cell, PackedInt32Array([cell]))
+	if not local_navigation.is_cell_ready(cell):
+		await local_navigation.cell_ready
+	var records: PackedInt32Array = navmesh.get_records_in_space(cell)
+	var seam: Dictionary = navmesh.get_record_seam_links(records[0], 0.25, 4.0)
+	var seam_points: PackedVector3Array = seam["points"]
+	var far_record: int = seam["target_records"][0]
+	var start := _nearest_centre(navmesh, records[0], seam_points[0], false)
+	var target := _nearest_centre(navmesh, far_record, seam_points[1], false)
+	check(bool(NpcSimulationServer.route(cell, start, target).get("found", false)), "NavmeshReader routes across a seam of 0x%X (%.1f m)" % [cell, start.distance_to(target)])
+	ScriptServer.move_reference(doc, cell, start, doc.rotation)
+	ScriptServer.apply_pending_moves()
+	await get_tree().physics_frame
+	var reached := [false]
+	var on_reached := func() -> void: reached[0] = true
+	doc.move_target_reached.connect(on_reached)
+	var links_crossed := [0]
+	var on_link := func(_details: Dictionary) -> void: links_crossed[0] += 1
+	controller.agent.link_reached.connect(on_link)
+	doc.set_move_target(target)
+	var frames := 0
+	while not reached[0] and frames < WALK_FRAMES:
+		await get_tree().physics_frame
+		frames += 1
+	doc.move_target_reached.disconnect(on_reached)
+	controller.agent.link_reached.disconnect(on_link)
+	check(links_crossed[0] > 0, "his path crosses a seam link (%d)" % links_crossed[0])
+	check(reached[0], "Doc crosses the seam and arrives in %.1f s (%.2f m off)" % [frames / 60.0, _planar(doc.position).distance_to(_planar(target))])
+
+## The triangle centre of `record` nearest `point` (Gamebryo axes, as
+## NavmeshReader gives it), or farthest from it.
+func _nearest_centre(navmesh: NavmeshReader, record: int, point: Vector3, farthest: bool) -> Vector3:
+	var points: PackedVector3Array = navmesh.get_record_triangle_points(record)
+	var best := Vector3.ZERO
+	var best_distance := INF
+	for first in range(0, points.size(), 3):
+		var centre := (points[first] + points[first + 1] + points[first + 2]) / 3.0
+		var distance := centre.distance_to(point)
+		if farthest:
+			distance = -distance
+		if distance < best_distance:
+			best_distance = distance
+			best = centre
+	return best
 
 ## The triangle centre in `cell`'s NAVM farthest from `from` that
 ## NavmeshReader finds a route to.

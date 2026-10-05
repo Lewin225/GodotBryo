@@ -56,8 +56,8 @@ func _check_doc_house() -> void:
 	_check(local_navigation.get_region_count() == 0, "no regions once the house is no longer local")
 	_check(not local_navigation.is_cell_ready(cell), "the house is no longer ready")
 
-## An interior whose records are joined by cross-record links: Godot paths
-## from one record to another across a link.
+## An interior of several NAVM records joined by NVEX: Godot paths from one
+## record to another.
 func _check_linked_interior() -> void:
 	var found := _find_linked_interior()
 	_check(not found.is_empty(), "an interior with linked NAVM records exists")
@@ -65,7 +65,8 @@ func _check_linked_interior() -> void:
 		return
 	var cell: int = found["cell"]
 	await _make_local(cell)
-	_check(local_navigation.get_link_count() > 0, "interior 0x%X: %d records joined by %d links" % [cell, navmesh.get_records_in_space(cell).size(), local_navigation.get_link_count()])
+	_check(local_navigation.get_region_count() == navmesh.get_records_in_space(cell).size(), "interior 0x%X: one region per record (%d)" % [cell, local_navigation.get_region_count()])
+	_check(local_navigation.get_link_count() == 4, "its four seams, 1.12-3.84 m wide, are linked (%d)" % local_navigation.get_link_count())
 	var from := _triangle_centre(found["from_record"], 0)
 	var to := _triangle_centre(found["to_record"], 0)
 	var route: Dictionary = navmesh.find_route(cell, from, to, 8.0, true)
@@ -90,14 +91,14 @@ func _make_local(cell: int) -> void:
 		await local_navigation.cell_ready
 	_check(local_navigation.is_cell_ready(cell), "cell 0x%X is ready" % cell)
 
-## The first interior with two records joined by a cross-record link.
+## The first interior with two records joined by NVEX.
 func _find_linked_interior() -> Dictionary:
 	for space in navmesh.get_space_ids():
 		var records: PackedInt32Array = navmesh.get_records_in_space(space)
 		if records.size() < 2 or bool(navmesh.get_record_info(records[0])["is_exterior"]):
 			continue
 		for record in records:
-			var targets: PackedInt32Array = navmesh.get_record_cross_links(record)["target_records"]
+			var targets: PackedInt32Array = navmesh.get_record_seam_links(record, -1.0, INF)["target_records"]
 			for target in targets:
 				if target != record and records.has(target):
 					return {"cell": space, "from_record": record, "to_record": target}

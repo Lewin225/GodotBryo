@@ -116,6 +116,10 @@ public:
 	bool resolve_global_triangle(uint32_t global_triangle, uint32_t *out_record, uint32_t *out_local) const;
 	Vec3 triangle_centroid(uint32_t record_index, uint32_t local_triangle) const;
 	bool triangle_corners(uint32_t record_index, uint32_t local_triangle, Vec3 *a, Vec3 *b, Vec3 *c) const;
+	// The closest pair of points between an open edge of one record and an
+	// open edge of the other (an edge whose NVTR neighbour is -1); returns
+	// their distance, or FLT_MAX when either record has no open edge.
+	float closest_open_edge_points(uint32_t record_a, uint32_t record_b, Vec3 *point_a, Vec3 *point_b) const;
 
 	// Turns an A* triangle corridor into walkable waypoints, funnelled per
 	// record so the result is the shortest line inside that corridor rather

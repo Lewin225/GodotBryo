@@ -58,7 +58,7 @@ public:
 	// this is the same data in one.
 	Dictionary get_space_geometry(int space_form_id) const;
 	PackedVector3Array get_space_cross_links(int space_form_id) const;
-	Dictionary get_record_cross_links(int record_index) const;
+	Dictionary get_record_seam_links(int record_index, float min_gap, float max_gap) const;
 	Dictionary get_record_door_links(int record_index) const;
 	PackedInt32Array get_record_triangle_flags(int record_index) const;
 

@@ -20,7 +20,7 @@ void NavmeshReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_record_triangle_points", "record_index"), &NavmeshReader::get_record_triangle_points);
 	ClassDB::bind_method(D_METHOD("get_space_geometry", "space_form_id"), &NavmeshReader::get_space_geometry);
 	ClassDB::bind_method(D_METHOD("get_space_cross_links", "space_form_id"), &NavmeshReader::get_space_cross_links);
-	ClassDB::bind_method(D_METHOD("get_record_cross_links", "record_index"), &NavmeshReader::get_record_cross_links);
+	ClassDB::bind_method(D_METHOD("get_record_seam_links", "record_index", "min_gap", "max_gap"), &NavmeshReader::get_record_seam_links);
 	ClassDB::bind_method(D_METHOD("get_record_door_links", "record_index"), &NavmeshReader::get_record_door_links);
 	ClassDB::bind_method(D_METHOD("get_record_triangle_flags", "record_index"), &NavmeshReader::get_record_triangle_flags);
 	ClassDB::bind_method(D_METHOD("get_space_bounds", "space_form_id"), &NavmeshReader::get_space_bounds);
@@ -140,26 +140,23 @@ PackedVector3Array NavmeshReader::get_space_cross_links(int space_form_id) const
 	return out;
 }
 
-// The derived cross-record links leaving one record: "points" holds, per link,
-// the from-triangle centroid (in this record) then the to-triangle centroid;
-// "target_records" holds the record each link reaches.
-Dictionary NavmeshReader::get_record_cross_links(int record_index) const {
+// Seams to the records NVEX joins with `record_index` whose closest open edges
+// are more than `min_gap` and at most `max_gap` metres apart: "points" holds,
+// per seam, the closest point on this record's open edges then the closest
+// point on the other's; "target_records" the other record.
+Dictionary NavmeshReader::get_record_seam_links(int record_index, float min_gap, float max_gap) const {
 	Dictionary d;
 	PackedVector3Array points;
 	PackedInt32Array target_records;
-	const nav::NavMeshRecord *r = db_.record_at((size_t)record_index);
-	if (r != nullptr) {
-		const auto &links = db_.cross_record_links();
-		for (uint32_t local = 0; local < r->triangles.size(); ++local) {
-			auto found = links.find(r->global_triangle_offset + local);
-			if (found == links.end()) continue;
-			for (const nav::CrossRecordLink &link : found->second) {
-				uint32_t to_record = 0, to_local = 0;
-				if (!db_.resolve_global_triangle(link.to_global_triangle, &to_record, &to_local)) continue;
-				points.push_back(to_godot(db_.triangle_centroid((uint32_t)record_index, local)));
-				points.push_back(to_godot(db_.triangle_centroid(to_record, to_local)));
-				target_records.push_back((int32_t)to_record);
-			}
+	if (db_.record_at((size_t)record_index) != nullptr) {
+		for (uint32_t other : db_.coarse_neighbors((uint32_t)record_index)) {
+			if (other == (uint32_t)record_index) continue;
+			nav::Vec3 here, there;
+			float gap = db_.closest_open_edge_points((uint32_t)record_index, other, &here, &there);
+			if (gap <= min_gap || gap > max_gap) continue;
+			points.push_back(to_godot(here));
+			points.push_back(to_godot(there));
+			target_records.push_back((int32_t)other);
 		}
 	}
 	d["points"] = points;

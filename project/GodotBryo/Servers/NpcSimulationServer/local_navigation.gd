@@ -2,18 +2,25 @@ class_name LocalNavigation
 extends Node
 
 ## Godot navigation for the cells the streamers have loaded: one
-## NavigationServer3D map per space, a NavigationRegion3D per NAVM record and a
-## NavigationLink3D per derived cross-record pair whose two records both have
-## regions. Physicalised actors path on these maps; NpcSimulationServer routes
-## on the whole game's NAVM.
+## NavigationServer3D map per space and a NavigationRegion3D per NAVM record.
+## Physicalised actors path on these maps; NpcSimulationServer routes on the
+## whole game's NAVM.
 ##
 ## Children are grouped per space (`Space_<form id>`), so the remote scene tree
 ## and Debug > Visible Navigation show exactly what is local. A cell's
 ## navigation meshes are built on a worker thread and its nodes added on the
-## main thread. Maps never use Godot's edge connections: NAVM records do not
-## share vertices at their seams, and on a worldspace-sized map Godot's
-## free-edge search does not finish (`_diag/diag_navserver_bench`). The links
-## join the records instead.
+## main thread.
+##
+## Records join where their open edges meet. Godot's edge connections join
+## those within its default 0.25 m margin: 80% of NVEX-joined record pairs in
+## FalloutNV.esm, and 538 coincident or near-coincident pairs NVEX does not
+## record (`native/tools/navm_seam_gap_census.cpp`). A NavigationLink3D joins
+## each NVEX-joined pair whose closest open edges are 0.25-4 m apart (177
+## exterior pairs, and the four of interior 0x10D629 at 1.12-3.84 m), between
+## those two closest points, so it crosses at the seam. NVEX pairs farther
+## apart (1,062) get nothing. Edge connections stall only on a whole
+## worldspace's records (`_diag/diag_navserver_bench`), which local maps never
+## hold.
 
 ## Emitted on the main thread once a local cell's regions are on its map.
 signal cell_ready(cell_form_id: int)
@@ -23,6 +30,12 @@ signal cell_ready(cell_form_id: int)
 ## cell and the map reports an edge error; vertices are already welded
 ## exactly, so a finer cell loses nothing.
 const CELL_SIZE := 0.1
+## Godot's own default edge connection margin, metres: NAVM seam gaps around
+## Goodsprings join at it as well as at 2 m (`_diag/diag_local_seams`).
+const EDGE_CONNECTION_MARGIN := 0.25
+## NVEX-joined records whose closest open edges are farther apart than the
+## margin, up to this, metres, get a link between those closest points.
+const MAX_SEAM_LINK_GAP := 4.0
 ## Gamebryo Z-up to Godot Y-up: (x, y, z) -> (x, z, -y), the basis
 ## EsmReferencePhysicaliser places references with.
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
@@ -44,6 +57,9 @@ var _built_cells: Dictionary = {}
 var _build_tasks: Dictionary = {}
 ## record index -> its NavigationRegion3D.
 var _regions_by_record: Dictionary = {}
+## record index -> its seam links from NavmeshReader.get_record_seam_links,
+## kept while it has a region.
+var _seams_by_record: Dictionary = {}
 ## record index -> the NavigationLink3Ds touching it (each link is listed
 ## under both of its records).
 var _links_by_record: Dictionary = {}
@@ -98,7 +114,8 @@ func get_map(space_form_id: int) -> RID:
 		var map := NavigationServer3D.map_create()
 		NavigationServer3D.map_set_cell_size(map, CELL_SIZE)
 		NavigationServer3D.map_set_cell_height(map, CELL_SIZE)
-		NavigationServer3D.map_set_use_edge_connections(map, false)
+		NavigationServer3D.map_set_use_edge_connections(map, true)
+		NavigationServer3D.map_set_edge_connection_margin(map, EDGE_CONNECTION_MARGIN)
 		NavigationServer3D.map_set_active(map, true)
 		_maps_by_space[space_form_id] = map
 	return _maps_by_space[space_form_id]
@@ -163,11 +180,13 @@ func _start_build(cell_form_id: int) -> void:
 ## thread. Reads only the immutable NavmeshReader.
 func _build_meshes(cell_form_id: int, records: PackedInt32Array) -> void:
 	var meshes: Array[NavigationMesh] = []
+	var seams: Array[Dictionary] = []
 	for record_index in records:
 		meshes.append(_navigation_mesh(record_index))
-	_apply_build.call_deferred(cell_form_id, records, meshes)
+		seams.append(_navmesh.get_record_seam_links(record_index, EDGE_CONNECTION_MARGIN, MAX_SEAM_LINK_GAP))
+	_apply_build.call_deferred(cell_form_id, records, meshes, seams)
 
-func _apply_build(cell_form_id: int, records: PackedInt32Array, meshes: Array[NavigationMesh]) -> void:
+func _apply_build(cell_form_id: int, records: PackedInt32Array, meshes: Array[NavigationMesh], seams: Array[Dictionary]) -> void:
 	var task_id: int = _build_tasks.get(cell_form_id, -1)
 	_build_tasks.erase(cell_form_id)
 	if task_id != -1:
@@ -176,33 +195,34 @@ func _apply_build(cell_form_id: int, records: PackedInt32Array, meshes: Array[Na
 		return
 	var space_form_id := int(_space_by_cell[cell_form_id])
 	for index in records.size():
-		_add_region(space_form_id, records[index], meshes[index])
+		_add_region(space_form_id, records[index], meshes[index], seams[index])
 	_built_cells[cell_form_id] = true
 	cell_ready.emit(cell_form_id)
 
-func _add_region(space_form_id: int, record_index: int, mesh: NavigationMesh) -> void:
+func _add_region(space_form_id: int, record_index: int, mesh: NavigationMesh, seams: Dictionary) -> void:
 	var region := NavigationRegion3D.new()
 	region.name = "NAVM_%08X" % int(_navmesh.get_record_info(record_index)["form_id"])
 	region.navigation_mesh = mesh
 	region.set_navigation_map(get_map(space_form_id))
 	_space_root(space_form_id).add_child(region)
 	_regions_by_record[record_index] = region
+	_seams_by_record[record_index] = seams
 	_links_by_record[record_index] = []
 	_add_links(space_form_id, record_index)
 
-## Links from `record_index` to records that already have regions. A pair is
-## stored in both directions, so each link is made once: by whichever of its
-## two records gets its region second.
+## Links from `record_index` to records that already have regions, across the
+## seams NavmeshReader found. A seam is found from both of its records, so each
+## link is made once: by whichever record gets its region second.
 func _add_links(space_form_id: int, record_index: int) -> void:
-	var cross_links: Dictionary = _navmesh.get_record_cross_links(record_index)
-	var points: PackedVector3Array = cross_links["points"]
-	var target_records: PackedInt32Array = cross_links["target_records"]
+	var seams: Dictionary = _seams_by_record[record_index]
+	var points: PackedVector3Array = seams["points"]
+	var target_records: PackedInt32Array = seams["target_records"]
 	for index in target_records.size():
 		var target_record := target_records[index]
-		if target_record == record_index or not _regions_by_record.has(target_record):
+		if not _regions_by_record.has(target_record):
 			continue
 		var link := NavigationLink3D.new()
-		link.name = "Link_%s_%s" % [_regions_by_record[record_index].name, _regions_by_record[target_record].name]
+		link.name = "Seam_%s_%s" % [_regions_by_record[record_index].name, _regions_by_record[target_record].name]
 		link.bidirectional = true
 		link.start_position = to_godot(points[index * 2])
 		link.end_position = to_godot(points[index * 2 + 1])
@@ -227,6 +247,7 @@ func _remove_region(record_index: int) -> void:
 		_records_by_link.erase(link)
 		link.free()
 	_links_by_record.erase(record_index)
+	_seams_by_record.erase(record_index)
 	var region: NavigationRegion3D = _regions_by_record.get(record_index)
 	if region != null:
 		region.free()
