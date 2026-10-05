@@ -555,20 +555,6 @@ func _finish_cross_space_route(request_id: int, result: Dictionary) -> void:
 ## A lease changes only mutual-execution ownership, exactly as in the original
 ## NSS. The one addition is that an actor with no ground under it cannot be
 ## leased for physical simulation -- there is nowhere valid to put it.
-func checkout(reference: ActorReference) -> bool:
-	if not _is_tracked(reference) or reference.simulation_mode != ActorReference.SimulationMode.LOW_LEVEL:
-		return false
-	if not is_grounded(reference):
-		return false
-	reference.simulation_mode = ActorReference.SimulationMode.PHYSICAL_LEASED
-	return true
-
-func checkin(reference: ActorReference) -> bool:
-	if not _is_tracked(reference) or reference.simulation_mode != ActorReference.SimulationMode.PHYSICAL_LEASED:
-		return false
-	reference.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
-	return true
-
 func _is_tracked(reference: ActorReference) -> bool:
 	return reference != null and actors_by_instance_id.get(reference.instance_id) == reference
 

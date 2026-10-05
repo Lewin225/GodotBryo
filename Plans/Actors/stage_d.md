@@ -14,9 +14,11 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
    `move_target` (fields added here rather than in step 4), turns on the spot before walking,
    writes position and heading while leased (`test_npc_controller` walks Doc 27.4 m across his
    house).
-4. **Spawning and hand-off.** The physicaliser builds the controller for actors and sets
-   `simulation_mode`; `checkout()` / `checkin()` removed; the README's hand-off paragraph
-   rewritten.
+4. **Spawning and hand-off.** Done: the physicaliser builds an `NpcController` for every
+   `ActorReference`; the controller extends `EsmNode` and is the node registered for the
+   reference (streamers free, reparent and place it), tells its `EsmActorNode` to load and
+   unload, and holds the lease while in the tree. `checkout()` / `checkin()` removed; the
+   README's hand-off section rewritten.
 5. **Gate in play.** Doc walks across GSDocMitchellHouse in the running game.
 6. **Deferred:** the door and obstacle cut (below), after the gate.
 
@@ -109,14 +111,19 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   grounded, running) goes to the actor node's `ActorAnimator.set_motion()`, which picks the
   `mt*` clip for direction and speed (and turns in place). `PlayerController` calls the same
   method in place of the legacy `ActorAnimationComponent`.
-- **Spawning.** The physicaliser instances `npc_controller.tscn` for an `ActorReference` (the
-  controller owns its `EsmActorNode`), except for the possessed actor, which the player's body
-  stands in for.
+- **Spawning.** The physicaliser instances `npc_controller.tscn` for an `ActorReference`, except
+  for the possessed actor, which the player's body stands in for. `NpcController` extends
+  `EsmNode` and is the node registered for the reference (`EsmNode.node_for`), so streamers
+  free, reparent and place the whole actor through it, and enable state hides it and turns off
+  its collision, the Body capsule included. It loads no model itself: it hands the reference to
+  its `EsmActorNode` child (`placed_by_parent`, so the child does not register) and tells it to
+  load or unload; activation is forwarded to the child.
 - **Lease hand-off by field.** The lease rules are in the NpcSimulationServer README ("Who owns
   which field"): leased, the controller writes `position` and NSS never does; unleased, the
   reverse; NSS always owns the package and `move_target`, and keeps ticking a leased actor. The
-  physicaliser sets `simulation_mode` directly: `PHYSICAL_LEASED` when it builds the controller,
-  `LOW_LEVEL` when it removes it, after the controller has written its final position and heading.
+  lease is the controller's tree lifetime: it sets `simulation_mode` to `PHYSICAL_LEASED` on
+  entering the tree (or on taking a reference while in it), and on leaving writes its final
+  position and heading, then sets `LOW_LEVEL`.
   The NSS tick (main thread) checks the field before writing `position`; worker threads only
   compute routes and never write Resources, so nothing races the flip. The tick keeps the mode it
   last saw per actor (derived, not saved); an actor that comes back `LOW_LEVEL` is re-grounded

@@ -226,7 +226,7 @@ func _build_coarse_graph(space_form_id: int) -> void:
 		coarse_graph_lines.mesh = null
 
 ## Green = grounded onto real navmesh, red = no navmesh within the snap radius
-## (and therefore refused by checkout()). The line from each actor shows the
+## (the simulation cannot move them). The line from each actor shows the
 ## correction from the authored position to where they would actually stand.
 func _build_actor_points(space_form_id: int) -> void:
 	var actors: Array[ActorReference] = simulation.get_actors_in_space(space_form_id)
@@ -894,7 +894,7 @@ func _refresh_status() -> void:
 		cross_text,
 		batch_text,
 		"[ ] space  1 navmesh  2 coarse  3 actors  4 portals  R route  T cross-space walk  P x%d batch  C follow=%s  F frame" % [BATCH_SIZE, "on" if camera_follows_walker else "off"],
-		"Green actor = grounded on real navmesh. Red = no navmesh under it (checkout refuses these).",
+		"Green actor = grounded on real navmesh. Red = no navmesh under it (the simulation cannot move these).",
 		"Yellow lines are authored NVEX record connectivity, drawn between authored bounds centers.",
 		"Portal boxes: orange = an XTEL door in this space, blue = an arrival point into this space.",
 	])

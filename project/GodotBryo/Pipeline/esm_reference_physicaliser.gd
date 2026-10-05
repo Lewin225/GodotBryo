@@ -18,7 +18,7 @@ const MovableStaticNodeScript := preload("res://GodotBryo/Types/Node/esm_movable
 const TalkingActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_talking_activator_node.gd")
 const TerminalNodeScript := preload("res://GodotBryo/Types/Node/esm_terminal_node.gd")
 const LeveledItemPreviewNodeScript := preload("res://GodotBryo/Types/Node/esm_leveled_item_preview_node.gd")
-const ActorNodeScene := preload("res://GodotBryo/Types/Node/esm_actor_node.tscn")
+const NpcControllerScene := preload("res://GodotBryo/Types/Node/npc_controller.tscn")
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
 ## Creates and configures one semantic node synchronously. Once parented, the
@@ -36,11 +36,6 @@ func physicalise(ref: EsmReference, parent: Node3D = null, initial_visual_detail
 	# same frame by conjugation, avoiding a second axis correction on the NIF.
 	root.transform = placement_transform(ref.position, ref.rotation, ref.scale)
 	root.set_meta("gamebryo_placement_space", true)
-	# Humanoids have a multi-NIF body assembly rather than EsmNode's one-model
-	# lifecycle. A physicalised actor is a near, previewable instance, so start
-	# that assembly as soon as its typed reference has been assigned.
-	if root is EsmActorNode:
-		(root as EsmActorNode).load_actor()
 	if parent != null:
 		parent.add_child(root)
 	return root
@@ -69,7 +64,7 @@ func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:
 
 func _make_node(ref: EsmReference) -> EsmNode:
 	if ref is ActorReference:
-		return ActorNodeScene.instantiate()
+		return NpcControllerScene.instantiate()
 	if ref is DoorReference:
 		return DoorNodeScript.new()
 	if ref is LeveledItemReference:

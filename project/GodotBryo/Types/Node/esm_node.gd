@@ -53,9 +53,10 @@ var _generated_children: Array[Node] = []
 var _enable_chain: Array[EsmReference] = []
 const GAMEBRYO_TO_GODOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
 
-## True when a parent (NpcController) owns this node's placement: the node
-## keeps its local transform and the parent follows the reference.
-var placed_by_parent := false
+## True when a parent (NpcController) represents this node's reference: the
+## parent is the node registered for it (node_for), places it and owns its
+## enable state, so this node neither registers nor follows teleports.
+@export var placed_by_parent := false
 
 ## EsmReference -> the EsmNode representing it in a scene tree.
 static var _nodes_by_reference: Dictionary = {}
@@ -73,7 +74,7 @@ func _notification(what: int) -> void:
 		_unregister_reference()
 
 func _register_reference() -> void:
-	if reference == null:
+	if reference == null or placed_by_parent:
 		return
 	_nodes_by_reference[reference] = self
 	if not reference.teleported.is_connected(_on_reference_teleported):
@@ -91,7 +92,7 @@ func _register_reference() -> void:
 		_apply_enable_state()
 
 func _unregister_reference() -> void:
-	if reference == null:
+	if reference == null or placed_by_parent:
 		return
 	if _nodes_by_reference.get(reference) == self:
 		_nodes_by_reference.erase(reference)
@@ -149,8 +150,6 @@ func _apply_enable_state() -> void:
 ## placement. Leaving the loaded space is handled by the streamer that owns
 ## the node.
 func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) -> void:
-	if placed_by_parent:
-		return
 	if old_space_form_id == new_space_form_id:
 		transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
 

@@ -31,7 +31,9 @@ func _ready() -> void:
 	if not esm_server.is_ready():
 		await esm_server.esm_ready
 	var doc: EsmReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
-	var node: EsmNode = EsmReferencePhysicaliser.new().physicalise(doc, self)
+	var controller := EsmReferencePhysicaliser.new().physicalise(doc, self) as NpcController
+	check(controller != null and EsmNode.node_for(doc) == controller, "Doc is physicalised as an NpcController, the node registered for him")
+	var node: EsmActorNode = controller.actor
 	var visual_done := [false]
 	var animation_clips := [-1]
 	node.visual_load_completed.connect(func() -> void: visual_done[0] = true)
@@ -48,7 +50,7 @@ func _ready() -> void:
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
-	await _check_motion(node as EsmActorNode, player)
+	await _check_motion(node, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -108,15 +110,16 @@ func _measure(node: Node, animation_clips: int) -> Dictionary:
 			counts["facial_attached_meshes"] += 1
 	return counts
 
-## A creature gets the same node. CreatureBase lists no model parts until the
+## A creature gets the same controller and actor node. CreatureBase lists no model parts until the
 ## actors plan's stage J, so Rex (CREA 0x118E71) builds his skeleton and
 ## nothing else.
 func _check_creature(esm_server) -> void:
 	var rex: EsmReference = esm_server.create_reference_for_base(0x118E71)
-	var node := EsmReferencePhysicaliser.new().physicalise(rex, self)
-	check(node is EsmActorNode, "a CreatureReference is physicalised as an EsmActorNode (%s)" % node.get_class())
-	if not node is EsmActorNode:
+	var controller := EsmReferencePhysicaliser.new().physicalise(rex, self) as NpcController
+	check(controller != null and controller.actor != null, "a CreatureReference is physicalised as an NpcController with an EsmActorNode")
+	if controller == null or controller.actor == null:
 		return
+	var node := controller.actor
 	var finished := [false]
 	node.visual_load_completed.connect(func() -> void: finished[0] = true)
 	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
@@ -127,4 +130,4 @@ func _check_creature(esm_server) -> void:
 	var body := node.get_node_or_null("Body")
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
 	check(skeleton != null and skeleton.get_bone_count() > 0, "Rex's skeleton is built (%d bones)" % (skeleton.get_bone_count() if skeleton != null else 0))
-	node.queue_free()
+	controller.queue_free()

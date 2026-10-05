@@ -306,12 +306,14 @@ integrating travel.
 | `active_package`, current target | always | never |
 | `position` | only while unleased | while leased |
 
-A checked-out actor *executes* the package it is given — walks to the supplied
+A leased actor *executes* the package it is given — walks to the supplied
 target, fights, eats. It never selects one. Package and target selection is
 always NSS's job.
 
-Name this carefully in code: "checked out" reads as though NSS lets go of the
-actor entirely, which is the opposite of what happens.
+The lease is the controller's tree lifetime: an `NpcController` sets its
+reference `PHYSICAL_LEASED` when it enters the tree, and on leaving writes its
+final position and heading and sets it back to `LOW_LEVEL`. There is no
+`checkout()` / `checkin()`: the field alone hands the actor over.
 
 The player is an actor like any other, holding a normal `ActorReference` that is
 permanently leased; its position is written per frame by its physical controller.
@@ -357,7 +359,8 @@ well under that is all the precision the data can express.
 An hour-bucketed wake queue was considered and **rejected**: it is a pure cost
 optimisation with no correctness benefit, and it introduces invalidation bugs
 that do not otherwise exist (an actor leased across an hour boundary never fires
-its bucket, so re-bucketing on checkin silently skips a package change). The
+its bucket, so re-bucketing on the lease's release silently skips a package
+change). The
 round-robin sweep has none of that and costs nothing.
 
 ### Threading boundary
@@ -374,9 +377,13 @@ Writer sets are disjoint and reads are deferred, so no locking is needed
 anywhere. That property is worth asserting in tests rather than only documenting:
 leased ⇒ NSS never writes `position`; unleased ⇒ the controller never writes it.
 
-The one genuine synchronisation point is the lease flip — the worker must stop
-integrating before the physical controller takes over, so `checkout()` needs an
-acknowledged handoff rather than just setting an enum.
+The lease flip needs no handshake. The tick, on the main thread, is the only
+writer of travel results, and so is the controller and the physicaliser that
+flips the field. The tick checks `simulation_mode` before writing `position` and
+drops a worker result whose actor is leased, or whose `position` no longer equals
+the position the job started from (a `MoveTo`, a door or the controller moved it
+meanwhile); travel then restarts from the new position to the same target. An
+actor coming back `LOW_LEVEL` is re-grounded from its reference.
 
 ### Still unbuilt
 
@@ -415,7 +422,9 @@ streaming for the same crowd.
 Across all 3,386 placed actors: 3,289 ground onto real navmesh (2,938 within
 0.25 m, 329 within 2 m, 22 further), 97 do not. Those 97 are a real outcome, not
 a bug — not every cell is navmeshed, and some authored placements genuinely sit
-off-mesh. `checkout()` refuses them, because there is nowhere valid to put them.
+off-mesh. "Grounded" here means on navmesh: the tick cannot route or move them
+while unleased. Physicalised, one stands on whatever collision is under it (the
+controller's ground ray); it still cannot be routed anywhere without navmesh.
 
 ## Tests
 

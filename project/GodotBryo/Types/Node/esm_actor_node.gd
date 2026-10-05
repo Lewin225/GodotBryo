@@ -40,7 +40,7 @@ signal animation_load_failed(reason: String)
 
 @export_tool_button("Import Actor Data From Preset Or FormID") var load_button: Callable = _editor_load
 @export_tool_button("Load Actor") var apply_data_button: Callable = _editor_apply_actor_data
-@export_tool_button("Unload Actor") var unload_button: Callable = _editor_unload_actor
+@export_tool_button("Unload Actor") var unload_button: Callable = unload_actor
 @export_tool_button("Refresh Equipment") var refresh_equipment_button: Callable = _editor_refresh_equipment
 
 const PRESET_FORM_IDS := {"Doc Mitchell (Goodsprings)": 0x00104C0C,}
@@ -632,7 +632,9 @@ func _editor_apply_actor_data() -> void:
 	load_actor()
 
 
-func _editor_unload_actor() -> void:
+## Drops the actor: cancels loading, frees its body, equipment and clips and
+## clears the reference. load_actor() builds it again once a reference is set.
+func unload_actor() -> void:
 	_cancel_visual_load()
 	equipment.clear()
 	animator.cancel()

@@ -218,15 +218,11 @@ func _ready() -> void:
 
 	if grounded_actor != null:
 		_check(grounded_actor.simulation_mode == ActorReference.SimulationMode.LOW_LEVEL, "grounded actor starts LOW_LEVEL")
-		_check(simulation.checkout(grounded_actor), "checkout succeeds for a grounded actor")
-		_check(grounded_actor.simulation_mode == ActorReference.SimulationMode.PHYSICAL_LEASED, "checkout changes only simulation mode")
-		_check(not simulation.checkout(grounded_actor), "checkout rejects an existing lease")
-		_check(simulation.checkin(grounded_actor), "checkin returns the actor to LOW_LEVEL")
 		var ground_position: Vector3 = simulation.get_ground_position(grounded_actor)
 		_check(ground_position.distance_to(grounded_actor.position) <= simulation.ground_snap_radius,
 			"ground position is within the snap radius of the authored position")
 	if ungrounded_actor != null:
-		_check(not simulation.checkout(ungrounded_actor), "checkout refuses an actor with no navmesh under it")
+		_check(not simulation.is_grounded(ungrounded_actor), "an actor with no navmesh under it is not grounded")
 
 	# --- cross-space routing through authored XTEL doors ---
 	_check(not simulation.portals_by_source_space.is_empty(), "portals are indexed by source space (%d spaces have exits)" % simulation.portals_by_source_space.size())

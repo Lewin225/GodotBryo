@@ -11,6 +11,7 @@ height = 1.8
 script = ExtResource("1_controller")
 
 [node name="EsmActorNode" parent="." instance=ExtResource("2_actor")]
+placed_by_parent = true
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 0.5
