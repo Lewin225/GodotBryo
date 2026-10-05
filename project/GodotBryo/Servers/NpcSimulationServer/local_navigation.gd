@@ -12,13 +12,13 @@ extends Node
 ## main thread.
 ##
 ## Records join where their open edges meet. Godot's edge connections join
-## those within its default 0.25 m margin: 80% of NVEX-joined record pairs in
-## FalloutNV.esm, and 538 coincident or near-coincident pairs NVEX does not
-## record (`native/tools/navm_seam_gap_census.cpp`). A NavigationLink3D joins
-## each NVEX-joined pair whose closest open edges are 0.25-4 m apart (177
-## exterior pairs, and the four of interior 0x10D629 at 1.12-3.84 m), between
-## those two closest points, so it crosses at the seam. NVEX pairs farther
-## apart (1,062) get nothing. Edge connections stall only on a whole
+## those within a 0.5 m margin: 82% of NVEX-joined record pairs in
+## FalloutNV.esm, and 616 pairs NVEX does not record, 427 of them coincident
+## (`native/tools/navm_seam_gap_census.cpp`). A NavigationLink3D joins each
+## NVEX-joined pair whose closest open edges are 0.5-4 m apart (72 exterior
+## pairs, and the four of interior 0x10D629 at 1.12-3.84 m), between those two
+## closest points, so it crosses at the seam. NVEX pairs farther apart (1,062)
+## get nothing. Edge connections stall only on a whole
 ## worldspace's records (`_diag/diag_navserver_bench`), which local maps never
 ## hold.
 
@@ -30,9 +30,10 @@ signal cell_ready(cell_form_id: int)
 ## cell and the map reports an edge error; vertices are already welded
 ## exactly, so a finer cell loses nothing.
 const CELL_SIZE := 0.1
-## Godot's own default edge connection margin, metres: NAVM seam gaps around
-## Goodsprings join at it as well as at 2 m (`_diag/diag_local_seams`).
-const EDGE_CONNECTION_MARGIN := 0.25
+## Edge connection margin, metres: joins the slightly misaligned seams that
+## would otherwise need a link, well short of the 1 m+ at which unrelated
+## edges (a ledge over the ground below) start to join.
+const EDGE_CONNECTION_MARGIN := 0.5
 ## NVEX-joined records whose closest open edges are farther apart than the
 ## margin, up to this, metres, get a link between those closest points.
 const MAX_SEAM_LINK_GAP := 4.0

@@ -253,10 +253,10 @@ including through doors.
 - **Builds** — a cell's NavigationMeshes are built on a `WorkerThreadPool` task
   and its nodes added on the main thread; `cell_ready` follows. A cell made non-local
   before its build lands is never applied.
-- **Seams** — Godot's edge connections at its default 0.25 m margin join the
-  record seams within it (80% of NVEX-joined pairs, and 538 coincident or
-  near-coincident pairs NVEX does not record); a `NavigationLink3D` named
-  `Seam_...` joins each NVEX-joined pair 0.25-4 m apart, between the two closest
+- **Seams** — Godot's edge connections at a 0.5 m margin join the record seams
+  within it (82% of NVEX-joined pairs, and 616 pairs NVEX does not record, 427
+  of them coincident); a `NavigationLink3D` named `Seam_...` joins each
+  NVEX-joined pair 0.5-4 m apart (76), between the two closest
   points on their open edges (`NavmeshReader.get_record_seam_links`). See
   `native/tools/navm_seam_gap_census.cpp` and `_diag/diag_local_seams`. Edge
   connections stall only on a whole worldspace (on WastelandNV the free-edge

@@ -7,10 +7,10 @@
 //    triangle to an open edge of the source record: the gap at the link the
 //    ESM actually names.
 // 3. Pairs of records in one space that NVEX does not join but whose open
-//    edges come within Godot's 0.25 m edge connection margin: joins an edge
-//    connection would make that the ESM never authored.
+//    edges come within the edge connection margin: joins an edge connection
+//    would make that the ESM never authored.
 //
-//   tools/navm_seam_gap_census
+//   tools/navm_seam_gap_census [margin metres, default 0.25]
 #include "nav/navmesh_database.h"
 
 #include <algorithm>
@@ -87,7 +87,8 @@ std::vector<Segment> open_edges(const nav::NavMeshRecord &record) {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+	const float kMargin = argc > 1 ? std::stof(argv[1]) : 0.25f;
 	nav::NavmeshDatabase db;
 	db.load({ "../fresh_nv_copy/Data/FalloutNV.esm" });
 	std::set<std::pair<uint32_t, uint32_t>> pairs;
@@ -136,7 +137,6 @@ int main() {
 	for (int k = 0; k < 8; ++k) std::printf("  %-7s %6d | %6d\n", labels[k], link_exterior[k], link_interior[k]);
 
 	// 3. Unauthored joins within 0.25 m.
-	constexpr float kMargin = 0.25f;
 	int unlinked_pairs_checked = 0, unauthored_joins = 0;
 	std::map<std::string, int> unauthored_by_gap;
 	std::vector<std::string> unauthored_gapped;
@@ -160,7 +160,7 @@ int main() {
 				}
 				if (best <= kMargin) {
 					unauthored_joins++;
-					const char *gap = best <= 0.001f ? "<=0.001" : (best <= 0.01f ? "<=0.01" : (best <= 0.1f ? "<=0.1" : "<=0.25"));
+					const char *gap = best <= 0.001f ? "<=0.001" : (best <= 0.01f ? "<=0.01" : (best <= 0.1f ? "<=0.1" : (best <= 0.25f ? "<=0.25" : "<=margin")));
 					unauthored_by_gap[std::string(gap) + (a->is_exterior ? " exterior" : " interior")]++;
 					if (best > 0.001f && unauthored_gapped.size() < 10) {
 						char line[96];

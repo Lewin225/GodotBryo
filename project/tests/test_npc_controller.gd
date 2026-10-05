@@ -75,6 +75,7 @@ func _ready() -> void:
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "Doc idles after arriving (%s)" % (player.current_animation if player != null else "no player"))
 
 	await _check_seam_crossing(controller, doc)
+	await _check_stuck_recovery(controller, doc)
 	doc.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -90,7 +91,7 @@ func _check_seam_crossing(controller: NpcController, doc: ActorReference) -> voi
 	if not local_navigation.is_cell_ready(cell):
 		await local_navigation.cell_ready
 	var records: PackedInt32Array = navmesh.get_records_in_space(cell)
-	var seam: Dictionary = navmesh.get_record_seam_links(records[0], 0.25, 4.0)
+	var seam: Dictionary = navmesh.get_record_seam_links(records[0], LocalNavigation.EDGE_CONNECTION_MARGIN, LocalNavigation.MAX_SEAM_LINK_GAP)
 	var seam_points: PackedVector3Array = seam["points"]
 	var far_record: int = seam["target_records"][0]
 	var start := _nearest_centre(navmesh, records[0], seam_points[0], false)
@@ -114,6 +115,26 @@ func _check_seam_crossing(controller: NpcController, doc: ActorReference) -> voi
 	controller.agent.link_reached.disconnect(on_link)
 	check(links_crossed[0] > 0, "his path crosses a seam link (%d)" % links_crossed[0])
 	check(reached[0], "Doc crosses the seam and arrives in %.1f s (%.2f m off)" % [frames / 60.0, _planar(doc.position).distance_to(_planar(target))])
+
+## A Doc who cannot move (speed 0) is stuck: after `stuck_seconds` he is moved
+## to each waypoint in turn and arrives.
+func _check_stuck_recovery(controller: NpcController, doc: ActorReference) -> void:
+	var start := doc.position
+	var target := _far_point(doc.current_space_form_id, start)
+	controller.speed_scale = 0.0
+	controller.stuck_seconds = 0.25
+	var reached := [false]
+	var on_reached := func() -> void: reached[0] = true
+	doc.move_target_reached.connect(on_reached)
+	doc.set_move_target(target)
+	var frames := 0
+	while not reached[0] and frames < WALK_FRAMES:
+		await get_tree().physics_frame
+		frames += 1
+	doc.move_target_reached.disconnect(on_reached)
+	check(reached[0], "a Doc who cannot move is moved along his route and arrives (%.1f m in %.1f s)" % [start.distance_to(target), frames / 60.0])
+	controller.speed_scale = SPEED_SCALE
+	controller.stuck_seconds = 3.0
 
 ## The triangle centre of `record` nearest `point` (Gamebryo axes, as
 ## NavmeshReader gives it), or farthest from it.

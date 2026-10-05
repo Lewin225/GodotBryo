@@ -183,14 +183,18 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   not join have open edges within 0.25 m, 427 of them coincident; no pair within 0.25 m looks
   like a cliff top over the ground below. NVEX's target triangle is no measure of where the
   records meet: it is over 4 m from the source record's open edges for most entries.
-  `LocalNavigation` therefore uses Godot's edge connections at the default 0.25 m margin, plus a
-  `NavigationLink3D` for each NVEX-joined pair 0.25-4 m apart, between the two closest points
+  `LocalNavigation` therefore uses Godot's edge connections at a 0.5 m margin (616 pairs NVEX
+  does not join fall within it, all well short of the 1 m+ where a ledge would join the ground
+  below), plus a `NavigationLink3D` for each NVEX-joined pair 0.5-4 m apart (76), between the two closest points
   on their open edges (`NavmeshReader.get_record_seam_links`), so it crosses at the seam.
   On 49 cells around Goodsprings, edge connections alone reach the same 94 of 100 cross-cell
   routes as links between triangle centres, without the detour through each centre
   (`_diag/diag_local_seams`). The controller crosses a link deliberately: on
   `NavigationAgent3D.link_reached` it walks straight to the exit, its height going from the
   entry's to the exit's, and resumes the agent's path there.
+- **Stuck recovery.** A controller with route left that moves less than `stuck_distance`
+  (0.25 m) in `stuck_seconds` (3 s), whatever blocks it, is moved to its current waypoint and
+  stood on the ground there.
 
 ## Deferred: the door and obstacle cut
 

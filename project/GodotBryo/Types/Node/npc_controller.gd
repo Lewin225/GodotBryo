@@ -36,6 +36,11 @@ extends EsmNode
 ## When the way ahead is more than this many degrees off the actor's facing,
 ## it turns on the spot before moving.
 @export var turn_in_place_degrees := 45.0
+## An actor with route left that moves less than `stuck_distance` metres in
+## this many seconds is stuck, and is moved to its current waypoint.
+@export var stuck_seconds := 3.0
+## See `stuck_seconds`.
+@export var stuck_distance := 0.25
 
 @export_group("Debug")
 ## A test stand-in for packages: keeps the reference's move_target on the
@@ -79,6 +84,9 @@ var _avoidance_velocity := Vector3.ZERO
 ## axes; `_link_exit` is INF otherwise.
 var _link_entry := Vector3.INF
 var _link_exit := Vector3.INF
+## Where the actor was when it last made progress, and how long since.
+var _progress_position := Vector3.INF
+var _stalled_seconds := 0.0
 var _last_yaw := 0.0
 ## The reference this controller has leased, handed back on leaving the tree
 ## or changing reference.
@@ -118,6 +126,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_snap_to_ground()
 	_turn_toward(desired, delta)
+	_recover_if_stuck(delta)
 	_publish_motion(desired, velocity, delta)
 	_write_placement()
 
@@ -182,7 +191,31 @@ func _write_placement() -> void:
 	reference.position = EsmReferencePhysicaliser.authored_position(global_position)
 	reference.rotation = EsmReferencePhysicaliser.authored_heading(rotation.y)
 
+## Moves an actor that has route left but has not moved `stuck_distance` in
+## `stuck_seconds` (blocked by a body, a wall or a closed door) to its current
+## waypoint, standing it on the ground there.
+func _recover_if_stuck(delta: float) -> void:
+	if _waypoint_index >= _waypoints.size():
+		_progress_position = Vector3.INF
+		_stalled_seconds = 0.0
+		return
+	if _progress_position == Vector3.INF or global_position.distance_to(_progress_position) > stuck_distance:
+		_progress_position = global_position
+		_stalled_seconds = 0.0
+		return
+	_stalled_seconds += delta
+	if _stalled_seconds < stuck_seconds:
+		return
+	global_position = _waypoints[_waypoint_index]
+	_link_entry = Vector3.INF
+	_link_exit = Vector3.INF
+	_snap_to_ground()
+	_progress_position = global_position
+	_stalled_seconds = 0.0
+
 func _reset_route() -> void:
+	_progress_position = Vector3.INF
+	_stalled_seconds = 0.0
 	_link_entry = Vector3.INF
 	_link_exit = Vector3.INF
 	_waypoints.clear()
