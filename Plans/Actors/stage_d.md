@@ -19,7 +19,10 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
    reference (streamers free, reparent and place it), tells its `EsmActorNode` to load and
    unload, and holds the lease while in the tree. `checkout()` / `checkin()` removed; the
    README's hand-off section rewritten.
-5. **Gate in play.** Doc walks across GSDocMitchellHouse in the running game.
+5. **Gate in play.** Done: with `NpcController.debug_follow_player`, Doc follows the player
+   across GSDocMitchellHouse and the Goodsprings saloon's NPCs follow in theirs, turning, walking
+   and idling from their controllers. The player's own body is not visible (no third person
+   yet); its `ActorMotion` is covered by `test_actor_node`.
 6. **Deferred:** the door and obstacle cut (below), after the gate.
 
 ## Facts
