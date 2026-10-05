@@ -209,19 +209,34 @@ routes ignore internal doors and obstacles: a controller walks into a closed int
    for the affected triangles is rebuilt among the pieces and their uncut neighbours; global
    triangle numbering, components, cross-record links and NVDP triangle indices are remapped.
    Inside pieces are tagged with the reference's FormID.
-3. **Blocking in `find_route`.** A per-query set of blocked reference FormIDs: obstacles are
-   always blocked; a door is blocked for an actor that cannot pass it (locked without the key,
-   lock level above its Lockpick skill; NpcSimulationServer decides). A* skips triangles tagged
+3. **Door passability: `NpcSimulationServer.can_pass_door(actor: ActorReference, door:
+   DoorReference) -> bool`.** The one place that decides whether an actor may route through a
+   door; everything that builds a route's blocked set calls it. True when any holds:
+   - the door is not locked (`DoorReference.is_locked`);
+   - the actor's inventory (`ActorReference.contents`) holds the door's key
+     (`lock_key_form_id` / `lock_key`, read from XLOC);
+   - the actor owns the door, or is in its owning faction at or above the required rank
+     (REFR XOWN / XRNK: **not read on any reference yet**; DoorReference needs both fields, per
+     the field-description rule);
+   - the actor's Lockpick skill meets the lock level (XLOC level, read as `lock_level`).
+     **Unverified:** whether NPCs pick locks in the original game at all, and how a lock level
+     maps to a required skill (GECK lock levels Very Easy to Very Hard, plus "requires key" in
+     `lock_flags`); check both before enabling this clause.
+   Obstacles have no passability: always blocked.
+4. **Blocking in `find_route`.** A per-query set of blocked reference FormIDs: every obstacle,
+   and each door in the route's spaces for which `can_pass_door` is false. A* skips triangles tagged
    with a blocked FormID. `route_across_spaces` passes the same set. Route results annotate the
    waypoint where a route crosses an unblocked door's pieces with that door, for the controller
    to open it.
-4. **Door state changes.** A door locked or unlocked while routes cross it makes
-   NpcSimulationServer route the affected actors again.
-5. **Godot's copy stays uncut.** `LocalNavigation` keeps building from the original triangles;
+5. **Door state changes.** A door locked or unlocked while routes cross it, or an actor gaining
+   or losing a key, makes NpcSimulationServer route the affected actors again.
+6. **Godot's copy stays uncut.** `LocalNavigation` keeps building from the original triangles;
    blocking is never Godot's.
 
 ### Tests
 
+- `can_pass_door`: unlocked door true; locked door false for an actor without the key and true
+  once the key is in its inventory; owner and faction clauses once XOWN / XRNK are read.
 - With Doc's bathroom door `001062AC` blocked, no route crosses from one side of it to the
   other; unblocked, the route crosses and names the door at the crossing waypoint.
 - Every cut shared edge has identical vertices on both sides (no T-junctions): the rebuilt
