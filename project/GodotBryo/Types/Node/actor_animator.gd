@@ -3,7 +3,7 @@ class_name ActorAnimator
 extends Node
 
 ## Loads an actor's locomotion KFs, binds them to its skeleton and plays the
-## idle. A child of the actor node (esm_actor_node.tscn). NifServer extracts
+## clip that matches how its controller moves it (the actor node's `motion`). A child of the actor node (esm_actor_node.tscn). NifServer extracts
 ## and caches the KFs; this only retargets their tracks to this actor's
 ## Skeleton3D. The AnimationPlayer it drives lives under the actor's Body, the
 ## root its track paths are relative to.
@@ -15,6 +15,12 @@ const PLAYER_NODE_NAME := "LocomotionAnimationPlayer"
 const LOCOMOTION_SUBDIRECTORY := "locomotion/"
 const IDLE_CLIP_PATH := "locomotion/mtidle.kf"
 const CLIPS_PER_FRAME := 4
+## Crossfade between locomotion clips, seconds.
+const BLEND_SECONDS := 0.2
+## Below this planar speed (m/s) the actor stands: idle or turning in place.
+const STANDING_SPEED := 0.1
+## Above this turn rate (rad/s) a standing actor plays a turn clip.
+const TURNING_RATE := 0.5
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 
 var _generation := 0
@@ -71,6 +77,43 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 	_schedule_binding()
 
 ## Stops loading and removes the AnimationPlayer.
+func _physics_process(_delta: float) -> void:
+	if Engine.is_editor_hint() or _loading or _player == null or not is_instance_valid(_player):
+		return
+	var actor := get_parent() as EsmActorNode
+	var female := actor != null and actor.is_female()
+	var clip := locomotion_clip(actor.motion if actor != null else null, female)
+	var clip_name := _clip_name(_root_path + clip, 0)
+	if not _player.has_animation(clip_name):
+		clip_name = _clip_name(_root_path + IDLE_CLIP_PATH, 0)
+	if _player.current_animation != clip_name and _player.has_animation(clip_name):
+		_player.play(clip_name, BLEND_SECONDS)
+
+## The unarmed humanoid locomotion KF (relative to the animation root) for
+## `motion`: idle, a turn while standing, or the walk or run clip for the
+## direction it moves in. Null motion idles. Idle and turns sit in
+## `locomotion/`; the unarmed movement clips in `locomotion/male/` and
+## `locomotion/female/` (and `child/`, not chosen yet).
+static func locomotion_clip(motion: ActorMotion, female: bool) -> String:
+	if motion == null:
+		return IDLE_CLIP_PATH
+	if motion.get_planar_speed() < STANDING_SPEED:
+		if motion.turn_rate > TURNING_RATE:
+			return LOCOMOTION_SUBDIRECTORY + "mtturnleft.kf"
+		if motion.turn_rate < -TURNING_RATE:
+			return LOCOMOTION_SUBDIRECTORY + "mtturnright.kf"
+		return IDLE_CLIP_PATH
+	var forward: float = -motion.velocity.z
+	var right: float = motion.velocity.x
+	var direction := ""
+	if absf(forward) >= absf(right):
+		direction = "forward" if forward > 0.0 else "backward"
+	else:
+		direction = "right" if right > 0.0 else "left"
+	var pace := "fast" if motion.running else ""
+	var body := "female/" if female else "male/"
+	return LOCOMOTION_SUBDIRECTORY + body + "mt%s%s.kf" % [pace, direction]
+
 func cancel() -> void:
 	_generation += 1
 	_loading = false

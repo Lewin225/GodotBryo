@@ -14,9 +14,13 @@ GSDocMitchellHouse, and the player and the NPC animate from their controllers.
 - `NpcSimulationServer.request_route(space, from, to)` returns a request id; the result arrives on
   `route_ready` with `found` and `waypoints` (a `PackedVector3Array` on the navmesh).
   `route_across_spaces` adds legs through doors.
-- `ActorAnimator` loads 125 male locomotion KFs: `mt*` (unarmed: idle, forward, backward, left,
-  right, fast*, turnleft / turnright, *_hurt) and the weapon-stance sets (`1gt`, `1hm`, `1hp`,
-  `2ha`, `2hh`, `2hl`, `2hm`, `2hr`, `h2h`). It plays `mtidle` and nothing else.
+- `ActorAnimator` loads Doc's 121 locomotion clips from `meshes/characters/_male/locomotion/`.
+  Idle and the unarmed turns sit at its top (`mtidle`, `mtturnleft`, `mtturnright`); the unarmed
+  movement clips are per body type in `male/`, `female/` and `child/` (`mtforward`,
+  `mtbackward`, `mtleft`, `mtright`, and `mtfast*` for running); crippled-leg clips are in
+  `hurt/` (`*_hurt`); the weapon-stance sets (`1gt`, `1hm`, `1hp`, `2ha`, `2hh`, `2hl`, `2hm`,
+  `2hr`, `h2h`) are at the top. `ActorAnimator.locomotion_clip()` chooses among the unarmed
+  clips from `ActorMotion`; child bodies, crippled legs and weapon stances are not chosen yet.
 - `NpcSimulationServer` is built for off-screen simulation: it routes over the authored NAVM and
   knows nothing of what is physically in the loaded world (other actors, the player, objects in the
   way, things to flee from).

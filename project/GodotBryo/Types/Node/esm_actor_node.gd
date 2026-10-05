@@ -56,7 +56,17 @@ const SECTION_CAP_LAST := 113
 const TORSO_CAP_FIRST := 201
 const TORSO_CAP_LAST := 213
 
+## How the controller that owns this actor is moving it (PlayerController,
+## NpcController). Assigned once by the controller, which updates it in place;
+## ActorAnimator reads it to choose clips. Null without a controller: the actor
+## idles.
+var motion: ActorMotion = null
+
 var _active_record: ActorBase = null
+
+## Whether the actor being shown uses female body parts and animations.
+func is_female() -> bool:
+	return _is_female
 var _is_female := false
 
 var _standalone_preview := false

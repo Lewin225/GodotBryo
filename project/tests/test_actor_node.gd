@@ -48,9 +48,36 @@ func _ready() -> void:
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
+	await _check_motion(node as EsmActorNode, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## The animator follows the node's ActorMotion: each motion state plays its
+## clip after a physics frame.
+func _check_motion(node: EsmActorNode, player: AnimationPlayer) -> void:
+	if node == null or player == null:
+		check(false, "Doc has an actor node and an animation player for the motion checks")
+		return
+	var motion := ActorMotion.new()
+	node.motion = motion
+	var cases := [
+		[Vector3(0.0, 0.0, -3.0), 0.0, true, "locomotion__male__mtfastforward.kf"],
+		[Vector3(0.0, 0.0, 1.2), 0.0, false, "locomotion__male__mtbackward.kf"],
+		[Vector3(-1.2, 0.0, 0.0), 0.0, false, "locomotion__male__mtleft.kf"],
+		[Vector3(3.0, 0.0, -0.5), 0.0, true, "locomotion__male__mtfastright.kf"],
+		[Vector3.ZERO, 2.0, false, "locomotion__mtturnleft.kf"],
+		[Vector3.ZERO, -2.0, false, "locomotion__mtturnright.kf"],
+		[Vector3.ZERO, 0.0, false, "locomotion__mtidle.kf"],
+	]
+	for case in cases:
+		motion.velocity = case[0]
+		motion.turn_rate = case[1]
+		motion.running = case[2]
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		check(player.current_animation == case[3], "velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], player.current_animation])
+	node.motion = null
 
 func _equipment_settled(node: Node) -> bool:
 	var equipment := node.get_node_or_null("ActorEquipment") as ActorEquipment

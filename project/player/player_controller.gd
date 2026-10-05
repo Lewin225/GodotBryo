@@ -1,8 +1,6 @@
 class_name PlayerController
 extends CharacterBody3D
 
-const MotionDataScript := preload("res://gamebryo/motion_data.gd")
-
 # --- Input Action Mappings ---
 @export_group("Input Actions")
 ## Dictionary mapping control actions to InputMap action StringNames.
@@ -143,7 +141,9 @@ const LOCK_LEVEL_NAMES := ["Very Easy", "Easy", "Average", "Hard", "Very Hard"]
 ## state; the actor remains responsible for rendering and animation playback.
 @export var actor: EsmActorNode
 @export var drive_actor_animation: bool = true
-@export var motion_data: MotionData = MotionData.new()
+## Fallout: New Vegas's player runs unless walking is toggled, and has no
+## sprint: ordinary movement publishes run pace to the actor's animation.
+@export var always_run: bool = true
 
 ## Compatibility alias for code expecting CAMERA in uppercase
 var CAMERA: Camera3D:
@@ -166,7 +166,14 @@ var is_sprinting: bool = false
 var is_teleporting: bool = false
 var _jump_cooldown_timer: float = 0.0
 var _coyote_timer: float = 0.0
-var _actor_animation: ActorAnimationComponent = null
+## How this controller moves `actor`, handed to it once and updated in place
+## every physics frame.
+var motion := ActorMotion.new()
+## WASD as ActorMotion.move_input (x right, y forward), from the last movement
+## step.
+var _move_input := Vector2.ZERO
+## Yaw at the last motion update, for ActorMotion.turn_rate.
+var _last_yaw := 0.0
 
 var knocked_timer_ms: int = 0
 var aim_smooth: Vector3 = Vector3.ZERO
@@ -236,7 +243,9 @@ func _ready() -> void:
 	if actor == null:
 		actor = get_node_or_null("EsmActorNode") as EsmActorNode
 	if actor != null:
+		actor.motion = motion
 		actor.load_actor()
+	_last_yaw = rotation.y
 
 	if collision_shape and collision_shape.shape is CapsuleShape3D:
 		var cap := collision_shape.shape as CapsuleShape3D
@@ -304,12 +313,12 @@ func _physics_process(delta: float) -> void:
 	_sync_possessed()
 	if is_teleporting:
 		is_teleporting = false
-		_publish_actor_motion()
+		_publish_actor_motion(delta)
 		return
 
 	if noclip:
 		_handle_noclip_movement(delta)
-		_publish_actor_motion()
+		_publish_actor_motion(delta)
 		return
 
 	if _jump_cooldown_timer > 0.0:
@@ -329,25 +338,20 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_apply_push_forces(delta)
-	_publish_actor_motion()
+	_publish_actor_motion(delta)
 
 
-func _publish_actor_motion() -> void:
-	if not drive_actor_animation or actor == null:
+func _publish_actor_motion(delta: float) -> void:
+	var yaw_change := wrapf(rotation.y - _last_yaw, -PI, PI)
+	_last_yaw = rotation.y
+	if not drive_actor_animation:
 		return
-	if motion_data == null:
-		motion_data = MotionDataScript.new()
-	# MotionData is consumed in actor-local space so forward/strafe clips stay
-	# correct while the controller turns. Keep the controller's world velocity
-	# available separately if a future consumer needs it.
-	var actor_local_velocity := global_transform.basis.inverse() * velocity
-	motion_data.update_from_velocity(actor_local_velocity, is_grounded)
-	motion_data.crouched = is_crouching
-	motion_data.sprinting = is_sprinting
-	if _actor_animation == null and is_instance_valid(actor):
-		_actor_animation = actor.get_node_or_null("ActorAnimationComponent") as ActorAnimationComponent
-	if _actor_animation != null:
-		_actor_animation.set_motion(motion_data)
+	motion.move_input = _move_input if input_enabled else Vector2.ZERO
+	motion.velocity = global_transform.basis.inverse() * velocity
+	motion.turn_rate = yaw_change / delta if delta > 0.0 else 0.0
+	motion.grounded = is_grounded
+	motion.running = always_run or is_sprinting
+	motion.sneaking = is_crouching
 
 
 func _handle_noclip_movement(delta: float) -> void:
@@ -400,6 +404,7 @@ func _handle_movement(delta: float) -> void:
 	if not InputMap.has_action(backward_action): backward_action = &"ui_down"
 
 	var input_vector := Input.get_vector(left_action, right_action, forward_action, backward_action)
+	_move_input = Vector2(input_vector.x, -input_vector.y)
 	var move_direction := (transform.basis * Vector3(input_vector.x, 0.0, input_vector.y)).normalized()
 
 	var jump_action: StringName = input_actions.get("jump", &"jump")
