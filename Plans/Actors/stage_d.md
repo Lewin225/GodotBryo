@@ -136,11 +136,15 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   player is blocked by NPCs, without per-frame sliding.
 - **Speed:** from the actor's record (ACBS Speed Multiplier, `ActorBase.speed_multiplier`, through
   the SpeedMult actor value), scaled by an exported factor on the controller to tweak by eye.
-- **Animation input:** controllers publish their motion; the actor chooses its own clips. Both
-  `PlayerController` and `NpcController` keep an `ActorMotion` resource up to date every physics
-  frame (move input, current velocity, grounded, running, crouching, turning) and hand it to their
-  `EsmActorNode`. The node's `ActorAnimator` reads it and picks clips or blends as suits the
-  actor: humanoid locomotion sets for NPCs, its own for creatures. Controllers never name a clip.
+- **Animation input: `ActorMotion`.** Controllers publish their motion; the actor chooses its own
+  clips and controllers never name one. `ActorMotion` (`GodotBryo/Types/Node/actor_motion.gd`, a
+  RefCounted, never saved) is created once by each controller and handed to its `EsmActorNode`
+  once (`actor.motion`); the controller updates its fields in place every physics frame and the
+  node's `ActorAnimator` reads them. Fields, all actor-local: `move_input` (Vector2, 0-1: the
+  intended direction), `velocity` (Vector3, m/s), `turn_rate` (rad/s about up), `grounded`,
+  `running`, `sneaking`. Not in it: weapon stance (equipment), crippled-leg `*_hurt` clips and
+  health (actor values), which the animator reads from the actor. Replaces the legacy
+  `MotionData` / `ActorAnimationComponent` path in `PlayerController`.
 - **Seams.** Godot connects regions by touching edges; NAVM records do not touch. They are
    stitched by the ESM's connection data instead. Within a record, NVTR adjacency is exact and one
    record is one region. Across records, each NVEX link names its target record and triangle
