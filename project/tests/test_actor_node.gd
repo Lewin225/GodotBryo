@@ -21,6 +21,18 @@ const EXPECTED := {
 
 var failures := 0
 
+## With the ragdoll off, no PhysicalBone3D hitbox is in a physics space; on,
+## every one is.
+func _check_hitboxes(node: EsmActorNode) -> void:
+	var bones := node.find_children("*", "PhysicalBone3D", true, false)
+	check(not bones.is_empty() and bones.all(func(bone: PhysicalBone3D) -> bool: return not _in_space(bone)), "with the ragdoll off, none of Doc's %d hitboxes is in the physics space" % bones.size())
+	node.ragdoll_simulator_enabled = true
+	check(bones.all(func(bone: PhysicalBone3D) -> bool: return _in_space(bone)), "with the ragdoll on, all of them are")
+	node.ragdoll_simulator_enabled = false
+
+func _in_space(bone: PhysicalBone3D) -> bool:
+	return PhysicsServer3D.body_get_space(bone.get_rid()).is_valid()
+
 func check(condition: bool, message: String) -> void:
 	print("  OK   " if condition else "  FAIL ", message)
 	if not condition:
@@ -50,6 +62,7 @@ func _ready() -> void:
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
+	_check_hitboxes(node)
 	await _check_motion(node, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

@@ -17,6 +17,7 @@ func _ready() -> void:
 	target_position = Vector3(0.0, 0.0, -reach_distance)
 	collide_with_areas = false
 	collide_with_bodies = true
+	collision_mask |= NpcController.ACTOR_COLLISION_LAYER
 
 	if not player_body:
 		var parent := get_parent()

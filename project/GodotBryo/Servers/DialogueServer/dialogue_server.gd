@@ -82,8 +82,8 @@ func choose_info(topic: DialogueTopicBase, speaker: EsmReference, listener: EsmR
 ## and the speaker's `SayToDone` block for the topic. A line the speaker is
 ## already saying is replaced. Returns the line, or null when no INFO
 ## qualifies.
-func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference) -> DialogueLine:
-	var info := choose_info(topic, speaker, listener)
+func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference, chosen: DialogueInfoBase = null) -> DialogueLine:
+	var info := chosen if chosen != null else choose_info(topic, speaker, listener)
 	if info == null or speaker == null:
 		return null
 	var line := DialogueLine.new()
@@ -203,7 +203,8 @@ func start_conversation(speaker: EsmReference, listener: EsmReference, topic: Di
 		return false
 	if topic == null:
 		topic = EsmServer.find_base_by_editor_id("GREETING") as DialogueTopicBase
-	if choose_info(topic, speaker, listener) == null:
+	var info := choose_info(topic, speaker, listener)
+	if info == null:
 		return false
 	if _conversation_speaker != null:
 		end_conversation(false)
@@ -212,7 +213,7 @@ func start_conversation(speaker: EsmReference, listener: EsmReference, topic: Di
 	set_talked_to_player(speaker)
 	ScriptServer.enter_menu(ScriptServer.MENU_DIALOG)
 	conversation_started.emit(speaker, listener)
-	_say_in_conversation(topic)
+	_say_in_conversation(topic, info)
 	return true
 
 ## The player chooses choice `index` of the last choices_ready: the speaker
@@ -285,8 +286,8 @@ func choices_after(info: DialogueInfoBase, speaker: EsmReference, listener: EsmR
 		choices.append(choice)
 	return choices
 
-func _say_in_conversation(topic: DialogueTopicBase) -> void:
-	var line := say(_conversation_speaker, topic, _conversation_listener)
+func _say_in_conversation(topic: DialogueTopicBase, chosen: DialogueInfoBase = null) -> void:
+	var line := say(_conversation_speaker, topic, _conversation_listener, chosen)
 	if line == null:
 		end_conversation(false)
 		return
@@ -420,6 +421,9 @@ func reset() -> void:
 
 func _qualifies(info: DialogueInfoBase, speaker: EsmReference, context: ConditionContext) -> bool:
 	if info.quest == null or not QuestServer.is_running(info.quest):
+		return false
+	var required_speaker := info.get_required_speaker()
+	if required_speaker != 0 and (speaker == null or speaker.base_form_id != required_speaker):
 		return false
 	if info.speaker_form_id != 0 and (speaker == null or speaker.base_form_id != info.speaker_form_id):
 		return false

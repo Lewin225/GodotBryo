@@ -73,6 +73,21 @@ func _ready() -> void:
 	var reply: Dictionary = ScriptServer.run_debug_line("DebugAddScriptPackageAll %s" % FOLLOW_PACKAGE_EDITOR_ID)
 	var actors: int = NpcSimulationServer.actors_by_instance_id.size()
 	check(bool(reply.get("ok", false)) and int(reply.get("result", -1)) >= actors - 1 and doc.active_package != null, "DebugAddScriptPackageAll gives every placed actor the package (%s of %d)" % [reply.get("result"), actors])
+	reply = ScriptServer.run_debug_line("DebugNpcLog 10")
+	check(bool(reply.get("ok", false)) and NpcSimulationServer.debug_log.interval_seconds == 10.0 and NpcSimulationServer.debug_log._line().begins_with("at "), "DebugNpcLog switches the log on and a line builds: %s" % NpcSimulationServer.debug_log._line().left(90))
+	check(NpcSimulationServer.debug_log._nif_line().begins_with("requests "), "and its NifServer line builds: %s" % NpcSimulationServer.debug_log._nif_line().left(90))
+	ScriptServer.run_debug_line("DebugNpcLog 0")
+	reply = ScriptServer.run_debug_line("DebugCopyBench")
+	check(bool(reply.get("ok", false)), "DebugCopyBench runs")
+	reply = ScriptServer.run_debug_line("DebugCopyBench 1")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(bool(reply.get("ok", false)) and not NifServer.run_in_next_drain.is_valid(), "DebugCopyBench 1 runs inside NifServer's drain")
+	var split: PackedStringArray = load("res://scripting_debug_tab.gd").split_statements('DebugNpcLog 5 | DebugSetLowLevelSpeed 1000|| x | if a || b | MessageBox "a | b"')
+	check(split == PackedStringArray(["DebugNpcLog 5", "DebugSetLowLevelSpeed 1000|| x", "if a || b", 'MessageBox "a | b"']), "the Script Engine console splits a line at | but not at || or inside quotes: %s" % split)
+	ScriptServer.run_debug_line("DebugCopyBench 4")
+	for frame in 95:
+		await get_tree().process_frame
 	reply = ScriptServer.run_debug_line("DebugSetLowLevelSpeed 3")
 	check(bool(reply.get("ok", false)) and NpcSimulationServer.low_level_travel.speed_scale == 3.0, "DebugSetLowLevelSpeed sets the off-screen speed multiplier (was %s)" % reply.get("result"))
 	NpcSimulationServer.low_level_travel.speed_scale = SPEED_SCALE

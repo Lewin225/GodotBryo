@@ -75,5 +75,34 @@ const FLAG_HIGH_INTELLIGENCE := 0x20
 ## 4,544 INFOs. Read; not used yet.
 @export_multiline var end_script_source: String = ""
 
+## GetIsID's function index (CTDA).
+const FUNCTION_GET_IS_ID := 72
+
+## Runtime cache with no ESM source: see get_required_speaker(); -1 until
+## worked out. Not saved.
+var _required_speaker := -1
+
 func has_flag(flag: int) -> bool:
 	return (flags & flag) != 0
+
+## The base FormID the speaker must be for this INFO's conditions to pass, or
+## 0 when they allow any: a `GetIsID Base == 1` on the speaker (subject) that
+## is in no OR group (a condition's OR flag joins it to the next). Worked out
+## from `conditions` on first use; DialogueServer skips the INFO for any other
+## speaker without evaluating its conditions.
+func get_required_speaker() -> int:
+	if _required_speaker == -1:
+		_required_speaker = _find_required_speaker()
+	return _required_speaker
+
+func _find_required_speaker() -> int:
+	for index in conditions.size():
+		var condition := conditions[index]
+		var joined_to_previous := index > 0 and conditions[index - 1].is_or()
+		if condition.function_index != FUNCTION_GET_IS_ID or condition.is_or() or joined_to_previous:
+			continue
+		if condition.uses_global() or condition.run_on != ConditionSubrecord.RunOn.SUBJECT:
+			continue
+		if condition.comparison == ConditionSubrecord.Comparison.EQUAL and condition.comparison_value == 1.0:
+			return condition.parameter_1
+	return 0

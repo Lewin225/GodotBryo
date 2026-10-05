@@ -20,7 +20,8 @@ extends EsmNode
 ##
 ## The controller holds the lease while it is in the tree and its space is
 ## physically loaded (has local navigation): the reference is PHYSICAL_LEASED,
-## and this writes its position and heading every physics frame and publishes
+## and this moves it every physics frame, writes its position and heading to
+## the reference every `placement_write_seconds` and on arrival, and publishes
 ## an ActorMotion to the actor node. Otherwise (left the tree, or its streamer
 ## paused for an interior visit) the actor is NpcSimulationServer's
 ## (LOW_LEVEL), whose LowLevelTravel moves it; taking the lease back places the
@@ -34,6 +35,10 @@ extends EsmNode
 @export var speed_scale := 1.0
 ## How fast the actor turns toward where it moves, degrees per second.
 @export var turn_speed_degrees := 360.0
+## While moving, the reference's position and heading are written once per
+## this many seconds (the package rate), and always when the lease is handed
+## back; every other reader of the reference runs at this rate or slower.
+@export var placement_write_seconds := 0.1
 ## A waypoint counts as reached within this distance across the ground,
 ## metres.
 @export var arrive_radius := 0.3
@@ -50,11 +55,23 @@ extends EsmNode
 ## How this controller moves its actor, handed to the EsmActorNode once and
 ## updated in place.
 var motion := ActorMotion.new()
+## Routes that came back not found, across all controllers. Counted, not
+## logged (a warning each floods the debugger with many actors);
+## NpcSimulationServer.debug_report shows it.
+static var routes_not_found := 0
+## Physics layer 2: actor capsules. A capsule is only there to be hit (the
+## interact ray, later weapon rays); it has no mask, so it never pairs with
+## other capsules or the world, and rays that should find actors add this
+## layer. The ground ray keeps to layer 1, the world.
+const ACTOR_COLLISION_LAYER := 1 << 1
+## Debug (DebugNpcControllers): when false, every controller skips its
+## per-frame work and leaves avoidance, to see what controllers cost.
+static var debug_enabled := true
 
 ## The reference as the actor it is.
 var actor_reference: ActorReference:
 	get:
-		return reference as ActorReference
+		return _actor
 var actor: EsmActorNode:
 	get:
 		return get_node_or_null(^"EsmActorNode") as EsmActorNode
@@ -74,6 +91,9 @@ var _waypoint_index := 0
 ## The move_target the current route (or route request) leads to.
 var _routed_target := Vector3.INF
 var _route_request_id := -1
+## When the route to `_routed_target` came back not found
+## (Time.get_ticks_msec()), or -1.
+var _route_failed_msec := -1
 var _avoidance_velocity := Vector3.ZERO
 ## SpeedMult, read when a route arrives rather than every frame.
 var _speed_mult := 100.0
@@ -96,6 +116,11 @@ var _last_yaw := 0.0
 ## The reference this controller has leased, handed back on leaving the tree
 ## or changing reference.
 var _leased: ActorReference = null
+## `reference` as an ActorReference, kept when it changes rather than cast on
+## every use.
+var _actor: ActorReference = null
+## Seconds until position and heading are next written to the reference.
+var _placement_write_timer := 0.0
 
 func _ready() -> void:
 	super()
@@ -103,17 +128,25 @@ func _ready() -> void:
 	agent.velocity_computed.connect(_on_velocity_computed)
 	_update_avoidance()
 	agent.link_reached.connect(_on_link_reached)
-	ground_ray.add_exception(body)
+	body.collision_layer = ACTOR_COLLISION_LAYER
+	body.collision_mask = 0
+	ground_ray.collision_mask = 1
 	NpcSimulationServer.route_ready.connect(_on_route_ready)
+	NpcSimulationServer.local_navigation.local_cells_changed.connect(_on_local_cells_changed)
+
+func _enter_tree() -> void:
+	_update_lease()
 
 
 func _exit_tree() -> void:
 	_release_lease()
 
 func _physics_process(delta: float) -> void:
-	_update_lease()
-	var actor_ref := actor_reference
-	if actor_ref == null or actor_ref != _leased or actor_ref.is_disabled():
+	if not debug_enabled:
+		if agent.avoidance_enabled:
+			agent.avoidance_enabled = false
+		return
+	if _actor == null or _actor != _leased or _actor.is_disabled():
 		return
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
@@ -135,7 +168,10 @@ func _physics_process(delta: float) -> void:
 	_turn_toward(desired, delta)
 	_recover_if_stuck(delta)
 	_publish_motion(desired, velocity, delta)
-	_write_placement()
+	_placement_write_timer -= delta
+	if _placement_write_timer <= 0.0:
+		_placement_write_timer = placement_write_seconds
+		_write_placement()
 
 ## Walk or run speed for this actor: the export times SpeedMult / 100 times
 ## speed_scale.
@@ -155,7 +191,7 @@ func _apply_enable_state() -> void:
 func _update_avoidance() -> void:
 	if agent == null:
 		return
-	agent.avoidance_enabled = _leased != null and reference != null and not reference.is_disabled()
+	agent.avoidance_enabled = debug_enabled and _leased != null and reference != null and not reference.is_disabled()
 
 ## Activation is presented by the actor node.
 func on_activated(activator: EsmReference) -> void:
@@ -169,6 +205,7 @@ func _should_request_nif() -> bool:
 ## the actor node drop the old actor and load the new one.
 func _reference_changed() -> void:
 	_release_lease()
+	_actor = reference as ActorReference
 	_reset_route()
 	if actor != null:
 		actor.unload_actor()
@@ -179,6 +216,8 @@ func _reference_changed() -> void:
 	agent.set_navigation_map(NpcSimulationServer.local_navigation.get_map(reference.current_space_form_id))
 	actor.configure(reference)
 	actor.load_actor()
+	if is_inside_tree():
+		_update_lease()
 
 ## A teleport moves the controller to the reference's new placement, drops the
 ## route and points the agent at the new space's map. Across spaces the
@@ -189,9 +228,16 @@ func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) ->
 	_reset_route()
 	_last_yaw = rotation.y
 	agent.set_navigation_map(NpcSimulationServer.local_navigation.get_map(new_space_form_id))
+	_update_lease()
+
+## A space gained its first local cell or lost its last: the lease may follow.
+func _on_local_cells_changed(space_form_id: int) -> void:
+	if _actor != null and _actor.current_space_form_id == space_form_id:
+		_update_lease()
 
 ## Holds the lease while the reference's space is physically loaded, and
-## hands it back when it is not.
+## hands it back when it is not. Checked when the reference, its space or the
+## space's local cells change, and on entering the tree.
 func _update_lease() -> void:
 	var loaded := actor_reference != null and NpcSimulationServer.local_navigation.has_local_cells(actor_reference.current_space_form_id)
 	if loaded and _leased != actor_reference:
@@ -257,23 +303,40 @@ func _reset_route() -> void:
 	_stalled_seconds = 0.0
 	_link_entry = Vector3.INF
 	_link_exit = Vector3.INF
+	_cancel_route_request()
 	_waypoints.clear()
 	_waypoint_index = 0
 	_routed_target = Vector3.INF
-	_route_request_id = -1
+	_route_failed_msec = -1
 
 ## Requests a route when move_target changes; drops the route when there is no
 ## target.
 func _update_route() -> void:
-	if not actor_reference.has_move_target:
+	if not _actor.has_move_target:
+		_cancel_route_request()
 		_waypoints.clear()
 		_routed_target = Vector3.INF
 		return
-	if actor_reference.move_target == _routed_target:
+	if _actor.move_target == _routed_target and not _should_retry_route():
 		return
-	_routed_target = actor_reference.move_target
+	_cancel_route_request()
+	_routed_target = _actor.move_target
 	_waypoints.clear()
-	_route_request_id = NpcSimulationServer.request_route(reference.current_space_form_id, reference.position, actor_reference.move_target, true)
+	_route_failed_msec = -1
+	_route_request_id = NpcSimulationServer.request_route(reference.current_space_form_id, reference.position, _actor.move_target, true)
+
+## Whether the route to the current target came back not found at least
+## route_retry_seconds ago, so it is asked for again.
+func _should_retry_route() -> bool:
+	if _route_failed_msec < 0:
+		return false
+	return Time.get_ticks_msec() - _route_failed_msec >= NpcSimulationServer.route_retry_seconds * 1000.0
+
+## Cancels a route request still waiting on NpcSimulationServer's thread.
+func _cancel_route_request() -> void:
+	if _route_request_id != -1:
+		NpcSimulationServer.cancel_request(_route_request_id)
+		_route_request_id = -1
 
 func _on_route_ready(request_id: int, result: Dictionary) -> void:
 	if request_id != _route_request_id:
@@ -282,7 +345,8 @@ func _on_route_ready(request_id: int, result: Dictionary) -> void:
 	_waypoints.clear()
 	_waypoint_index = 0
 	if not bool(result.get("found", false)):
-		push_warning("NpcController: no route for %s to %s" % [reference.instance_id, _routed_target])
+		routes_not_found += 1
+		_route_failed_msec = Time.get_ticks_msec()
 		return
 	for point: Vector3 in result["waypoints"]:
 		_waypoints.append(EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * point)
@@ -300,6 +364,7 @@ func _desired_velocity() -> Vector3:
 		if _waypoint_index == _waypoints.size():
 			_waypoints.clear()
 			_routed_target = Vector3.INF
+			_write_placement()
 			actor_reference.reach_move_target()
 			return Vector3.ZERO
 	if _waypoint_index >= _waypoints.size():

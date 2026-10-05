@@ -277,17 +277,24 @@ through `PackageRunner.set_package()` (the script functions `AddScriptPackage`
 `DebugRemoveScriptPackageAll`); package selection from a base's `packages` is
 not implemented yet.
 
-**Budget**, per "Tick rates" below: leased actors run every physics frame;
-unleased ones in a round-robin sweep that visits each once per
-`unleased_sweep_seconds` (1 s), `ceil(actors / (sweep_seconds * fps))` a
-frame, and `LowLevelTravel` moves each on its turn by the time since its last.
-Off-screen route work (`LowLevelTravel`'s routes and every door sequence)
-runs on the server's own thread (`worker`, `simulation_worker.gd`), one job at
-a time; only an on-screen `NpcController`'s route (`request_route(...,
-on_screen = true)`) uses `WorkerThreadPool`, at high priority. With every
-placed actor following and 1,671 jobs queued on that thread, a controller's
-route still answers the next frame; through the shared pool it took 28 s. A
-plan that finds no doors is not retried for `plan_retry_seconds` (10 s) unless
+**Budget**, per "Tick rates" below: two round-robin sweeps, each visiting
+every member once per its period, `ceil(actors / (period * fps))` a frame:
+leased actors every `leased_sweep_seconds` (0.1 s; their `NpcController`
+moves them every frame toward the target this sets, and writes their position
+to the reference every 0.1 s and on arrival), unleased ones every
+`unleased_sweep_seconds` (1 s), and `LowLevelTravel` moves each unleased actor
+on its turn by the time since its last.
+All route work runs on the server's own thread (`worker`,
+`simulation_worker.gd`), one job at a time, never on `WorkerThreadPool`: the
+thread keeps two queues and takes every on-screen job (an `NpcController`'s
+route, `request_route(..., on_screen = true)`) before any off-screen one
+(`LowLevelTravel`'s routes and every door sequence). Through the shared pool,
+a flood of routes delayed NifServer and TextureServer: with several hundred
+leased followers re-targeting while the player flew, arrivals' equipment and
+newly streamed tiles stalled behind them. A request whose target changes
+before it runs is cancelled, and a route that comes back not found is asked
+for again only after `route_retry_seconds` (5 s), whether or not the target
+moved. A plan that finds no doors is not retried for `plan_retry_seconds` (10 s) unless
 the target changes space. With every placed actor following, 897 off-screen
 actors are moving within 5 s and 1,553 by 50 s, with the thread's queue
 draining (`_diag/diag_package_cycle`). With all
@@ -312,7 +319,8 @@ every cross-space route synchronously (143 s headless) and frames grew past
   planned for; a leased one plans again when its target changes space. A
   door sequence costs about 13 ms, against 110 ms for `route_across_spaces`,
   which walks every leg and tries alternative sequences
-  (`_diag/diag_plan_cost`). Locked doors are not handled. A package with PKDT's Always Run flag sets the actor's
+  (`_diag/diag_plan_cost`). A door with lock data the actor cannot pass (no key
+  in its inventory) is left out of the sequence (`blocked_doors_for`). A package with PKDT's Always Run flag sets the actor's
   `move_running`, so it runs wherever it moves (26 of 29 companion follow
   packages carry it, 13 of 103 other FOLLOW packages).
 - **`LowLevelTravel`** (`low_level_travel.gd`) moves those actors while
@@ -325,6 +333,26 @@ every cross-space route synchronously (143 s headless) and frames grew past
   navigation; a streamer paused for an interior visit clears its local cells,
   so its controllers hand their actors to `LowLevelTravel`, and take them back
   (placed where the reference has got to) when it resumes.
+
+**Debugging** (Script Engine console; several commands may share a line,
+separated by `|`):
+
+- `DebugNpcReport [Radius]` — actors in the player's space (0, the default, is
+  the whole space): with a node, visual built, templated, LOW_LEVEL, the
+  thread's queue and routes not found.
+- `DebugNpcLog Seconds` — `NpcDebugLog` (`npc_debug_log.gd`) prints, every
+  Seconds, the player's position and cell, wall-clock fps and the longest frame,
+  the actors in the space (with a node, visual built, leased, moving, near), the
+  thread's queue and routes not found in the interval, and NifServer's work in
+  the interval (requests, items finished, queues, drain and copy time). 0 stops it.
+- `DebugActorCost` — switches each part of every physicalised actor off in turn
+  (animator clip choice, look-at, skeleton process, visual, controllers,
+  avoidance, animation players) and prints median process / physics / frame ms
+  against a baseline. Figures from a 1,342-actor crowd are in
+  `Plans/Actors/stage_d.md` Open.
+- `DebugSetLowLevelSpeed Multiplier`, `DebugNpcControllers 0|1` (every
+  controller's per-frame work), `DebugActorThreads 0|1` (each actor in its own
+  sub-thread group; slower than the main thread headless).
 
 This is the start of the tick planned below, on the main thread for the few
 actors that run a package; the worker-thread travel and round-robin sweep are
@@ -468,8 +496,8 @@ read-only, so **one instance serves any number of threads**. This is deliberatel
 unlike `EsmReader`/`BsaReader`, which each own a `FILE*` and need one instance
 per worker.
 
-`request_route()` runs on `WorkerThreadPool` and returns a request id; the result
-arrives on the `route_ready` signal. Low-level simulation is never blocked on a
+`request_route()` runs on the server's own thread (see "Packages") and returns a
+request id; the result arrives on the `route_ready` signal. Low-level simulation is never blocked on a
 route — it is computed once and the actor keeps moving on its previous one.
 
 Measured with the viewer's `P` stress test, 100 simultaneous same-space routes in
@@ -478,11 +506,9 @@ against a 7.17 ms idle baseline.** No perceptible hitch; the work is genuinely
 off-thread. Per-route cost is p50 2.3 ms (short) to 21.8 ms (long), with a ~280 ms
 tail on routes that explore a large share of the graph before failing.
 
-No queue, priority or cancellation exists, and none is planned: an offscreen actor
-can afford to think for a long time, so route latency is not a cost. The one thing
-to stay aware of is that nav shares `WorkerThreadPool` with `GamebryoResolverPool`
-(NIF/texture resolve), so a large nav burst queues behind or ahead of asset
-streaming for the same crowd.
+Requests queue on that thread, on-screen ones first, and can be cancelled
+(`cancel_request`). Nothing in the server's route work shares `WorkerThreadPool`
+with asset streaming; only `LocalNavigation`'s per-cell mesh builds use the pool.
 
 ## Grounding results
 

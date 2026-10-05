@@ -29,6 +29,9 @@ var center_on_cell_handler: Callable
 var show_message_handler: Callable
 var get_button_pressed_handler: Callable
 
+## DebugCopyBench's templates: models every humanoid actor copies.
+const BENCH_TEMPLATE_KEYS: Array[String] = ["characters/head/teethlowerhuman.nif", "characters/head/headhuman.nif", "characters/_male/skeleton.nif", "characters/_male/upperbody.nif"]
+
 func _init() -> void:
 	_register_defaults()
 
@@ -561,6 +564,66 @@ func _register_defaults() -> void:
 		return NpcSimulationServer.package_runner.set_package_for_all(package))
 	register("DebugRemoveScriptPackageAll", func(_a, _ctx: ScriptExecutionContext):
 		return NpcSimulationServer.package_runner.set_package_for_all(null))
+	# `DebugNpcReport [Radius]`: prints NpcSimulationServer.debug_report for
+	# actors within Radius metres of the player, or the player's whole space
+	# when no radius is given; returns 1.
+	register("DebugNpcReport", func(a: Array, _ctx: ScriptExecutionContext):
+		var radius := _number(a, 0) if a.size() > 0 else 0.0
+		print("DebugNpcReport: " + NpcSimulationServer.debug_report(radius))
+		return 1)
+	# `DebugNpcLog Seconds`: prints a line about the player and the actors in
+	# their space every Seconds (NpcDebugLog); 0 stops it. Returns Seconds.
+	register("DebugNpcLog", func(a: Array, _ctx: ScriptExecutionContext):
+		NpcSimulationServer.debug_log.interval_seconds = _number(a, 0)
+		return NpcSimulationServer.debug_log.interval_seconds)
+	# `DebugCopyBench`: times creating 200 bare Node3Ds, 200 MeshInstance3Ds,
+	# and 200 copies of each of BENCH_TEMPLATE_KEYS, and prints for each the
+	# first creation, the longest and the average, to tell where copying time
+	# goes. `DebugCopyBench 1` runs it inside NifServer's next drain instead of
+	# from the console. `DebugCopyBench 2` instead copies skeleton.nif once a
+	# frame for 60 frames, freeing each copy; `DebugCopyBench 3` the same but
+	# adding each copy to the tree under a hidden holder until the end.
+	# `DebugCopyBench 4` creates one bare Node3D, StaticBody3D or
+	# MeshInstance3D a frame, in turn, for 90 frames. `DebugCopyBench 5` copies
+	# one of BENCH_TEMPLATE_KEYS a frame, in turn, or makes a MeshInstance3D
+	# given upperbody.nif's first mesh and skin, for 100 frames.
+	register("DebugCopyBench", func(a: Array, _ctx: ScriptExecutionContext):
+		var mode := int(_number(a, 0))
+		if mode == 1:
+			NifServer.run_in_next_drain = copy_bench
+		elif mode == 2 or mode == 3:
+			_copy_per_frame(mode == 3)
+		elif mode == 4:
+			_create_per_frame()
+		elif mode == 5:
+			_copy_templates_per_frame()
+		else:
+			copy_bench.call("console")
+		return mode)
+	# `DebugActorCost`: measures what each part of every physicalised actor
+	# costs by turning it off in turn (NpcDebugLog.measure_actor_costs) and
+	# prints the result over about ten seconds.
+	register("DebugActorCost", func(_a: Array, _ctx: ScriptExecutionContext):
+		NpcSimulationServer.debug_log.measure_actor_costs()
+		return 0)
+	# `DebugActorThreads 0|1`: puts every actor under an NpcController in its
+	# own sub-thread group, or back on the main thread (EsmActorNode
+	# .process_on_threads); returns the new state.
+	register("DebugActorThreads", func(a: Array, _ctx: ScriptExecutionContext):
+		EsmActorNode.process_on_threads = _number(a, 0) != 0.0
+		for actor in Engine.get_main_loop().root.find_children("*", "EsmActorNode", true, false):
+			(actor as EsmActorNode).apply_process_thread_group()
+		return 1 if EsmActorNode.process_on_threads else 0)
+	# `DebugNpcControllers 0|1`: turns every NpcController's per-frame work
+	# (movement, ground checks, routing, avoidance) off or back on; returns the
+	# new state.
+	register("DebugNpcControllers", func(a: Array, _ctx: ScriptExecutionContext):
+		var enabled := _number(a, 0) != 0.0
+		NpcController.debug_enabled = enabled
+		if enabled:
+			for controller in Engine.get_main_loop().root.find_children("*", "NpcController", true, false):
+				(controller as NpcController)._update_avoidance()
+		return 1 if enabled else 0)
 	# `DebugSetLowLevelSpeed Multiplier`: scales how fast actors move while
 	# NpcSimulationServer moves them (off screen); returns the previous
 	# multiplier.
@@ -851,3 +914,137 @@ static func _is_number(args: Array, index: int) -> bool:
 static func _quest_server() -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	return tree.root.get_node_or_null("QuestServer") if tree != null else null
+
+## DebugCopyBench: prints the time to create 200 bare Node3Ds, 200
+## MeshInstance3Ds and 200 copies of each of BENCH_TEMPLATE_KEYS; `where` labels
+## the line.
+static func copy_bench(where: String) -> void:
+	var line := "DebugCopyBench (%s): Node3D %s; MeshInstance3D %s" % [where, _time_creating(func() -> Node: return Node3D.new()), _time_creating(func() -> Node: return MeshInstance3D.new())]
+	for key in BENCH_TEMPLATE_KEYS:
+		var template: Node = NifServer._trees.get(key)
+		if template != null and is_instance_valid(template):
+			line += "; copy of %s %s" % [key, _time_creating(func() -> Node: return template.duplicate())]
+	print(line)
+
+## DebugCopyBench 2 and 3: copies skeleton.nif once a process
+## frame for 60 frames, either freeing each copy at once or keeping it in the
+## tree under a hidden Node3D, and prints the first, longest and average copy.
+static func _copy_per_frame(keep_in_tree: bool) -> void:
+	var template: Node = NifServer._trees.get("characters/_male/skeleton.nif")
+	if template == null or not is_instance_valid(template):
+		print("DebugCopyBench: skeleton.nif is not cached")
+		return
+	var tree := Engine.get_main_loop() as SceneTree
+	var holder := Node3D.new()
+	holder.visible = false
+	tree.root.add_child(holder)
+	var times: Array[int] = []
+	for frame in 60:
+		await tree.process_frame
+		var started := Time.get_ticks_usec()
+		var copy := template.duplicate()
+		times.append(Time.get_ticks_usec() - started)
+		if keep_in_tree:
+			holder.add_child(copy)
+		else:
+			copy.free()
+	holder.queue_free()
+	var total := 0
+	for usec in times:
+		total += usec
+	print("DebugCopyBench (one skeleton.nif copy a frame, %s): first %.3f, longest %.3f, average %.3f ms" % ["kept in the tree" if keep_in_tree else "freed", times[0] / 1000.0, times.max() / 1000.0, total / 1000.0 / times.size()])
+
+## DebugCopyBench 4: at the start of each of 90 process frames creates and
+## frees one node, cycling a bare Node3D, a StaticBody3D (a physics body) and a
+## MeshInstance3D (a rendering instance), and prints each type's average and
+## longest creation.
+static func _create_per_frame() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var makers := {
+		"Node3D": func() -> Node: return Node3D.new(),
+		"StaticBody3D": func() -> Node: return StaticBody3D.new(),
+		"MeshInstance3D": func() -> Node: return MeshInstance3D.new(),
+	}
+	var names := makers.keys()
+	var times := {}
+	for name in names:
+		times[name] = []
+	for frame in 90:
+		await tree.process_frame
+		var name: String = names[frame % names.size()]
+		var started := Time.get_ticks_usec()
+		var node: Node = makers[name].call()
+		(times[name] as Array).append(Time.get_ticks_usec() - started)
+		node.free()
+	var parts := []
+	for name in names:
+		var samples: Array = times[name]
+		var total := 0
+		for usec in samples:
+			total += usec
+		parts.append("%s average %.3f, longest %.3f ms" % [name, total / 1000.0 / samples.size(), samples.max() / 1000.0])
+	print("DebugCopyBench (one creation a frame): " + "; ".join(parts))
+
+## DebugCopyBench 5: at the start of each of 100 process frames makes one
+## thing and frees it, cycling copies of each of BENCH_TEMPLATE_KEYS and a
+## MeshInstance3D given upperbody.nif's first mesh and skin, and prints each
+## one's average and longest.
+static func _copy_templates_per_frame() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var makers := {}
+	for key in BENCH_TEMPLATE_KEYS:
+		var template: Node = NifServer._trees.get(key)
+		if template != null and is_instance_valid(template):
+			makers[key.get_file()] = func() -> Node: return template.duplicate()
+	var body: Node = NifServer._trees.get("characters/_male/upperbody.nif")
+	if body != null and is_instance_valid(body):
+		var source := body.find_children("*", "MeshInstance3D", true, false)
+		if not source.is_empty():
+			var mesh: Mesh = source[0].mesh
+			var skin: Skin = source[0].skin
+			makers["MeshInstance3D with a mesh"] = func() -> Node:
+				var instance := MeshInstance3D.new()
+				instance.mesh = mesh
+				instance.skin = skin
+				return instance
+	if makers.is_empty():
+		print("DebugCopyBench: none of the templates is cached")
+		return
+	var names := makers.keys()
+	var times := {}
+	for name in names:
+		times[name] = []
+	for frame in 100:
+		await tree.process_frame
+		var name: String = names[frame % names.size()]
+		var started := Time.get_ticks_usec()
+		var node: Node = makers[name].call()
+		(times[name] as Array).append(Time.get_ticks_usec() - started)
+		node.free()
+	var parts := []
+	for name in names:
+		var samples: Array = times[name]
+		var total := 0
+		for usec in samples:
+			total += usec
+		parts.append("%s average %.3f, longest %.3f ms" % [name, total / 1000.0 / samples.size(), samples.max() / 1000.0])
+	print("DebugCopyBench (one template a frame): " + "; ".join(parts))
+
+## Creates 200 nodes with `create`, then frees them: the first creation, the
+## longest and the average, in milliseconds.
+static func _time_creating(create: Callable) -> String:
+	var nodes: Array[Node] = []
+	var first := 0
+	var longest := 0
+	var total := 0
+	for i in 200:
+		var started := Time.get_ticks_usec()
+		nodes.append(create.call())
+		var elapsed := Time.get_ticks_usec() - started
+		if i == 0:
+			first = elapsed
+		longest = maxi(longest, elapsed)
+		total += elapsed
+	for node in nodes:
+		node.free()
+	return "first %.3f, longest %.3f, average %.3f ms" % [first / 1000.0, longest / 1000.0, total / 1000.0 / 200.0]

@@ -34,6 +34,12 @@ var _token_prefix: String = ""
 var _navigating_suggestions: bool = false
 
 
+## The instance list rebuilds at most this often while the tab is shown: with
+## hundreds of script instances a rebuild every frame costs ~10 ms. Running a
+## console line refreshes it at once.
+const REFRESH_INTERVAL_SEC := 0.25
+var _refresh_timer := 0.0
+
 func _ready() -> void:
 	_engine = get_tree().root.get_node_or_null("ScriptServer")
 	_source.editable = false
@@ -290,9 +296,14 @@ func _get_contextual_candidates(left_text: String) -> Array[String]:
 	)
 
 
-func _process(_delta: float) -> void:
-	if is_visible_in_tree():
-		_refresh()
+func _process(delta: float) -> void:
+	if not is_visible_in_tree():
+		return
+	_refresh_timer -= delta
+	if _refresh_timer > 0.0:
+		return
+	_refresh_timer = REFRESH_INTERVAL_SEC
+	_refresh()
 
 
 func _refresh() -> void:
@@ -387,11 +398,42 @@ func _run_line() -> void:
 	_history_index = -1
 	_current_input_buffer = ""
 
-	var reply: Dictionary = _engine.run_debug_line(cmd, _selected_reference)
-	_output.text += "> " + cmd + "\n" + ("OK" if bool(reply.get("ok", false)) else "ERROR") + ": " + String(reply.get("message", ""))
-	if reply.has("result"):
-		_output.text += ": " + str(reply["result"])
-	_output.text += "\n"
+	for statement in split_statements(cmd):
+		var reply: Dictionary = _engine.run_debug_line(statement, _selected_reference)
+		_output.text += "> " + statement + "\n" + ("OK" if bool(reply.get("ok", false)) else "ERROR") + ": " + String(reply.get("message", ""))
+		if reply.has("result"):
+			_output.text += ": " + str(reply["result"])
+		_output.text += "\n"
 	_output.scroll_vertical = _output.get_line_count()
 	_line.clear()
 	_refresh()
+
+## Splits a console line into statements at each `|`, so several commands run
+## from one line. A `||` (logical or) and a `|` inside quotes do not split.
+static func split_statements(line: String) -> PackedStringArray:
+	var statements := PackedStringArray()
+	var current := ""
+	var in_quotes := false
+	var index := 0
+	while index < line.length():
+		var character := line[index]
+		if character == "\"":
+			in_quotes = not in_quotes
+		var is_or := index + 1 < line.length() and line[index + 1] == "|"
+		if character == "|" and not in_quotes and is_or:
+			current += "||"
+			index += 2
+			continue
+		if character == "|" and not in_quotes:
+			_add_statement(statements, current)
+			current = ""
+		else:
+			current += character
+		index += 1
+	_add_statement(statements, current)
+	return statements
+
+static func _add_statement(statements: PackedStringArray, text: String) -> void:
+	var statement := text.strip_edges()
+	if not statement.is_empty():
+		statements.append(statement)

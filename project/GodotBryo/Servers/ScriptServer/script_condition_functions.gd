@@ -716,12 +716,20 @@ static func name_for_index(function_index: int) -> String:
 ## function's xEdit parameter types: references, base resources, CELL/WRLD
 ## FormIDs and integers. Parameters the function does not take are omitted.
 static func resolve_parameters(condition: ConditionSubrecord) -> Array:
+	if condition.parameters_resolved:
+		return condition.resolved_parameters
 	var entry: Array = BY_INDEX.get(condition.function_index, [])
 	var types: Array = entry[1] if not entry.is_empty() else []
 	var raw := [condition.parameter_1, condition.parameter_2]
 	var out := []
 	for i in types.size():
 		out.append(resolve_parameter(String(types[i]), int(raw[i])))
+	# Kept once forms can be looked up; before EsmServer is ready they resolve
+	# to null and must be tried again.
+	var esm_server := EsmReference.get_esm_server()
+	if esm_server != null and esm_server.is_ready():
+		condition.resolved_parameters = out
+		condition.parameters_resolved = true
 	return out
 
 ## One raw CTDA parameter word as a value, by its xEdit parameter type. A

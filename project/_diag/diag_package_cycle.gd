@@ -47,11 +47,11 @@ func _ready() -> void:
 	var last_finished := 0
 	while Time.get_ticks_msec() - started < SECONDS * 1000:
 		await get_tree().physics_frame
-		if runner._sweep_index < last_index:
+		if runner._unleased.get_index() < last_index:
 			sweeps += 1
 			sweep_times.append(Time.get_ticks_msec() - sweep_started)
 			sweep_started = Time.get_ticks_msec()
-		last_index = runner._sweep_index
+		last_index = runner._unleased.get_index()
 		var elapsed := Time.get_ticks_msec() - started
 		if elapsed >= next_report:
 			next_report += 10000

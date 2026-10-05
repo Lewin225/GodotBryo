@@ -7,10 +7,11 @@ extends Node
 ## `set_package()` (AddScriptPackage) run; package selection from the base's
 ## packages is not implemented yet.
 ##
-## Budget (README "Tick rates"): leased actors run every physics frame; the
-## others in a round-robin sweep that visits each once per
-## `unleased_sweep_seconds`, however many there are, and LowLevelTravel moves
-## each on its turn by the time since its last.
+## Budget (README "Tick rates"): actors run in two round-robin sweeps, each
+## visiting every member once per its period however many there are: leased
+## actors every `leased_sweep_seconds` (10 times a second), the rest every
+## `unleased_sweep_seconds`, and LowLevelTravel moves each unleased actor on its
+## turn by the time since its last.
 ##
 ## Reaching a target in another space: NpcSimulationServer plans the sequence
 ## of load doors on its own thread (`request_door_sequence`, doors only), and
@@ -28,21 +29,30 @@ enum { PLAN_PENDING, PLAN_READY, PLAN_FAILED }
 ## PTDT Count / Distance is in Gamebryo units (common/units.h).
 const UNITS_TO_METERS := 1.0 / 70.0
 ## A follower is sent toward its target again once the target has moved this
-## far from where it was sent, metres.
+## far from where it was sent, metres, or RETARGET_FRACTION of the follower's
+## distance to it if that is more: a follower far away keeps its route for
+## small moves, which would each cost a long route.
 const RETARGET_DISTANCE := 1.0
+const RETARGET_FRACTION := 0.25
 
+## Every leased actor with a package runs once per this many seconds. Its
+## NpcController moves it every frame toward the target this sets.
+@export var leased_sweep_seconds := 0.1:
+	set(value):
+		leased_sweep_seconds = value
+		_leased.period = value
 ## Every unleased actor with a package runs once per this many seconds.
-@export var unleased_sweep_seconds := 1.0
+@export var unleased_sweep_seconds := 1.0:
+	set(value):
+		unleased_sweep_seconds = value
+		_unleased.period = value
 ## A route between spaces that was not found is planned again after this many
 ## seconds, unless the target changes space first.
 @export var plan_retry_seconds := 10.0
 
-## Unleased actors with a package, in sweep order, and as a set.
-var _sweep: Array[ActorReference] = []
-var _in_sweep: Dictionary = {}
-var _sweep_index := 0
-## Leased actors with a package, run every frame.
-var _leased: Dictionary = {}
+## Leased and unleased actors with a package.
+var _leased := Sweep.new(0.1)
+var _unleased := Sweep.new(1.0)
 ## ActorReference -> Time.get_ticks_msec() of its last run.
 var _last_run_msec: Dictionary = {}
 ## ActorReference -> its simulation_mode_changed handler.
@@ -66,7 +76,7 @@ func _ready() -> void:
 ## it with null (RemoveScriptPackage).
 func set_package(actor: ActorReference, package: PackageBase) -> void:
 	actor.active_package = package
-	_door_plans.erase(actor)
+	_drop_plan(actor)
 	if package == null:
 		_forget(actor)
 		actor.clear_move_target()
@@ -92,15 +102,9 @@ func set_package_for_all(package: PackageBase) -> int:
 	return count
 
 func _physics_process(_delta: float) -> void:
-	for actor: ActorReference in _leased.keys():
+	for actor in _leased.take():
 		_run(actor)
-	if _sweep.is_empty():
-		return
-	var per_frame := ceili(_sweep.size() / (unleased_sweep_seconds * Engine.physics_ticks_per_second))
-	for step in mini(per_frame, _sweep.size()):
-		_sweep_index = _sweep_index % _sweep.size()
-		var actor := _sweep[_sweep_index]
-		_sweep_index += 1
+	for actor in _unleased.take():
 		var elapsed := _seconds_since_last_run(actor)
 		_run(actor)
 		travel.advance(actor, elapsed)
@@ -127,13 +131,14 @@ func _follow(actor: ActorReference, package: PackageBase) -> void:
 	if target.current_space_form_id != actor.current_space_form_id or _keeps_to_plan(actor, plan):
 		_follow_through_doors(actor, target)
 		return
-	_door_plans.erase(actor)
+	_drop_plan(actor)
 	var distance := float(package.target_1_count_or_distance) * UNITS_TO_METERS
 	if actor.position.distance_to(target.position) <= distance:
 		if actor.has_move_target:
 			actor.clear_move_target()
 		return
-	if not actor.has_move_target or actor.move_target.distance_to(target.position) > RETARGET_DISTANCE:
+	var retarget := maxf(RETARGET_DISTANCE, actor.position.distance_to(target.position) * RETARGET_FRACTION)
+	if not actor.has_move_target or actor.move_target.distance_to(target.position) > retarget:
 		actor.set_move_target(target.position)
 
 ## Whether an unleased actor is still partway through a door sequence, which
@@ -158,13 +163,13 @@ func _follow_through_doors(actor: ActorReference, target: EsmReference) -> void:
 	var portals: Array = plan["portals"]
 	var next: int = plan["next"]
 	if next >= portals.size():
-		_door_plans.erase(actor)
+		_drop_plan(actor)
 		return
 	var portal = portals[next]
 	if actor.current_space_form_id != portal.source_space_form_id:
 		# Not where the sequence expected (a door that did not move it, or
 		# something else moved it): plan again.
-		_door_plans.erase(actor)
+		_drop_plan(actor)
 		return
 	if not plan.has("walking"):
 		plan["walking"] = true
@@ -184,6 +189,15 @@ func _needs_plan(actor: ActorReference, target: EsmReference, plan: Dictionary) 
 	if plan["target_space"] == target.current_space_form_id:
 		return false
 	return not _keeps_to_plan(actor, plan) and plan["state"] != PLAN_PENDING
+
+## Forgets `actor`'s door plan, cancelling its request if it is still being
+## planned.
+func _drop_plan(actor: ActorReference) -> void:
+	var plan: Dictionary = _door_plans.get(actor, {})
+	if not plan.is_empty() and plan["state"] == PLAN_PENDING:
+		_actors_by_request.erase(plan["request_id"])
+		get_parent().cancel_request(plan["request_id"])
+	_door_plans.erase(actor)
 
 func _request_plan(actor: ActorReference, target: EsmReference) -> void:
 	var server = get_parent()
@@ -222,21 +236,14 @@ func _target_1(actor: ActorReference, package: PackageBase) -> EsmReference:
 			return EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id)
 	return null
 
-## Files an actor as leased (every frame) or unleased (the sweep).
+## Files an actor in the leased or the unleased sweep.
 func _file(actor: ActorReference) -> void:
 	if actor.simulation_mode == ActorReference.SimulationMode.PHYSICAL_LEASED:
-		_leave_sweep(actor)
-		_leased[actor] = true
+		_unleased.remove(actor)
+		_leased.add(actor)
 		return
-	_leased.erase(actor)
-	if not _in_sweep.has(actor):
-		_in_sweep[actor] = true
-		_sweep.append(actor)
-
-func _leave_sweep(actor: ActorReference) -> void:
-	if _in_sweep.has(actor):
-		_in_sweep.erase(actor)
-		_sweep.erase(actor)
+	_leased.remove(actor)
+	_unleased.add(actor)
 
 func _on_simulation_mode_changed(actor: ActorReference) -> void:
 	_last_run_msec[actor] = Time.get_ticks_msec()
@@ -247,8 +254,8 @@ func _forget(actor: ActorReference) -> void:
 	if _mode_handlers.has(actor):
 		actor.simulation_mode_changed.disconnect(_mode_handlers[actor])
 		_mode_handlers.erase(actor)
-	_leased.erase(actor)
-	_leave_sweep(actor)
+	_leased.remove(actor)
+	_unleased.remove(actor)
 	_last_run_msec.erase(actor)
 	travel.forget(actor)
 
@@ -256,3 +263,46 @@ func _forget(actor: ActorReference) -> void:
 func _seconds_since_last_run(actor: ActorReference) -> float:
 	var elapsed := (Time.get_ticks_msec() - int(_last_run_msec.get(actor, Time.get_ticks_msec()))) / 1000.0
 	return minf(elapsed, unleased_sweep_seconds * 2.0)
+
+## Actors visited in turn: each physics frame takes the share that visits
+## every member once per `period` seconds, however many there are.
+class Sweep:
+	var period: float
+	var _actors: Array[ActorReference] = []
+	var _members: Dictionary = {}
+	var _index := 0
+
+	func _init(seconds: float) -> void:
+		period = seconds
+
+	func add(actor: ActorReference) -> void:
+		if _members.has(actor):
+			return
+		_members[actor] = true
+		_actors.append(actor)
+
+	func remove(actor: ActorReference) -> void:
+		if not _members.has(actor):
+			return
+		_members.erase(actor)
+		_actors.erase(actor)
+
+	func size() -> int:
+		return _actors.size()
+
+	## Where the sweep has got to, for diagnostics: wraps to 0 each full
+	## pass.
+	func get_index() -> int:
+		return _index
+
+	## This frame's share of the members.
+	func take() -> Array[ActorReference]:
+		var share: Array[ActorReference] = []
+		if _actors.is_empty():
+			return share
+		var per_frame := ceili(_actors.size() / (period * Engine.physics_ticks_per_second))
+		for step in mini(per_frame, _actors.size()):
+			_index = _index % _actors.size()
+			share.append(_actors[_index])
+			_index += 1
+		return share

@@ -195,7 +195,7 @@ func _model_descriptors() -> Array[Dictionary]:
 		if armor == null:
 			continue
 		if armor.biped_flags != 0 and (armor.biped_flags & occupied) != 0:
-			push_warning("ActorEquipment: skipped overlapping armor %s (%08X)" % [armor.editor_id, armor.biped_flags])
+			EsmActorNode._warn_once("ActorEquipment: skipped overlapping armor %s (%08X)" % [armor.editor_id, armor.biped_flags])
 			continue
 		accepted.push_front(armor)
 		occupied |= armor.biped_flags
@@ -253,7 +253,7 @@ func _complete(generation: int) -> void:
 	if generation != _generation or not _loading:
 		return
 	if not _failures.is_empty():
-		push_warning("ActorEquipment: retained current equipment; replacement NIFs failed: " + ", ".join(_failures))
+		EsmActorNode._warn_once("ActorEquipment: retained current equipment; replacement NIFs failed: " + ", ".join(_failures))
 		cancel()
 		return
 	if not is_instance_valid(_body) or not is_instance_valid(_skeleton):
@@ -275,13 +275,13 @@ func _complete(generation: int) -> void:
 		if skinning.tree_has_skin(tree):
 			skinning.compact_external_skin_part(tree)
 			if not skinning.bind_external_skins(tree, _skeleton):
-				push_warning("ActorEquipment: retained current equipment; unresolved skeleton binds: " + String(descriptor.path))
+				EsmActorNode._warn_once("ActorEquipment: retained current equipment; unresolved skeleton binds: " + String(descriptor.path))
 				equipment.free()
 				cancel()
 				return
 			_move_tree(tree, equipment, "Skinned_%d" % index)
 		elif not _attach_unskinned(tree, equipment, descriptor, index):
-			push_warning("ActorEquipment: retained current equipment; no supported attachment: " + String(descriptor.path))
+			EsmActorNode._warn_once("ActorEquipment: retained current equipment; no supported attachment: " + String(descriptor.path))
 			equipment.free()
 			cancel()
 			return

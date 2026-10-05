@@ -2,16 +2,18 @@ class_name NpcSimulationWorker
 extends RefCounted
 
 ## NpcSimulationServer's own background thread: runs posted jobs one after
-## another, in order, at its own pace. Off-screen work (LowLevelTravel's
-## routes, PackageRunner's cross-space plans) goes here rather than to
-## WorkerThreadPool, so a backlog of it never delays the pool's other work,
-## such as an on-screen NpcController's route. A job must touch only
-## thread-safe state (the immutable NavmeshReader and the indexes built at
-## seed) and hand its result to the main thread with call_deferred.
+## another at its own pace, every urgent job (an on-screen NpcController's
+## route) before any other (off-screen routes and door sequences), each queue
+## in order. All of the server's route work runs here, none on
+## WorkerThreadPool, so a flood of it never delays the pool's other users
+## (NifServer, TextureServer). A job must touch only thread-safe state (the
+## immutable NavmeshReader and the indexes built at seed) and hand its result
+## to the main thread with call_deferred.
 
 var _thread := Thread.new()
 var _mutex := Mutex.new()
 var _semaphore := Semaphore.new()
+var _urgent_jobs: Array[Callable] = []
 var _jobs: Array[Callable] = []
 var _stopping := false
 
@@ -19,17 +21,21 @@ func start() -> void:
 	if not _thread.is_started():
 		_thread.start(_run)
 
-## Queues `job` to run on the thread.
-func post(job: Callable) -> void:
+## Queues `job` to run on the thread; an `urgent` one runs before every
+## other waiting job.
+func post(job: Callable, urgent := false) -> void:
 	_mutex.lock()
-	_jobs.append(job)
+	if urgent:
+		_urgent_jobs.append(job)
+	else:
+		_jobs.append(job)
 	_mutex.unlock()
 	_semaphore.post()
 
 ## Jobs waiting to run.
 func get_pending_count() -> int:
 	_mutex.lock()
-	var count := _jobs.size()
+	var count := _urgent_jobs.size() + _jobs.size()
 	_mutex.unlock()
 	return count
 
@@ -39,6 +45,7 @@ func stop() -> void:
 		return
 	_mutex.lock()
 	_stopping = true
+	_urgent_jobs.clear()
 	_jobs.clear()
 	_mutex.unlock()
 	_semaphore.post()
@@ -51,7 +58,11 @@ func _run() -> void:
 		if _stopping:
 			_mutex.unlock()
 			return
-		var job: Callable = _jobs.pop_front() if not _jobs.is_empty() else Callable()
+		var job := Callable()
+		if not _urgent_jobs.is_empty():
+			job = _urgent_jobs.pop_front()
+		elif not _jobs.is_empty():
+			job = _jobs.pop_front()
 		_mutex.unlock()
 		if job.is_valid():
 			job.call()

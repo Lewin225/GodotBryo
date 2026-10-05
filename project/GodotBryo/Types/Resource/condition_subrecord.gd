@@ -56,6 +56,11 @@ const FLAG_USE_GLOBAL := 0x04
 ## short form (123 in FalloutNV.esm). Set by EsmServer; used only for
 ## inspection.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var has_run_on: bool = false
+## Runtime cache with no ESM source: the parameters resolved to forms (bases,
+## placed references), filled by ScriptConditionFunctions.resolve_parameters
+## on first use so they are not looked up on every evaluation. Not saved.
+var resolved_parameters: Array = []
+var parameters_resolved := false
 
 func is_or() -> bool:
 	return (flags & FLAG_OR) != 0

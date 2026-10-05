@@ -85,10 +85,22 @@ on a delivered node changes every other instance of that model**. A caller needi
 appearance must duplicate the resource itself first, accepting that it leaves the batch.
 
 **The copy is synchronous, and one heavy model can still exceed a frame.**
-`builds_per_frame_budget` caps builds *started*, pacing worker and TextureServer pressure;
-`build_time_budget_usec` caps the wall clock one frame's drain may spend, which is what a cache hit
-actually consumes. At least one item is always processed, so a copy costlier than the whole budget
-still makes progress rather than wedging the queue — and therefore still blows the frame.
+`builds_per_frame_budget` caps builds *started* (texture resolves dispatched and ready builds
+finished), pacing worker and TextureServer pressure; a cache copy starts neither, so it is not
+counted. `build_time_budget_usec` caps the wall clock one frame's drain may spend, which is what a
+cache hit actually consumes. At least one item is
+always processed, so a copy costlier than the whole budget still makes progress rather than wedging
+the queue — and therefore still blows the frame.
+
+The first copy in a frame pays a once-per-frame cost that later copies in the same frame do not. With
+several hundred physicalised actors it reaches about 10 ms; copies after it in that frame cost
+about 0.15 ms. Measured in game with `DebugCopyBench` (ScriptFunctionRegistry): one `skeleton.nif`
+copy a frame averages 3–6 ms (longest about 11 ms), 200 in a row 0.6 ms each, and a copy straight
+after another 0.15 ms; a bare `Node3D`, `StaticBody3D` or `MeshInstance3D` created first in a frame
+does not pay it. What the cost is has not been identified. The budget charges a frame's first copy
+only its model's usual cost — the cheapest copy of that template seen (`_copy_usec_min`) — so the
+once-per-frame cost does not use up the budget, while a model that is always expensive still ends
+the drain. Before, with that cost near 10 ms, the drain finished one item a frame.
 
 **Why not simply build per instance.** `build()` has one `await`, for textures; after it the whole
 tree is assembled synchronously. A warm build is a single-frame cost, so the stall is not something

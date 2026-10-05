@@ -24,6 +24,9 @@ extends Node
 
 ## Emitted on the main thread once a local cell's regions are on its map.
 signal cell_ready(cell_form_id: int)
+## Emitted when a space gains its first local cell or loses its last, so
+## has_local_cells(space_form_id) has changed.
+signal local_cells_changed(space_form_id: int)
 
 ## NavigationMesh and map rasterisation cell size, in metres. At Godot's
 ## default 0.25, distinct NAVM vertices in GSDocMitchellHouse fall in one
@@ -103,6 +106,8 @@ func set_local_cells(space_form_id: int, cell_form_ids: PackedInt32Array) -> voi
 	for cell_form_id: int in previous:
 		if not wanted.has(cell_form_id):
 			_remove_cell(cell_form_id)
+	if previous.is_empty() != wanted.is_empty():
+		local_cells_changed.emit(space_form_id)
 	if _navmesh == null:
 		return
 	for cell_form_id: int in wanted:

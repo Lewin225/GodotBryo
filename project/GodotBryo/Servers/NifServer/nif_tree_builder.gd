@@ -523,6 +523,10 @@ static func _attachment_for(skeleton: Skeleton3D, bone: int, cache: Dictionary) 
 	attachment.bone_name = skeleton.get_bone_name(bone)
 	attachment.name = "%sAttachment" % attachment.bone_name
 	skeleton.add_child(attachment)
+	# The template is built out of the tree, where setting bone_name alone
+	# leaves bone_idx at -1; every duplicate() of it then sets -1 and warns.
+	# Setting the index under its skeleton stores the real one.
+	attachment.bone_idx = bone
 	cache[bone] = attachment
 	return attachment
 

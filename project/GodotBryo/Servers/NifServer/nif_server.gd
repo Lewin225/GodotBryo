@@ -48,10 +48,19 @@ signal editor_object_visibility_changed(visible: bool)
 ## duplicate costlier than the whole budget still makes progress rather than
 ## wedging the queue.
 @export var build_time_budget_usec: int = 8000
+## Debug (DebugCopyBench 1): called once at the start of the next drain, with
+## a label, then cleared.
+var run_in_next_drain := Callable()
+## Template key -> the cheapest copy of it seen, in microseconds: its cost
+## without the first-copy-in-a-frame cost.
+var _copy_usec_min: Dictionary = {}
+## How far the last delivered copy ran over its model's cheapest copy.
+var _last_copy_excess_usec := 0
 ## Temporary main-thread construction profiler. It reports only operations at
 ## or above the threshold, because these are the operations capable of
-## preventing a rendered frame while a streamed actor is arriving.
-@export var construction_profiling_enabled: bool = true
+## preventing a rendered frame while a streamed actor is arriving. Off by
+## default: it floods the console when many actors arrive.
+@export var construction_profiling_enabled: bool = false
 @export var construction_profile_threshold_usec: int = 1000
 ## Admission cap on concurrent _resolve() tasks -- NOT a thread count. -1 means
 ## max(2, cpus - 1). Never add_group_task() at tasks_needed = -1: it claims
@@ -134,6 +143,17 @@ var _stats := {
 	"build_count": 0,
 	"build_failure_count": 0,
 	"builds_this_frame": 0,
+	# Wall clock _process's drain has spent in total, and its longest single
+	# frame since the last reset_stats().
+	"drain_usec_total": 0,
+	"drain_usec_max": 0,
+	# Wall clock spent copying cached templates for delivery, and in the
+	# delivery callbacks of those copies.
+	"duplicate_usec_total": 0,
+	"delivery_usec_total": 0,
+	# The slowest single copy: its time and the template's key.
+	"duplicate_usec_max": 0,
+	"duplicate_max_key": "",
 	"owner_gone_count": 0,
 	"orphan_freed_count": 0,
 	"tree_cache_hits": 0,
@@ -329,6 +349,7 @@ func get_stats() -> Dictionary:
 	out["active_resolve_count"] = _active_resolves
 	out["pending_admission_count"] = _pending.size()
 	out["pending_build_count"] = _build_queue.size()
+	out["ready_build_count"] = _ready_build_queue.size()
 	out["pending_kf_cache_check_count"] = _pending_kf_cache_checks.size()
 	out["pending_kf_build_count"] = _pending_kf_builds.size()
 	out["resident_document_count"] = _documents.size()
@@ -347,7 +368,10 @@ func get_stats() -> Dictionary:
 ## Resets the stat counts returned by get_staats
 func reset_stats() -> void:
 	for k in _stats.keys():
-		_stats[k] = 0
+		if _stats[k] is String:
+			_stats[k] = ""
+		else:
+			_stats[k] = 0
 
 ## This SHOULD NOT be in here
 ## NifServer can tag things as editor objects using groups
@@ -439,6 +463,7 @@ func _drop_template(tree_key: String) -> void:
 	var template = _trees.get(tree_key)
 	_trees.erase(tree_key)
 	_tree_nodes.erase(tree_key)
+	_copy_usec_min.erase(tree_key)
 	if template == null or not is_instance_valid(template):
 		return
 	_stats["tree_purge_count"] += 1
@@ -451,6 +476,7 @@ func _free_all_templates() -> void:
 		_drop_template(tree_key)
 	_trees.clear()
 	_tree_nodes.clear()
+	_copy_usec_min.clear()
 
 
 func _drop_kf_library(key: String) -> void:
@@ -692,44 +718,76 @@ func _save_kf_disk_cache(key: String, library: AnimationLibrary) -> bool:
 
 func _process(_delta: float) -> void:
 	_check_orphans()
+	var drain_started := Time.get_ticks_usec()
+	_drain()
+	var drained := Time.get_ticks_usec() - drain_started
+	_stats["drain_usec_total"] += drained
+	_stats["drain_usec_max"] = maxi(int(_stats["drain_usec_max"]), drained)
+
+
+## Builds and dispatches this frame's share of the queues, within
+## builds_per_frame_budget and build_time_budget_usec.
+func _drain() -> void:
+	if run_in_next_drain.is_valid():
+		var run := run_in_next_drain
+		run_in_next_drain = Callable()
+		run.call("inside NifServer's drain")
 	_stats["builds_this_frame"] = 0
 	var budget := maxi(1, builds_per_frame_budget)
-	var started := Time.get_ticks_usec()
+	# The first copy in a frame pays a once-per-frame cost (README "The copy is
+	# synchronous"). The budget charges that copy only its usual cost, so the
+	# once-per-frame cost does not use up the whole budget; -1 until the first
+	# item is done.
+	var started := -1
 	# Finished texture resolves are deliberately built first. Their synchronous
 	# work is the frame-sensitive half, so it must stay inside this drain's two
 	# budgets rather than running in a group of await continuations.
 	while not _ready_build_queue.is_empty():
 		if _stats["builds_this_frame"] >= budget:
 			return
-		if build_time_budget_usec > 0 and _stats["builds_this_frame"] > 0 \
-				and Time.get_ticks_usec() - started >= build_time_budget_usec:
+		if _time_budget_spent(started):
 			return
 		var ready_build: Dictionary = _ready_build_queue.pop_front()
 		_stats["builds_this_frame"] += 1
 		var build_started_usec := Time.get_ticks_usec()
 		var build_frame := Engine.get_process_frames()
+		_last_copy_excess_usec = 0
 		_finish_build(ready_build)
 		var ready_entry: Dictionary = ready_build["entry"]
 		_profile_construction("ready build dispatch", String(ready_entry["key"]),
 			build_frame, Time.get_ticks_usec() - build_started_usec)
+		if started < 0:
+			started = build_started_usec + _last_copy_excess_usec
 
 	# Starting texture resolution is intentionally cheap and asynchronous. It
-	# shares the count cap with ready builds to avoid flooding TextureServer.
+	# shares the count cap with ready builds to avoid flooding TextureServer. A
+	# cache copy starts no resolve, so it counts only against the time budget.
 	while not _build_queue.is_empty():
 		if _stats["builds_this_frame"] >= budget:
 			break
-		if build_time_budget_usec > 0 and _stats["builds_this_frame"] > 0 \
-				and Time.get_ticks_usec() - started >= build_time_budget_usec:
+		if _time_budget_spent(started):
 			break
 		var entry: Dictionary = _build_queue.pop_front()
-		_stats["builds_this_frame"] += 1
+		_last_copy_excess_usec = 0
 		var dispatch_started_usec := Time.get_ticks_usec()
 		var dispatch_frame := Engine.get_process_frames()
 		# Deliberately not awaited: this only warms/awaits textures, then enqueues
 		# the synchronous half above for a later budgeted drain.
-		_begin_build(entry)
+		if _begin_build(entry):
+			_stats["builds_this_frame"] += 1
 		_profile_construction("dispatch", String(entry["key"]), dispatch_frame,
 			Time.get_ticks_usec() - dispatch_started_usec)
+		if started < 0:
+			started = dispatch_started_usec + _last_copy_excess_usec
+
+
+## Whether this frame's drain has used build_time_budget_usec since `started`.
+## `started` is -1 until the first item is done, then that item's start moved
+## later by the part of its copy over the model's usual cost.
+func _time_budget_spent(started: int) -> bool:
+	if build_time_budget_usec <= 0 or started < 0:
+		return false
+	return Time.get_ticks_usec() - started >= build_time_budget_usec
 
 
 func _profile_construction(stage: String, key: String, frame: int, elapsed_usec: int) -> void:
@@ -740,17 +798,19 @@ func _profile_construction(stage: String, key: String, frame: int, elapsed_usec:
 	])
 
 
-func _begin_build(entry: Dictionary) -> void:
+## Delivers a cached copy, or starts a build by resolving textures; true when
+## it started a build.
+func _begin_build(entry: Dictionary) -> bool:
 	var waiter: Dictionary = entry["waiter"]
 	# Section 3.2: an owner that went away before the build started means no
 	# tree is constructed at all, rather than one built and then orphaned.
 	if not _owner_alive(waiter):
 		_stats["owner_gone_count"] += 1
-		return
+		return false
 	var src: NifSource = _documents.get(entry["key"])
 	if src == null:
 		_deliver(waiter, null)
-		return
+		return false
 	var prefer_static := bool(waiter.get("prefer_static", false))
 	var tree_key := _tree_key(entry["key"], prefer_static)
 
@@ -761,8 +821,9 @@ func _begin_build(entry: Dictionary) -> void:
 	if cached != null and is_instance_valid(cached):
 		_stats["tree_cache_hits"] += 1
 		_deliver_template(entry, cached as Node3D, "template duplicate")
-		return
+		return false
 	call_deferred("_resolve_textures_for_build", entry, src)
+	return true
 
 
 func _resolve_textures_for_build(entry: Dictionary, src: NifSource) -> void:
@@ -840,13 +901,22 @@ func _deliver_template(entry: Dictionary, template: Node3D, stage: String) -> vo
 	var duplicate_started_usec := Time.get_ticks_usec()
 	var duplicate_frame := Engine.get_process_frames()
 	var copy := _duplicate(template)
-	_profile_construction(stage, String(entry["key"]), duplicate_frame,
-		Time.get_ticks_usec() - duplicate_started_usec)
+	var duplicate_usec := Time.get_ticks_usec() - duplicate_started_usec
+	_stats["duplicate_usec_total"] += duplicate_usec
+	var tree_key := _tree_key(String(entry["key"]), bool(entry["waiter"].get("prefer_static", false)))
+	var usual: int = _copy_usec_min.get(tree_key, duplicate_usec)
+	_last_copy_excess_usec = maxi(0, duplicate_usec - usual)
+	_copy_usec_min[tree_key] = mini(usual, duplicate_usec)
+	if duplicate_usec > int(_stats["duplicate_usec_max"]):
+		_stats["duplicate_usec_max"] = duplicate_usec
+		_stats["duplicate_max_key"] = String(entry["key"])
+	_profile_construction(stage, String(entry["key"]), duplicate_frame, duplicate_usec)
 	var delivery_started_usec := Time.get_ticks_usec()
 	var delivery_frame := Engine.get_process_frames()
 	_deliver(entry["waiter"], copy)
-	_profile_construction("delivery callback", String(entry["key"]), delivery_frame,
-		Time.get_ticks_usec() - delivery_started_usec)
+	var delivery_usec := Time.get_ticks_usec() - delivery_started_usec
+	_stats["delivery_usec_total"] += delivery_usec
+	_profile_construction("delivery callback", String(entry["key"]), delivery_frame, delivery_usec)
 
 
 ## The liveness check below only means anything if the callable is bound to the

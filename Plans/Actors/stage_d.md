@@ -106,8 +106,10 @@ NpcController (Node3D, npc_controller.gd)     exports: walk_speed, run_speed, tu
   position toward the current waypoint (with the agent's avoidance velocity), turns toward it at
   `turn_speed_degrees`, and keeps to the ground with `GroundRay`. No `move_and_slide`: the
   navmesh says where an actor can walk.
-- **State stays on the reference.** Every physics frame the controller writes position and heading
-  to its `ActorReference`, as `PlayerController` does for the possessed actor.
+- **State stays on the reference.** The controller moves the actor every physics frame and writes
+  its position and heading to the `ActorReference` every `placement_write_seconds` (0.1 s), on
+  arrival and when it hands the lease back; the possessed actor's `PlayerController` writes every
+  frame.
 - **Movement target on the reference.** `NpcSimulationServer` runs packages for every actor and
   sets where it is heading; the controller only moves. `ActorReference` gains runtime state with no
   ESM source: `move_target: Vector3` (in the actor's current space), `has_move_target: bool`, and
@@ -329,3 +331,30 @@ routes ignore internal doors and obstacles: a controller walks into a closed int
   whose open edges are over 4 m apart, whatever lies between. Neither is checked against the
   game. Its nearest-triangle pairing also makes routes cross the same seam back and forth
   (interior 0x10D629: a 53 m route goes up onto a record and down again).
+
+- **Same-space follow with no direct route.** FOLLOW plans doors only when the target is in
+  another space. Within one space it asks for a direct route; when that route is not found the
+  actor retries every `route_retry_seconds` (5 s) and never tries doors. With every actor
+  following the player in WastelandNV, at Primm 3,218 off-screen and 1,444 on-screen routes
+  failed in one 5 s interval and those followers did not move until the player walked north.
+  Whether the cause is walkable regions joined only by doors or a target off the navmesh is not
+  checked. Proposed: when a same-space route is not found, plan a door sequence by walkable
+  region (`find_door_sequence` already searches by region).
+
+- **The first-copy-in-a-frame cost (NifServer).** The first template copy in a frame pays a cost
+  that later copies in the same frame do not, up to about 10 ms with ~1,300 physicalised actors
+  (NifServer README "The copy is synchronous"). A bare `Node3D`, `StaticBody3D` or
+  `MeshInstance3D` created first in a frame does not pay it; what does is not identified.
+  `DebugCopyBench 5` copies the teeth, head, skeleton and upper body, and a `MeshInstance3D` given
+  a skinned mesh, one a frame in turn.
+
+- **Distance tiers for crowded scenes (not needed for normal play).** Normal play has at most about
+  25 physicalised actors; at the measured rates that is about 6 ms of process and under 1 ms of
+  physics. `DebugActorCost` with 1,342 physicalised actors and 546 visuals (median ms saved,
+  process / physics / frame, against 141.5 / 35.9 / 201.6): visuals hidden 74 / 2 / 77,
+  controllers 16 / 24 / 58, look-at modifiers 20 / 0 / 19, skeleton process off 20 / 0 / 21,
+  animation players 14 / 0 / 17, avoidance 6 / 3 / 12, animator clip choice 5 / 2 / 9. If a scene
+  ever needs it: lease only within ~25 m and let LowLevelTravel move the rest on a faster sweep
+  with the node following the reference; advance distant animation every few frames by the
+  accumulated time (switching 150 `AnimationPlayer`s back on raised process time to ~35 ms for a
+  stretch, headless); no look-at beyond ~10 m.

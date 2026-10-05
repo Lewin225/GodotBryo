@@ -242,7 +242,7 @@ func test_build_budget() -> void:
 	_received.clear()
 	var prev: int = NifServer.builds_per_frame_budget
 	NifServer.builds_per_frame_budget = 4
-	# 100 requests for one path: one resolve, then 100 builds to drain.
+	# 100 requests for one path: one resolve and build, then cache copies.
 	for i in 100:
 		NifServer.request(BOTTLE, self, _on_result)
 	var max_seen := 0
@@ -253,7 +253,10 @@ func test_build_budget() -> void:
 		max_seen = maxi(max_seen, int(NifServer.get_stats()["builds_this_frame"]))
 	check(_received.size() == 100, "all 100 delivered (got %d)" % _received.size())
 	check(max_seen <= 4, "never exceeded the budget of 4 in a frame (max %d)" % max_seen)
-	check(frames >= 25, "the drain actually spanned frames (%d)" % frames)
+	# Builds started count against the budget; cache copies, which start no
+	# resolve, only against the time budget, so 99 cheap copies are not held
+	# to 4 a frame.
+	check(frames < 25, "cache copies are not held to the build count budget (%d frames)" % frames)
 	NifServer.builds_per_frame_budget = prev
 	_free_received()
 

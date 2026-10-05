@@ -26,8 +26,13 @@ extends Node
 ## ActorReference -> its route: {"target": Vector3, "waypoints":
 ## PackedVector3Array, "index": int, "request_id": int}.
 var _routes: Dictionary = {}
-## Route request id -> the actor it is for.
+## Route request id -> the actor it is for. A route that came back not found
+## is asked for again after NpcSimulationServer.route_retry_seconds.
 var _actors_by_request: Dictionary = {}
+## Routes that came back not found. Counted, not logged: with thousands of
+## actors it is an ordinary outcome, and a warning each would flood the
+## debugger. NpcSimulationServer.debug_report shows it.
+var routes_not_found := 0
 
 func _ready() -> void:
 	get_parent().route_ready.connect(_on_route_ready)
@@ -39,10 +44,10 @@ func advance(actor: ActorReference, elapsed: float) -> void:
 		forget(actor)
 		return
 	var route: Dictionary = _routes.get(actor, {})
-	if route.is_empty() or route["target"] != actor.move_target:
+	if route.is_empty() or route["target"] != actor.move_target or _should_retry(route):
 		forget(actor)
 		var request_id: int = get_parent().request_route(actor.current_space_form_id, actor.position, actor.move_target)
-		_routes[actor] = {"target": actor.move_target, "waypoints": PackedVector3Array(), "index": 0, "request_id": request_id}
+		_routes[actor] = {"target": actor.move_target, "waypoints": PackedVector3Array(), "index": 0, "request_id": request_id, "failed_msec": -1}
 		_actors_by_request[request_id] = actor
 		return
 	var waypoints: PackedVector3Array = route["waypoints"]
@@ -72,11 +77,13 @@ func advance(actor: ActorReference, elapsed: float) -> void:
 		forget(actor)
 		actor.reach_move_target()
 
-## Drops `actor`'s route; a pending request's result is ignored.
+## Drops `actor`'s route, cancelling a request still on the simulation
+## thread.
 func forget(actor: ActorReference) -> void:
 	var route: Dictionary = _routes.get(actor, {})
-	if not route.is_empty():
+	if not route.is_empty() and _actors_by_request.has(route["request_id"]):
 		_actors_by_request.erase(route["request_id"])
+		get_parent().cancel_request(route["request_id"])
 	_routes.erase(actor)
 
 func _on_route_ready(request_id: int, result: Dictionary) -> void:
@@ -88,7 +95,14 @@ func _on_route_ready(request_id: int, result: Dictionary) -> void:
 	if bool(result.get("found", false)):
 		route["waypoints"] = result["waypoints"]
 	else:
-		push_warning("LowLevelTravel: no route for %s to %s" % [actor.instance_id, route["target"]])
+		routes_not_found += 1
+		route["failed_msec"] = Time.get_ticks_msec()
+
+## Whether the route came back not found at least route_retry_seconds ago, so
+## it is asked for again.
+func _should_retry(route: Dictionary) -> bool:
+	var failed: int = route.get("failed_msec", -1)
+	return failed >= 0 and Time.get_ticks_msec() - failed >= get_parent().route_retry_seconds * 1000.0
 
 func _speed_mult(actor: ActorReference) -> float:
 	return actor.get_actor_values().get_current(ActorValue.SPEED_MULT)

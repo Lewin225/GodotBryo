@@ -40,6 +40,10 @@ const PLUGIN_FILES := [
 	"OldWorldBlues.esm", "LonesomeRoad.esm", "GunRunnersArsenal.esm",
 ]
 
+## After a route comes back not found, the same target is not asked for
+## again for this many seconds (NpcController, LowLevelTravel).
+@export var route_retry_seconds := 5.0
+
 ## Max distance an actor may be from the navmesh and still be considered
 ## groundable, in meters.
 @export var ground_snap_radius := 8.0
@@ -59,6 +63,12 @@ var package_runner := PackageRunner.new()
 var low_level_travel := LowLevelTravel.new()
 ## This server's own background thread for off-screen route work.
 var worker := NpcSimulationWorker.new()
+## Child node printing a periodic debug line (DebugNpcLog).
+var debug_log := NpcDebugLog.new()
+## Request ids cancel_request() marked, which the simulation thread skips;
+## shared with that thread under `_cancel_mutex`.
+var _cancelled_requests: Dictionary = {}
+var _cancel_mutex := Mutex.new()
 var actors_by_instance_id: Dictionary = {}
 var actors_by_space_form_id: Dictionary = {}
 var actors_by_cell_form_id: Dictionary = {}
@@ -91,7 +101,6 @@ var navmesh_load_stats: Dictionary = {}
 
 var _load_thread: Thread
 var _next_request_id := 1
-var _route_tasks: Dictionary = {}
 
 var _indexed_space_by_instance_id: Dictionary = {}
 
@@ -102,6 +111,8 @@ func _ready() -> void:
 	add_child(package_runner)
 	low_level_travel.name = "LowLevelTravel"
 	add_child(low_level_travel)
+	debug_log.name = "NpcDebugLog"
+	add_child(debug_log)
 	worker.start()
 	var esm_server := get_tree().root.get_node_or_null("EsmServer")
 	if esm_server != null:
@@ -115,10 +126,6 @@ func _exit_tree() -> void:
 		_load_thread.wait_to_finish()
 	_load_thread = null
 	worker.stop()
-	for task_id in _route_tasks.values():
-		if not WorkerThreadPool.is_task_completed(task_id):
-			WorkerThreadPool.wait_for_task_completion(task_id)
-	_route_tasks.clear()
 
 func seed() -> void:
 	if is_seeded:
@@ -354,31 +361,43 @@ func route(space_form_id: int, from: Vector3, to: Vector3) -> Dictionary:
 ## Async route. Returns a request id; the result arrives on [signal route_ready].
 ## Low-level simulation is never blocked on this -- a route is computed once and
 ## the actor keeps moving on its previous one until the new one lands.
-## `on_screen` routes for an actor on screen (NpcController) run on
-## WorkerThreadPool at high priority; the rest queue on this server's own
-## thread (`worker`), so a backlog of off-screen routes never delays them.
+## Runs on this server's own thread (`worker`); an `on_screen` route (an
+## NpcController's) is taken before every off-screen job.
 func request_route(space_form_id: int, from: Vector3, to: Vector3, on_screen := false) -> int:
 	var request_id := _next_request_id
 	_next_request_id += 1
 	if navmesh == null:
 		route_ready.emit.call_deferred(request_id, {"found": false})
 		return request_id
-	if not on_screen:
-		worker.post(_run_route_task.bind(request_id, space_form_id, from, to))
-		return request_id
-	var task_id := WorkerThreadPool.add_task(_run_route_task.bind(request_id, space_form_id, from, to), true)
-	_route_tasks[request_id] = task_id
+	worker.post(_run_route_task.bind(request_id, space_form_id, from, to), on_screen)
 	return request_id
 
+## Marks a route or door-sequence request queued on the simulation thread so
+## the thread skips it; its result never arrives. For a request whose answer is
+## no longer wanted (the actor's target moved on).
+func cancel_request(request_id: int) -> void:
+	_cancel_mutex.lock()
+	_cancelled_requests[request_id] = true
+	_cancel_mutex.unlock()
+
+## Whether `request_id` was cancelled, forgetting the mark.
+func _take_cancelled(request_id: int) -> bool:
+	_cancel_mutex.lock()
+	var cancelled := _cancelled_requests.erase(request_id)
+	_cancel_mutex.unlock()
+	return cancelled
+
 func _run_route_task(request_id: int, space_form_id: int, from: Vector3, to: Vector3) -> void:
+	if _take_cancelled(request_id):
+		return
 	var result := route(space_form_id, from, to)
 	_finish_route.call_deferred(request_id, result)
 
 func _finish_route(request_id: int, result: Dictionary) -> void:
-	var task_id: int = _route_tasks.get(request_id, -1)
-	if task_id != -1:
-		WorkerThreadPool.wait_for_task_completion(task_id)
-		_route_tasks.erase(request_id)
+	# A cancel that came after the job ran is forgotten, and the result is not
+	# delivered.
+	if _take_cancelled(request_id):
+		return
 	route_ready.emit(request_id, result)
 
 ## Finds a sequence of authored XTEL portals leading from one space to another,
@@ -598,6 +617,39 @@ func blocked_doors_for(actor: ActorReference) -> Dictionary:
 			blocked[door] = true
 	return blocked
 
+## Debug: one line about the actors in the player's space, within `radius`
+## metres of the player (0: the whole space): how many there are in the
+## simulation, how many have a node (an NpcController), how many of those have
+## their visual built, how many take their traits from a template (which
+## render invisible until template appearance is read), and how many are
+## still LOW_LEVEL.
+func debug_report(radius: float) -> String:
+	var player := ScriptServer.player_reference
+	if player == null:
+		return "no player"
+	var near := 0
+	var with_node := 0
+	var visual_built := 0
+	var templated := 0
+	var low_level := 0
+	for actor: ActorReference in get_actors_in_space(player.current_space_form_id):
+		if radius > 0.0 and actor.position.distance_to(player.position) > radius:
+			continue
+		near += 1
+		if actor.simulation_mode == ActorReference.SimulationMode.LOW_LEVEL:
+			low_level += 1
+		var base := actor.base as ActorBase
+		if base != null and (base.template_flags & ActorBase.TEMPLATE_USE_TRAITS) != 0 and base.template_form_id != 0:
+			templated += 1
+		var controller := EsmNode.node_for(actor) as NpcController
+		if controller == null:
+			continue
+		with_node += 1
+		if controller.actor != null and controller.actor.is_visual_built():
+			visual_built += 1
+	var area := "within %.0f m" % radius if radius > 0.0 else "in this space"
+	return "%s: %d actors; %d with a node, %d of those with their visual built; %d templated; %d LOW_LEVEL; simulation thread queue %d; routes not found: off screen %d, on screen %d" % [area, near, with_node, visual_built, templated, low_level, worker.get_pending_count(), low_level_travel.routes_not_found, NpcController.routes_not_found]
+
 ## find_door_sequence on this server's own thread (`worker`); the result
 ## arrives on [signal door_sequence_ready], with no portals when none was
 ## found.
@@ -611,8 +663,17 @@ func request_door_sequence(from_space: int, from_position: Vector3, to_space: in
 	return request_id
 
 func _run_door_sequence_task(request_id: int, from_space: int, from_position: Vector3, to_space: int, to_position: Vector3, blocked_doors: Dictionary) -> void:
+	if _take_cancelled(request_id):
+		return
 	var result := find_door_sequence(from_space, from_position, to_space, to_position, blocked_doors)
-	door_sequence_ready.emit.call_deferred(request_id, result["portals"])
+	_finish_door_sequence.call_deferred(request_id, result["portals"])
+
+## Main thread: a cancel that came after the job ran is forgotten, and a
+## cancelled result is not delivered.
+func _finish_door_sequence(request_id: int, portals: Array) -> void:
+	if _take_cancelled(request_id):
+		return
+	door_sequence_ready.emit(request_id, portals)
 
 ## Async cross-space route, computed on this server's own thread (`worker`).
 ## Result arrives on [signal cross_space_route_ready].
@@ -630,10 +691,6 @@ func _run_cross_space_task(request_id: int, from_space: int, from_position: Vect
 	_finish_cross_space_route.call_deferred(request_id, result)
 
 func _finish_cross_space_route(request_id: int, result: Dictionary) -> void:
-	var task_id: int = _route_tasks.get(request_id, -1)
-	if task_id != -1:
-		WorkerThreadPool.wait_for_task_completion(task_id)
-		_route_tasks.erase(request_id)
 	cross_space_route_ready.emit(request_id, result)
 
 func _is_tracked(reference: ActorReference) -> bool:

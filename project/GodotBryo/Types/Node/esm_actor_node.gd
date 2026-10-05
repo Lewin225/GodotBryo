@@ -26,7 +26,9 @@ signal animation_load_failed(reason: String)
 		show_gore = value
 		_apply_gore_visibility()
 
-## Ragdolls are served by NifServer,  but aren't ready to use yet. disable them for now
+## Ragdolls are served by NifServer, but aren't ready to use yet. While off,
+## the PhysicalBone3D hitboxes are out of the physics space too: they neither
+## collide nor cost physics time until a ragdoll or a hit check turns them on.
 @export var ragdoll_simulator_enabled: bool = false:
 	set(value):
 		ragdoll_simulator_enabled = value
@@ -63,6 +65,38 @@ const TORSO_CAP_LAST := 213
 var motion: ActorMotion = null
 
 var _active_record: ActorBase = null
+
+## Messages already warned, so a failure every actor of a kind shares is
+## reported once rather than flooding the debugger.
+static var _warned_messages: Dictionary = {}
+static var _warned_mutex := Mutex.new()
+
+## Debug (DebugActorThreads): when true, each actor under an NpcController
+## processes in its own sub-thread group, so actors' animation, skeleton
+## modifiers and bone attachments run on WorkerThreadPool in parallel.
+static var process_on_threads := false
+
+static func _warn_once(message: String) -> void:
+	_warned_mutex.lock()
+	var warned := _warned_messages.has(message)
+	_warned_messages[message] = true
+	_warned_mutex.unlock()
+	if warned:
+		return
+	push_warning(message)
+
+## Applies `process_on_threads` to this actor, deferred so the group never
+## changes while the tree is processing.
+func apply_process_thread_group() -> void:
+	if Engine.is_editor_hint() or not get_parent() is NpcController:
+		return
+	var group := Node.PROCESS_THREAD_GROUP_SUB_THREAD if process_on_threads else Node.PROCESS_THREAD_GROUP_INHERIT
+	if process_thread_group != group:
+		set_deferred(&"process_thread_group", group)
+
+## Whether the actor's visual (skeleton and model parts) has been built.
+func is_visual_built() -> bool:
+	return _humanoid_visual_built
 
 ## Whether the actor being shown uses female body parts and animations.
 func is_female() -> bool:
@@ -112,6 +146,7 @@ func _ready() -> void:
 	animator.load_failed.connect(animation_load_failed.emit)
 	equipment.committed.connect(_on_equipment_committed)
 	equipment.watch(reference as ActorReference)
+	apply_process_thread_group()
 	_queue_rehydrate_and_build()
 
 
@@ -167,7 +202,7 @@ func _rehydrate_and_build() -> void:
 			return
 
 	if reference.base == null:
-		push_warning("EsmActorNode: reference has no base record")
+		_warn_once("EsmActorNode: reference has no base record")
 		return
 	if _loading or _humanoid_visual_built:
 		return
@@ -256,7 +291,7 @@ func _on_nif_delivered(tree: Node3D, generation: int, asset_key: String) -> void
 		if bool(asset.get("required", false)):
 			_load_failures.append(message)
 		else:
-			push_warning("EsmActorNode: optional " + message)
+			_warn_once("EsmActorNode: optional " + message)
 	else:
 		tree.name = "Nif_%s" % asset_key.validate_node_name()
 		tree.set_meta("esm_humanoid_asset_key", asset_key)
@@ -348,7 +383,7 @@ func _ensure_humanoid_look_target(skeleton: Skeleton3D) -> void:
 	if skeleton == null or skeleton.get_node_or_null(NodePath(LOOK_TARGET_NODE_NAME)) != null:
 		return
 	if skeleton.find_bone(LOOK_TARGET_BONE_NAME) == -1:
-		push_warning("EsmActorNode: human skeleton has no %s bone for look target" % LOOK_TARGET_BONE_NAME)
+		_warn_once("EsmActorNode: human skeleton has no %s bone for look target" % LOOK_TARGET_BONE_NAME)
 		return
 	var look_target := LookAtModifier3D.new()
 	look_target.name = LOOK_TARGET_NODE_NAME
@@ -403,7 +438,7 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 			_move_tree(tree, skinned_parts, "Skinned_%s" % String(asset_key).validate_node_name())
 			skinning.compact_external_skin_part(tree)
 			if not skinning.bind_external_skins(tree, skeleton):
-				push_warning("EsmActorNode: optional appearance has unresolved skeleton binds: " + String(asset.get("path", "")))
+				_warn_once("EsmActorNode: optional appearance has unresolved skeleton binds: " + String(asset.get("path", "")))
 				tree.queue_free()
 				continue
 			_tag_appearance_meshes(tree, asset)
@@ -411,7 +446,7 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 		if facial_attachment == null:
 			facial_attachment = _create_facial_attachment(skeleton)
 		if facial_attachment == null:
-			push_warning("EsmActorNode: optional appearance has no usable facial bone: " + String(asset.get("path", "")))
+			_warn_once("EsmActorNode: optional appearance has no usable facial bone: " + String(asset.get("path", "")))
 			tree.queue_free()
 			continue
 		_move_tree(tree, facial_attachment, "Attached_%s" % String(asset_key).validate_node_name())
@@ -528,7 +563,7 @@ func _finish_visual_load(success: bool, reason: String) -> void:
 	_loading = false
 	if not success:
 		_clear_staging()
-		push_warning("EsmActorNode: visual load failed: " + reason)
+		_warn_once("EsmActorNode: visual load failed: " + reason)
 		visual_load_failed.emit(reason)
 
 
@@ -599,6 +634,17 @@ func _apply_ragdoll_simulator_state() -> void:
 		var simulator := child as PhysicalBoneSimulator3D
 		simulator.active = ragdoll_simulator_enabled
 		simulator.visible = ragdoll_simulator_enabled
+		for bone in simulator.find_children("*", "PhysicalBone3D", false, false):
+			_set_hitbox_enabled(bone as PhysicalBone3D, ragdoll_simulator_enabled)
+
+## A disabled PhysicalBone3D is removed from the physics space (its
+## disable_mode is DISABLE_MODE_REMOVE).
+func _set_hitbox_enabled(bone: PhysicalBone3D, enabled: bool) -> void:
+	bone.disable_mode = CollisionObject3D.DISABLE_MODE_REMOVE
+	if enabled:
+		bone.process_mode = Node.PROCESS_MODE_INHERIT
+	else:
+		bone.process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func _apply_possessed_first_person_render_mode() -> void:
@@ -663,6 +709,7 @@ func _on_equipment_committed(body: Node3D) -> void:
 	# every replacement before restoring ordinary body coverage.
 	_rebuild_dismember_partition_index(body)
 	_apply_equipment_body_coverage(body)
+	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
 
 
