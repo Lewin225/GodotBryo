@@ -189,7 +189,8 @@ func run_menu_mode_blocks() -> void:
 	for reference: EsmReference in _loaded_game_mode.keys():
 		dispatch_event_for(reference, "MenuMode", get_menu())
 
-## Applies every queued move: sets rotation, then space and position together
+## Applies every queued move: a physical actor's controller checks in, then
+## sets rotation, then space and position together
 ## (one cell refresh, so anything reacting to the cell change sees the final
 ## transform), then emits the reference's teleported and
 ## reference_teleported. Moves queued while applying wait for the next call.
@@ -200,6 +201,12 @@ func apply_pending_moves() -> void:
 		var move: Dictionary = moves[reference]
 		var old_space := reference.current_space_form_id
 		var new_space := int(move["space_form_id"])
+		# A physical actor checks in first: its controller writes where it
+		# had got to and gives up the lease, so nothing writes that back
+		# over the move.
+		var controller := EsmNode.node_for(reference) as NpcController
+		if controller != null:
+			controller.check_in()
 		reference.rotation = move["rotation"]
 		reference.set_location(new_space, move["position"])
 		reference.teleported.emit(old_space, new_space)

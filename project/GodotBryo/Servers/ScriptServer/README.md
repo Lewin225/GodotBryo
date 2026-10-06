@@ -41,7 +41,9 @@ ScriptServer.function_registry: ScriptFunctionRegistry
 
 **Moves.** `move_reference()` queues; a later move of the same reference replaces the
 queued one. Each frame `_process()` runs loaded references' `GameMode` blocks, then
-applies the queue: space, position and rotation are set together (one cell refresh) and
+applies the queue: a physical actor's `NpcController` checks in first (writes its
+placement and hands back its lease, so the move is the placement that stands), then
+space, position and rotation are set together (one cell refresh) and
 the reference's `teleported(old_space, new_space)` and
 `reference_teleported(reference, old_space, new_space)` are emitted. `process_priority`
 is 100, so this runs after default-priority `_process()`; physics bodies sync their

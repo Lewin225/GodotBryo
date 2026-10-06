@@ -61,7 +61,8 @@ func _ready() -> void:
 	for frame in 150:
 		await get_tree().process_frame
 	var during := _camera_angle_to(player, _eyes_of(doc))
-	check(player.actor.head_tracking.get_target() == doc and during < before - 10.0, "in conversation with Doc the seated camera turns to him (%.0f degrees off, from %.0f)" % [during, before])
+	var seated_short := _short_of_limit(player)
+	check(player.actor.head_tracking.get_target() == doc and absf(during - seated_short) < 3.0, "in conversation with Doc the seated camera turns to him as far as the neck allows (%.0f degrees off, from %.0f; %.0f beyond the left-right limit)" % [during, before, seated_short])
 	DialogueServer._conversation_speaker = null
 	DialogueServer._conversation_listener = null
 
@@ -75,6 +76,14 @@ func _ready() -> void:
 	await get_tree().process_frame
 	check(player_ref.sit_state == FurnitureSeating.NOT_SITTING and player.camera_mode == 0, "standing up returns the camera to camera_mode 0 (%d)" % player.camera_mode)
 
+	# Walking into a conversation: the conversation screen suspends input, and
+	# the body reports standing still rather than its last step.
+	player.motion.move_input = Vector2(0.0, 1.0)
+	player.motion.velocity = Vector3(0.0, 0.0, -3.0)
+	player._on_conversation_started(doc, player_ref)
+	check(player.motion.move_input == Vector2.ZERO and player.motion.velocity == Vector3.ZERO, "entering a conversation while walking stills the body's motion (input %s, velocity %s)" % [player.motion.move_input, player.motion.velocity])
+	player._on_conversation_ended(doc)
+
 	# Standing, in conversation with Doc: the camera follows the head too.
 	var standing_before := _camera_angle_to(player, _eyes_of(doc))
 	DialogueServer._conversation_speaker = doc
@@ -82,7 +91,8 @@ func _ready() -> void:
 	for frame in 150:
 		await get_tree().process_frame
 	var standing_during := _camera_angle_to(player, _eyes_of(doc))
-	check(player.camera_mode == 1 and standing_during < maxf(standing_before - 10.0, 15.0), "standing in conversation with Doc the camera follows the head to him (camera_mode %d, %.0f degrees off, from %.0f)" % [player.camera_mode, standing_during, standing_before])
+	var standing_short := _short_of_limit(player)
+	check(player.camera_mode == 1 and absf(standing_during - standing_short) < 3.0, "standing in conversation with Doc the camera follows the head to him as far as the neck allows (camera_mode %d, %.0f degrees off, from %.0f; %.0f beyond the left-right limit)" % [player.camera_mode, standing_during, standing_before, standing_short])
 	DialogueServer._conversation_speaker = null
 	DialogueServer._conversation_listener = null
 	await get_tree().process_frame
@@ -105,6 +115,21 @@ func _camera_angle_to(player: PlayerController, point: Vector3) -> float:
 	var forward := -player.camera_mount.global_basis.z
 	var to_point := point - player.camera_mount.global_position
 	return rad_to_deg(absf(Vector2(forward.x, forward.z).angle_to(Vector2(to_point.x, to_point.z))))
+
+## How far the look point lies beyond the head's left-right limit, degrees (0
+## when within it): the angle about the head bone's X axis from its rest pose
+## under the animated neck, which LookAtModifier3D limits, less half the range.
+func _short_of_limit(player: PlayerController) -> float:
+	var skeleton := player.actor.find_child("Skeleton3D", true, false) as Skeleton3D
+	var bone := skeleton.find_bone(ActorHeadTracking.HEAD_BONE_NAME)
+	var rest := skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.get_bone_parent(bone)) * skeleton.get_bone_rest(bone)
+	var local := rest.basis.inverse() * (_look_point(player) - rest.origin)
+	var turn := rad_to_deg(absf(Vector2(local.y, local.z).angle_to(Vector2.RIGHT)))
+	return maxf(0.0, turn - player.actor.head_tracking.left_right_limit_degrees * 0.5)
+
+## Where the player's head tracking aims (its Look Point).
+func _look_point(player: PlayerController) -> Vector3:
+	return (player.actor.find_child(ActorHeadTracking.AIM_NODE_NAME, true, false) as Node3D).global_position
 
 func _interact() -> InputEventAction:
 	var event := InputEventAction.new()

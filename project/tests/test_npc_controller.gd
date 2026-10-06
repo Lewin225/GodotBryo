@@ -84,9 +84,29 @@ func _ready() -> void:
 	await _check_seam_crossing(controller, doc)
 	await _check_stuck_recovery(controller, doc)
 	_check_running_follows_package(controller, doc)
+	check(controller.is_physics_processing(), "the controller runs while it holds the lease")
+	_check_move_checks_in(controller, doc)
 	doc.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## A move by something else (a door, MoveTo) to another space: the controller
+## checks in before the move is applied, so when the streamer drops its node on
+## the cell change (as CellStreamerV2 does) nothing writes its old placement
+## back over the destination.
+func _check_move_checks_in(controller: NpcController, doc: ActorReference) -> void:
+	var wasteland := EsmServer.find_form_id_by_editor_id("WastelandNV")
+	var destination := Vector3(-968.0, 51.0, 119.8)
+	var drop_node := func(reference: EsmReference, _old_cell: int, _new_cell: int) -> void:
+		if reference == doc and controller.is_inside_tree():
+			controller.get_parent().remove_child(controller)
+	EsmServer.reference_cell_changed.connect(drop_node)
+	ScriptServer.move_reference(doc, wasteland, destination, Vector3.ZERO)
+	ScriptServer.apply_pending_moves()
+	EsmServer.reference_cell_changed.disconnect(drop_node)
+	check(doc.current_space_form_id == wasteland and doc.position.is_equal_approx(destination), "moved through a door with its node dropped on the cell change, Doc keeps the destination (%s)" % doc.position)
+	check(doc.simulation_mode == ActorReference.SimulationMode.LOW_LEVEL and not controller.is_physics_processing(), "and the controller checked in: lease handed back, not running")
+	controller.queue_free()
 
 ## A disabled actor is hidden; its agent must not steer others either.
 ## The controller runs while the active package has Always Run, read when

@@ -382,6 +382,20 @@ func _publish_actor_motion(delta: float) -> void:
 	motion.sneaking = is_crouching
 
 
+## Reports the body as standing still. Used when physics processing stops
+## (input suspended for a menu, or frozen), since _publish_actor_motion only
+## runs from _physics_process and motion would keep the last frame's movement.
+func _publish_still_motion() -> void:
+	_move_input = Vector2.ZERO
+	_last_yaw = rotation.y
+	if not drive_actor_animation:
+		return
+	motion.move_input = Vector2.ZERO
+	motion.velocity = Vector3.ZERO
+	motion.turn_rate = 0.0
+	motion.running = false
+
+
 func _handle_noclip_movement(delta: float) -> void:
 	var left_action: StringName = input_actions.get("move_left", &"left")
 	var right_action: StringName = input_actions.get("move_right", &"right")
@@ -950,11 +964,13 @@ func _set_input_suspended(suspended: bool) -> void:
 	set_physics_process(not frozen and not _input_suspended)
 	set_process_unhandled_input(not suspended)
 	velocity = Vector3.ZERO
+	_publish_still_motion()
 
 func set_frozen(value: bool) -> void:
 	frozen = value
 	set_physics_process(not frozen and not _input_suspended)
 	velocity = Vector3.ZERO
+	_publish_still_motion()
 
 ## Moves the body to a Godot-space position and yaw, with no leftover motion
 ## or camera pitch.

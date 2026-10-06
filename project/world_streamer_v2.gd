@@ -4,6 +4,10 @@ extends Node3D
 ## Typed exterior-object streaming over:
 ## EsmServer -> EsmReferencePhysicaliser -> EsmNode -> NifServer.
 ##
+## A tile's REFRs come from EsmServer; its actors (ACHR, ACRE) come from
+## NpcSimulationServer, which indexes every placed actor by the CELL it is in
+## now, including those filed in the worldspace's persistent CELL.
+##
 ## This first version deliberately contains no resolver pool, mesh construction,
 ## DirectGeometryBatch or render-server work. A resident tile owns typed
 ## semantic nodes; VWD nodes use their paired NIF LOD in the outer ring.
@@ -82,6 +86,8 @@ var _persistent_population_jobs: Array[Dictionary] = []
 
 func _ready() -> void:
 	_resolve_esm_server()
+	if not NpcSimulationServer.seed_finished.is_connected(_on_npc_simulation_seeded):
+		NpcSimulationServer.seed_finished.connect(_on_npc_simulation_seeded)
 
 
 func activate(worldspace_form_id: int) -> void:
@@ -338,11 +344,45 @@ func _start_tile(coord: Vector2i, detail: EsmNode.VisualDetail) -> void:
 	add_child(root)
 	_resident[coord] = root
 	_pending[coord] = true
-	var references: Array[EsmReference] = esm_server.get_references_in_cell(cell_form_id)
+	var references := _cell_references(cell_form_id)
 	_tile_references[coord] = references
 	root.set_meta("references", references)
 	_set_root_scripts_loaded(root, detail == EsmNode.VisualDetail.FULL)
 	_queue_population(root, references, false)
+
+
+## A grid CELL's references: its REFRs from EsmServer and the actors
+## NpcSimulationServer has in it (none before it has seeded; see
+## _on_npc_simulation_seeded).
+func _cell_references(cell_form_id: int) -> Array[EsmReference]:
+	var references: Array[EsmReference] = []
+	for reference in esm_server.get_references_in_cell(cell_form_id):
+		if not reference is ActorReference:
+			references.append(reference)
+	references.append_array(NpcSimulationServer.get_actors_in_cell(cell_form_id))
+	return references
+
+
+## Actors for tiles started before NpcSimulationServer had seeded: each
+## resident tile gets the actors now indexed in its CELL.
+func _on_npc_simulation_seeded() -> void:
+	if not is_active():
+		return
+	for coord: Vector2i in _resident.keys():
+		var root: Node3D = _resident[coord]
+		var references: Array = root.get_meta("references", [])
+		var arrived: Array[EsmReference] = []
+		for actor in NpcSimulationServer.get_actors_in_cell(int(root.get_meta("cell_form_id", 0))):
+			if not references.has(actor):
+				references.append(actor)
+				arrived.append(actor)
+		if arrived.is_empty():
+			continue
+		var loaded := not _paused and int(root.get_meta("visual_detail", -1)) == EsmNode.VisualDetail.FULL
+		for actor in arrived:
+			ScriptServer.set_reference_loaded(actor, loaded)
+		_pending[coord] = true
+		_queue_population(root, arrived, false)
 
 
 func _begin_persistent_root() -> void:
@@ -356,7 +396,8 @@ func _begin_persistent_root() -> void:
 	root.add_child(imposter_root)
 	_persistent_imposter_root = imposter_root
 	for reference in references:
-		if reference == null:
+		# Actors come from NpcSimulationServer by the grid CELL they are in.
+		if reference == null or reference is ActorReference:
 			continue
 		if reference.has_xsrf_or_xsrd:
 			# These stand-ins have no paired NIF and must remain available beyond

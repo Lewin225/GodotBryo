@@ -135,13 +135,17 @@ func _ready() -> void:
 	ground_ray.collision_mask = 1
 	NpcSimulationServer.route_ready.connect(_on_route_ready)
 	NpcSimulationServer.local_navigation.local_cells_changed.connect(_on_local_cells_changed)
+	# Godot turns physics processing on at the first ready; it runs only while
+	# the lease is held.
+	set_physics_process(_leased != null)
 
 func _enter_tree() -> void:
+	set_physics_process(false)
 	_update_lease()
 
 
 func _exit_tree() -> void:
-	_release_lease()
+	check_in()
 
 func _physics_process(delta: float) -> void:
 	if not debug_enabled:
@@ -267,9 +271,18 @@ func _update_lease() -> void:
 	elif not loaded and _leased != null:
 		_release_lease()
 
+## Hands the actor back to NpcSimulationServer with its final placement:
+## before something else moves it (ScriptServer.apply_pending_moves), so the
+## move is the placement that stands, and on leaving the tree (the CELL
+## unloads or the reference leaves it) before the node is destroyed.
+func check_in() -> void:
+	_release_lease()
+
 ## Takes the lease and places the controller where the reference has got to.
+## The controller runs only while it holds the lease.
 func _take_lease() -> void:
 	_leased = actor_reference
+	set_physics_process(true)
 	_leased.simulation_mode = ActorReference.SimulationMode.PHYSICAL_LEASED
 	transform = EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
 	_last_yaw = rotation.y
@@ -284,6 +297,7 @@ func _release_lease() -> void:
 		_write_placement()
 	_leased.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 	_leased = null
+	set_physics_process(false)
 	_update_avoidance()
 
 func _write_placement() -> void:

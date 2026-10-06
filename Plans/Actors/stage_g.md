@@ -128,13 +128,13 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
   exits cleanly. Not the coordinator's settle wait (now a one-shot connection) nor
   `EsmActorNode`'s static warn-once Mutex (removing it changed nothing). Whether it predates the
   player's actor node loading is not established; needs a Godot build with symbols, or a bisect.
-- The default look target is behind a seated actor. `EsmActorNode`'s LookAtModifier3D aims at a
-  point fixed in the skeleton's space, ahead of where a standing actor faces; seated, the body faces
-  180 degrees from the controller (which stays facing the furniture at the marker), so the point
-  is behind the head and only the 110-degree limit stops the head turning round. Options: aim the
-  default target from the torso's facing rather than the skeleton frame; or turn the controller
-  to the seated facing while seated, counter-rotating the idle's root. Stage F's `Look` /
-  `StopLook` set real targets and may decide it.
+  A related hang: `test_world_streamer_actors` hung at shutdown in 2 of 4 runs after ALL CHECKS
+  PASSED, every thread asleep and the main thread in `pthread_cond_wait` (no symbols to say
+  where). Not NpcSimulationServer's worker: stopping it explicitly before quitting returned at
+  once (that run exited cleanly, so this is not conclusive).
+- Settled (`Plans/Actors/head_tracking.md`): the default look target was behind a seated actor.
+  `ActorHeadTracking` carries the default aim point with the hips' displacement from rest, so a
+  seated actor looks ahead of its seated body.
 - Layered sequences. `DynamicIdle_ChairSit.kf` drives the thighs and feet but no calves, pelvis or
   root: it is authored to play over the pose `Chair_ForwardEnter.kf` ends in (knees bent about
   90 degrees). Gamebryo layers KF sequences by per-bone priority, so a lower sequence keeps the
