@@ -22,6 +22,7 @@ DialogueServer.start_conversation(speaker, listener, topic = GREETING) -> bool
 DialogueServer.choose(index)                                     # one of the last choices_ready
 DialogueServer.end_conversation(say_goodbye = true)
 DialogueServer.get_conversation_speaker() -> EsmReference
+DialogueServer.get_conversation_listener() -> EsmReference
 DialogueServer.choices_after(info, speaker, listener) -> Array[DialogueChoice]
 signal response_started(line, text)                              # a subtitle
 signal line_finished(line)

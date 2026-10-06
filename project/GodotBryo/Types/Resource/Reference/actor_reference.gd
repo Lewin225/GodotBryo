@@ -110,6 +110,10 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## leaves furniture; read by GetSitting, and so by the idle tree's furniture
 ## items.
 @export var sit_state: int = 0
+## Runtime state with no ESM source: what the actor looks at, set by the script
+## function Look and cleared by StopLook. Read by the actor node's
+## ActorHeadTracking, ahead of its other choices.
+@export var look_target: EsmReference
 ## Runtime state with no ESM source. Nothing sets or reads it yet.
 @export var alive: bool = true
 ## Runtime state: the actor's live inventory, seeded from its base's Items.

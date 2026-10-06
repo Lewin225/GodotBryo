@@ -63,6 +63,8 @@ func _ready() -> void:
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
 	_check_hitboxes(node)
+	var modifier := node.head_tracking.get_modifier() if node.head_tracking != null else null
+	check(modifier != null and modifier.bone_name == ActorHeadTracking.HEAD_BONE_NAME and modifier.get_parent() is Skeleton3D, "ActorHeadTracking owns the look-at modifier on Doc's %s" % ActorHeadTracking.HEAD_BONE_NAME)
 	await _check_motion(node, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

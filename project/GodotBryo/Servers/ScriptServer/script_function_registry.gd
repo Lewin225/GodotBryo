@@ -511,6 +511,22 @@ func _register_defaults() -> void:
 		if ctx.calling_reference == null or other == null or ctx.calling_reference.current_cell_form_id == 0:
 			return 0
 		return 1 if ctx.calling_reference.current_cell_form_id == other.current_cell_form_id else 0)
+	# `[Actor.]Look Ref`: the actor looks at Ref until StopLook
+	# (ActorReference.look_target, ActorHeadTracking).
+	register("Look", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var target: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
+		if actor == null or target == null:
+			return 0
+		actor.look_target = target
+		return 1)
+	# `[Actor.]StopLook`: ends Look.
+	register("StopLook", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		if actor == null:
+			return 0
+		actor.look_target = null
+		return 1)
 	# `[Actor.]IsCurrentFurnitureRef Ref`: 1 while the actor uses the furniture
 	# reference Ref (ScriptServer.begin_use, `ActorReference.using`), else 0.
 	register("IsCurrentFurnitureRef", func(a: Array, ctx: ScriptExecutionContext):

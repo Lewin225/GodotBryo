@@ -1,6 +1,7 @@
 extends Node3D
 
-## The player on Doc Mitchell's couch (Plans/Actors/stage_g.md step 5), in the
+## The player on Doc Mitchell's couch (Plans/Actors/stage_g.md step 5), and in
+## conversation seated and standing (Plans/Actors/head_tracking.md), in the
 ## running game scene: activating DocMitchellCouchREF seats the possessed
 ## actor through FurnitureSeating with the furniture idles on the player's
 ## skeleton; the body holds still in the seat; the camera follows the head
@@ -50,6 +51,20 @@ func _ready() -> void:
 	check(player.camera_mode == 1 and head != null and player.camera_mount.global_position.distance_to((head as Transform3D).origin) < 0.3, "the camera follows the head (camera_mode %d, mount %.2f m from the eyes)" % [player.camera_mode, player.camera_mount.global_position.distance_to((head as Transform3D).origin) if head != null else -1.0])
 	check(player._head_transform() != null and (player._head_transform() as Transform3D).origin.y < held_at.y + 1.3, "seated, the head is low (%.2f m above the feet)" % ((player._head_transform() as Transform3D).origin.y - held_at.y if player._head_transform() != null else -1.0))
 
+	# In conversation with Doc the player's head tracking turns the head to
+	# him, and the seated camera, following the head, turns with it.
+	var doc := EsmServer.find_reference_by_editor_id("DocMitchellREF") as ActorReference
+	var doc_eyes := _eyes_of(doc)
+	var before := _camera_angle_to(player, doc_eyes)
+	DialogueServer._conversation_speaker = doc
+	DialogueServer._conversation_listener = player_ref
+	for frame in 150:
+		await get_tree().process_frame
+	var during := _camera_angle_to(player, _eyes_of(doc))
+	check(player.actor.head_tracking.get_target() == doc and during < before - 10.0, "in conversation with Doc the seated camera turns to him (%.0f degrees off, from %.0f)" % [during, before])
+	DialogueServer._conversation_speaker = null
+	DialogueServer._conversation_listener = null
+
 	ScriptServer.disable_player_controls(ScriptServer.CONTROL_MOVEMENT)
 	player._unhandled_input(_interact())
 	check(player_ref.sit_state == FurnitureSeating.SITTING, "with movement disabled, interact does not get up")
@@ -60,8 +75,36 @@ func _ready() -> void:
 	await get_tree().process_frame
 	check(player_ref.sit_state == FurnitureSeating.NOT_SITTING and player.camera_mode == 0, "standing up returns the camera to camera_mode 0 (%d)" % player.camera_mode)
 
+	# Standing, in conversation with Doc: the camera follows the head too.
+	var standing_before := _camera_angle_to(player, _eyes_of(doc))
+	DialogueServer._conversation_speaker = doc
+	DialogueServer._conversation_listener = player_ref
+	for frame in 150:
+		await get_tree().process_frame
+	var standing_during := _camera_angle_to(player, _eyes_of(doc))
+	check(player.camera_mode == 1 and standing_during < maxf(standing_before - 10.0, 15.0), "standing in conversation with Doc the camera follows the head to him (camera_mode %d, %.0f degrees off, from %.0f)" % [player.camera_mode, standing_during, standing_before])
+	DialogueServer._conversation_speaker = null
+	DialogueServer._conversation_listener = null
+	await get_tree().process_frame
+	check(player.camera_mode == 0, "and returns to the free camera when it ends (%d)" % player.camera_mode)
+
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Doc's eyes: his ActorHeadTracking's head when he has a node, else his
+## position plus eye height.
+func _eyes_of(actor: ActorReference) -> Vector3:
+	var node := EsmNode.node_for(actor) as NpcController
+	if node != null and node.actor != null and node.actor.head_tracking != null:
+		return node.actor.head_tracking.get_eye_position()
+	return EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * actor.position + Vector3.UP * 1.6
+
+## How far, horizontally, the camera's forward is from the direction to
+## `point`, degrees.
+func _camera_angle_to(player: PlayerController, point: Vector3) -> float:
+	var forward := -player.camera_mount.global_basis.z
+	var to_point := point - player.camera_mount.global_position
+	return rad_to_deg(absf(Vector2(forward.x, forward.z).angle_to(Vector2(to_point.x, to_point.z))))
 
 func _interact() -> InputEventAction:
 	var event := InputEventAction.new()

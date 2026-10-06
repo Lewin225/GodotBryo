@@ -80,12 +80,14 @@ extends CharacterBody3D
 ## Free : Standard FPS behavour
 ## ForceLook : Camera follows the global transform of camera_mount, mouse is locked
 @export_enum('Free','ForceLook') var camera_mode:int = 0
-## While the possessed actor sits (its sit state is not 0), camera_mount
-## follows the skeleton's head bone at this rate (higher is tighter).
-@export var seated_camera_follow_speed: float = 12.0
-## camera_mount's offset from the head bone while seated, in the head's frame
+## While the possessed actor sits (its sit state is not 0) or is in a
+## conversation, camera_mount follows the skeleton's head bone at this rate
+## (higher is tighter).
+@export var head_camera_follow_speed: float = 12.0
+## camera_mount's offset from the head bone while it follows the head, in the
+## head's frame
 ## turned to face where the head faces: x right, y up, z forward (metres).
-@export var seated_eye_offset: Vector3 = Vector3(0.0, 0.08, 0.1)
+@export var head_camera_eye_offset: Vector3 = Vector3(0.0, 0.08, 0.1)
 
 @export_group("Camera Base")
 ## Vertical (Y) camera follow speed — keep high for crisp step/crouch response.
@@ -322,7 +324,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if is_teleporting or not camera:
 		return
-	_update_seated_camera(delta)
+	_update_head_camera(delta)
 	_update_camera_transform(delta)
 
 
@@ -980,40 +982,71 @@ func _seated_input(event: InputEvent) -> void:
 	if leaves:
 		ScriptServer.end_use(possessed)
 
-## While seated, camera_mount follows the skeleton's head (camera_mode 1);
+## Whether the possessed actor is speaking or listening in a conversation
+## (DialogueServer).
+func is_in_conversation() -> bool:
+	if possessed == null:
+		return false
+	return DialogueServer.get_conversation_speaker() == possessed or DialogueServer.get_conversation_listener() == possessed
+
+## While seated or in a conversation, camera_mount follows the skeleton's head
+## (camera_mode 1), so the head tracking turns the view to whoever it looks at;
 ## otherwise it is the free camera (camera_mode 0).
-func _update_seated_camera(delta: float) -> void:
+func _update_head_camera(delta: float) -> void:
 	if camera_mount == null:
 		return
 	var head: Variant = _head_transform()
-	if not is_seated() or head == null:
+	if not (is_seated() or is_in_conversation()) or head == null:
 		camera_mode = 0
 		return
 	if camera_mode != 1:
 		camera_mount.global_transform = camera.global_transform
 		camera_mode = 1
-	var weight := clampf(seated_camera_follow_speed * delta, 0.0, 1.0)
+	var weight := clampf(head_camera_follow_speed * delta, 0.0, 1.0)
 	camera_mount.global_transform = camera_mount.global_transform.interpolate_with(head as Transform3D, weight)
 
-## Where the eyes are: the head bone's position plus seated_eye_offset, facing
+## Where the eyes are: the head bone's position plus head_camera_eye_offset, facing
 ## where the head faces (its +Y, the look-at modifier's forward axis), upright.
 ## Null without a built skeleton.
 func _head_transform() -> Variant:
 	if actor == null or not actor.is_visual_built():
 		return null
 	var skeleton := actor.find_child("Skeleton3D", true, false) as Skeleton3D
-	if skeleton == null:
+	if skeleton == null or skeleton.find_bone("Bip01 Head") == -1:
 		return null
-	var bone := skeleton.find_bone("Bip01 Head")
-	if bone == -1:
+	_watch_head(skeleton)
+	if _head_skeleton != skeleton or _head_pose == null:
 		return null
-	var head := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+	var head: Transform3D = _head_pose
 	var forward := head.basis.y
 	forward.y = 0.0
 	if forward.length() < 0.01:
 		return null
 	var facing := Basis.looking_at(forward.normalized(), Vector3.UP)
-	return Transform3D(facing, head.origin + facing * Vector3(seated_eye_offset.x, seated_eye_offset.y, -seated_eye_offset.z))
+	return Transform3D(facing, head.origin + facing * Vector3(head_camera_eye_offset.x, head_camera_eye_offset.y, -head_camera_eye_offset.z))
+
+## The head bone's global transform as of the skeleton's last update, with its
+## modifiers (the head tracking's look-at) applied, or null before one.
+var _head_pose: Variant = null
+var _head_skeleton: Skeleton3D = null
+
+## Captures the head's pose on each skeleton update. Skeleton3D applies its
+## modifiers, emits skeleton_updated, then restores the unmodified poses
+## (skeleton_3d.cpp), so a head turned by a LookAtModifier3D can only be read
+## from that signal.
+func _watch_head(skeleton: Skeleton3D) -> void:
+	if _head_skeleton == skeleton:
+		return
+	if is_instance_valid(_head_skeleton) and _head_skeleton.skeleton_updated.is_connected(_on_head_skeleton_updated):
+		_head_skeleton.skeleton_updated.disconnect(_on_head_skeleton_updated)
+	_head_skeleton = skeleton
+	_head_pose = null
+	skeleton.skeleton_updated.connect(_on_head_skeleton_updated)
+
+func _on_head_skeleton_updated() -> void:
+	var bone := _head_skeleton.find_bone("Bip01 Head")
+	if bone != -1:
+		_head_pose = _head_skeleton.global_transform * _head_skeleton.get_bone_global_pose(bone)
 
 ## Activates what the interact ray is aimed at, with the possessed actor as the
 ## activator.

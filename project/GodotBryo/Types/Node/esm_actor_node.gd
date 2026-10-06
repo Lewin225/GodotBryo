@@ -48,8 +48,6 @@ signal animation_load_failed(reason: String)
 const PRESET_FORM_IDS := {"Doc Mitchell (Goodsprings)": 0x00104C0C,}
 const BODY_NODE_NAME := "Body"
 const STAGING_NODE_NAME := "HumanoidStaging"
-const LOOK_TARGET_NODE_NAME := "Look Target"
-const LOOK_TARGET_BONE_NAME := "Bip01 Head"
 
 
 # This is a placeholder for hiding gore, not the real implementation
@@ -138,6 +136,10 @@ var animator: ActorAnimator:
 var equipment: ActorEquipment:
 	get:
 		return get_node_or_null(^"ActorEquipment") as ActorEquipment
+## The child that turns the head (looked up as skinning is).
+var head_tracking: ActorHeadTracking:
+	get:
+		return get_node_or_null(^"ActorHeadTracking") as ActorHeadTracking
 
 
 
@@ -351,8 +353,7 @@ func _assemble_staged_body(generation: int) -> void:
 	#Attach the returned skeleton to the body node, 99% it's _male/skeleton.nif
 	_move_tree(skeleton_tree, body, "SkeletonModel")
 
-	#Attach a look at node to the skeleton head and configure it
-	_ensure_humanoid_look_target(skeleton)
+	head_tracking.set_skeleton(skeleton)
 
 	# Nude body stores the meshes used when no armour is equipped, but it's actually a vest and shorts
 	# This is allways built, and just left as not visible
@@ -390,35 +391,6 @@ func _move_tree(tree: Node3D, new_parent: Node, node_name: String) -> void:
 		tree.get_parent().remove_child(tree)
 	tree.name = node_name
 	new_parent.add_child(tree)
-
-
-## Human skeletons receive one shared look at modifier 3D.
-## TODO - This should really be part of the base scene somehow rather than code configured
-func _ensure_humanoid_look_target(skeleton: Skeleton3D) -> void:
-	if skeleton == null or skeleton.get_node_or_null(NodePath(LOOK_TARGET_NODE_NAME)) != null:
-		return
-	if skeleton.find_bone(LOOK_TARGET_BONE_NAME) == -1:
-		_warn_once("EsmActorNode: human skeleton has no %s bone for look target" % LOOK_TARGET_BONE_NAME)
-		return
-	var look_target := LookAtModifier3D.new()
-	look_target.name = LOOK_TARGET_NODE_NAME
-	look_target.position = Vector3(0.04669869, 1.0496129, 1.6604441)
-	look_target.target_node = NodePath(".")
-	look_target.bone_name = LOOK_TARGET_BONE_NAME
-	look_target.duration = 1.0
-	look_target.transition_type = Tween.TRANS_SINE
-	look_target.ease_type = Tween.EASE_IN_OUT
-	look_target.forward_axis = SkeletonModifier3D.BONE_AXIS_PLUS_Y
-	look_target.primary_rotation_axis = Vector3.AXIS_X
-	# The X value here nudges their eyeline down
-	# If it's too high they'll stare at your balls ( Feature? )
-	look_target.origin_offset = Vector3(0.15, 0.0, 0.0)
-	look_target.origin_safe_margin = 10.0
-	look_target.use_angle_limitation = true
-	look_target.symmetry_limitation = true
-	look_target.primary_limit_angle = 110.0
-	look_target.secondary_limit_angle = 80.0
-	skeleton.add_child(look_target)
 
 
 func _tag_nude_body_meshes(root: Node3D, asset: Dictionary) -> void:

@@ -58,6 +58,12 @@ enum ObjectType {
 const PLAYER_REFERENCE_FORM_ID := 0x14
 ## PKDT General Flags bit 0x2000, Always Run.
 const GENERAL_FLAG_ALWAYS_RUN := 0x2000
+## PKDT General Flags bit 0x100000, Head Tracking Off: the actor's head is
+## locked looking straight ahead (GECK "Category Packages").
+const GENERAL_FLAG_HEAD_TRACKING_OFF := 0x100000
+## PKDD Flags bit 0x1, No Headtracking: speaker and target are not made to look
+## at each other (GECK "Dialogue Package").
+const DIALOGUE_FLAG_NO_HEADTRACKING := 0x1
 
 ## Whether the package's General Flags have Always Run: an actor running it
 ## runs wherever it moves.

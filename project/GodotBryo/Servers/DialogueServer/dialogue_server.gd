@@ -243,6 +243,10 @@ func end_conversation(say_goodbye := true) -> void:
 		say(speaker, EsmServer.find_base_by_editor_id("GOODBYE") as DialogueTopicBase, listener)
 
 ## The speaker of the conversation being held, or null.
+## The one the speaker is talking to in the current conversation, or null.
+func get_conversation_listener() -> EsmReference:
+	return _conversation_listener
+
 func get_conversation_speaker() -> EsmReference:
 	return _conversation_speaker
 

@@ -1,6 +1,7 @@
 extends Node
 
-## Prints each named placed actor's packages (PKID, template-aware) in order,
+## Prints each named placed actor's packages (PKID, template-aware) in order
+## (or, for `pkg:EditorID`, that one package),
 ## with type, schedule, locations, targets, PKDD and conditions; for checking
 ## what a package should do before implementing it.
 
@@ -8,6 +9,11 @@ func _ready() -> void:
 	if not EsmServer.is_ready():
 		await EsmServer.esm_ready
 	for name in OS.get_cmdline_user_args():
+		if name.begins_with("pkg:"):
+			var package := EsmServer.find_base_by_editor_id(name.trim_prefix("pkg:")) as PackageBase
+			if package != null:
+				_print_package(package)
+			continue
 		var actor := EsmServer.find_reference_by_editor_id(name) as ActorReference
 		if actor == null:
 			print("%s: no placed actor" % name)
