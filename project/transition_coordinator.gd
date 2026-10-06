@@ -34,7 +34,10 @@ func _ready() -> void:
 	cell_streamer.load_completed.connect(_on_load_completed)
 
 func is_transitioning() -> bool:
-	return _target_space_form_id != loaded_space_form_id
+	return _target_space_form_id != loaded_space_form_id or _settling
+
+## An interior has loaded and the body waits, frozen, for it to settle.
+var _settling := false
 
 ## CenterOnCell / COC: moves the possessed actor to an interior CELL's
 ## COCMarkerHeading. Returns the CELL FormID, or {"error": ...}.
@@ -63,6 +66,7 @@ func _on_reference_teleported(reference: EsmReference, _old_space_form_id: int, 
 	if player == null or reference != player.possessed:
 		return
 	_generation += 1
+	_settling = false
 	_target_space_form_id = new_space_form_id
 	if new_space_form_id == loaded_space_form_id:
 		_place_body()
@@ -86,6 +90,16 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 		_drop_body_into_current_cell()
 	else:
 		_place_body()
+	# Held frozen until the cell's geometry, and so its floor, has arrived.
+	_settling = true
+	cell_streamer.settled.connect(_on_cell_settled.bind(_generation), CONNECT_ONE_SHOT)
+
+## Releases the body into the interior once it has settled, unless a newer
+## transition replaced this one.
+func _on_cell_settled(_cell_form_id: int, generation: int) -> void:
+	if generation != _generation:
+		return
+	_settling = false
 	player.set_frozen(false)
 
 ## Streams a worldspace in around the possessed actor. The body is placed

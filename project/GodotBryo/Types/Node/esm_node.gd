@@ -44,6 +44,10 @@ signal visual_detail_applied(detail: int)
 
 var _waiting_for_esm := false
 var _startup_complete := false
+## A NIF request is out and NifServer has not called back yet (with a tree or
+## null). Read by CellStreamerV2 to know when a loaded cell's geometry, and so
+## its collision, has arrived.
+var _visual_request_pending := false
 var _request_generation := 0
 ## The tier actually represented by a live NIF child, or -1 while absent.
 var _active_visual_detail := -1
@@ -318,12 +322,19 @@ func _request_visual() -> void:
 		push_warning("EsmNode: NifServer autoload is unavailable for %s" % model_path)
 		return
 	var generation := _request_generation
+	_visual_request_pending = true
 	if visual_detail == VisualDetail.LOD:
 		nif_server.request_lod(model_path, self, _on_nif_ready.bind(generation, VisualDetail.LOD))
 	else:
 		nif_server.request(model_path, self, _on_nif_ready.bind(generation, VisualDetail.FULL))
 
+## Whether a NIF request is out and NifServer has not answered it yet.
+func is_visual_request_pending() -> bool:
+	return _visual_request_pending
+
 func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
+	if generation == _request_generation:
+		_visual_request_pending = false
 	if generation != _request_generation or detail != visual_detail or not is_inside_tree():
 		if tree != null:
 			tree.queue_free()

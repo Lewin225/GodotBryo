@@ -75,6 +75,18 @@ extends CharacterBody3D
 @export var standing_height: float = 1.7
 @export var crouching_height: float = 1.2
 
+@export_group("Camera")
+## Set's the camera mode
+## Free : Standard FPS behavour
+## ForceLook : Camera follows the global transform of camera_mount, mouse is locked
+@export_enum('Free','ForceLook') var camera_mode:int = 0
+## While the possessed actor sits (its sit state is not 0), camera_mount
+## follows the skeleton's head bone at this rate (higher is tighter).
+@export var seated_camera_follow_speed: float = 12.0
+## camera_mount's offset from the head bone while seated, in the head's frame
+## turned to face where the head faces: x right, y up, z forward (metres).
+@export var seated_eye_offset: Vector3 = Vector3(0.0, 0.08, 0.1)
+
 @export_group("Camera Base")
 ## Vertical (Y) camera follow speed — keep high for crisp step/crouch response.
 @export var camera_follow_speed: float = 25.0
@@ -110,6 +122,7 @@ extends CharacterBody3D
 @export_group("Required Nodes")
 @export var collision_shape: CollisionShape3D
 @export var camera: Camera3D
+@export var camera_mount:Node3D
 @export var interact_ray: InteractRay
 ## Player-facing UI. The message box presents ScriptServer's ShowMessage; the
 ## terminal session opens while the possessed actor uses an unlocked terminal;
@@ -285,6 +298,9 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_seated():
+		_seated_input(event)
+		return
 	if event.is_action_pressed(&"interact"):
 		if ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_MOVEMENT):
 			request_activate()
@@ -296,7 +312,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		#apply_camera_shake(shake_val)
 		#_click_shake_index = (_click_shake_index + 1) % CLICK_SHAKE_PATTERN.size()
 
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and camera_mode == 0 \
 			and ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_LOOKING):
 		rotation.y -= event.relative.x * mouse_sensitivity
 		var max_pitch := deg_to_rad(pitch_limit_degrees)
@@ -306,10 +322,20 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if is_teleporting or not camera:
 		return
+	_update_seated_camera(delta)
 	_update_camera_transform(delta)
 
 
 func _physics_process(delta: float) -> void:
+	if is_seated():
+		# The furniture idles move the body; the controller holds where seating
+		# placed it, with no movement or collision response (it overlaps the
+		# furniture's collision). Seating arrives as a teleport, whose flag
+		# would otherwise stay set and stop _process updating the camera.
+		is_teleporting = false
+		velocity = Vector3.ZERO
+		_publish_actor_motion(delta)
+		return
 	_sync_possessed()
 	if is_teleporting:
 		is_teleporting = false
@@ -728,12 +754,18 @@ func _update_camera_transform(delta: float) -> void:
 
 	# 5. Composite Final Camera Transform
 	var rotated_bob := bob_offset.rotated(Vector3.UP, rotation.y)
-	camera.global_position = camera_lerp_position + rotated_bob + shake_pos
-	camera.global_rotation = Vector3(
-		aim_smooth.x + _current_pitch_lean + shake_rot.x,
-		aim_smooth.y + shake_rot.y,
-		_current_roll_lean + shake_rot.z
-	)
+	
+	
+	if camera_mode == 1:
+		camera.global_transform = camera_mount.global_transform
+		
+	if camera_mode == 0:
+		camera.global_position = camera_lerp_position + rotated_bob + shake_pos
+		camera.global_rotation = Vector3(
+			aim_smooth.x + _current_pitch_lean + shake_rot.x,
+			aim_smooth.y + shake_rot.y,
+			_current_roll_lean + shake_rot.z
+		)
 
 
 # --- Public Interface ---
@@ -755,6 +787,15 @@ func possess(actor_reference: ActorReference) -> void:
 	possessed = actor_reference
 	if possessed != null:
 		possessed.using_changed.connect(_on_using_changed)
+	# The body's actor node shows the possessed actor (first person: shadow
+	# only); its skeleton gives the seated camera its head. placed_by_parent:
+	# this controller is the possessed actor's body, so the actor node does not
+	# register as the reference's node or follow its teleports (as an
+	# NpcController's actor node does not).
+	if actor != null and possessed != null and actor.reference != possessed:
+		actor.placed_by_parent = true
+		actor.configure(possessed)
+		actor.load_actor()
 	ScriptServer.player_reference = actor_reference
 	ScriptServer.player_node = self
 	ScriptServer.message_box = message_box
@@ -919,6 +960,60 @@ func place_body(target_global_position: Vector3, yaw: float) -> void:
 	teleport(target_global_position)
 	rotation.y = yaw
 	camera_pitch = 0.0
+
+## Whether the possessed actor is sitting, sitting down or standing up
+## (ActorReference.sit_state, FurnitureSeating).
+func is_seated() -> bool:
+	return possessed != null and possessed.sit_state != FurnitureSeating.NOT_SITTING
+
+## While seated: interact or a movement key gets up, when movement is enabled
+## (VCG01 disables it during the test, keeping the player in the seat).
+func _seated_input(event: InputEvent) -> void:
+	if possessed.sit_state != FurnitureSeating.SITTING:
+		return
+	if not ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_MOVEMENT):
+		return
+	var leaves := event.is_action_pressed(&"interact")
+	for key in ["move_left", "move_right", "move_forward", "move_backward"]:
+		if event.is_action_pressed(input_actions.get(key, &"")):
+			leaves = true
+	if leaves:
+		ScriptServer.end_use(possessed)
+
+## While seated, camera_mount follows the skeleton's head (camera_mode 1);
+## otherwise it is the free camera (camera_mode 0).
+func _update_seated_camera(delta: float) -> void:
+	if camera_mount == null:
+		return
+	var head: Variant = _head_transform()
+	if not is_seated() or head == null:
+		camera_mode = 0
+		return
+	if camera_mode != 1:
+		camera_mount.global_transform = camera.global_transform
+		camera_mode = 1
+	var weight := clampf(seated_camera_follow_speed * delta, 0.0, 1.0)
+	camera_mount.global_transform = camera_mount.global_transform.interpolate_with(head as Transform3D, weight)
+
+## Where the eyes are: the head bone's position plus seated_eye_offset, facing
+## where the head faces (its +Y, the look-at modifier's forward axis), upright.
+## Null without a built skeleton.
+func _head_transform() -> Variant:
+	if actor == null or not actor.is_visual_built():
+		return null
+	var skeleton := actor.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null:
+		return null
+	var bone := skeleton.find_bone("Bip01 Head")
+	if bone == -1:
+		return null
+	var head := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+	var forward := head.basis.y
+	forward.y = 0.0
+	if forward.length() < 0.01:
+		return null
+	var facing := Basis.looking_at(forward.normalized(), Vector3.UP)
+	return Transform3D(facing, head.origin + facing * Vector3(seated_eye_offset.x, seated_eye_offset.y, -seated_eye_offset.z))
 
 ## Activates what the interact ray is aimed at, with the possessed actor as the
 ## activator.

@@ -95,7 +95,14 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
    while the sit state is not 0. Physicalised Doc: ChairFrontSit, ChairDynamicIdle with his hips
    at 0.53 m (0.97 standing) carried into the seat, ChairFrontStand, then locomotion; his
    controller stays on the marker. Gate in play: Doc sits and stands, facing the right way.
-5. **The player** on the couch. Gate in play: objective 40.
+5. **The player** on the couch. Done in play: `PlayerController.possess()` gives the body's
+   `EsmActorNode` the possessed reference (`placed_by_parent`, so it does not register as the
+   reference's node), so the player sits with the same furniture idles; while seated the body
+   holds (no movement or collision response), `camera_mode` 1 with `camera_mount` following the
+   head bone, and interact or a movement key gets up when movement is enabled
+   (`test_player_seating`). Interiors now hold the body frozen until the cell's NIFs have
+   arrived (`CellStreamerV2.settled`): the player's body loading alongside the interior made it
+   fall through the floor before its collision existed.
 
 ## Open
 
@@ -111,8 +118,16 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
   chair enter's first frame faces 87 degrees off the standing pose; held at identity it matches
   within 3 degrees, and seated the torso faces 180 degrees from standing at the marker (away from
   the chair's back). The exit leaves the body facing away from the chair, so standing up turns
-  the actor's heading with it (`ActorAnimator.stop_idle` reports the turn).
+  the actor's heading with it (`ActorAnimator.stop_idle` reports the turn). FalloutNV.esm's
+  GMST `fFurnitureMarker14HeadingDelta` is pi, the engine's own heading change for marker 14
+  (`native/tools/gmst_dump Furniture`), agreeing with the turn measured from the KFs.
 - MNAM bits 30 and 31 (meaning unknown).
+- Crash on exit (open). `test_transitions` and `test_player_seating` print ALL CHECKS PASSED, then
+  the process dies at shutdown (SIGSEGV in `pthread_mutex_lock` on the main thread after the
+  worker threads exit; exit 134 headless). `test_debug_tabs`, which loads the same game scene,
+  exits cleanly. Not the coordinator's settle wait (now a one-shot connection) nor
+  `EsmActorNode`'s static warn-once Mutex (removing it changed nothing). Whether it predates the
+  player's actor node loading is not established; needs a Godot build with symbols, or a bisect.
 - The default look target is behind a seated actor. `EsmActorNode`'s LookAtModifier3D aims at a
   point fixed in the skeleton's space, ahead of where a standing actor faces; seated, the body faces
   180 degrees from the controller (which stays facing the furniture at the marker), so the point

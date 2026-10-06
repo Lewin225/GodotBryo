@@ -6,7 +6,7 @@
 [ext_resource type="Script" uid="uid://c1a8lyyotsrcs" path="res://player/interact_ray.gd" id="4_interactray"]
 [ext_resource type="PackedScene" uid="uid://cwo34unl5x2h5" path="res://terminal_session.tscn" id="20_terminalsession"]
 [ext_resource type="PackedScene" uid="uid://c6bxk8o7kam1q" path="res://message_box.tscn" id="21_messagebox"]
-[ext_resource type="PackedScene" path="res://unlock_session.tscn" id="22_unlocksession"]
+[ext_resource type="PackedScene" uid="uid://fg3tv0n8tl0w" path="res://unlock_session.tscn" id="22_unlocksession"]
 [ext_resource type="PackedScene" path="res://name_menu.tscn" id="23_namemenu"]
 [ext_resource type="PackedScene" path="res://race_menu.tscn" id="24_racemenu"]
 [ext_resource type="PackedScene" path="res://dialogue_session.tscn" id="25_dialoguesession"]
@@ -33,12 +33,13 @@ fill_to = Vector2(0.9230769, 0.16239317)
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
-[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "special_menu", "dialogue_session", "tag_skills_menu", "trait_menu")]
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "camera_mount", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "special_menu", "tag_skills_menu", "trait_menu", "dialogue_session")]
 script = ExtResource("1_controller")
 mouse_sensitivity = 0.002
 camera_aim_smooth_speed = 5.0
 collision_shape = NodePath("CollisionShape3D")
 camera = NodePath("Camera3D")
+camera_mount = NodePath("Camera_Mount")
 interact_ray = NodePath("Camera3D/InteractRay")
 message_box = NodePath("MessageBox")
 terminal_session = NodePath("TerminalSession")
@@ -48,9 +49,9 @@ subtitle = NodePath("HUD/Subtitle")
 name_menu = NodePath("NameMenu")
 race_menu = NodePath("RaceMenu")
 special_menu = NodePath("SpecialMenu")
-dialogue_session = NodePath("DialogueSession")
 tag_skills_menu = NodePath("TagSkillsMenu")
 trait_menu = NodePath("TraitMenu")
+dialogue_session = NodePath("DialogueSession")
 
 [node name="Isometric_Cam_Psuh" type="RemoteTransform3D" parent="." unique_id=1162310370]
 remote_path = NodePath("../Isometric_Cam_Root")
@@ -64,8 +65,6 @@ shape = SubResource("CapsuleShape3D_player")
 possessed_first_person = true
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
-top_level = true
 current = true
 far = 6000.0
 
@@ -88,6 +87,9 @@ update_mode = 1
 max_distance = 100.0
 size = Vector3(50, 50, 50)
 ambient_mode = 0
+
+[node name="Camera_Mount" type="Node3D" parent="." unique_id=299544355]
+top_level = true
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=98712345]
 
@@ -192,6 +194,6 @@ script = ExtResource("61_p5tca")
 
 [node name="SpecialMenu" parent="." unique_id=1592929527 instance=ExtResource("26_specialmenu")]
 
-[node name="TagSkillsMenu" parent="." instance=ExtResource("27_tagskillsmenu")]
+[node name="TagSkillsMenu" parent="." unique_id=2051743838 instance=ExtResource("27_tagskillsmenu")]
 
-[node name="TraitMenu" parent="." instance=ExtResource("28_traitmenu")]
+[node name="TraitMenu" parent="." unique_id=731933320 instance=ExtResource("28_traitmenu")]

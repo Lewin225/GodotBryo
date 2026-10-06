@@ -144,10 +144,10 @@ func _on_stood(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) 
 	var turn := animator.stop_idle()
 	# The exit idle leaves the body facing away from the furniture: the actor
 	# turns with it rather than the body snapping back to the old heading.
-	var controller := EsmNode.node_for(actor) as NpcController
-	if controller != null:
-		controller.rotation.y -= turn
-		actor.rotation = EsmReferencePhysicaliser.authored_heading(controller.rotation.y)
+	var body := _body_for(actor)
+	if body != null:
+		body.rotation.y -= turn
+		actor.rotation = EsmReferencePhysicaliser.authored_heading(body.rotation.y)
 
 ## Plays `idle` and calls `on_finished` with it when it ends.
 func _play(animator: ActorAnimator, idle: IdleBase, on_finished: Callable, from_end := false) -> void:
@@ -179,13 +179,31 @@ func _pick_seated_loop(actor: ActorReference) -> IdleBase:
 	actor.sit_state = state
 	return idle
 
-## The animator of `actor`'s physicalised node when its visual is built, else
-## null (off screen, or still loading).
+## The animator of `actor`'s actor node when its visual is built, else null
+## (off screen, or still loading): an NpcController's, or the player's for the
+## possessed actor.
 static func _animator_for(actor: ActorReference) -> ActorAnimator:
+	var actor_node: EsmActorNode = null
 	var controller := EsmNode.node_for(actor) as NpcController
-	if controller == null or controller.actor == null or not controller.actor.is_visual_built():
+	if controller != null:
+		actor_node = controller.actor
+	var player: PlayerController = ScriptServer.player_node as PlayerController
+	if actor_node == null and player != null and player.possessed == actor:
+		actor_node = player.actor
+	if actor_node == null or not actor_node.is_visual_built():
 		return null
-	return controller.actor.animator
+	return actor_node.animator
+
+## The node that carries `actor`'s heading: its NpcController, or the player
+## body for the possessed actor; null off screen.
+static func _body_for(actor: ActorReference) -> Node3D:
+	var controller := EsmNode.node_for(actor) as NpcController
+	if controller != null:
+		return controller
+	var player := ScriptServer.player_node as PlayerController
+	if player != null and player.possessed == actor:
+		return player
+	return null
 
 ## The tree's furniture markers in file order, placed in the space the tree is
 ## parented in (the furniture's placement space).

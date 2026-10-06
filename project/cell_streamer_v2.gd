@@ -15,6 +15,10 @@ const PhysicaliserScript := preload("res://GodotBryo/Pipeline/esm_reference_phys
 signal load_started(cell_form_id: int)
 signal load_progress(fraction: float)
 signal load_completed(cell_form_id: int, success: bool)
+## After load_completed: every node in the loaded cell has its NIF (and so its
+## collision), or settle_timeout_seconds passed. A body should not be released
+## into the cell before this.
+signal settled(cell_form_id: int)
 
 const SPAWN_REFR := 1 << 0
 const SPAWN_ACHR := 1 << 1
@@ -38,6 +42,11 @@ var _generation := 0
 var _job: Dictionary = {}
 var _waiting_for_esm := false
 
+
+## The longest a loaded cell waits for its nodes' NIFs before `settled` is
+## emitted anyway (with a warning), so a missing or failing file cannot strand
+## a frozen body.
+@export var settle_timeout_seconds := 20.0
 
 func _ready() -> void:
 	_resolve_esm_server()
@@ -191,6 +200,30 @@ func _complete_population(cell_form_id: int, root: Node3D) -> void:
 	_job.clear()
 	load_progress.emit(1.0)
 	load_completed.emit(cell_form_id, true)
+	_await_settled(cell_form_id, root, _generation)
+
+## Emits `settled` once no node under `root` has a NIF request outstanding, or
+## after settle_timeout_seconds; nothing if another load replaced this one.
+func _await_settled(cell_form_id: int, root: Node3D, generation: int) -> void:
+	var started := Time.get_ticks_msec()
+	while true:
+		if generation != _generation or not is_instance_valid(root):
+			return
+		var pending := _pending_visual_count(root)
+		if pending == 0:
+			break
+		if Time.get_ticks_msec() - started > settle_timeout_seconds * 1000.0:
+			push_warning("CellStreamerV2: cell %08X still waits for %d NIFs after %.0f s; settling anyway" % [cell_form_id, pending, settle_timeout_seconds])
+			break
+		await get_tree().process_frame
+	settled.emit(cell_form_id)
+
+func _pending_visual_count(root: Node) -> int:
+	var pending := 0
+	for node in root.find_children("*", "EsmNode", true, false):
+		if (node as EsmNode).is_visual_request_pending():
+			pending += 1
+	return pending
 
 
 ## Keeps the current CELL's nodes in step with references changing CELL.
