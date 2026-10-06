@@ -119,6 +119,18 @@ Array NifSource::get_nodes() const {
 				x["bounds_center"] = Vector3(ed.bounds_center[0], ed.bounds_center[1], ed.bounds_center[2]);
 				x["bounds_half_extents"] = Vector3(ed.bounds_half_extents[0], ed.bounds_half_extents[1], ed.bounds_half_extents[2]);
 			}
+			if (!ed.furniture_positions.empty()) {
+				Array positions;
+				for (const auto &fp : ed.furniture_positions) {
+					Dictionary p;
+					p["offset"] = Vector3(fp.offset[0], fp.offset[1], fp.offset[2]);
+					p["orientation"] = fp.orientation;
+					p["position_reference_1"] = fp.position_reference_1;
+					p["position_reference_2"] = fp.position_reference_2;
+					positions.push_back(p);
+				}
+				x["furniture_positions"] = positions;
+			}
 			if (!ed.text_keys.empty()) {
 				Array keys;
 				for (const auto &tk : ed.text_keys) {

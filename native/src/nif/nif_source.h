@@ -23,6 +23,15 @@ struct TextKey {
 	std::string value;
 };
 
+// One BSFurnitureMarker position in the User Version <= 11 form every FNV NIF
+// uses (516 positions over 233 furniture NIFs; native/tools/furniture_census).
+struct FurniturePosition {
+	float offset[3] = { 0.0f, 0.0f, 0.0f }; // NIF units, in the furniture's space
+	uint16_t orientation = 0; // thousandths of a radian
+	uint8_t position_reference_1 = 0; // the furniture marker ID idle conditions test
+	uint8_t position_reference_2 = 0; // equal to position_reference_1 on all 516
+};
+
 struct ExtraData {
 	uint32_t block_index = 0;
 	std::string block_type;
@@ -39,6 +48,7 @@ struct ExtraData {
 	float bounds_center[3] = { 0.0f, 0.0f, 0.0f }; // BSBound
 	float bounds_half_extents[3] = { 0.0f, 0.0f, 0.0f };
 	std::vector<TextKey> text_keys; // NiTextKeyExtraData
+	std::vector<FurniturePosition> furniture_positions; // BSFurnitureMarker
 };
 
 // One BSDismemberSkinInstance partition record. Its index is the value used by

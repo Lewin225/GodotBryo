@@ -834,6 +834,18 @@ Document load(const uint8_t *data, size_t size) {
 				ed.bounds_half_extents[1] = as_bound->halfExtents.y;
 				ed.bounds_half_extents[2] = as_bound->halfExtents.z;
 			}
+			if (auto *as_marker = header.GetBlock<nifly::BSFurnitureMarker>(ref.index)) {
+				for (const auto &position : as_marker->positions) {
+					FurniturePosition fp;
+					fp.offset[0] = position.offset.x;
+					fp.offset[1] = position.offset.y;
+					fp.offset[2] = position.offset.z;
+					fp.orientation = position.orientation;
+					fp.position_reference_1 = position.posRef1;
+					fp.position_reference_2 = position.posRef2;
+					ed.furniture_positions.push_back(fp);
+				}
+			}
 			if (auto *as_keys = header.GetBlock<nifly::NiTextKeyExtraData>(ref.index)) {
 				for (const auto &key : as_keys->textKeys) {
 					TextKey tk;
