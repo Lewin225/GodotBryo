@@ -62,6 +62,10 @@ var message_box: MessageBox = null:
 			message_box.button_clicked.connect(_on_message_box_button_clicked)
 
 var function_registry := ScriptFunctionRegistry.new()
+## The IDLE tree and its pick (GECK "Idle Animations").
+var idle_tree := IdleTree.new()
+## Seats actors that use furniture; a child node, for NifServer's callbacks.
+var furniture_seating := FurnitureSeating.new()
 ## Seconds of game time, advanced by _process: the clock GetSecondsPassed
 ## measures between a script's runs.
 var clock := 0.0
@@ -100,6 +104,8 @@ func _ready() -> void:
 	# sync their references in _physics_process, which runs earlier still, so
 	# queued moves are applied after that frame's body sync.
 	process_priority = 100
+	furniture_seating.name = "FurnitureSeating"
+	add_child(furniture_seating)
 	function_registry.script_server = self
 	function_registry.show_message_handler = _handle_show_message
 	function_registry.get_button_pressed_handler = _handle_get_button_pressed
@@ -350,6 +356,8 @@ func begin_use(actor: EsmReference, target: EsmReference, marker := -1) -> bool:
 		user.using_marker = -1
 	user.using = target
 	user.using_changed.emit(null, target)
+	if target is FurnitureReference:
+		furniture_seating.seat(user, target as FurnitureReference)
 	return true
 
 ## `actor` stops using whatever it is using.
@@ -367,6 +375,8 @@ func end_use(actor: EsmReference) -> void:
 		target.used_by = null
 	user.using = null
 	user.using_marker = -1
+	if target is FurnitureReference:
+		furniture_seating.stand(user)
 	user.using_changed.emit(target, null)
 
 ## Locks a door or terminal, at `level` when given: 0-100 for doors (255

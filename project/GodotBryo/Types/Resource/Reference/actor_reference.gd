@@ -104,6 +104,12 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## Travel package arrived). It stays the active package while selection keeps
 ## choosing it, and is not run again. Set and cleared by PackageRunner.
 @export var package_completed: bool = false
+## Runtime state with no ESM source: the GetSitting value (inferred: 0 not
+## sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5
+## standing up). Set by ScriptServer's FurnitureSeating as the actor uses and
+## leaves furniture; read by GetSitting, and so by the idle tree's furniture
+## items.
+@export var sit_state: int = 0
 ## Runtime state with no ESM source. Nothing sets or reads it yet.
 @export var alive: bool = true
 ## Runtime state: the actor's live inventory, seeded from its base's Items.

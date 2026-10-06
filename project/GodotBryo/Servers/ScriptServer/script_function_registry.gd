@@ -527,6 +527,19 @@ func _register_defaults() -> void:
 		if actor == null or base == null or actor.using == null:
 			return 0
 		return 1 if actor.using.base == base else 0)
+	# `[Actor.]GetSitting`: ActorReference.sit_state (FurnitureSeating; values
+	# inferred: 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4
+	# wants to stand, 5 standing up).
+	register("GetSitting", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		return actor.sit_state if actor != null else 0)
+	# `[Actor.]GetFurnitureMarkerID`: the marker ID (the NIF marker's posRef) of
+	# the furniture marker the actor uses, 0 when it uses none.
+	register("GetFurnitureMarkerID", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		if actor == null or script_server == null:
+			return 0
+		return script_server.furniture_seating.get_marker_id(actor))
 	# `GetDistance Ref`, in Gamebryo units; DISTANCE_OTHER_SPACE across spaces.
 	register("GetDistance", func(a: Array, ctx: ScriptExecutionContext):
 		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null

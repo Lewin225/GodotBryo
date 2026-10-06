@@ -273,6 +273,8 @@ Each is a reason to test before building on it.
 | An objective index the QUST does not define reads 0 and cannot be set (62 shipped calls name one) | `QuestServer._objective_state` | conservative default; the original may keep state for any index | console `SetObjectiveCompleted VMQ01 15 1`, then `GetObjectiveCompleted VMQ01 15` |
 | Setting or completing an objective does not depend on the quest running or its stage | `QuestServer.set_objective_*` | no check in scripts suggests otherwise; not verified | console `SetObjectiveDisplayed` on a quest that is not running, then the Pip-Boy |
 | Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
+| `GetSitting` is 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5 standing up | `ActorReference.sit_state`, `FurnitureSeating` | the idle tree's order (SitDown 2, DefaultSitIdle 1, sitting idles 3, StandUp 4) and Oblivion-era docs, recalled | console `GetSitting` on an NPC as it sits down, sits and stands |
+| A seated actor faces the furniture's heading plus the marker's orientation | `FurnitureSeating.get_placement` | inferred from census A4 | an NPC sitting in a chair turned in the world |
 
 ## Files
 
@@ -283,12 +285,14 @@ Each is a reason to test before building on it.
 | `script_interpreter.gd` | tree-walking interpreter, one per parsed SCPT, cached |
 | `script_function_registry.gd` | script function table |
 | `script_execution_context.gd` | per-dispatch state |
+| `idle_tree.gd` | the IDLE tree and its pick (GECK "Idle Animations"), `ScriptServer.idle_tree` |
+| `furniture_seating.gd` | seats and stands actors that use furniture, from the NIF's markers; `GetFurnitureMarkerID` |
 
 ## Tests
 
 `tests/test_script_lexer`, `test_script_parser`, `test_script_interpreter`,
-`test_script_showmessage`, `test_script_esm`, `test_debug_tabs`, run against the shipped
-ESM:
+`test_script_showmessage`, `test_script_esm`, `test_debug_tabs`, `test_furniture_seating`, run
+against the shipped ESM:
 
 ```
 cd project

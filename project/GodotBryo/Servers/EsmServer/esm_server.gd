@@ -821,6 +821,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		_populate_quest(result as QuestBase, raw)
 	elif result is PackageBase:
 		_populate_package(result as PackageBase, raw)
+	elif result is IdleBase:
+		_populate_idle(result as IdleBase, raw)
 	elif result is MessageBase:
 		_populate_message(result as MessageBase, raw)
 	elif result is DialogueTopicBase:
@@ -1306,6 +1308,26 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 			if extra.size() >= 12:
 				entry.health_percent = _f32(extra, 8)
 		result.entries.append(entry)
+
+## IDLE: MODL, CTDA, ANAM (parent, previous) and DATA (xEdit's FNV layout;
+## DATA is 8 bytes, or 4 without Flags).
+func _populate_idle(idle: IdleBase, raw: Dictionary) -> void:
+	idle.model_path = _string(_subrecord(raw, "MODL"))
+	idle.conditions.clear()
+	for subrecord in raw.get("subrecords", []):
+		if String(subrecord.get("type", "")) == "CTDA":
+			_append_condition(idle.conditions, idle, subrecord.get("data", PackedByteArray()))
+	var links := _subrecord(raw, "ANAM")
+	idle.parent_form_id = _u32(links) if links.size() >= 4 else 0
+	idle.previous_form_id = _u32(links, 4) if links.size() >= 8 else 0
+	idle.parent = get_base(idle.parent_form_id) as IdleBase if idle.parent_form_id != 0 else null
+	idle.previous = get_base(idle.previous_form_id) as IdleBase if idle.previous_form_id != 0 else null
+	var data := _subrecord(raw, "DATA")
+	idle.animation_group_section = data[0] if data.size() >= 1 else 0
+	idle.loop_minimum = data[1] if data.size() >= 2 else 0
+	idle.loop_maximum = data[2] if data.size() >= 3 else 0
+	idle.replay_delay = data.decode_s16(4) if data.size() >= 6 else 0
+	idle.flags = data[6] if data.size() >= 7 else 0
 
 ## Populate Fallout New Vegas's PACK record using xEdit's FNV schema
 ## (`enginedocs/xEdit/Core/wbDefinitionsFNV.pas`). The local GECK pages
