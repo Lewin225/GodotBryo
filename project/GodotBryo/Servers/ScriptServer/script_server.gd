@@ -367,6 +367,8 @@ func end_use(actor: EsmReference) -> void:
 		return
 	var target := user.using
 	if target is FurnitureReference:
+		# Before `using` clears: the exit idle is picked by the marker in use.
+		furniture_seating.stand(user)
 		var occupants := (target as FurnitureReference).occupants
 		for i in occupants.size():
 			if occupants[i] == user:
@@ -375,8 +377,6 @@ func end_use(actor: EsmReference) -> void:
 		target.used_by = null
 	user.using = null
 	user.using_marker = -1
-	if target is FurnitureReference:
-		furniture_seating.stand(user)
 	user.using_changed.emit(target, null)
 
 ## Locks a door or terminal, at `level` when given: 0-100 for doors (255

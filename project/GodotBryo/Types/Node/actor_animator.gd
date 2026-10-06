@@ -7,9 +7,26 @@ extends Node
 ## and caches the KFs; this only retargets their tracks to this actor's
 ## Skeleton3D. The AnimationPlayer it drives lives under the actor's Body, the
 ## root its track paths are relative to.
+##
+## `play_idle` plays an IDLE's KF instead of locomotion until `stop_idle`.
+## Locomotion clips play in place (their Bip01 and Bip01 NonAccum tracks off);
+## an idle keeps them, so a furniture idle carries the body from where the
+## controller stands (the furniture marker) into the seat and back. An idle
+## holds every bone it has no track for where the previous clip left it (the
+## seated loop drives no calves, pelvis or root), except Bip01's rotation,
+## held at identity: the
+## clips are authored with Bip01 as the accumulation root at the actor's origin,
+## unrotated (it carries no rotation track; the chair enter's first frame faces
+## the way the actor stands only with Bip01 unrotated, not at its 90-degree
+## rest; _diag/diag_idle_facing). Locomotion never animates the root bones, so
+## `stop_idle` puts them back where they were before the first idle and reports
+## how far that turns the torso, for the caller to turn the actor instead
+## (standing up from a chair leaves the body facing away from it).
 
 signal load_completed(clip_count: int)
 signal load_failed(reason: String)
+## A once-only idle from play_idle reached its end.
+signal idle_finished(idle: IdleBase)
 
 const PLAYER_NODE_NAME := "LocomotionAnimationPlayer"
 const LOCOMOTION_SUBDIRECTORY := "locomotion/"
@@ -22,6 +39,10 @@ const STANDING_SPEED := 0.1
 ## Above this turn rate (rad/s) a standing actor plays a turn clip.
 const TURNING_RATE := 0.5
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+## The bones whose tracks carry root motion.
+const ROOT_BONES := ["Bip01", "Bip01 NonAccum"]
+## The library name an idle clip is added under.
+const IDLE_CLIP_NAME := "idle__current"
 
 var _generation := 0
 var _loading := false
@@ -33,6 +54,12 @@ var _pending_libraries: Array[Dictionary] = []
 var _player: AnimationPlayer = null
 var _body: Node3D = null
 var _skeleton: Skeleton3D = null
+## The idle play_idle is playing, or null for locomotion.
+var _idle: IdleBase = null
+var _idle_generation := 0
+## Bone index -> [position, rotation] of each root bone when locomotion last
+## handed over to an idle; empty while locomotion plays.
+var _locomotion_root_pose: Dictionary = {}
 
 ## Finds every locomotion KF below `search_paths` (the base's animation search
 ## paths), requests them from NifServer, binds each to `skeleton` and plays the
@@ -76,9 +103,124 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 	_requests_being_submitted = false
 	_schedule_binding()
 
-## Stops loading and removes the AnimationPlayer.
+## Plays `idle`'s KF in place of locomotion, its root tracks kept; emits
+## idle_finished when a once-only clip ends. A null idle, or one without a KF,
+## finishes at once. `from_end` starts it at its last frame, for an actor
+## already past it (seated when its animations load).
+func play_idle(idle: IdleBase, from_end := false) -> void:
+	_idle_generation += 1
+	if _idle == null:
+		_remember_locomotion_root_pose()
+	_idle = idle
+	if idle == null or not idle.has_kf() or _player == null or not is_instance_valid(_player):
+		idle_finished.emit.call_deferred(idle)
+		return
+	var path := idle.model_path.replace("\\", "/").to_lower()
+	var nif_server := get_tree().root.get_node_or_null("NifServer")
+	nif_server.request_kf(path, self, _on_idle_library_delivered.bind(_idle_generation, idle, from_end))
+
+## Returns to locomotion, with the root bones back where locomotion left them.
+## Returns how far that turns the torso about the up axis (radians, Godot
+## yaw): turning the actor by it keeps the body facing the way the idle left it.
+func stop_idle() -> float:
+	_idle_generation += 1
+	_idle = null
+	var before := _torso_yaw()
+	if _player != null and is_instance_valid(_player) and _player.get_animation_library("").has_animation(IDLE_CLIP_NAME):
+		_player.stop()
+		_player.get_animation_library("").remove_animation(IDLE_CLIP_NAME)
+	_restore_locomotion_root_pose()
+	var after := _torso_yaw()
+	return angle_difference(after, before)
+
+## The yaw of the torso (Bip01 Spine2's z axis) in the skeleton's parent's
+## space, radians; 0 without a skeleton.
+func _torso_yaw() -> float:
+	if _skeleton == null or not is_instance_valid(_skeleton):
+		return 0.0
+	var bone := _skeleton.find_bone(NifNamesScript.escape("Bip01 Spine2"))
+	if bone == -1:
+		return 0.0
+	var axis := (_skeleton.transform.basis * _skeleton.get_bone_global_pose(bone).basis) * Vector3.BACK
+	return atan2(axis.x, axis.z)
+
+func _remember_locomotion_root_pose() -> void:
+	_locomotion_root_pose.clear()
+	if _skeleton == null or not is_instance_valid(_skeleton):
+		return
+	for bone_name in ROOT_BONES:
+		var bone := _skeleton.find_bone(NifNamesScript.escape(bone_name))
+		if bone != -1:
+			_locomotion_root_pose[bone] = [_skeleton.get_bone_pose_position(bone), _skeleton.get_bone_pose_rotation(bone)]
+
+func _restore_locomotion_root_pose() -> void:
+	if _skeleton == null or not is_instance_valid(_skeleton):
+		_locomotion_root_pose.clear()
+		return
+	for bone: int in _locomotion_root_pose:
+		_skeleton.set_bone_pose_position(bone, _locomotion_root_pose[bone][0])
+		_skeleton.set_bone_pose_rotation(bone, _locomotion_root_pose[bone][1])
+	_locomotion_root_pose.clear()
+
+## The idle play_idle is playing, or null.
+func get_idle() -> IdleBase:
+	return _idle
+
+func _on_idle_library_delivered(raw_library: AnimationLibrary, generation: int, idle: IdleBase, from_end: bool) -> void:
+	if generation != _idle_generation or _player == null or not is_instance_valid(_player):
+		return
+	var animation: Animation = null
+	if raw_library != null and not raw_library.get_animation_list().is_empty():
+		animation = _bind_animation(raw_library.get_animation(raw_library.get_animation_list()[0]), true)
+	if animation == null:
+		push_warning("ActorAnimator: could not play idle %s (%s)" % [idle.editor_id, idle.model_path])
+		idle_finished.emit(idle)
+		return
+	_hold_missing_tracks(animation)
+	var library := _player.get_animation_library("")
+	if library.has_animation(IDLE_CLIP_NAME):
+		_player.stop()
+		library.remove_animation(IDLE_CLIP_NAME)
+	library.add_animation(IDLE_CLIP_NAME, animation)
+	if not from_end:
+		_player.play(IDLE_CLIP_NAME, BLEND_SECONDS)
+		return
+	_player.play(IDLE_CLIP_NAME)
+	_player.seek(animation.length, true)
+	if animation.loop_mode == Animation.LOOP_NONE:
+		idle_finished.emit.call_deferred(idle)
+
+## For each bone `animation` has no rotation or position track for, a one-key
+## track holding the bone where it is now, so an idle that drives only some
+## bones plays over the pose the previous clip left (the seated loop has no
+## calf or pelvis tracks: without this the knees straighten to rest). Bip01's
+## rotation is held at identity instead (the clips' frame). Holding untouched
+## bones is how Gamebryo's layered sequences are read here, not verified: it
+## approximates a lower sequence still holding them.
+func _hold_missing_tracks(animation: Animation) -> void:
+	var skeleton_path := _body.get_path_to(_skeleton)
+	for bone in _skeleton.get_bone_count():
+		var bone_name := _skeleton.get_bone_name(bone)
+		var path := NodePath("%s:%s" % [skeleton_path, bone_name])
+		if animation.find_track(path, Animation.TYPE_POSITION_3D) == -1:
+			var track := animation.add_track(Animation.TYPE_POSITION_3D)
+			animation.track_set_path(track, path)
+			animation.position_track_insert_key(track, 0.0, _skeleton.get_bone_pose_position(bone))
+		if animation.find_track(path, Animation.TYPE_ROTATION_3D) == -1:
+			var track := animation.add_track(Animation.TYPE_ROTATION_3D)
+			animation.track_set_path(track, path)
+			var held := Quaternion.IDENTITY if bone_name == "Bip01" else _skeleton.get_bone_pose_rotation(bone)
+			animation.rotation_track_insert_key(track, 0.0, held)
+
+func _on_animation_finished(animation_name: StringName) -> void:
+	if animation_name == IDLE_CLIP_NAME and _idle != null:
+		idle_finished.emit(_idle)
+
+## Chooses the locomotion clip; an idle from play_idle replaces it.
 func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint() or _loading or _player == null or not is_instance_valid(_player):
+		return
+	if _idle != null:
 		return
 	var actor := get_parent() as EsmActorNode
 	var female := actor != null and actor.is_female()
@@ -116,6 +258,8 @@ static func locomotion_clip(motion: ActorMotion, female: bool) -> String:
 
 func cancel() -> void:
 	_generation += 1
+	_idle_generation += 1
+	_idle = null
 	_loading = false
 	_root_path = ""
 	_pending_requests = 0
@@ -198,6 +342,7 @@ func _ensure_player() -> AnimationPlayer:
 	# and equipment.
 	player.root_node = NodePath("..")
 	player.add_animation_library("", AnimationLibrary.new())
+	player.animation_finished.connect(_on_animation_finished)
 	_body.add_child(player)
 	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
 		player.owner = get_tree().edited_scene_root
@@ -224,8 +369,9 @@ func _clip_name(source_path: String, sequence_index: int) -> String:
 	return clip_name if sequence_index == 0 else "%s__%d" % [clip_name, sequence_index]
 
 ## A copy of `raw_animation` with its tracks retargeted to this actor's
-## skeleton; null when no track names one of its bones.
-func _bind_animation(raw_animation: Animation) -> Animation:
+## skeleton; null when no track names one of its bones. Root bone tracks are
+## turned off unless `keep_root` (idles).
+func _bind_animation(raw_animation: Animation, keep_root := false) -> Animation:
 	if raw_animation == null:
 		return null
 	var animation := raw_animation.duplicate(true) as Animation
@@ -238,7 +384,7 @@ func _bind_animation(raw_animation: Animation) -> Animation:
 			continue
 		# Root motion must later drive the controller, not deform the in-place
 		# visual rig. The authored non-accumulation helper has the same role.
-		if authored_target == "Bip01" or authored_target == NifNamesScript.escape("Bip01 NonAccum"):
+		if not keep_root and (authored_target == "Bip01" or authored_target == NifNamesScript.escape("Bip01 NonAccum")):
 			animation.track_set_enabled(track_index, false)
 			continue
 		animation.track_set_path(track_index, NodePath("%s:%s" % [skeleton_path, authored_target]))

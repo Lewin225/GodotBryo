@@ -150,6 +150,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if _actor == null or _actor != _leased or _actor.is_disabled():
 		return
+	if _actor.sit_state != FurnitureSeating.NOT_SITTING:
+		# Seated, or sitting down or standing up: the furniture idles move the
+		# body; the controller holds at the marker.
+		_publish_idle(delta)
+		return
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
 		_publish_idle(delta)

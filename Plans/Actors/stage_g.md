@@ -65,7 +65,11 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
   (the KFs' cycle type) or looping, and signals its end; the same entry serves `PlayIdle` and
   package idles in stage F.
 - **The player** sits the same way through `PlayerController`: held in the seat, the camera at the
-  seat's eye height, and leaves on the activate or a movement key.
+  seat's eye height, and leaves on the activate or a movement key. Held means its movement and
+  collision queries are suspended while seated: it is a `CharacterBody3D` on layer 1, so its next
+  move would otherwise push it out of the furniture's collision. An NPC is not pushed: its capsule
+  is an `AnimatableBody3D` on layer 2 with no mask, moved only by its controller, which stays
+  idle while seated (not yet checked with the furniture's collision loaded).
 
 ## Build order
 
@@ -83,12 +87,44 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
    3 at the marker, placed by the furniture's transform); `end_use` stands it (0, left at the
    marker). At VCG01 stage 80 Doc's Travel package ends with him seated off screen; physicalised,
    his controller moves to the seat and stays. The animated states (1, 2, 4, 5) wait for step 4.
-4. **Animation**: `play_idle` and the sequence on the actor node. Gate in play: Doc sits and
-   stands.
+4. **Animation.** Built (`test_furniture_seating`): `ActorAnimator.play_idle` / `stop_idle`
+   play an IDLE's KF in place of locomotion with its root tracks kept, holding the root bones
+   for a clip without them (the seated loop); `FurnitureSeating` runs the sequence for an actor
+   with a built visual: enter at sit state 2, the seated loop (the item picked at 1) at 3, the
+   exit picked at 4 and played at 5, then 0 and locomotion. `NpcController` holds at the marker
+   while the sit state is not 0. Physicalised Doc: ChairFrontSit, ChairDynamicIdle with his hips
+   at 0.53 m (0.97 standing) carried into the seat, ChairFrontStand, then locomotion; his
+   controller stays on the marker. Gate in play: Doc sits and stands, facing the right way.
 5. **The player** on the couch. Gate in play: objective 40.
 
 ## Open
 
 - GetSitting's values (inferred above) and StandUp's own conditions.
-- Whether an actor stands at the marker before the enter idle or ends there (census A4).
+- Settled by the KFs (`_diag/diag_kf_root_motion`): an actor stands at the marker before the
+  enter idle. `Chair_ForwardEnter.kf` carries Bip01 0.78 m along its +Y (forward) from the start
+  and lowers Bip01 NonAccum from 0.96 to 0.53 m while turning it about 170 degrees;
+  `Chair_ForwardExit.kf` reverses both; `DynamicIdle_ChairSit.kf` has no root position tracks.
+  The front marker sits about 0.9 m in front of the chair's origin, so 0.78 m forward from it,
+  facing the chair (orientation pi), ends at the seat.
+- Settled (`_diag/diag_idle_facing`): the furniture KFs are authored with Bip01, the accumulation
+  root, unrotated at the actor's origin. Held at its skeleton.nif rest (90 degrees about Z), the
+  chair enter's first frame faces 87 degrees off the standing pose; held at identity it matches
+  within 3 degrees, and seated the torso faces 180 degrees from standing at the marker (away from
+  the chair's back). The exit leaves the body facing away from the chair, so standing up turns
+  the actor's heading with it (`ActorAnimator.stop_idle` reports the turn).
 - MNAM bits 30 and 31 (meaning unknown).
+- The default look target is behind a seated actor. `EsmActorNode`'s LookAtModifier3D aims at a
+  point fixed in the skeleton's space, ahead of where a standing actor faces; seated, the body faces
+  180 degrees from the controller (which stays facing the furniture at the marker), so the point
+  is behind the head and only the 110-degree limit stops the head turning round. Options: aim the
+  default target from the torso's facing rather than the skeleton frame; or turn the controller
+  to the seated facing while seated, counter-rotating the idle's root. Stage F's `Look` /
+  `StopLook` set real targets and may decide it.
+- Layered sequences. `DynamicIdle_ChairSit.kf` drives the thighs and feet but no calves, pelvis or
+  root: it is authored to play over the pose `Chair_ForwardEnter.kf` ends in (knees bent about
+  90 degrees). Gamebryo layers KF sequences by per-bone priority, so a lower sequence keeps the
+  bones a higher one does not drive; `ActorAnimator` plays one clip at a time and approximates
+  this by holding every bone an idle has no track for at its current pose
+  (`_hold_missing_tracks`). That covers a static base pose; several sequences active at once
+  (a talking idle on a seated pose, upper-body idles while walking) need a real layer model
+  with the KFs' priorities, not designed yet.

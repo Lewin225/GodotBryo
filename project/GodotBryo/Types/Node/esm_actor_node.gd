@@ -143,12 +143,27 @@ var equipment: ActorEquipment:
 
 func _ready() -> void:
 	animator.load_completed.connect(animation_load_completed.emit)
+	animator.load_completed.connect(_on_animation_loaded)
 	animator.load_failed.connect(animation_load_failed.emit)
 	equipment.committed.connect(_on_equipment_committed)
 	equipment.watch(reference as ActorReference)
 	apply_process_thread_group()
 	_queue_rehydrate_and_build()
 
+
+## Animations have (re)loaded: shows the state the actor is already in.
+func _on_animation_loaded(_clip_count: int) -> void:
+	_apply_animation_state()
+
+## Re-applies every piece of the reference's state that shows in animation,
+## for an actor whose animations load after that state was set (physicalised
+## mid-way, or reloaded). Today: sitting (ScriptServer's FurnitureSeating).
+func _apply_animation_state() -> void:
+	var actor_reference := reference as ActorReference
+	if actor_reference == null or Engine.is_editor_hint():
+		return
+	if actor_reference.sit_state != FurnitureSeating.NOT_SITTING:
+		ScriptServer.furniture_seating.restore(actor_reference)
 
 func _exit_tree() -> void:
 	_cancel_visual_load()

@@ -12,17 +12,25 @@ extends Node
 ## which GetFurnitureMarkerID reports and the idle tree's furniture items test.
 ##
 ## Seating moves the actor to the used marker, placed by the furniture's
-## transform, facing the furniture's heading plus the marker's orientation (an
-## inference from the census: which way the actor faces is not verified), and
-## sets `ActorReference.sit_state` to 3 (sitting). Getting up sets it to 0 and
-## leaves the actor at the marker. The states between (1 wants to sit, 2
-## sitting down, 4 wants to stand, 5 standing up) are for the animated
-## sequence; GetSitting's values are inferred (Plans/Actors/stage_g.md).
+## transform, facing the furniture's heading plus the marker's orientation: the
+## marker is where the actor stands before sitting, facing the seat (the chair
+## enter KF carries the root 0.78 m forward from it; front marker orientation
+## pi; Plans/Actors/stage_g.md). The controller stays there throughout.
+##
+## An actor with a built visual (an NpcController's actor node) is animated
+## from the idle tree's FurnitureIdles: sit state 2 plays the enter idle, then 3
+## with the seated loop (the item picked at sit state 1, DefaultSitIdle);
+## standing picks the exit at 4 and plays it at 5, then 0 returns it to
+## locomotion. Without a visual it goes straight to 3, or 0. GetSitting's values
+## are inferred (Plans/Actors/stage_g.md).
 
 ## ActorReference.sit_state values (GetSitting; inferred).
 const NOT_SITTING := 0
 const WANTS_TO_SIT := 1
+const SITTING_DOWN := 2
 const SITTING := 3
+const WANTS_TO_STAND := 4
+const STANDING_UP := 5
 
 ## Canonical NIF path -> Array of {"position" (Godot axes, metres, the
 ## furniture's placement space), "heading" (radians), "marker_id"}.
@@ -46,9 +54,17 @@ func seat(actor: ActorReference, furniture: FurnitureReference) -> void:
 	if first:
 		NifServer.request(model, self, _on_tree.bind(model))
 
-## `actor` has stopped using furniture.
+## `actor` is about to stop using furniture: the exit idle is picked while it
+## still uses it (GetFurnitureMarkerID), then played.
 func stand(actor: ActorReference) -> void:
-	actor.sit_state = NOT_SITTING
+	var animator := _animator_for(actor)
+	if animator == null or actor.sit_state == NOT_SITTING:
+		actor.sit_state = NOT_SITTING
+		return
+	actor.sit_state = WANTS_TO_STAND
+	var exit := _pick(actor)
+	actor.sit_state = STANDING_UP
+	_play(animator, exit, _on_stood.bind(actor, animator))
 
 ## The marker ID (posRef) of the marker `actor` uses, or 0 when it uses no
 ## furniture or its markers are not known yet.
@@ -94,7 +110,82 @@ func _place(actor: ActorReference, furniture: FurnitureReference) -> void:
 	var placement := get_placement(furniture, actor.using_marker)
 	if not placement.is_empty():
 		ScriptServer.move_reference(actor, furniture.current_space_form_id, placement["position"], placement["rotation"])
+	var animator := _animator_for(actor)
+	if animator == null:
+		actor.sit_state = SITTING
+		return
+	actor.sit_state = SITTING_DOWN
+	_play(animator, _pick(actor), _on_sat_down.bind(actor, animator))
+
+## `actor`'s animations have just loaded (EsmActorNode): shows the sit state it
+## is already in. Seated, or sitting down, starts it in the seat (the enter idle
+## from its last frame, then the seated loop); standing up finishes, as there
+## was nothing on screen to stand up.
+func restore(actor: ActorReference) -> void:
+	var animator := _animator_for(actor)
+	if animator == null:
+		return
+	if actor.sit_state == SITTING or actor.sit_state == SITTING_DOWN:
+		actor.sit_state = SITTING_DOWN
+		_play(animator, _pick_enter(actor), _on_sat_down.bind(actor, animator), true)
+	elif actor.sit_state == WANTS_TO_STAND or actor.sit_state == STANDING_UP:
+		actor.sit_state = NOT_SITTING
+
+func _on_sat_down(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) -> void:
+	if actor.sit_state != SITTING_DOWN:
+		return
 	actor.sit_state = SITTING
+	animator.play_idle(_pick_seated_loop(actor))
+
+func _on_stood(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) -> void:
+	if actor.sit_state != STANDING_UP:
+		return
+	actor.sit_state = NOT_SITTING
+	var turn := animator.stop_idle()
+	# The exit idle leaves the body facing away from the furniture: the actor
+	# turns with it rather than the body snapping back to the old heading.
+	var controller := EsmNode.node_for(actor) as NpcController
+	if controller != null:
+		controller.rotation.y -= turn
+		actor.rotation = EsmReferencePhysicaliser.authored_heading(controller.rotation.y)
+
+## Plays `idle` and calls `on_finished` with it when it ends.
+func _play(animator: ActorAnimator, idle: IdleBase, on_finished: Callable, from_end := false) -> void:
+	if animator.idle_finished.is_connected(on_finished):
+		return
+	animator.idle_finished.connect(on_finished, CONNECT_ONE_SHOT)
+	animator.play_idle(idle, from_end)
+
+## The enter idle: the item picked at sit state 2, with the state set to 2 for
+## the pick only.
+func _pick_enter(actor: ActorReference) -> IdleBase:
+	var state := actor.sit_state
+	actor.sit_state = SITTING_DOWN
+	var idle := _pick(actor)
+	actor.sit_state = state
+	return idle
+
+## The FurnitureIdles item `actor` qualifies for now.
+func _pick(actor: ActorReference) -> IdleBase:
+	return ScriptServer.idle_tree.pick(actor, ScriptServer.idle_tree.get_root(IdleTree.FURNITURE_ROOT))
+
+## The seated loop: the item picked at sit state 1 (DefaultSitIdle, holding
+## DynamicIdle_ChairSit for a chair), picked with the state set to 1 for the
+## pick only.
+func _pick_seated_loop(actor: ActorReference) -> IdleBase:
+	var state := actor.sit_state
+	actor.sit_state = WANTS_TO_SIT
+	var idle := _pick(actor)
+	actor.sit_state = state
+	return idle
+
+## The animator of `actor`'s physicalised node when its visual is built, else
+## null (off screen, or still loading).
+static func _animator_for(actor: ActorReference) -> ActorAnimator:
+	var controller := EsmNode.node_for(actor) as NpcController
+	if controller == null or controller.actor == null or not controller.actor.is_visual_built():
+		return null
+	return controller.actor.animator
 
 ## The tree's furniture markers in file order, placed in the space the tree is
 ## parented in (the furniture's placement space).
