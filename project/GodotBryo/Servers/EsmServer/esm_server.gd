@@ -49,6 +49,8 @@ var _cache: Dictionary = {}
 # authored reference state here, rather than constructing parallel Resources.
 var _authored_reference_cache: Dictionary = {}
 var _placed_actor_placements: Array = []
+## Placed actor instance ID -> its placement, for get_authored_placement().
+var _authored_placement_by_id: Dictionary = {}
 var _xtel_door_placements: Array = []
 var _placed_actor_instance_ids: PackedStringArray = PackedStringArray()
 var _xtel_door_instance_ids: PackedStringArray = PackedStringArray()
@@ -523,6 +525,22 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 		if reference != null and reference.has_teleport:
 			result.append(reference)
 	return result
+
+## Where a placed actor was authored, whatever has moved it since:
+## {"space_form_id", "position", "rotation"} (Gamebryo axes, metres), or empty
+## when `reference` is not a placed ACHR. Packages' Near editor location.
+func get_authored_placement(reference: EsmReference) -> Dictionary:
+	if _authored_placement_by_id.is_empty():
+		for placement in _get_placed_actor_placements():
+			_authored_placement_by_id["authored:%08X" % int(placement.get("refr_form_id", 0))] = placement
+	var placement: Dictionary = _authored_placement_by_id.get(reference.instance_id, {})
+	if placement.is_empty():
+		return {}
+	return {
+		"space_form_id": get_space_form_id_for_cell(int(placement.get("cell_form_id", 0))),
+		"position": placement.get("position", Vector3.ZERO),
+		"rotation": placement.get("rotation", Vector3.ZERO),
+	}
 
 func _get_placed_actor_placements() -> Array:
 	if not _placed_actor_placements.is_empty() or reader == null:

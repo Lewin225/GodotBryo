@@ -158,6 +158,11 @@ func _physics_process(delta: float) -> void:
 	var velocity := desired
 	if absf(_yaw_difference(desired)) > deg_to_rad(turn_in_place_degrees):
 		velocity = Vector3.ZERO
+		# Turning on the spot: the agent stands still too, so the first step
+		# after the turn never uses a velocity computed for the old heading.
+		if agent.avoidance_enabled:
+			agent.velocity = Vector3.ZERO
+		_avoidance_velocity = Vector3.ZERO
 	elif agent.avoidance_enabled and desired != Vector3.ZERO:
 		agent.velocity = desired
 		velocity = _avoidance_velocity

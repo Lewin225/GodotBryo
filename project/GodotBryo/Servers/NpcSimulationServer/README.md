@@ -271,11 +271,12 @@ including through doors.
 
 ## Packages and low-level travel (first slice)
 
-Two more child nodes run on the main thread, for the actors given a package
-through `PackageRunner.set_package()` (the script functions `AddScriptPackage`
-/ `RemoveScriptPackage`, and the debug console's `DebugAddScriptPackageAll` /
-`DebugRemoveScriptPackageAll`); package selection from a base's `packages` is
-not implemented yet.
+Two more child nodes run on the main thread, for every actor the server
+indexes: `PackageRunner` chooses each actor's package (its script package from
+`AddScriptPackage`, else the first of its own whose schedule and conditions
+hold) and runs it; `LowLevelTravel` moves the unleased ones. The debug
+console's `DebugAddScriptPackageAll` / `DebugRemoveScriptPackageAll` set every
+actor's script package.
 
 **Budget**, per "Tick rates" below: two round-robin sweeps, each visiting
 every member once per its period, `ceil(actors / (period * fps))` a frame:
@@ -303,9 +304,10 @@ a frame (`_diag/diag_package_load`); before the budget the first frame planned
 every cross-space route synchronously (143 s headless) and frames grew past
 700 ms.
 
-- **`PackageRunner`** (`package_runner.gd`) runs each such actor's
+- **`PackageRunner`** (`package_runner.gd`) runs each actor's
   `active_package` and decides where it goes (`ActorReference.move_target`).
-  FOLLOW only: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
+  Selection, Travel and its events: see `package_runner.gd`'s header and
+  `Plans/Actors/stage_h.md`. FOLLOW: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
   specific reference, 0x14 the player, or the actor's XLKR linked reference)
   it clears the target, else sends the actor to the target, again once the
   target has moved 1 m. When the target is in another space,

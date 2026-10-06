@@ -100,6 +100,10 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## clears it. Set through NpcSimulationServer.package_runner
 ## .set_script_package(); read by its selection.
 @export var script_package: PackageBase
+## Runtime state with no ESM source: the active package has done its job (a
+## Travel package arrived). It stays the active package while selection keeps
+## choosing it, and is not run again. Set and cleared by PackageRunner.
+@export var package_completed: bool = false
 ## Runtime state with no ESM source. Nothing sets or reads it yet.
 @export var alive: bool = true
 ## Runtime state: the actor's live inventory, seeded from its base's Items.

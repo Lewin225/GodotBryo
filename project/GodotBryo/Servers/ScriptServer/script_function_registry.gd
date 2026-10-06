@@ -511,6 +511,22 @@ func _register_defaults() -> void:
 		if ctx.calling_reference == null or other == null or ctx.calling_reference.current_cell_form_id == 0:
 			return 0
 		return 1 if ctx.calling_reference.current_cell_form_id == other.current_cell_form_id else 0)
+	# `[Actor.]IsCurrentFurnitureRef Ref`: 1 while the actor uses the furniture
+	# reference Ref (ScriptServer.begin_use, `ActorReference.using`), else 0.
+	register("IsCurrentFurnitureRef", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var furniture: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null
+		if actor == null or furniture == null:
+			return 0
+		return 1 if actor.using == furniture else 0)
+	# `[Actor.]IsCurrentFurnitureObj Base`: 1 while the actor uses a reference
+	# of the furniture base Base, else 0.
+	register("IsCurrentFurnitureObj", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var base := _base_arg(a, 0)
+		if actor == null or base == null or actor.using == null:
+			return 0
+		return 1 if actor.using.base == base else 0)
 	# `GetDistance Ref`, in Gamebryo units; DISTANCE_OTHER_SPACE across spaces.
 	register("GetDistance", func(a: Array, ctx: ScriptExecutionContext):
 		var other: EsmReference = a[0] as EsmReference if not a.is_empty() and a[0] is EsmReference else null

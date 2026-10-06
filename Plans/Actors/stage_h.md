@@ -97,15 +97,24 @@ a script needs them.
 
 ## Build order
 
-1. **Selection.** The `ActorReference` fields above; `PackageRunner` evaluates every placed actor
-   (template-aware sources, schedule, conditions, script package first); `evp`. Test: Doc's
-   active package follows VCG01 stages 0, 40, 55, 76, 80, 110, 115 and completion.
-2. **Travel.** Destinations, arrival, completion, On Begin / End scripts, furniture use at
-   radius 0. Test: with VCG01 at each stage Doc walks to the matching marker, on screen and off;
-   at stage 80 he ends with `using == DocMitchellChairREF`, and his chair trigger sets
+1. **Selection.** Done (`test_package_selection`): `PackageRunner` tracks every actor
+   NpcSimulationServer indexes and chooses by schedule and conditions, script package first;
+   `evp`. `active_package_changed` replaces `move_running`.
+2. **Travel.** Done off screen (`test_package_travel`): Near reference, Near linked reference,
+   Near editor location (`EsmServer.get_authored_placement`) and Near current location (1,249
+   of the 1,260 Travel packages; In cell's 11 are logged and left); arrival at the radius or,
+   for radius 0, at the point; completion (`package_completed`), On End, and choosing again;
+   On Begin; a radius-0 furniture destination is used (`begin_use`) and left when another
+   package replaces it. Doc walks to each VCG01 marker in turn and ends in his chair at stage
+   80. Still to check: the same on screen (NpcController), and his chair trigger setting
    `bDocInChair`.
-3. **Dialogue.** Wait location, activate distance, force-greet. Test: at stage 115 with the player
-   at the exit, Doc starts GREETING with the player.
+3. **Dialogue.** Done off screen (`test_package_dialogue`): Location 1 is the wait location,
+   Location 2 the trigger location, Target 1's Count / Distance the activate distance; within it
+   a Conversation package starts the conversation (the force-greet with the player), a Say To
+   package says its topic, GREETING when PKDD names none; that completes it. Doc force-greets at
+   the exit at stage 115; Sunny waits until the player is inside SunnySmilesTrigger, then
+   greets. `IsCurrentFurnitureRef` / `IsCurrentFurnitureObj` added for the chair trigger, which
+   then sets `bDocInChair` in play.
 4. **Gate**, with stages F (PlayIdle, Look, sitting animations) and G (the player sitting on the
    couch): `test_vcg01_exam` drives VCG01 from 80 to 200, then the same in play.
 
@@ -116,4 +125,13 @@ check above; the player's packages (VCG00/VCG01 wake-up sections, before stage 8
 
 - The four unverified points under Facts, checked against the game or real data before the step
   that relies on each.
+- On End runs only when a package completes; whether it also runs when a package is
+  interrupted, and when On Change runs, are not verified, so On Change is not run.
+- Day of week in schedules (53 packages) is not checked.
+- Sunny Smiles does not greet the player entering the saloon in play, although
+  `test_package_dialogue` passes off screen with the player placed inside SunnySmilesTrigger.
+  Not investigated (parked to focus on VCG01).
+- Inferred, not verified: a Dialogue trigger location of radius 0 on a reference with an XPRM
+  primitive means the target inside that volume (`PackageRunner.is_inside_primitive`); a
+  Dialogue package that finds nothing to say still completes, so the actor does not retry.
 - Leveled-list package sources (the parked templated-actor item in `stage_d.md`).

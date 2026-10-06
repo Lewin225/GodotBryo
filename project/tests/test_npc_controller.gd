@@ -36,6 +36,8 @@ func _ready() -> void:
 		await local_navigation.cell_ready
 
 	var doc := EsmServer.find_reference_by_editor_id("DocMitchellREF") as ActorReference
+	# The test sets Doc's move_target itself; his own packages would set it too.
+	NpcSimulationServer.package_runner.untrack(doc)
 	check(doc != null and doc.current_space_form_id == cell, "Doc is in %s" % DOC_HOUSE_EDITOR_ID)
 	var start := doc.position
 	var target := _far_point(cell, start)

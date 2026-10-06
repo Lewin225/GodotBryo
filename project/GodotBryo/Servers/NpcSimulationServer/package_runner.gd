@@ -27,8 +27,17 @@ extends Node
 ## again as soon as its target changes space. A plan that finds no doors is
 ## not retried until the target changes space or `plan_retry_seconds` pass.
 ##
-## Implemented package types: FOLLOW. Others leave the actor where it is. The
-## Always Run flag makes the actor run wherever it moves.
+## Implemented package types: FOLLOW, TRAVEL and DIALOGUE. Others leave the actor where
+## it is. A package with Always Run makes the actor run wherever it moves.
+##
+## A package begins when selection chooses it (its On Begin runs). Travel goes
+## to Location 1 and stops at the edge of its radius; radius 0 means the point
+## itself, and a furniture reference there is used (ScriptServer.begin_use).
+## Arriving completes it (`ActorReference.package_completed`, its On End runs,
+## and the actor chooses again); a completed package that selection keeps
+## choosing is not run again. When another package replaces it, the actor
+## leaves the furniture the package seated it in. Event scripts run with the
+## actor as subject; event topics are said; event idles are not played yet.
 ##
 ## Schedules (PSDT; over FalloutNV.esm's 4,163 PACK, month is always Any and date
 ## always 0): a package with an hour is due from it for its duration in hours,
@@ -39,6 +48,8 @@ extends Node
 
 enum { PLAN_PENDING, PLAN_READY, PLAN_FAILED }
 
+## PKDD Dialogue Type 1, Say To (0 is Conversation; xEdit).
+const DIALOGUE_TYPE_SAY_TO := 1
 ## ACBS template flag 0x20, Use AI Packages: packages come from the template.
 const TEMPLATE_USE_AI_PACKAGES := 0x20
 ## PTDT Count / Distance is in Gamebryo units (common/units.h).
@@ -84,6 +95,13 @@ var _actors_by_request: Dictionary = {}
 ## ActorReference -> Time.get_ticks_msec() when it is next evaluated; 0 means
 ## on its next turn.
 var _next_evaluation_msec: Dictionary = {}
+## ActorReference -> its Travel package's state: {"sent": bool, and for Near
+## current location "space_form_id" and "position", taken when it began}.
+var _travels: Dictionary = {}
+## ActorReference -> the furniture its package seated it in.
+var _seated_by_package: Dictionary = {}
+## Messages already warned, once each.
+var _warned: Dictionary = {}
 
 var travel: LowLevelTravel:
 	get:
@@ -102,6 +120,21 @@ func track(actor: ActorReference) -> void:
 	_mode_handlers[actor] = handler
 	actor.simulation_mode_changed.connect(handler)
 	_file(actor)
+
+## Stops choosing and running `actor`'s packages, leaving its package and target
+## as they are.
+func untrack(actor: ActorReference) -> void:
+	if _mode_handlers.has(actor):
+		actor.simulation_mode_changed.disconnect(_mode_handlers[actor])
+		_mode_handlers.erase(actor)
+	_drop_plan(actor)
+	_leased.remove(actor)
+	_unleased.remove(actor)
+	_last_run_msec.erase(actor)
+	_next_evaluation_msec.erase(actor)
+	_travels.erase(actor)
+	_seated_by_package.erase(actor)
+	travel.forget(actor)
 
 ## Gives `actor` `package` as its script package (AddScriptPackage), or clears
 ## it with null (RemoveScriptPackage); either way the actor chooses again at once.
@@ -176,9 +209,15 @@ func _run(actor: ActorReference) -> void:
 	var package := actor.active_package
 	if package == null:
 		return
+	if actor.package_completed:
+		return
 	match package.package_type:
 		PackageBase.PackageType.FOLLOW:
 			_follow(actor, package)
+		PackageBase.PackageType.TRAVEL:
+			_travel(actor, package)
+		PackageBase.PackageType.DIALOGUE:
+			_dialogue(actor, package)
 
 ## Chooses `actor`'s package; a different one replaces the old one's plan and
 ## target.
@@ -187,10 +226,182 @@ func _evaluate(actor: ActorReference) -> void:
 	var chosen := choose_package(actor)
 	if chosen == actor.active_package:
 		return
+	_end_package(actor)
+	actor.package_completed = false
 	actor.active_package = chosen
 	_drop_plan(actor)
 	travel.forget(actor)
 	actor.clear_move_target()
+	if chosen != null:
+		_begin_package(actor, chosen)
+
+## A package starts: a Location 1 of Near current location takes the actor's
+## position now, and its On Begin runs.
+func _begin_package(actor: ActorReference, package: PackageBase) -> void:
+	var state := {"sent": false}
+	if package.has_location_1 and package.location_1_type == PackageBase.LocationType.NEAR_CURRENT_LOCATION:
+		state["space_form_id"] = actor.current_space_form_id
+		state["position"] = actor.position
+	_travels[actor] = state
+	_run_event(actor, package.on_begin)
+
+## The active package stops: the actor leaves furniture the package seated it
+## in.
+func _end_package(actor: ActorReference) -> void:
+	var seat: EsmReference = _seated_by_package.get(actor)
+	if seat != null and actor.using == seat:
+		ScriptServer.end_use(actor)
+	_seated_by_package.erase(actor)
+	_travels.erase(actor)
+
+## Travel: goes to Location 1 and arrives at the edge of its radius, or at the
+## point for radius 0.
+func _travel(actor: ActorReference, package: PackageBase) -> void:
+	var destination := _location(actor, package, 1)
+	if destination.is_empty():
+		return
+	if _move_to(actor, destination, float(package.location_1_radius) * UNITS_TO_METERS):
+		_arrive(actor, package, destination)
+
+## Moves `actor` toward `destination` (through load doors when it is in another
+## space); true once it has arrived: within `radius` metres when that is above
+## 0, else when its route to the point has ended.
+func _move_to(actor: ActorReference, destination: Dictionary, radius: float) -> bool:
+	var space: int = destination["space_form_id"]
+	var position: Vector3 = destination["position"]
+	var state: Dictionary = _travels.get(actor, {"sent": false})
+	_travels[actor] = state
+	var plan: Dictionary = _door_plans.get(actor, {})
+	if space != actor.current_space_form_id or _keeps_to_plan(actor, plan):
+		state["sent"] = false
+		_go_through_doors(actor, space, position)
+		return false
+	_drop_plan(actor)
+	if radius > 0.0 and actor.position.distance_to(position) <= radius:
+		actor.clear_move_target()
+		return true
+	if bool(state["sent"]) and not actor.has_move_target:
+		return true
+	if not actor.has_move_target or actor.move_target.distance_to(position) > RETARGET_DISTANCE:
+		actor.set_move_target(position)
+		state["sent"] = true
+	return false
+
+## Dialogue (GECK "Dialogue Package"): goes to Location 1, the start/wait
+## location; waits until Target 1 is at Location 2, the trigger location, when
+## the package has one; then goes to the target and, within Target 1's Count /
+## Distance, starts the conversation (PKDD Conversation; with the player that
+## is the force-greet) or says the topic (Say To), GREETING when PKDD names
+## none. Doing so completes the package.
+func _dialogue(actor: ActorReference, package: PackageBase) -> void:
+	var state: Dictionary = _travels.get(actor, {"sent": false})
+	_travels[actor] = state
+	if not bool(state.get("waited", false)):
+		var wait := _location(actor, package, 1)
+		if not wait.is_empty() and not _move_to(actor, wait, float(package.location_1_radius) * UNITS_TO_METERS):
+			return
+		state["waited"] = true
+		state["sent"] = false
+	var target := _target_1(actor, package)
+	if target == null or target.current_space_form_id != actor.current_space_form_id:
+		return
+	if not bool(state.get("triggered", false)):
+		if package.has_location_2 and not _at_trigger(target, package):
+			return
+		state["triggered"] = true
+	var distance := float(package.target_1_count_or_distance) * UNITS_TO_METERS
+	if actor.position.distance_to(target.position) > distance:
+		var retarget := maxf(RETARGET_DISTANCE, actor.position.distance_to(target.position) * RETARGET_FRACTION)
+		if not actor.has_move_target or actor.move_target.distance_to(target.position) > retarget:
+			actor.set_move_target(target.position)
+		return
+	actor.clear_move_target()
+	actor.package_completed = true
+	if package.dialogue_type == DIALOGUE_TYPE_SAY_TO:
+		var topic := package.dialogue_topic if package.dialogue_topic != null else EsmServer.find_base_by_editor_id("GREETING") as DialogueTopicBase
+		DialogueServer.say(actor, topic, target)
+	else:
+		DialogueServer.start_conversation(actor, target, package.dialogue_topic)
+	_run_event(actor, package.on_end)
+	evaluate_now(actor)
+
+## Whether `target` is at the package's Location 2: within its radius, or for
+## radius 0 inside the location reference's XPRM primitive (a trigger volume),
+## which is an inference: a radius-0 point cannot be stood on.
+func _at_trigger(target: EsmReference, package: PackageBase) -> bool:
+	var trigger := package.get_location_reference(2)
+	if trigger == null or trigger.current_space_form_id != target.current_space_form_id:
+		return false
+	if package.location_2_radius > 0:
+		return target.position.distance_to(trigger.position) <= float(package.location_2_radius) * UNITS_TO_METERS
+	return is_inside_primitive(trigger, target.position)
+
+## Whether `point` (Gamebryo axes, metres) is inside `reference`'s XPRM
+## primitive, laid out as EsmPrimitiveVolume lays it out.
+static func is_inside_primitive(reference: EsmReference, point: Vector3) -> bool:
+	if reference.primitive_type == EsmReference.PrimitiveType.NONE:
+		return false
+	var placement := EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation, reference.scale)
+	var local := placement.affine_inverse() * (EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * point)
+	var bounds := reference.primitive_bounds
+	if reference.primitive_type == EsmReference.PrimitiveType.SPHERE:
+		return local.length() <= maxf(bounds.x, 0.01)
+	var half := Vector3(bounds.x, bounds.z, bounds.y).abs()
+	return absf(local.x) <= half.x and absf(local.y) <= half.y and absf(local.z) <= half.z
+
+## Travel arrived: completes the package, uses the furniture at a radius-0
+## furniture destination, runs On End, and has the actor choose again.
+func _arrive(actor: ActorReference, package: PackageBase, destination: Dictionary) -> void:
+	actor.clear_move_target()
+	actor.package_completed = true
+	var reference: EsmReference = destination.get("reference")
+	if reference is FurnitureReference and package.location_1_radius == 0:
+		if ScriptServer.begin_use(actor, reference):
+			_seated_by_package[actor] = reference
+	_run_event(actor, package.on_end)
+	evaluate_now(actor)
+
+## Location `index` (1 or 2) as {"space_form_id", "position", and "reference"
+## when it names one}; empty when it does not resolve.
+func _location(actor: ActorReference, package: PackageBase, index: int) -> Dictionary:
+	var type := package.location_1_type if index == 1 else package.location_2_type
+	match type:
+		PackageBase.LocationType.NEAR_REFERENCE:
+			return _reference_destination(package.get_location_reference(index))
+		PackageBase.LocationType.NEAR_LINKED_REFERENCE:
+			if actor.linked_reference_form_id == 0:
+				return {}
+			return _reference_destination(EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id))
+		PackageBase.LocationType.NEAR_EDITOR_LOCATION:
+			return EsmServer.get_authored_placement(actor)
+		PackageBase.LocationType.NEAR_CURRENT_LOCATION:
+			var state: Dictionary = _travels.get(actor, {})
+			if not state.has("position"):
+				return {}
+			return {"space_form_id": state["space_form_id"], "position": state["position"]}
+	_warn_once("PackageRunner: location type %s is not resolved yet (%s)" % [PackageBase.LocationType.keys()[type], package.editor_id])
+	return {}
+
+func _reference_destination(reference: EsmReference) -> Dictionary:
+	if reference == null or reference.current_space_form_id == 0:
+		return {}
+	return {"space_form_id": reference.current_space_form_id, "position": reference.position, "reference": reference}
+
+## A package event: its script runs with the actor as subject and its topic is
+## said; its idle is not played yet (the actors plan's stage F).
+func _run_event(actor: ActorReference, event: PackageEventCollection) -> void:
+	if event == null:
+		return
+	if not event.script_source.strip_edges().is_empty():
+		ScriptServer.run_result_script(event.script_source, actor)
+	if event.topic != null:
+		DialogueServer.say(actor, event.topic, null)
+
+func _warn_once(message: String) -> void:
+	if _warned.has(message):
+		return
+	_warned[message] = true
+	push_warning(message)
 
 ## Follow: stays within the package's Count / Distance of Target 1, going
 ## through load doors when the target is in another space.
@@ -201,7 +412,7 @@ func _follow(actor: ActorReference, package: PackageBase) -> void:
 		return
 	var plan: Dictionary = _door_plans.get(actor, {})
 	if target.current_space_form_id != actor.current_space_form_id or _keeps_to_plan(actor, plan):
-		_follow_through_doors(actor, target)
+		_go_through_doors(actor, target.current_space_form_id, target.position)
 		return
 	_drop_plan(actor)
 	var distance := float(package.target_1_count_or_distance) * UNITS_TO_METERS
@@ -222,13 +433,14 @@ func _keeps_to_plan(actor: ActorReference, plan: Dictionary) -> bool:
 		return false
 	return actor.current_space_form_id != plan["target_space"]
 
-## Walks the planned doors in order, activating each once there; plans the
-## sequence first, on NpcSimulationServer's thread.
-func _follow_through_doors(actor: ActorReference, target: EsmReference) -> void:
+## Walks the planned doors toward a point in another space in order,
+## activating each once there; plans the sequence first, on
+## NpcSimulationServer's thread.
+func _go_through_doors(actor: ActorReference, target_space: int, target_position: Vector3) -> void:
 	var plan: Dictionary = _door_plans.get(actor, {})
-	if _needs_plan(actor, target, plan):
+	if _needs_plan(actor, target_space, plan):
 		actor.clear_move_target()
-		_request_plan(actor, target)
+		_request_plan(actor, target_space, target_position)
 		return
 	if plan["state"] != PLAN_READY:
 		return
@@ -253,12 +465,12 @@ func _follow_through_doors(actor: ActorReference, target: EsmReference) -> void:
 	plan["next"] = next + 1
 	ScriptServer.activate(portal.source_reference, actor)
 
-func _needs_plan(actor: ActorReference, target: EsmReference, plan: Dictionary) -> bool:
+func _needs_plan(actor: ActorReference, target_space: int, plan: Dictionary) -> bool:
 	if plan.is_empty():
 		return true
 	if plan["state"] == PLAN_FAILED:
-		return plan["target_space"] != target.current_space_form_id or Time.get_ticks_msec() >= int(plan["retry_msec"])
-	if plan["target_space"] == target.current_space_form_id:
+		return plan["target_space"] != target_space or Time.get_ticks_msec() >= int(plan["retry_msec"])
+	if plan["target_space"] == target_space:
 		return false
 	return not _keeps_to_plan(actor, plan) and plan["state"] != PLAN_PENDING
 
@@ -271,11 +483,11 @@ func _drop_plan(actor: ActorReference) -> void:
 		get_parent().cancel_request(plan["request_id"])
 	_door_plans.erase(actor)
 
-func _request_plan(actor: ActorReference, target: EsmReference) -> void:
+func _request_plan(actor: ActorReference, target_space: int, target_position: Vector3) -> void:
 	var server = get_parent()
-	var request_id: int = server.request_door_sequence(actor.current_space_form_id, actor.position, target.current_space_form_id, target.position, server.blocked_doors_for(actor))
+	var request_id: int = server.request_door_sequence(actor.current_space_form_id, actor.position, target_space, target_position, server.blocked_doors_for(actor))
 	_actors_by_request[request_id] = actor
-	_door_plans[actor] = {"target_space": target.current_space_form_id, "state": PLAN_PENDING, "request_id": request_id}
+	_door_plans[actor] = {"target_space": target_space, "state": PLAN_PENDING, "request_id": request_id}
 
 func _on_door_sequence_ready(request_id: int, portals: Array) -> void:
 	var actor: ActorReference = _actors_by_request.get(request_id)
