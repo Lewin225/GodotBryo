@@ -837,9 +837,9 @@ Document load(const uint8_t *data, size_t size) {
 			if (auto *as_marker = header.GetBlock<nifly::BSFurnitureMarker>(ref.index)) {
 				for (const auto &position : as_marker->positions) {
 					FurniturePosition fp;
-					fp.offset[0] = position.offset.x;
-					fp.offset[1] = position.offset.y;
-					fp.offset[2] = position.offset.z;
+					fp.offset[0] = position.offset.x * units::kGamebryoUnitsToMeters;
+					fp.offset[1] = position.offset.y * units::kGamebryoUnitsToMeters;
+					fp.offset[2] = position.offset.z * units::kGamebryoUnitsToMeters;
 					fp.orientation = position.orientation;
 					fp.position_reference_1 = position.posRef1;
 					fp.position_reference_2 = position.posRef2;

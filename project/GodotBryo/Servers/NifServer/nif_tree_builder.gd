@@ -375,7 +375,8 @@ static func _dynamic_content(root: Node3D) -> String:
 ## Section 10: one wrapper, one MeshInstance3D per mesh, hierarchy removed.
 ## NOT a mesh merge -- each keeps its own surfaces and materials. Transforms are
 ## composed onto each leaf so geometry lands where it did, relative to the
-## wrapper; nothing is baked to world space.
+## wrapper; nothing is baked to world space. Furniture markers (Marker3D) are
+## leaves too: they are positions, not behaviour held in the hierarchy.
 static func _flatten(root: Node3D) -> void:
 	var leaves: Array = []
 	var stack: Array = [{ "node": root, "xform": Transform3D.IDENTITY }]
@@ -389,7 +390,7 @@ static func _flatten(root: Node3D) -> void:
 			stack.append({ "node": c, "xform": child_xform })
 		if node == root:
 			continue
-		if node is MeshInstance3D or node is CollisionShape3D:
+		if node is MeshInstance3D or node is CollisionShape3D or node is Marker3D:
 			leaves.append({ "node": node, "xform": entry["xform"] })
 
 	# Collision keeps one body, since the hierarchy that separated bodies per
@@ -412,7 +413,7 @@ static func _flatten(root: Node3D) -> void:
 	for c in root.get_children():
 		if c == body:
 			continue
-		if c is MeshInstance3D:
+		if c is MeshInstance3D or c is Marker3D:
 			continue
 		c.free()
 
@@ -899,7 +900,20 @@ static func _texture(textures: Dictionary, path: String, alpha_safe: bool) -> Im
 
 
 static func _apply_extra_data(node: Node3D, nd: Dictionary) -> void:
+	var furniture_index := 0
 	for x in nd["extra_data"]:
+		# BSFurnitureMarker: one Marker3D per position, in file order. The
+		# orientation stays raw, as turning it into a rotation would pick a
+		# sign convention the file does not state.
+		for position: Dictionary in x.get("furniture_positions", []):
+			var marker := Marker3D.new()
+			marker.name = "FurnitureMarker%d" % furniture_index
+			marker.position = Vector3(position["offset"])
+			marker.set_meta("nif_furniture_orientation", int(position["orientation"]))
+			marker.set_meta("nif_furniture_position_reference_1", int(position["position_reference_1"]))
+			marker.set_meta("nif_furniture_position_reference_2", int(position["position_reference_2"]))
+			node.add_child(marker)
+			furniture_index += 1
 		# "/" is a property-path separator in Godot and is rejected in a meta
 		# name, so the block type is appended with an underscore instead.
 		var key := "nif_extra_%s" % String(x["block_type"])

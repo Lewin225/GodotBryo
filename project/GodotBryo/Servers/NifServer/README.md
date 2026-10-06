@@ -40,7 +40,6 @@ NifServer.request(nif_path, owner, on_complete: Callable, prefer_static := false
 NifServer.request_kf(kf_path, owner, on_complete: Callable) -> void
 NifServer.request_lod(nif_path, owner, on_complete: Callable, prefer_static := false) -> void
 NifServer.lod_companion_path(nif_path) -> String
-NifServer.request_furniture_markers(nif_path, owner, on_complete: Callable) -> void
 NifServer.get_stats() -> Dictionary  ·  reset_stats()
 NifServer.purge(nif_path, prefer_static := false)  ·  purge_all()
 NifServer.canonical(nif_path) -> String   # static
@@ -60,17 +59,6 @@ one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 seque
 libraries are shared immutable resources. NifServer caches them in memory and as compressed
 resources under `user://nifserver_kf_cache/`, keyed by conversion schema, canonical path and the
 winning archive; the persistent cache is checked on a worker before BSA extraction or parsing.
-
-**Furniture markers come without a tree.** `request_furniture_markers()` returns a NIF's
-`BSFurnitureMarker` positions as data, from the parsed document (a worker parse, shared with
-`request()`), so an actor can be seated without building the furniture: an Array of
-`{offset, orientation, position_reference_1, position_reference_2}` in file order, which is the
-order FURN MNAM's marker bits index. Offsets are raw NIF units in the NIF's axes and orientation
-is raw thousandths of a radian; converting them is the caller's job. Every FNV NIF uses the
-User Version <= 11 form; the >= 12 heading / animation type / entry points are not read. Over the
-FURN records: 516 markers on the 233 whose NIF is in the archives (114 distinct NIFs), matching
-`native/tools/furniture_census`. Trees are unchanged: a node still records only the marker
-block's name in its `nif_extra_BSFurnitureMarker` metadata.
 
 **Companion LOD is an external asset rule, not an in-NIF mode.** `request_lod("foo.nif", ...)`
 canonicalizes `foo.nif`, looks for the archive-backed `foo_lod.nif`, then delegates to
@@ -166,6 +154,7 @@ work, and NifServer offers no entry point for it.
 | `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
 | `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
+| `BSFurnitureMarker` positions | a `Marker3D` per position under the owning node, in file order (`FurnitureMarker0`, ...): its offset as the position (metres, like every position), the raw orientation (thousandths of a radian) and both posRef bytes in metadata, uninterpreted |
 
 **Shader flags.** `NifSource.get_nodes()` exposes the two raw FO3/FNV
 `BSShaderProperty` flag words (`shader_flags1` and `shader_flags2`, guarded by
@@ -233,7 +222,7 @@ without flattening or interpreting it.
 `project/tests/servers/test_nif_source.gd` — the native reader, gated on the whole corpus parsing.
 `project/tests/servers/test_nif_tree_builder.gd` — the tree, and it regenerates `previews/`.
 `project/tests/servers/test_nif_server.gd` — the contract: delivery, budgets, the tree cache.
-`project/tests/servers/test_nif_furniture_markers.gd` — furniture markers, against census A4.
+`project/tests/servers/test_nif_furniture_markers.gd` — furniture markers in the tree, against census A4.
 `project/tests/servers/test_nif_duplicate_bench.gd` — timing measurement, skipped by the runner.
 
 Both must print `ALL CHECKS PASSED` and exit `0` before a change here is done.

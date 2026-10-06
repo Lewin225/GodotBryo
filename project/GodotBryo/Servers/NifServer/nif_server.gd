@@ -116,7 +116,6 @@ var _ready_build_queue := [] # [{ entry, textures }]
 var _pending_kf_cache_checks := [] # canonical KF paths
 var _pending_kf_builds := [] # canonical KF paths with parsed documents ready
 var _kf_libraries := {} # canonical KF path -> immutable AnimationLibrary
-var _furniture_markers := {} # canonical NIF path -> Array of marker Dictionaries
 var _kf_inflight := {} # canonical KF path -> { waiters: Array }
 ## Full-model canonical path -> canonical `_lod.nif` companion, or "" when
 ## absent. This is an asset-discovery cache, distinct from parsed documents.
@@ -285,36 +284,6 @@ func request(nif_path: String, requesting_node: Node, on_complete: Callable, pre
 	_admit()
 
 
-## A furniture NIF's BSFurnitureMarker positions, without building a tree:
-## `on_complete` is called once with an Array of {"offset": Vector3 (NIF units,
-## the furniture's space, NIF axes), "orientation": int (thousandths of a
-## radian), "position_reference_1", "position_reference_2"} in file order, the
-## order FURN MNAM's marker bits index; empty for a NIF with no markers or one
-## that fails to load. The document is parsed on a worker as for request();
-## results are cached per file.
-func request_furniture_markers(nif_path: String, requesting_node: Node, on_complete: Callable) -> void:
-	var waiter := { "kind": "markers", "owner": requesting_node, "cb": on_complete }
-	if not _valid_callback(requesting_node, on_complete):
-		push_error("NifServer: on_complete must be a method on `requesting_node`; furniture marker request for '%s' refused" % nif_path)
-		return
-	var key := canonical(nif_path)
-	if _shutting_down or _archive_server == null or key.is_empty():
-		_deliver_markers(waiter, [])
-		return
-	if _furniture_markers.has(key):
-		_deliver_markers(waiter, _furniture_markers[key])
-		return
-	if _documents.has(key):
-		_deliver_markers(waiter, _markers_from(key, _documents[key]))
-		return
-	if _inflight.has(key):
-		(_inflight[key]["waiters"] as Array).append(waiter)
-		return
-	_inflight[key] = { "waiters": [waiter] }
-	_pending.append(key)
-	_admit()
-
-
 ## Humanoids share human KFs; a creature requests creature KFs.
 ## No human-to-cow rebinding should exist.
 ##
@@ -464,13 +433,11 @@ func purge(nif_path: String, prefer_static := false) -> void:
 	var key := canonical(nif_path)
 	_drop_template(_tree_key(key, prefer_static))
 	_drop_kf_library(key)
-	_furniture_markers.erase(key)
 
 
 ## Drops every cached document and template.
 func purge_all() -> void:
 	_documents.clear()
-	_furniture_markers.clear()
 	_free_all_templates()
 	_kf_libraries.clear()
 
@@ -598,11 +565,8 @@ func _on_resolved(key: String, src: NifSource, error: String) -> void:
 		_stats["resolve_failure_count"] += 1
 		_warn_once(key, "NifServer: %s failed to load (%s)" % [key, error])
 		for w in waiters:
-			var kind := String((w as Dictionary).get("kind", "tree"))
-			if kind == "kf":
+			if String((w as Dictionary).get("kind", "tree")) == "kf":
 				_finish_kf_library(key, null)
-			elif kind == "markers":
-				_deliver_markers(w, [])
 			else:
 				_deliver(w, null)
 	else:
@@ -615,9 +579,6 @@ func _on_resolved(key: String, src: NifSource, error: String) -> void:
 func _queue_document_waiter(key: String, waiter: Dictionary) -> void:
 	if String(waiter.get("kind", "tree")) == "kf":
 		_queue_kf_build(key)
-		return
-	if String(waiter.get("kind", "tree")) == "markers":
-		_deliver_markers(waiter, _markers_from(key, _documents[key]))
 		return
 	_build_queue.append({ "key": key, "waiter": waiter })
 
@@ -991,26 +952,6 @@ func _deliver(waiter: Dictionary, root: Node3D) -> void:
 ## AnimationLibrary is a RefCounted resource, not an orphanable Node. The
 ## caller receives the exact shared library and must treat it as immutable;
 ## there is no Node ownership transfer or one-frame adoption watch.
-## The document's furniture positions in node and block order, cached.
-func _markers_from(key: String, src: NifSource) -> Array:
-	if _furniture_markers.has(key):
-		return _furniture_markers[key]
-	var markers := []
-	for node: Dictionary in src.get_nodes():
-		for extra: Dictionary in node.get("extra_data", []):
-			markers.append_array(extra.get("furniture_positions", []))
-	_furniture_markers[key] = markers
-	return markers
-
-
-func _deliver_markers(waiter: Dictionary, markers: Array) -> void:
-	var cb: Callable = waiter.get("cb", Callable())
-	if not (cb.is_valid() and _owner_alive(waiter)):
-		_stats["owner_gone_count"] += 1
-		return
-	cb.call(markers)
-
-
 func _deliver_kf(waiter: Dictionary, library: AnimationLibrary) -> void:
 	var cb: Callable = waiter.get("cb", Callable())
 	if not (cb.is_valid() and _owner_alive(waiter)):
