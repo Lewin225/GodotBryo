@@ -1365,11 +1365,11 @@ func _populate_package(result: PackageBase, raw: Dictionary) -> void:
 					if idle != null:
 						result.idle_animations.append(idle)
 			"IDLC":
-				result.idle_collection_chance_raw = data.duplicate()
+				result.idle_count = _u32(data) if data.size() >= 4 else _u8(data)
 			"IDLF":
-				result.idle_collection_flags_raw = data.duplicate()
+				result.idle_collection_flags = _u8(data)
 			"IDLT":
-				result.idle_collection_timer_raw = data.duplicate()
+				result.idle_timer = _f32(data)
 			"CNAM":
 				result.combat_style_form_id = _u32(data)
 				result.combat_style = get_base(result.combat_style_form_id) as CombatStyleBase
@@ -1416,9 +1416,9 @@ func _reset_package(result: PackageBase) -> void:
 	result.has_dialogue_data = false
 	result.conditions.clear()
 	result.idle_animations.clear()
-	result.idle_collection_chance_raw = PackedByteArray()
-	result.idle_collection_flags_raw = PackedByteArray()
-	result.idle_collection_timer_raw = PackedByteArray()
+	result.idle_count = 0
+	result.idle_collection_flags = 0
+	result.idle_timer = 0.0
 	result.combat_style_form_id = 0
 	result.combat_style = null
 	result.has_eat_marker = false

@@ -795,6 +795,18 @@ func _package_errors(package: PackageBase, raw: Dictionary) -> PackedStringArray
 		idle_count += idle_data.size() / 4
 	if package.idle_animations.size() != idle_count:
 		problems.append("IDLA %d/%d resolved" % [package.idle_animations.size(), idle_count])
+	var collection_count := _subrecord(raw, "IDLC")
+	var expected_count := 0
+	if collection_count.size() >= 4:
+		expected_count = _u32(collection_count)
+	elif collection_count.size() == 1:
+		expected_count = _u8(collection_count)
+	var collection_flags := _subrecord(raw, "IDLF")
+	var collection_timer := _subrecord(raw, "IDLT")
+	var expected_flags := _u8(collection_flags) if collection_flags.size() == 1 else 0
+	var expected_timer := _f32(collection_timer) if collection_timer.size() == 4 else 0.0
+	if package.idle_count != expected_count or package.idle_collection_flags != expected_flags or package.idle_timer != expected_timer:
+		problems.append("IDLC/IDLF/IDLT differ")
 	if package.combat_style_form_id != 0 and package.combat_style == null:
 		problems.append("CNAM unresolved")
 	var markers_match := package.has_eat_marker == _has_subrecord(raw, "PKED") \

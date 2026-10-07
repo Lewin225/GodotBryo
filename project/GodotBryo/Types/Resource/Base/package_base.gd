@@ -64,6 +64,10 @@ const GENERAL_FLAG_HEAD_TRACKING_OFF := 0x100000
 ## PKDD Flags bit 0x1, No Headtracking: speaker and target are not made to look
 ## at each other (GECK "Dialogue Package").
 const DIALOGUE_FLAG_NO_HEADTRACKING := 0x1
+## IDLF bits, the only two set in FalloutNV.esm (0x01 on 16 PACK, 0x04 on 14).
+## Their names are FO3's GECK Idles tab, recalled, not verified.
+const IDLE_COLLECTION_FLAG_RUN_IN_SEQUENCE := 0x01
+const IDLE_COLLECTION_FLAG_DO_ONCE := 0x04
 
 ## Whether the package's General Flags have Always Run: an actor running it
 ## runs wherever it moves.
@@ -170,15 +174,18 @@ const TYPE_SPECIFIC_FLAG_NAMES := {
 ## packages list NPCSmokingIdle). Read; not used yet (Plans/Actors/stage_f.md
 ## step 4).
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "IdleBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_animations: Array[IdleBase] = []
-## IDLC, raw. Its meaning is not verified (xEdit's wbIdleAnimation is not
-## vendored); the name assumes a count or chance. Read; not used.
-var idle_collection_chance_raw: PackedByteArray = PackedByteArray()
-## IDLF, raw. Its meaning is not verified; the name assumes flags. Read; not
-## used.
-var idle_collection_flags_raw: PackedByteArray = PackedByteArray()
-## IDLT, raw. Its meaning is not verified; the name assumes a timer. Read; not
-## used.
-var idle_collection_timer_raw: PackedByteArray = PackedByteArray()
+## IDLF: the idle collection's flags, a byte (bit names inferred, see the
+## constants). Read; used by ScriptServer's ActorIdles to pick in order (Run In
+## Sequence) and to stop after one pass (Do Once).
+@export_custom(PROPERTY_HINT_FLAGS, "Run In Sequence:1,Do Once:4", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_collection_flags: int = 0
+## IDLC: the number of idles in IDLA; equal to IDLA's count on all 242 PACK
+## with a collection (a byte, a u32 on 2). Read; not used (idle_animations is
+## the list).
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_count: int = 0
+## IDLT: a float, 0 on 138 of 242 collections, else 0.2 to 30; read as seconds
+## between the collection's idles (inferred). Read; used by ActorIdles, with
+## fAIIdleWaitTime when 0.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_timer: float = 0.0
 
 @export_group("Type Specific")
 ## CNAM: the combat style. Read; not used yet.
