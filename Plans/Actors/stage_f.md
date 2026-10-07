@@ -28,11 +28,25 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
 - **No ESM field holds an actor's current idle.** The only idle on an actor reference is ACHR /
   ACRE patrol data (XPRD idle time, INAM idle, TNAM topic), present on none in FalloutNV.esm
   (census A1; `ActorReference.idle_time` / `idle_form_id` / `idle`, not read).
-- **Package idle lists**: PACK IDLA names idles the package plays while it runs, with IDLC, IDLF
-  and IDLT beside it (`PackageBase.idle_animations`, read; the other three raw, meaning not
-  verified: xEdit's `wbIdleAnimation` is in a definitions file not vendored under
-  `enginedocs/xEdit/`). Doc's VCG01 Travel packages list `NPCSmokingIdle` (0x071EE3,
-  `SmokingStanding.kf`, 4 conditions; census A3). No script calls it.
+- **Package idle lists** (census over all 4,163 PACK): 242 carry an idle collection, always in
+  the order IDLF, IDLC, IDLT, IDLA. The GECK says only that it lets "the idles used by an actor
+  running the package" skip the idle manager. xEdit's `wbIdleAnimation` is in a definitions file
+  not vendored under `enginedocs/xEdit/`.
+  - IDLA: the IDLE FormIDs (1 to 36).
+  - IDLC: their count, equal to IDLA's on all 242 (1 byte; a u32 on 2).
+  - IDLF: one byte, 0 on 212, 0x01 on 16 (the VCG00/VCG01/CG00/CG04 player and cutscene
+    sections, Dogmeat waiting, DoctorHoldPosition), 0x04 on 14 (the Tops dealers' smoke breaks
+    and deals, the protectrons turning on, Strip dialogue packs). Their meaning is not verified;
+    FO3's GECK is recalled to have "Run in Sequence" and "Do Once" on this tab.
+  - IDLT: a float, 0 on 138, else 0.2 to 30 (2.0 on 27, 1.0 on 15, 5.0 on 13); seconds between
+    idles, inferred.
+  - Doc's VCG01 Travel packages (TravelToSkullTestSpot, BedsideStanding, ...): IDLF 0, IDLT 0,
+    one idle, `NPCSmokingIdle` (0x071EE3, `SmokingStanding.kf`, loop 2-6, replay delay 120;
+    conditions IsRunning == 0, GetInFaction 000711A4, GetEquipped 000CC824 != 1,
+    GetRandomPercent < 30). No script calls it.
+- **Idle timing settings** (GECK's GameSettings list; none in FalloutNV.esm, so the
+  executable's defaults): fAIIdleWaitTime 1.0, fAIIdleAnimationDistance 2000, fAIEnergyLevelBase
+  0. Their meaning is inferred from the names only.
 - **Ambient idles** (GECK): actors pick from the IDLE tree when "their energy level timer has run
   down" while the lower body idles; speaker and listener pick one "each time a new conversation
   item is spoken".
@@ -57,8 +71,15 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
   the On End idle is not built.
 - **Loops**: the KF's `StartLoop` - `EndLoop` section plays between `loop_minimum` and
   `loop_maximum` times, forever for 255 (step 3).
-- **Package idle lists** (`NPCSmokingIdle`) and **ambient idles**: later steps, after a census of
-  IDLC / IDLF / IDLT.
+- **Package idle lists** (step 4; needs agreeing): while an actor with a 3D node idles (not
+  moving, not seated, no idle playing) under a package with an idle collection, every IDLT
+  seconds (fAIIdleWaitTime when 0) ScriptServer's ActorIdles picks one of IDLA's idles whose
+  conditions pass (actor as subject) and plays it as `special_idle`. An idle is not picked again
+  within its Replay Delay of last playing (GECK: "The time between animation replays"). IDLF
+  0x01 picks in order rather than at random, and 0x04 stops after one pass through the list
+  (both inferred from FO3's GECK, recalled). Only within fAIIdleAnimationDistance (2000 units)
+  of the player (inferred from the name, as head tracking's fAIMaxHeadTrackDistanceFromPC).
+- **Ambient idles**: a later step.
 
 ## Build order
 
@@ -74,7 +95,10 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
    IDLEs, among them the chained cutscene sections and the VCG01 wake-up idles). The section
    plays a random count between min and max, at least once (inferred: whether N counts passes
    or repeats after the first is not established).
-4. Package idle lists (IDLA with IDLC / IDLF / IDLT; census first): Doc's NPCSmokingIdle.
+4. Done (`test_actor_idles`): package idle collections, as proposed (IDLF / IDLC / IDLT read as
+   typed fields by EsmServer, `39ac6e5a`). IDLT counts from when the last idle ended. Doc never
+   plays NPCSmokingIdle: its conditions need SmokerFaction (000711A4), which DocMitchell
+   (NPC_ 00104C0C; factions 0015EC58, 00104C6E, 000251D8) is not in; 411 NPC_ are.
 5. Ambient idles from the IDLE tree.
 
 ## Open
@@ -82,4 +106,6 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
 - What Change means beyond re-adding the active package.
 - Whether an actor without a node holds the idle's duration (scripts that wait on it).
 - What ends a forever idle besides another idle or the package's next event idle: an actor
-  given a move target while one plays slides in its pose.
+  given a move target while one plays slides in its pose; a package's collection waits behind
+  it.
+- `IsRunning` is not implemented (reads 0); idle conditions use it.

@@ -162,6 +162,7 @@ func _physics_process(delta: float) -> void:
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
 		_publish_idle(delta)
+		ScriptServer.actor_idles.update_collection(_actor)
 		return
 	var desired := _desired_velocity()
 	var velocity := desired

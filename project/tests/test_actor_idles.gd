@@ -10,7 +10,9 @@ extends Node3D
 ## Doc nothing shows; the idle state is what is checked. Loops (step 3): an
 ## idle's StartLoop - EndLoop section plays its IDLE's loop count (3 for
 ## LooseHandsOnHeart, about 4.7 s against its 2.03 s clip), and forever for 255
-## (BartenderTalk) until something ends it.
+## (BartenderTalk) until something ends it. Package idle collections (step 4):
+## standing idle under a package with IDLA, Doc plays its idles every IDLT
+## seconds, in order with Run In Sequence and one pass only with Do Once.
 
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
@@ -83,9 +85,78 @@ func _ready() -> void:
 	check(doc.special_idle == section.on_change.idle, "added again while it runs, its On Change idle plays (%s)" % _name(doc.special_idle))
 	runner.set_script_package(doc, null)
 	runner.untrack(doc)
+	# LooseVCG01PlayerBedsit loops forever (255) until something ends it.
+	ScriptServer.actor_idles.finish(doc)
+
+	await _check_collections(doc)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Package idle collections, on test packages Doc runs with no runner, of
+## idles without conditions: VCG01DocGiveMirror (3 s) and LooseHandsOnHeart
+## (4.7 s with its loops). The player stands where Doc does
+## (fAIIdleAnimationDistance).
+func _check_collections(doc: ActorReference) -> void:
+	ScriptServer.move_reference(ScriptServer.player_reference, doc.current_space_form_id, doc.position, Vector3.ZERO)
+	ScriptServer.apply_pending_moves()
+	var mirror := EsmServer.find_base_by_editor_id("VCG01DocGiveMirror") as IdleBase
+	var hands := EsmServer.find_base_by_editor_id("LooseHandsOnHeart") as IdleBase
+
+	ScriptServer.actor_idles.finish(doc)
+	doc.active_package = _collection_package([hands, mirror], 0, 0.5)
+	var played := await _record_idles(doc, 2, 14000)
+	check(played.size() == 2, "standing idle under a package with an idle collection, he plays its idles (%s)" % ", ".join(played))
+
+	ScriptServer.actor_idles.finish(doc)
+	doc.active_package = _collection_package([hands, mirror], PackageBase.IDLE_COLLECTION_FLAG_RUN_IN_SEQUENCE, 0.5)
+	played = await _record_idles(doc, 3, 20000)
+	check(played == ["LooseHandsOnHeart", "VCG01DocGiveMirror", "LooseHandsOnHeart"], "Run In Sequence plays them in list order, round again (%s)" % ", ".join(played))
+
+	ScriptServer.actor_idles.finish(doc)
+	doc.active_package = _collection_package([mirror], PackageBase.IDLE_COLLECTION_FLAG_DO_ONCE, 0.5)
+	played = await _record_idles(doc, 2, 8000)
+	check(played == ["VCG01DocGiveMirror"], "Do Once plays the list once (%s)" % ", ".join(played))
+
+	ScriptServer.move_reference(ScriptServer.player_reference, doc.current_space_form_id, doc.position + Vector3(40.0, 0.0, 0.0), Vector3.ZERO)
+	ScriptServer.apply_pending_moves()
+	ScriptServer.actor_idles.finish(doc)
+	doc.active_package = _collection_package([mirror], 0, 0.5)
+	played = await _record_idles(doc, 1, 3000)
+	check(played.is_empty(), "farther than fAIIdleAnimationDistance (28.6 m) from the player, none plays (%s)" % ", ".join(played))
+
+	var travel := EsmServer.find_base_by_editor_id("VCG01DocMitchellTravelToSkullTestSpot") as PackageBase
+	var smoking := travel.idle_animations[0]
+	var passes := 0
+	for attempt in 400:
+		if ScriptServer.actor_idles._may_play(doc, smoking):
+			passes += 1
+	print("       INFO Doc's %s may play %s on %d of 400 tries" % [travel.editor_id, smoking.editor_id, passes])
+	doc.active_package = null
+
+## A PACK with only an idle collection.
+func _collection_package(idles: Array[IdleBase], flags: int, timer: float) -> PackageBase:
+	var package := PackageBase.new()
+	package.editor_id = "TestIdleCollection"
+	package.idle_animations = idles
+	package.idle_count = idles.size()
+	package.idle_collection_flags = flags
+	package.idle_timer = timer
+	return package
+
+## The idles `doc` starts playing, up to `count`, within `milliseconds`.
+func _record_idles(doc: ActorReference, count: int, milliseconds: int) -> Array[String]:
+	var played: Array[String] = []
+	var last: IdleBase = null
+	var deadline := Time.get_ticks_msec() + milliseconds
+	while played.size() < count and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if doc.special_idle != last and doc.special_idle != null:
+			played.append(doc.special_idle.editor_id)
+		last = doc.special_idle
+	while doc.special_idle != null and Time.get_ticks_msec() < deadline + 10000:
+		await get_tree().process_frame
+	return played
 
 ## The animation Doc's locomotion AnimationPlayer is playing, or "".
 func _player_clip(node: NpcController) -> String:

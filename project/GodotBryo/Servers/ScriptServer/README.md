@@ -278,6 +278,7 @@ Each is a reason to test before building on it.
 | `GetSitting` is 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5 standing up | `ActorReference.sit_state`, `FurnitureSeating` | the idle tree's order (SitDown 2, DefaultSitIdle 1, sitting idles 3, StandUp 4) and Oblivion-era docs, recalled | console `GetSitting` on an NPC as it sits down, sits and stands |
 | A seated actor faces the furniture's heading plus the marker's orientation | `FurnitureSeating.get_placement` | inferred from census A4 | an NPC sitting in a chair turned in the world |
 | `PlayIdle` on an actor with no 3D node ends at once; on a seated actor it does nothing | `ActorIdles.play` | conservative default; no source | `PlayIdle` on a distant NPC, then on a seated one |
+| A package's idle collection plays an idle IDLT seconds after the last ended (fAIIdleWaitTime, 1 s, when 0), within fAIIdleAnimationDistance of the player; IDLF 0x01 in order, 0x04 one pass | `ActorIdles.update_collection` | IDLF bit names recalled from FO3's GECK; the rest from setting names | a Tops dealer's smoke break, a Strip crowd's cheering |
 
 ## Files
 
@@ -290,7 +291,7 @@ Each is a reason to test before building on it.
 | `script_execution_context.gd` | per-dispatch state |
 | `idle_tree.gd` | the IDLE tree and its pick (GECK "Idle Animations"), `ScriptServer.idle_tree` |
 | `furniture_seating.gd` | seats and stands actors that use furniture, from the NIF's markers; `GetFurnitureMarkerID` |
-| `actor_idles.gd` | plays the idles `PlayIdle` and package events ask for (`ActorReference.special_idle`), `ScriptServer.actor_idles` |
+| `actor_idles.gd` | plays the idles `PlayIdle`, package events and package idle collections ask for (`ActorReference.special_idle`), `ScriptServer.actor_idles` |
 
 ## Tests
 
