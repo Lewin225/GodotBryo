@@ -6,8 +6,9 @@ extends Node
 ## child of ScriptServer, beside FurnitureSeating.
 ##
 ## The idle is the actor's state (ActorReference.special_idle); the actor
-## node's ActorAnimator plays it in place of locomotion and, when a once-only
-## clip ends, the actor returns to locomotion, turned the way the idle left its
+## node's ActorAnimator plays it in place of locomotion, its StartLoop - EndLoop
+## section the IDLE's loop count of times (forever for 255, until something
+## replaces or finishes it), and when it ends the actor returns to locomotion, turned the way the idle left its
 ## body (as standing up from furniture does). An actor whose animations are
 ## still loading keeps the idle and plays it once they load (EsmActorNode). An
 ## actor without a built visual ends the idle at once: nothing sees it

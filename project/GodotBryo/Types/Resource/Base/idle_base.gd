@@ -43,11 +43,16 @@ const FLAG_NO_ATTACKING := 0x01
 ## DATA offset 0: Animation Group Section, with the bits above. Read; used by
 ## IdleTree (must_return_file).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var animation_group_section: int = 0
-## DATA offsets 1 and 2: Looping min and max. Read; not used yet (looping
-## idles in stage F).
+## DATA offset 1: Looping min, how many times the KF's StartLoop - EndLoop
+## section plays at least; 255 (with max 255, on 85 IDLEs) loops forever.
+## Read; used by ActorAnimator, which plays the section a random count between
+## min and max (at least once; the count's meaning is inferred,
+## Plans/Actors/stage_f.md).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_minimum: int = 0
+## DATA offset 2: Looping max, as loop_minimum. Read; used by ActorAnimator.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_maximum: int = 0
-## DATA offset 4: Replay Delay. Read; not used yet.
+## DATA offset 4: Replay Delay, seconds between replays (GECK); 0 on 1,556 of
+## 1,597 IDLEs. Read; not used yet (idles picked from the tree, stage F step 5).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var replay_delay: int = 0
 ## DATA offset 6: Flags; absent from a short DATA. Read; not used yet.
 @export_custom(PROPERTY_HINT_FLAGS, "No Attacking:1", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0

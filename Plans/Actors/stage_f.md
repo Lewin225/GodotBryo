@@ -55,8 +55,8 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
   runs when `AddScriptPackage` adds the package already active, and when another package
   replaces the active one before it is done (inferred from the name). Must Complete's wait for
   the On End idle is not built.
-- **Loops**: a looping clip plays between `loop_minimum` and `loop_maximum` times (once when both
-  are 0), after a census of the values on the idles played this way.
+- **Loops**: the KF's `StartLoop` - `EndLoop` section plays between `loop_minimum` and
+  `loop_maximum` times, forever for 255 (step 3).
 - **Package idle lists** (`NPCSmokingIdle`) and **ambient idles**: later steps, after a census of
   IDLC / IDLF / IDLT.
 
@@ -68,7 +68,12 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
 2. Done (`test_actor_idles`): package event idles play after the event's script and topic; On
    Change runs when `AddScriptPackage` adds the active package again, and when another package
    replaces it before it is done (inferred).
-3. Loops (census first).
+3. Done (`test_actor_idles`, census `_diag/diag_idle_loops`): an IDLE's Looping min / max
+   count passes of its KF's `StartLoop` - `EndLoop` text-key section (256 of the 258 looping
+   IDLEs' KFs have both keys; the other 2 are KFs authored to cycle); 255 loops forever (85
+   IDLEs, among them the chained cutscene sections and the VCG01 wake-up idles). The section
+   plays a random count between min and max, at least once (inferred: whether N counts passes
+   or repeats after the first is not established).
 4. Package idle lists (IDLA with IDLC / IDLF / IDLT; census first): Doc's NPCSmokingIdle.
 5. Ambient idles from the IDLE tree.
 
@@ -76,3 +81,5 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
 
 - What Change means beyond re-adding the active package.
 - Whether an actor without a node holds the idle's duration (scripts that wait on it).
+- What ends a forever idle besides another idle or the package's next event idle: an actor
+  given a move target while one plays slides in its pose.

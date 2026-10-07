@@ -7,7 +7,10 @@ extends Node3D
 ## play it. Package events (step 2): VCG01PlayerSection1's On Begin idle plays
 ## when it becomes his package, and its On Change idle when it is added again
 ## while it runs (VCG01 stage 7's trick). Both clips move only Camera1st, so on
-## Doc nothing shows; the idle state is what is checked.
+## Doc nothing shows; the idle state is what is checked. Loops (step 3): an
+## idle's StartLoop - EndLoop section plays its IDLE's loop count (3 for
+## LooseHandsOnHeart, about 4.7 s against its 2.03 s clip), and forever for 255
+## (BartenderTalk) until something ends it.
 
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
@@ -47,6 +50,19 @@ func _ready() -> void:
 	check(doc.special_idle == null and animator.get_idle() == null, "when the 3 s clip ends the idle is cleared and he returns to locomotion")
 	await _wait_until(func() -> bool: return _player_clip(doc_node) != ActorAnimator.IDLE_CLIP_NAME and _player_clip(doc_node) != "")
 	check(_player_clip(doc_node).begins_with("locomotion"), "and plays a locomotion clip again (%s)" % _player_clip(doc_node))
+
+	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle LooseHandsOnHeart")
+	var started := Time.get_ticks_msec()
+	await _wait_until(func() -> bool: return doc.special_idle == null)
+	var seconds := (Time.get_ticks_msec() - started) / 1000.0
+	check(seconds > 4.0 and seconds < 6.0, "LooseHandsOnHeart (loop 3-3, its 1.33 s section 3 times) plays %.1f s, not its 2.03 s clip once" % seconds)
+	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle BartenderTalk")
+	var forever := Time.get_ticks_msec() + 9000
+	while Time.get_ticks_msec() < forever:
+		await get_tree().process_frame
+	check(doc.special_idle != null and doc.special_idle.editor_id == "BartenderTalk" and _player_clip(doc_node) == ActorAnimator.IDLE_CLIP_NAME, "BartenderTalk (loop 255) is still playing after 9 s, past its 6.73 s clip")
+	ScriptServer.actor_idles.finish(doc)
+	check(doc.special_idle == null and animator.get_idle() == null, "until it is ended")
 
 	ScriptServer.run_debug_line("SunnyRef.PlayIdle VCG01DocGiveMirror")
 	check(EsmNode.node_for(sunny) == null and sunny.special_idle == null, "an actor without a node ends the idle at once")

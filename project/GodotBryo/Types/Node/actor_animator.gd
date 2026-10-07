@@ -43,6 +43,9 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 const ROOT_BONES := ["Bip01", "Bip01 NonAccum"]
 ## The library name an idle clip is added under.
 const IDLE_CLIP_NAME := "idle__current"
+## IDLE DATA loop count meaning Loop Forever (on 85 of 1,597 IDLEs, min and max
+## both; Plans/Actors/stage_f.md).
+const LOOP_FOREVER := 255
 
 var _generation := 0
 var _loading := false
@@ -57,6 +60,12 @@ var _skeleton: Skeleton3D = null
 ## The idle play_idle is playing, or null for locomotion.
 var _idle: IdleBase = null
 var _idle_generation := 0
+## The idle clip's loop section, from its StartLoop / EndLoop text keys
+## (seconds); -1 when it has none.
+var _loop_start := -1.0
+var _loop_end := -1.0
+## How many more times the loop section plays; -1 plays it forever.
+var _loops_left := 0
 ## Bone index -> [position, rotation] of each root bone when locomotion last
 ## handed over to an idle; empty while locomotion plays.
 var _locomotion_root_pose: Dictionary = {}
@@ -120,11 +129,14 @@ func play_idle(idle: IdleBase, from_end := false) -> void:
 	nif_server.request_kf(path, self, _on_idle_library_delivered.bind(_idle_generation, idle, from_end))
 
 ## Returns to locomotion, with the root bones back where locomotion left them.
+## A looping idle ends here too.
 ## Returns how far that turns the torso about the up axis (radians, Godot
 ## yaw): turning the actor by it keeps the body facing the way the idle left it.
 func stop_idle() -> float:
 	_idle_generation += 1
 	_idle = null
+	_loop_start = -1.0
+	_loops_left = 0
 	var before := _torso_yaw()
 	if _player != null and is_instance_valid(_player) and _player.get_animation_library("").has_animation(IDLE_CLIP_NAME):
 		_player.stop()
@@ -181,6 +193,7 @@ func _on_idle_library_delivered(raw_library: AnimationLibrary, generation: int, 
 		idle_finished.emit(idle)
 		return
 	_hold_missing_tracks(animation)
+	_set_loop_section(raw_library.get_animation(raw_library.get_animation_list()[0]), idle, from_end)
 	var library := _player.get_animation_library("")
 	if library.has_animation(IDLE_CLIP_NAME):
 		_player.stop()
@@ -216,15 +229,59 @@ func _hold_missing_tracks(animation: Animation) -> void:
 			var held := Quaternion.IDENTITY if bone_name == "Bip01" else _skeleton.get_bone_pose_rotation(bone)
 			animation.rotation_track_insert_key(track, 0.0, held)
 
+## Reads the idle clip's loop section from its StartLoop / EndLoop text keys
+## (NifServer's `nif_text_keys` metadata; 256 of the 258 looping IDLEs' KFs have
+## them) and how many times it plays: a random count between the IDLE's
+## Looping min and max, at least once, forever for LOOP_FOREVER. Started from
+## its end (restored, already past it), it does not loop.
+func _set_loop_section(animation: Animation, idle: IdleBase, from_end: bool) -> void:
+	_loop_start = -1.0
+	_loop_end = -1.0
+	_loops_left = 0
+	for key: Dictionary in animation.get_meta("nif_text_keys", []):
+		var value := String(key.get("value", "")).strip_edges().to_lower()
+		if value == "startloop":
+			_loop_start = float(key["time"])
+		elif value == "endloop":
+			_loop_end = float(key["time"])
+	if from_end or _loop_start < 0.0 or _loop_end <= _loop_start:
+		_loop_start = -1.0
+		_loop_end = -1.0
+		return
+	if idle.loop_maximum >= LOOP_FOREVER:
+		_loops_left = -1
+		return
+	var count := randi_range(idle.loop_minimum, maxi(idle.loop_minimum, idle.loop_maximum))
+	_loops_left = maxi(count, 1) - 1
+
+## Whether the idle's loop section plays again.
+func _loops_again() -> bool:
+	return _loop_start >= 0.0 and _loops_left != 0
+
+## Back to the start of the loop section, counting a pass.
+func _repeat_loop_section(overshoot: float) -> void:
+	if _loops_left > 0:
+		_loops_left -= 1
+	_player.seek(_loop_start + overshoot, true)
+
 func _on_animation_finished(animation_name: StringName) -> void:
-	if animation_name == IDLE_CLIP_NAME and _idle != null:
-		idle_finished.emit(_idle)
+	if animation_name != IDLE_CLIP_NAME or _idle == null:
+		return
+	# A section ending at the clip's end: the clip has stopped, so it plays
+	# again from the section's start.
+	if _loops_again():
+		_player.play(IDLE_CLIP_NAME)
+		_repeat_loop_section(0.0)
+		return
+	idle_finished.emit(_idle)
 
 ## Chooses the locomotion clip; an idle from play_idle replaces it.
 func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint() or _loading or _player == null or not is_instance_valid(_player):
 		return
 	if _idle != null:
+		if _loops_again() and _player.current_animation == IDLE_CLIP_NAME and _player.current_animation_position >= _loop_end:
+			_repeat_loop_section(_player.current_animation_position - _loop_end)
 		return
 	var actor := get_parent() as EsmActorNode
 	var female := actor != null and actor.is_female()
