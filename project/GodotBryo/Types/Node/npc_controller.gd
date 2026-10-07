@@ -64,6 +64,9 @@ static var routes_not_found := 0
 ## other capsules or the world, and rays that should find actors add this
 ## layer. The ground ray keeps to layer 1, the world.
 const ACTOR_COLLISION_LAYER := 1 << 1
+## Planar speed (metres per second) above which the actor counts as moving
+## (ActorReference.is_moving).
+const MOVING_SPEED := 0.1
 ## Debug (DebugNpcControllers): when false, every controller skips its
 ## per-frame work and leaves avoidance, to see what controllers cost.
 static var debug_enabled := true
@@ -96,6 +99,8 @@ var _route_request_id := -1
 var _route_failed_msec := -1
 ## Whether the active package has Always Run (active_package_changed).
 var _running := false
+## The active package has Always Sneak.
+var _sneaking := false
 var _avoidance_velocity := Vector3.ZERO
 ## SpeedMult, read when a route arrives rather than every frame.
 var _speed_mult := 100.0
@@ -162,7 +167,7 @@ func _physics_process(delta: float) -> void:
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
 		_publish_idle(delta)
-		ScriptServer.actor_idles.update_collection(_actor)
+		ScriptServer.actor_idles.update_standing(_actor)
 		return
 	var desired := _desired_velocity()
 	var velocity := desired
@@ -244,6 +249,7 @@ func _reference_changed() -> void:
 ## Reads the flags the controller acts on from the actor's new package.
 func _on_active_package_changed(_old_package: PackageBase, new_package: PackageBase) -> void:
 	_running = new_package != null and new_package.is_always_run()
+	_sneaking = new_package != null and new_package.is_always_sneak()
 
 ## A teleport moves the controller to the reference's new placement, drops the
 ## route and points the agent at the new space's map. Across spaces the
@@ -297,6 +303,8 @@ func _release_lease() -> void:
 	if is_inside_tree() and _leased == actor_reference:
 		_write_placement()
 	_leased.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
+	_leased.is_moving = false
+	_leased.is_running = false
 	_leased = null
 	set_physics_process(false)
 	_update_avoidance()
@@ -491,4 +499,8 @@ func _publish_motion(desired: Vector3, velocity: Vector3, delta: float) -> void:
 	motion.turn_rate = yaw_change / delta if delta > 0.0 else 0.0
 	motion.grounded = true
 	motion.running = _running
-	motion.sneaking = false
+	motion.sneaking = _sneaking
+	if _actor != null:
+		_actor.is_moving = Vector2(velocity.x, velocity.z).length() > MOVING_SPEED
+		_actor.is_running = _actor.is_moving and _running
+		_actor.is_sneaking = _sneaking

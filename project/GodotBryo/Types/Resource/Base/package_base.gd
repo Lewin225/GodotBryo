@@ -58,6 +58,8 @@ enum ObjectType {
 const PLAYER_REFERENCE_FORM_ID := 0x14
 ## PKDT General Flags bit 0x2000, Always Run.
 const GENERAL_FLAG_ALWAYS_RUN := 0x2000
+## PKDT General Flags bit 0x20000, Always Sneak (xEdit).
+const GENERAL_FLAG_ALWAYS_SNEAK := 0x20000
 ## PKDT General Flags bit 0x100000, Head Tracking Off: the actor's head is
 ## locked looking straight ahead (GECK "Category Packages").
 const GENERAL_FLAG_HEAD_TRACKING_OFF := 0x100000
@@ -73,6 +75,9 @@ const IDLE_COLLECTION_FLAG_DO_ONCE := 0x04
 ## runs wherever it moves.
 func is_always_run() -> bool:
 	return (general_flags & GENERAL_FLAG_ALWAYS_RUN) != 0
+
+func is_always_sneak() -> bool:
+	return (general_flags & GENERAL_FLAG_ALWAYS_SNEAK) != 0
 
 ## Type Specific Flags names by package type (xEdit), for the inspector.
 const TYPE_SPECIFIC_FLAG_NAMES := {

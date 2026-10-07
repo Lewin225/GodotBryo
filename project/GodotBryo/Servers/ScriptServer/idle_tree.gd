@@ -8,16 +8,21 @@ extends RefCounted
 ## folder is skipped when it must return a file (IdleBase.must_return_file), as
 ## if it had not qualified. Conditions run with the actor as subject.
 ##
-## Which top-level item serves which purpose: furniture use starts at
-## FurnitureIdles, package and general idles at GeneralIdles (census A5). The
-## top-level items for human skeletons have MODL `Characters\_Male\IdleAnims`;
-## matching other skeletons' items is not done yet.
+## The tree's top level is one item per skeleton (GECK): the IDLEs with no
+## parent whose MODL lies under that skeleton's folder (`Characters\_Male\` for
+## humans), in sibling order; loose idles (SECTION_FLAG_LOOSE), played by name,
+## are not among them. pick_for picks from an actor's skeleton's items, as the
+## Idle Manager does (PickIdle, ambient idles); pick from one named item
+## (FurnitureIdles for furniture use).
 
 ## The top-level item furniture use picks from.
 const FURNITURE_ROOT := "FurnitureIdles"
 
 ## IdleBase -> its children, in sibling order.
 var _children: Dictionary = {}
+## Skeleton folder (lowercase, `characters\_male\`) -> its top-level items, in
+## sibling order.
+var _roots_by_folder: Dictionary = {}
 var _built := false
 
 ## The idle `actor` plays from under `root`, or null when no item qualifies.
@@ -26,6 +31,28 @@ func pick(actor: EsmReference, root: IdleBase) -> IdleBase:
 		return null
 	_build()
 	return _pick_under(actor, root)
+
+## The idle `actor` plays from its skeleton's top-level items, or null when
+## none qualifies or its skeleton has none.
+func pick_for(actor: EsmReference) -> IdleBase:
+	_build()
+	return _pick_among(actor, _roots_by_folder.get(skeleton_folder(actor), []))
+
+## The folder of `actor`'s skeleton MODL (its base's, or its Model/Animation
+## template's), lowercase with a trailing backslash; "" without one.
+static func skeleton_folder(actor: EsmReference) -> String:
+	var base := ActorBase.template_source(actor.base if actor != null else null, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+	if base == null or base.model_path.is_empty():
+		return ""
+	var path := base.model_path.to_lower().replace("/", "\\")
+	return path.left(path.rfind("\\") + 1)
+
+## The skeleton folder a top-level IDLE belongs to: its MODL up to IdleAnims
+## (`Characters\_Male\IdleAnims[\X.kf]` -> `characters\_male\`).
+static func _folder_of(idle: IdleBase) -> String:
+	var path := idle.model_path.to_lower().replace("/", "\\")
+	var at := path.find("idleanims")
+	return path.left(at) if at >= 0 else ""
 
 ## The top-level item named `editor_id`, or null.
 func get_root(editor_id: String) -> IdleBase:
@@ -40,7 +67,13 @@ func get_children(item: IdleBase) -> Array:
 	return _children.get(item, [])
 
 func _pick_under(actor: EsmReference, item: IdleBase) -> IdleBase:
-	for child: IdleBase in _children.get(item, []):
+	return _pick_among(actor, _children.get(item, []))
+
+## The first of `items` (siblings, in order) the actor qualifies for, then its
+## deepest qualifying descendant; an item without a KF that must return a file
+## is skipped as if it had not qualified.
+func _pick_among(actor: EsmReference, items: Array) -> IdleBase:
+	for child: IdleBase in items:
 		if not ScriptServer.evaluate_conditions(child.conditions, ConditionContext.new(actor)):
 			continue
 		var deeper := _pick_under(actor, child)
@@ -57,17 +90,35 @@ func _build() -> void:
 		return
 	_built = true
 	var siblings_by_parent := {}
+	var roots_by_folder := {}
 	for row: Dictionary in EsmServer.get_record_index():
 		if String(row.get("record_type", "")) != "IDLE":
 			continue
 		var idle := EsmServer.get_base(int(row["form_id"])) as IdleBase
-		if idle == null or idle.parent == null:
+		if idle == null:
+			continue
+		if idle.parent == null:
+			_add_root(roots_by_folder, idle)
 			continue
 		if not siblings_by_parent.has(idle.parent):
 			siblings_by_parent[idle.parent] = []
 		siblings_by_parent[idle.parent].append(idle)
 	for parent: IdleBase in siblings_by_parent:
 		_children[parent] = _in_sibling_order(siblings_by_parent[parent])
+	for folder: String in roots_by_folder:
+		_roots_by_folder[folder] = _in_sibling_order(roots_by_folder[folder])
+
+## Files a parentless IDLE among its skeleton's top-level items, unless it is
+## a loose idle.
+static func _add_root(roots_by_folder: Dictionary, idle: IdleBase) -> void:
+	if (idle.animation_group_section & IdleBase.SECTION_FLAG_LOOSE) != 0:
+		return
+	var folder := _folder_of(idle)
+	if folder.is_empty():
+		return
+	if not roots_by_folder.has(folder):
+		roots_by_folder[folder] = []
+	roots_by_folder[folder].append(idle)
 
 static func _in_sibling_order(siblings: Array) -> Array:
 	var members := {}

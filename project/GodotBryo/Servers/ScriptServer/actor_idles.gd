@@ -1,9 +1,10 @@
 class_name ActorIdles
 extends Node
 
-## Plays the idles scripts and package events ask actors to play (PlayIdle, a
-## package's On Begin / End / Change idle), for any actor, on screen or off. A
-## child of ScriptServer, beside FurnitureSeating.
+## Plays the idles actors are asked to play, for any actor, on screen or off:
+## PlayIdle and PickIdle, a package's On Begin / End / Change idle, its idle
+## collection, and ambient idles from the idle tree (Plans/Actors/stage_f.md).
+## A child of ScriptServer, beside FurnitureSeating.
 ##
 ## The idle is the actor's state (ActorReference.special_idle); the actor
 ## node's ActorAnimator plays it in place of locomotion, its StartLoop - EndLoop
@@ -24,6 +25,13 @@ const DEFAULT_IDLE_WAIT_SECONDS := 1.0
 ## FalloutNV.esm does not set (meaning inferred from the name).
 const IDLE_ANIMATION_DISTANCE := 2000.0 / 70.0
 
+## Seconds between an actor's ambient idles at energy level 50 (NPC_ AIDT),
+## scaled by energy / 50 and at least DEFAULT_IDLE_WAIT_SECONDS. The GECK says
+## lower energy idles more often; the formula has no source.
+@export var ambient_idle_seconds := 20.0
+
+## Actor -> Time.get_ticks_msec() of its next ambient pick.
+var _ambient_next_msec: Dictionary = {}
 ## Actor -> {"package", "next_msec", "index", "done"}: where it is in its
 ## package's idle collection.
 var _collections: Dictionary = {}
@@ -62,8 +70,55 @@ func finish(actor: ActorReference) -> void:
 		body.rotation.y -= turn
 		actor.rotation = EsmReferencePhysicaliser.authored_heading(body.rotation.y)
 
-## An actor standing idle with a 3D node (NpcController, each physics frame):
-## when its package has an idle collection (PACK IDLA), plays one of its idles
+## An actor standing idle with a 3D node (NpcController, each physics frame),
+## within IDLE_ANIMATION_DISTANCE of the player and while no idle plays: its
+## package's idle collection when it has one, else an ambient pick from the
+## idle tree (update_ambient).
+func update_standing(actor: ActorReference) -> void:
+	var package := actor.active_package
+	if package != null and not package.idle_animations.is_empty():
+		_ambient_next_msec.erase(actor)
+		update_collection(actor)
+		return
+	_collections.erase(actor)
+	update_ambient(actor)
+
+## Ambient idles: every ambient_seconds(actor) after the last idle ended, the
+## actor plays the Idle Manager's pick for it (IdleTree.pick_for), when that is
+## an idle with a KF whose Replay Delay has run out.
+func update_ambient(actor: ActorReference) -> void:
+	var now := Time.get_ticks_msec()
+	var wait := int(ambient_seconds(actor) * 1000.0)
+	if actor.special_idle != null or actor.has_move_target or not _ambient_next_msec.has(actor):
+		_ambient_next_msec[actor] = now + wait
+		return
+	if now < int(_ambient_next_msec[actor]) or not _near_player(actor):
+		return
+	_ambient_next_msec[actor] = now + wait
+	var idle := ScriptServer.idle_tree.pick_for(actor)
+	if idle == null or not idle.has_kf() or not _replay_delay_passed(actor, idle):
+		return
+	_mark_played(actor, idle)
+	play(actor, idle)
+
+## Seconds between `actor`'s ambient idles: ambient_idle_seconds scaled by its
+## energy level (NPC_ AIDT, from its AI Data template) over 50.
+func ambient_seconds(actor: ActorReference) -> float:
+	var base := ActorBase.template_source(actor.base, ActorBase.TEMPLATE_USE_AI_DATA)
+	var energy := base.energy if base != null else 50
+	return maxf(DEFAULT_IDLE_WAIT_SECONDS, ambient_idle_seconds * energy / 50.0)
+
+## PickIdle: `actor` plays the Idle Manager's pick for it now. Returns the
+## idle, or null when none qualifies or it has no KF.
+func pick_and_play(actor: ActorReference) -> IdleBase:
+	var idle := ScriptServer.idle_tree.pick_for(actor)
+	if idle == null or not idle.has_kf():
+		return null
+	_mark_played(actor, idle)
+	play(actor, idle)
+	return idle
+
+## A package's idle collection (PACK IDLA): plays one of its idles
 ## IDLT seconds after the last ended (DEFAULT_IDLE_WAIT_SECONDS when 0), within
 ## IDLE_ANIMATION_DISTANCE of the player and while no idle plays. The idle's
 ## conditions must pass (the actor as subject) and its Replay Delay since it
@@ -92,9 +147,7 @@ func update_collection(actor: ActorReference) -> void:
 	var idle := _pick_from_collection(actor, package, state)
 	if idle == null:
 		return
-	if not _last_played.has(actor):
-		_last_played[actor] = {}
-	_last_played[actor][idle] = now
+	_mark_played(actor, idle)
 	play(actor, idle)
 
 ## The collection's next idle that may play now, or null: in order from
@@ -128,12 +181,19 @@ func _pick_from_collection(actor: ActorReference, package: PackageBase, state: D
 ## Whether `idle` may play on `actor` now: it has a KF, its conditions pass and
 ## its Replay Delay has passed since it last started.
 func _may_play(actor: ActorReference, idle: IdleBase) -> bool:
-	if idle == null or not idle.has_kf():
-		return false
-	var started := int((_last_played.get(actor, {}) as Dictionary).get(idle, -1))
-	if started >= 0 and Time.get_ticks_msec() - started < idle.replay_delay * 1000:
+	if idle == null or not idle.has_kf() or not _replay_delay_passed(actor, idle):
 		return false
 	return ScriptServer.evaluate_conditions(idle.conditions, ConditionContext.new(actor))
+
+## Whether `idle`'s Replay Delay has run out since it last started on `actor`.
+func _replay_delay_passed(actor: ActorReference, idle: IdleBase) -> bool:
+	var started := int((_last_played.get(actor, {}) as Dictionary).get(idle, -1))
+	return started < 0 or Time.get_ticks_msec() - started >= idle.replay_delay * 1000
+
+func _mark_played(actor: ActorReference, idle: IdleBase) -> void:
+	if not _last_played.has(actor):
+		_last_played[actor] = {}
+	_last_played[actor][idle] = Time.get_ticks_msec()
 
 func _wait_msec(package: PackageBase) -> int:
 	var seconds := package.idle_timer if package.idle_timer > 0.0 else DEFAULT_IDLE_WAIT_SECONDS

@@ -62,13 +62,16 @@ func _ready() -> void:
 	doc.set_move_target(target)
 	var walk_clips := {}
 	var frames := 0
+	var seen_moving := false
 	while not reached[0] and frames < WALK_FRAMES:
 		await get_tree().physics_frame
 		frames += 1
+		seen_moving = seen_moving or doc.is_moving
 		if player != null and player.current_animation != "":
 			walk_clips[player.current_animation] = true
 	check(reached[0], "Doc reaches the target in %.1f s" % (frames / 60.0))
 	check(not doc.has_move_target, "the target is cleared on arrival")
+	check(seen_moving, "walking, his reference reports is_moving (IsMoving)")
 	check(_planar(doc.position).distance_to(_planar(target)) < 0.6, "Doc's reference is at the target (%.2f m off)" % _planar(doc.position).distance_to(_planar(target)))
 	check(walk_clips.has("locomotion__male__mtforward.kf"), "the walk clip played on the way (%s)" % ", ".join(walk_clips.keys()))
 	await get_tree().physics_frame

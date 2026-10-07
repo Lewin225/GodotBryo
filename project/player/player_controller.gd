@@ -380,6 +380,16 @@ func _publish_actor_motion(delta: float) -> void:
 	motion.grounded = is_grounded
 	motion.running = always_run or is_sprinting
 	motion.sneaking = is_crouching
+	_publish_actor_state(Vector2(velocity.x, velocity.z).length() > 0.1)
+
+## The possessed actor's movement state (ActorReference.is_moving, is_running,
+## is_sneaking), read by conditions such as the idle tree's.
+func _publish_actor_state(moving: bool) -> void:
+	if possessed == null:
+		return
+	possessed.is_moving = moving
+	possessed.is_running = moving and (always_run or is_sprinting)
+	possessed.is_sneaking = is_crouching
 
 
 ## Reports the body as standing still. Used when physics processing stops
@@ -394,6 +404,7 @@ func _publish_still_motion() -> void:
 	motion.velocity = Vector3.ZERO
 	motion.turn_rate = 0.0
 	motion.running = false
+	_publish_actor_state(false)
 
 
 func _handle_noclip_movement(delta: float) -> void:

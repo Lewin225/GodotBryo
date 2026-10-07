@@ -530,6 +530,13 @@ func _register_defaults() -> void:
 			return 0
 		script_server.actor_idles.play(actor, idle)
 		return 1)
+	# `[Actor.]PickIdle`: the actor plays the idle the Idle Manager picks for it
+	# from its skeleton's idle tree (ScriptServer's ActorIdles); 0 when none.
+	register("PickIdle", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		if actor == null:
+			return 0
+		return 1 if script_server.actor_idles.pick_and_play(actor) != null else 0)
 	register("StopLook", func(_a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		if actor == null:
@@ -555,6 +562,52 @@ func _register_defaults() -> void:
 	# `[Actor.]GetSitting`: ActorReference.sit_state (FurnitureSeating; values
 	# inferred: 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4
 	# wants to stand, 5 standing up).
+	# `[Actor.]IsMoving`, `IsRunning`, `IsSneaking`: 1 while the actor moves,
+	# runs or sneaks (ActorReference.is_moving / is_running / is_sneaking, set
+	# by the controller driving it), else 0. Shipped conditions compare all
+	# three only with 0 and 1.
+	register("IsMoving", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		return 1 if actor != null and actor.is_moving else 0)
+	register("IsRunning", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		return 1 if actor != null and actor.is_running else 0)
+	register("IsSneaking", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		return 1 if actor != null and actor.is_sneaking else 0)
+	# The state of systems this engine does not have yet, as it stands: nothing
+	# is hit (GetHitLocation -1, its "none"; 0 to 12 name body parts) or
+	# knocked down (GetKnockedState 0), no actor is in combat, has a weapon out,
+	# sleeps (GetSleeping 0; 1 to 4 are sleep states), greets the player, has
+	# planted an explosive or activated a used item, and VATS is off. The idle
+	# tree's top-level items test these, so reading them as unimplemented (0)
+	# would pick hit reactions for standing actors (GetHitLocation != -1).
+	register("GetHitLocation", func(_a: Array, _ctx: ScriptExecutionContext):
+		return -1)
+	register("GetKnockedState", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("IsInCombat", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("IsWeaponOut", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("GetSleeping", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("IsGreetingPlayer", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("GetPlantedExplosive", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("GetUsedItemActivate", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("GetVATSMode", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	register("GetVATSValue", func(_a: Array, _ctx: ScriptExecutionContext):
+		return 0)
+	# `[Actor.]GetCurrentAIProcedure`: the code of the AI procedure the actor
+	# runs. Shipped conditions compare it with 4, 6, 10, 13, 16, 34 and others;
+	# their meaning has no source here yet, so it is -1, matching none
+	# (Plans/Actors/stage_f.md).
+	register("GetCurrentAIProcedure", func(_a: Array, _ctx: ScriptExecutionContext):
+		return -1)
 	register("GetSitting", func(_a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		return actor.sit_state if actor != null else 0)

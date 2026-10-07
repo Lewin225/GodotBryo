@@ -13,6 +13,10 @@ extends Node3D
 ## (BartenderTalk) until something ends it. Package idle collections (step 4):
 ## standing idle under a package with IDLA, Doc plays its idles every IDLT
 ## seconds, in order with Run In Sequence and one pass only with Do Once.
+## Ambient idles (step 5): standing, the movement and current-state condition
+## functions read as he is; he is in no faction GeneralIdles' items need, so his
+## pick plays nothing; Johnson Nash, a smoker, picks NPCSmokingIdle at its 30%;
+## PickIdle plays the pick.
 
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
@@ -89,6 +93,7 @@ func _ready() -> void:
 	ScriptServer.actor_idles.finish(doc)
 
 	await _check_collections(doc)
+	await _check_ambient(doc)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -133,6 +138,53 @@ func _check_collections(doc: ActorReference) -> void:
 			passes += 1
 	print("       INFO Doc's %s may play %s on %d of 400 tries" % [travel.editor_id, smoking.editor_id, passes])
 	doc.active_package = null
+
+## Ambient idles: conditions, the tree pick, PickIdle and the timer.
+func _check_ambient(doc: ActorReference) -> void:
+	ScriptServer.actor_idles.finish(doc)
+	doc.active_package = null
+	ScriptServer.move_reference(ScriptServer.player_reference, doc.current_space_form_id, doc.position, Vector3.ZERO)
+	ScriptServer.apply_pending_moves()
+	var values := []
+	for line in ["IsMoving", "IsRunning", "IsSneaking", "GetHitLocation", "GetKnockedState", "IsInCombat", "GetCurrentAIProcedure"]:
+		values.append(ScriptServer.run_debug_line("DocMitchellREF.%s" % line).get("result"))
+	check(values == [0, 0, 0, -1, 0, 0, -1], "standing, Doc's IsMoving, IsRunning, IsSneaking, GetHitLocation, GetKnockedState, IsInCombat, GetCurrentAIProcedure are %s" % [values])
+
+	# Doc is in neither SmokerFaction nor GeneralIdleFaction, which every
+	# GeneralIdles item a standing NPC without a weapon can reach needs, so the
+	# pick stops at GeneralIdles itself: a group with no KF that need not return
+	# a file, so no idle plays (GECK).
+	var doc_picks := {}
+	for attempt in 40:
+		var picked := ScriptServer.idle_tree.pick_for(doc)
+		var name := picked.editor_id if picked != null else "none"
+		doc_picks[name] = int(doc_picks.get(name, 0)) + 1
+	check(doc_picks.keys() == ["GeneralIdles"], "Doc's pick is the GeneralIdles group, which plays nothing (%s over 40)" % [doc_picks])
+	check(is_equal_approx(ScriptServer.actor_idles.ambient_seconds(doc), 4.0), "his ambient picks come every %.1f s (20 s at energy 50, his is 10)" % ScriptServer.actor_idles.ambient_seconds(doc))
+	var ambient := await _record_idles(doc, 1, 10000)
+	check(ambient.is_empty(), "so standing with no package for 10 s he plays no ambient idle (%s)" % ", ".join(ambient))
+
+	# Johnson Nash (Primm) is in SmokerFaction: NPCSmokingIdle, 30% of picks.
+	var johnson := EsmServer.find_reference_by_editor_id("PrimmJohnsonNashRef") as ActorReference
+	var johnson_picks := {}
+	for attempt in 400:
+		var picked := ScriptServer.idle_tree.pick_for(johnson)
+		var name := picked.editor_id if picked != null else "none"
+		johnson_picks[name] = int(johnson_picks.get(name, 0)) + 1
+	var smoking := int(johnson_picks.get("NPCSmokingIdle", 0))
+	check(smoking > 80 and smoking < 160, "Johnson Nash, a smoker, picks NPCSmokingIdle on %d of 400 (its GetRandomPercent < 30) %s" % [smoking, johnson_picks])
+	var played := false
+	for attempt in 40:
+		if int(ScriptServer.run_debug_line("PrimmJohnsonNashRef.PickIdle").get("result", 0)) == 1:
+			played = true
+			break
+	check(played, "PickIdle on him plays the pick (with no 3D node it ends at once)")
+
+func _top_of(idle: IdleBase) -> IdleBase:
+	var top := idle
+	while top.parent != null:
+		top = top.parent
+	return top
 
 ## A PACK with only an idle collection.
 func _collection_package(idles: Array[IdleBase], flags: int, timer: float) -> PackageBase:

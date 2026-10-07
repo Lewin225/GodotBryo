@@ -117,6 +117,19 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## Set and cleared by ScriptServer's ActorIdles; played by the actor node's
 ## ActorAnimator.
 @export var special_idle: IdleBase
+## Runtime state with no ESM source: the actor is moving (walking, running or
+## sneaking along). Set by the controller driving it (PlayerController,
+## NpcController) each physics frame; false while no controller drives it.
+## Read by the condition function IsMoving, and so by the idle tree.
+@export var is_moving: bool = false
+## Runtime state with no ESM source: the actor moves at a run. Set by the
+## controller driving it: the player's sprint or always-run, an NPC's package
+## Always Run. Read by IsRunning.
+@export var is_running: bool = false
+## Runtime state with no ESM source: the actor is sneaking. Set by the
+## controller driving it: the player's crouch, an NPC's package Always Sneak
+## (until combat and AI set it). Read by IsSneaking.
+@export var is_sneaking: bool = false
 ## Runtime state with no ESM source: what the actor looks at, set by the script
 ## function Look and cleared by StopLook. Read by the actor node's
 ## ActorHeadTracking, ahead of its other choices.
