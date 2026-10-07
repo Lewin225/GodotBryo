@@ -521,6 +521,15 @@ func _register_defaults() -> void:
 		actor.look_target = target
 		return 1)
 	# `[Actor.]StopLook`: ends Look.
+	# `[Actor.]PlayIdle IdleName`: the actor plays the IDLE in place of
+	# locomotion (ScriptServer's ActorIdles); none while seated.
+	register("PlayIdle", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var idle := _base_arg(a, 0) as IdleBase
+		if actor == null or idle == null:
+			return 0
+		script_server.actor_idles.play(actor, idle)
+		return 1)
 	register("StopLook", func(_a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		if actor == null:

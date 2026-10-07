@@ -166,12 +166,18 @@ const TYPE_SPECIFIC_FLAG_NAMES := {
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "ConditionSubrecord", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var conditions: Array[ConditionSubrecord] = []
 
 @export_group("Idle Animations")
-## IDLA: the idles the package plays. Read; not used yet (the actors plan's
-## stage F).
+## IDLA: the idles the package plays while it runs (Doc's VCG01 Travel
+## packages list NPCSmokingIdle). Read; not used yet (Plans/Actors/stage_f.md
+## step 4).
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "IdleBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_animations: Array[IdleBase] = []
-## IDLC, IDLF, IDLT, raw: their meaning is not verified yet. Read; not used.
+## IDLC, raw. Its meaning is not verified (xEdit's wbIdleAnimation is not
+## vendored); the name assumes a count or chance. Read; not used.
 var idle_collection_chance_raw: PackedByteArray = PackedByteArray()
+## IDLF, raw. Its meaning is not verified; the name assumes flags. Read; not
+## used.
 var idle_collection_flags_raw: PackedByteArray = PackedByteArray()
+## IDLT, raw. Its meaning is not verified; the name assumes a timer. Read; not
+## used.
 var idle_collection_timer_raw: PackedByteArray = PackedByteArray()
 
 @export_group("Type Specific")
@@ -223,10 +229,17 @@ var idle_collection_timer_raw: PackedByteArray = PackedByteArray()
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var dialogue_unknown: int = 0
 
 @export_group("Events")
-## POBA / POEA / POCA blocks: idle, embedded script and topic run when the
-## package begins, ends and changes. Read; not used yet.
+## POBA and the subrecords after it: On Begin. Read; used by PackageRunner when
+## the package becomes the actor's active package.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_begin: PackageEventCollection
+## POEA and the subrecords after it: On End. Read; used by PackageRunner when
+## the package is done (a Travel package arrives, a Dialogue package's
+## conversation or line starts).
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_end: PackageEventCollection
+## POCA and the subrecords after it: On Change. Read; used by PackageRunner
+## when AddScriptPackage adds the package already active (VCG01 stage 7's
+## comment), and, inferred from the name, when another package replaces it
+## before it is done (Plans/Actors/stage_f.md).
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "PackageEventCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var on_change: PackageEventCollection
 @export_group("")
 

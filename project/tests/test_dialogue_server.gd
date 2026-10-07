@@ -72,6 +72,7 @@ func _ready() -> void:
 
 	_check_built_infos(esm_server, quests, dialogue, doc, player, vcg01)
 	_check_actor_functions(esm_server, script_server, doc, player)
+	await _check_lines_keep_scripts(esm_server, quests, dialogue, doc, player)
 
 	quests.stop_quest(vcg01)
 	quests.reset_quest(vcg01)
@@ -108,6 +109,40 @@ func _check_built_infos(esm_server, quests, dialogue, doc: EsmReference, player:
 	docs.speaker_form_id = doc.base_form_id
 	topic.infos = [someone_else, docs]
 	check(dialogue.choose_info(topic, doc, player) == docs, "an INFO whose ANAM names another actor is not Doc's")
+
+## Doc's farewell (VCG01DocMitchellTopic076, INFO 001057E7) hands VCG01 to
+## VGenericTimer in its End script. Cut short by another line, or skipped to
+## its end, it still runs.
+func _check_lines_keep_scripts(esm_server, quests, dialogue, doc: EsmReference, player: EsmReference) -> void:
+	var topic: DialogueTopicBase = esm_server.find_base_by_editor_id("VCG01DocMitchellTopic076")
+	var farewell: DialogueInfoBase = null
+	for info in topic.infos:
+		if info.form_id == 0x001057E7:
+			farewell = info
+	var timer: QuestBase = esm_server.find_quest_by_editor_id("VGenericTimer")
+	var greeting: DialogueTopicBase = esm_server.find_base_by_editor_id("GREETING")
+
+	dialogue.say(doc, topic, player, farewell)
+	dialogue.say(doc, greeting, player)
+	check(quests.is_running(timer), "a farewell cut short by another line still runs its End script (VGenericTimer started)")
+	quests.stop_quest(timer)
+	dialogue.end_conversation(false)
+
+	var finished := [false]
+	var on_finished := func(line: DialogueLine) -> void:
+		if line.info == farewell:
+			finished[0] = true
+	dialogue.line_finished.connect(on_finished)
+	dialogue.say(doc, topic, player, farewell)
+	dialogue.wait_for_loads()
+	for skip_index in farewell.responses.size():
+		await get_tree().process_frame
+		dialogue.skip(doc)
+	for frame in 5:
+		await get_tree().process_frame
+	dialogue.line_finished.disconnect(on_finished)
+	check(finished[0] and quests.is_running(timer), "skipping each of its %d responses finishes it, End script run" % farewell.responses.size())
+	quests.stop_quest(timer)
 
 func _info(form_id: int, quest: QuestBase, flags: int) -> DialogueInfoBase:
 	var info := DialogueInfoBase.new()

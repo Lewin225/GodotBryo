@@ -33,6 +33,24 @@
 [ext_resource type="NoiseTexture3D" uid="uid://bnck2kxeg5bkg" path="res://addons/SunshineClouds2/NoiseTextures/SmallScaleNoise.tres" id="20_r62pu"]
 [ext_resource type="Script" uid="uid://djusduuxf0voj" path="res://addons/SunshineClouds2/SunshineCloudsDriver.gd" id="32_dhpj7"]
 
+[sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
+
+[sub_resource type="GDScript" id="GDScript_dhpj7"]
+script/source = "extends Label
+
+
+# Called when the node enters the scene tree for the first time.
+func _ready() -> void:
+	pass # Replace with function body.
+
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta: float) -> void:
+	visible_ratio += delta
+	if visible_ratio >= 1.0:
+		visible_ratio = 0.0
+"
+
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_d75sj"]
 auto_exposure_enabled = true
 auto_exposure_scale = 0.2
@@ -53,13 +71,15 @@ access_resolved_depth = true
 needs_motion_vectors = false
 needs_normal_roughness = false
 script = ExtResource("19_l1i01")
-clouds_coverage = 0.803
-lighting_density = 1.336
-use_environment_fog = 1.0
+clouds_coverage = 0.891
+clouds_density = 0.01
+clouds_anisotropy = 0.114
 cloud_ambient_tint = Color(0.4117647, 0.3882353, 0.34509805, 1)
 sampled_environment_fog_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
 ambient_occlusion_color = Color(0, 0, 0, 1)
-accumulation_decay = 0.8
+accumulation_decay = 0.93
+cloud_floor = 0.0
+cloud_ceiling = 3000.0
 max_step_count = 100.0
 lod_bias = 1.343
 height_gradient = ExtResource("14_082n1")
@@ -68,6 +88,8 @@ large_scale_noise = ExtResource("15_xex6t")
 medium_scale_noise = ExtResource("16_aa0lp")
 small_scale_noise = ExtResource("20_r62pu")
 curl_noise = ExtResource("12_dhpj7")
+blur_power = 0.0
+blur_passes = 1
 pre_pass_compute_shader = ExtResource("18_4v2jo")
 compute_shader = ExtResource("11_xfvwf")
 post_pass_compute_shader = ExtResource("17_iu0sx")
@@ -164,6 +186,45 @@ player = NodePath("../Character")
 cell_streamer = NodePath("../CellStreamerV2")
 world_streamer = NodePath("../WorldStreamerV2")
 terrain_streamer = NodePath("../TerrainStreamer")
+
+[node name="ColorRect" type="ColorRect" parent="TransitionCoordinator" unique_id=12291492]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Label" type="Label" parent="TransitionCoordinator/ColorRect" unique_id=813587565]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -79.5
+offset_right = 79.5
+offset_bottom = 23.0
+grow_horizontal = 2
+text = "Loading"
+label_settings = SubResource("LabelSettings_ggi80")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Label2" type="Label" parent="TransitionCoordinator/ColorRect/Label" unique_id=428871788]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -79.5
+offset_top = 14.0
+offset_right = 79.5
+offset_bottom = 37.0
+grow_horizontal = 2
+text = "............"
+label_settings = SubResource("LabelSettings_ggi80")
+horizontal_alignment = 1
+vertical_alignment = 1
+script = SubResource("GDScript_dhpj7")
 
 [node name="GameTimeManager" type="Node" parent="." unique_id=391827164]
 script = ExtResource("13_gametimemanager")
@@ -1909,6 +1970,10 @@ ambience_sample_environment = ExtResource("12_hb5m1")
 tracked_directional_lights = [NodePath("../Sun")]
 tracked_directional_light_shadow_steps = Array[int]([12])
 directional_light_power_multiplier = 0.6
+extra_large_structures_wind_speed = 1.0
+large_structures_wind_speed = 1.0
+medium_structures_wind_speed = 5.0
+small_structures_wind_speed = 1.0
 metadata/_custom_type_script = "uid://djusduuxf0voj"
 
 [connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]

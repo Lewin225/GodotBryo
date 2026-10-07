@@ -66,6 +66,7 @@ var function_registry := ScriptFunctionRegistry.new()
 var idle_tree := IdleTree.new()
 ## Seats actors that use furniture; a child node, for NifServer's callbacks.
 var furniture_seating := FurnitureSeating.new()
+var actor_idles := ActorIdles.new()
 ## Seconds of game time, advanced by _process: the clock GetSecondsPassed
 ## measures between a script's runs.
 var clock := 0.0
@@ -106,6 +107,8 @@ func _ready() -> void:
 	process_priority = 100
 	furniture_seating.name = "FurnitureSeating"
 	add_child(furniture_seating)
+	actor_idles.name = "ActorIdles"
+	add_child(actor_idles)
 	function_registry.script_server = self
 	function_registry.show_message_handler = _handle_show_message
 	function_registry.get_button_pressed_handler = _handle_get_button_pressed

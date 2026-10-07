@@ -97,7 +97,7 @@ func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference
 		line.voice_paths.append(path)
 		if not path.is_empty() and not _streams.has(path) and not missing.has(path):
 			missing.append(path)
-	_stop(_lines.get(speaker.instance_id))
+	_cut(_lines.get(speaker.instance_id))
 	_lines[speaker.instance_id] = line
 	mark_said(info, speaker)
 	if missing.is_empty():
@@ -105,6 +105,29 @@ func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference
 	else:
 		_tasks[WorkerThreadPool.add_task(_load_voice.bind(line, missing))] = line
 	return line
+
+## A line replaced before it ends still runs its scripts: its Begin script if
+## it had not started, its End script and SayToDone; it ends as if finished,
+## without continuing a conversation.
+func _cut(line: DialogueLine) -> void:
+	if line == null:
+		return
+	_lines.erase(line.speaker.instance_id)
+	_stop(line)
+	if not line.started:
+		ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
+	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
+	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
+	line_finished.emit(line)
+
+## Skips the response `speaker` is saying: the next one starts, and after the
+## last the line finishes as usual (its End script runs). A line whose voice
+## is still loading is not skipped.
+func skip(speaker: EsmReference) -> void:
+	var line := get_line(speaker)
+	if line == null or not line.started or line.response_index >= line.durations.size():
+		return
+	line.elapsed = line.durations[line.response_index]
 
 ## The line `speaker` is saying, or null.
 func get_line(speaker: EsmReference) -> DialogueLine:

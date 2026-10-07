@@ -277,6 +277,7 @@ Each is a reason to test before building on it.
 | Owners (NPC or faction) do not pass their own locked doors without the key | `DoorBase.activate` | conservative default; `Lock`'s `AsOwner` parameter (GECK wiki) may decide it | an owner NPC following through a door locked with `lock 50 0` and `lock 50 1` |
 | `GetSitting` is 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5 standing up | `ActorReference.sit_state`, `FurnitureSeating` | the idle tree's order (SitDown 2, DefaultSitIdle 1, sitting idles 3, StandUp 4) and Oblivion-era docs, recalled | console `GetSitting` on an NPC as it sits down, sits and stands |
 | A seated actor faces the furniture's heading plus the marker's orientation | `FurnitureSeating.get_placement` | inferred from census A4 | an NPC sitting in a chair turned in the world |
+| `PlayIdle` on an actor with no 3D node ends at once; on a seated actor it does nothing | `ActorIdles.play` | conservative default; no source | `PlayIdle` on a distant NPC, then on a seated one |
 
 ## Files
 
@@ -289,11 +290,13 @@ Each is a reason to test before building on it.
 | `script_execution_context.gd` | per-dispatch state |
 | `idle_tree.gd` | the IDLE tree and its pick (GECK "Idle Animations"), `ScriptServer.idle_tree` |
 | `furniture_seating.gd` | seats and stands actors that use furniture, from the NIF's markers; `GetFurnitureMarkerID` |
+| `actor_idles.gd` | plays the idles `PlayIdle` and package events ask for (`ActorReference.special_idle`), `ScriptServer.actor_idles` |
 
 ## Tests
 
 `tests/test_script_lexer`, `test_script_parser`, `test_script_interpreter`,
-`test_script_showmessage`, `test_script_esm`, `test_debug_tabs`, `test_furniture_seating`, run
+`test_script_showmessage`, `test_script_esm`, `test_debug_tabs`, `test_furniture_seating`,
+`test_actor_idles`, run
 against the shipped ESM:
 
 ```

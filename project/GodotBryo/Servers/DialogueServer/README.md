@@ -20,7 +20,8 @@ DialogueServer.wait_for_loads()                                  # blocks on pen
 DialogueServer.voice_path(info, index, speaker) -> String       # "" when the speaker has no voice type
 DialogueServer.start_conversation(speaker, listener, topic = GREETING) -> bool
 DialogueServer.choose(index)                                     # one of the last choices_ready
-DialogueServer.end_conversation(say_goodbye = true)
+DialogueServer.end_conversation(say_goodbye = true)           # scripts and tests; the player leaves only by choosing
+DialogueServer.skip(speaker)                                   # the line moves to its next response
 DialogueServer.get_conversation_speaker() -> EsmReference
 DialogueServer.get_conversation_listener() -> EsmReference
 DialogueServer.choices_after(info, speaker, listener) -> Array[DialogueChoice]
@@ -65,9 +66,12 @@ Topics join the player's topics. When the line finishes, a Goodbye INFO ends the
 conversation; otherwise the choices are its Link To topics, or else the topic list:
 top-level topics, then the player's added topics, each by priority (highest first), each
 with an INFO this speaker would say. A choice shows that INFO's prompt (RNAM), or else the
-topic's name. `choose()` has the speaker say the chosen topic. Escape ends the conversation,
-and the speaker says GOODBYE, which the GECK's Topics Tab says is used when the player
-exits the dialogue menu. Lines run under the Dialog menu while other menus pause them. The
+topic's name. `choose()` has the speaker say the chosen topic. The player cannot leave a conversation
+except through what is chosen, as in the original; `end_conversation()` is for scripts and
+tests (with `say_goodbye` the speaker says GOODBYE, which the GECK's Topics Tab says is used
+when the player exits the dialogue menu). `skip()` moves a line to its next response.
+**A line never loses its scripts:** one replaced before it ends (the speaker says another)
+runs its Begin script if it had not started, then its End script and SayToDone. Lines run under the Dialog menu while other menus pause them. The
 first topic list loads the 2,283 top-level topics once (425 ms; later lists about 20 ms).
 The player's `DialogueSession` shows the speaker, the response and the choices.
 

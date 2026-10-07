@@ -56,7 +56,7 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## not read.
 @export var idle_time: float = 0.0
 ## INAM (Patrol Data Idle). Present on no ACHR or ACRE in FalloutNV.esm; not
-## read.
+## read. Not the idle the actor is playing, which is special_idle.
 @export var idle_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "IdleBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle: IdleBase
 ## TNAM (Patrol Data Topic). Present on no ACHR or ACRE in FalloutNV.esm; not
@@ -110,6 +110,13 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## leaves furniture; read by GetSitting, and so by the idle tree's furniture
 ## items.
 @export var sit_state: int = 0
+## Not an ACHR or ACRE field: no actor-reference subrecord holds the idle an
+## actor is playing (the patrol INAM, `idle`, is present on none in
+## FalloutNV.esm). Runtime state with no ESM source: the idle a script
+## (PlayIdle) or a package event asked the actor to play, cleared when it ends.
+## Set and cleared by ScriptServer's ActorIdles; played by the actor node's
+## ActorAnimator.
+@export var special_idle: IdleBase
 ## Runtime state with no ESM source: what the actor looks at, set by the script
 ## function Look and cleared by StopLook. Read by the actor node's
 ## ActorHeadTracking, ahead of its other choices.

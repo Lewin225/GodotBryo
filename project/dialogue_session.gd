@@ -3,8 +3,10 @@ extends CanvasLayer
 
 ## Placeholder conversation screen: the speaker's name, the response being
 ## said, and the player's choices once the speaker finishes a line. It shows
-## DialogueServer's conversation and sends the player's choice back; Escape
-## ends the conversation. It changes no game state itself.
+## DialogueServer's conversation and sends the player's choice back. The
+## conversation ends only through what is chosen (a Goodbye INFO, or no
+## choice left), as in the original; interact skips the response being said.
+## It changes no game state itself.
 
 @onready var _speaker: Label = $Root/Panel/Margin/VBox/Speaker
 @onready var _response: Label = $Root/Panel/Margin/VBox/Response
@@ -55,12 +57,15 @@ func _clear_choices() -> void:
 		_choices.remove_child(child)
 		child.queue_free()
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or not event.is_action_pressed(&"interact"):
+		return
+	DialogueServer.skip(_speaker_reference)
+	get_viewport().set_input_as_handled()
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.pressed or event.echo:
 		return
-	if event.keycode == KEY_ESCAPE:
-		DialogueServer.end_conversation()
-		get_viewport().set_input_as_handled()
-	elif event.keycode >= KEY_1 and event.keycode <= KEY_9 and event.keycode - KEY_1 < _choices.get_child_count():
+	if event.keycode >= KEY_1 and event.keycode <= KEY_9 and event.keycode - KEY_1 < _choices.get_child_count():
 		DialogueServer.choose(event.keycode - KEY_1)
 		get_viewport().set_input_as_handled()

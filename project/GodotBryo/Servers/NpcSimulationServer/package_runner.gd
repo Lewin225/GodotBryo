@@ -36,8 +36,10 @@ extends Node
 ## Arriving completes it (`ActorReference.package_completed`, its On End runs,
 ## and the actor chooses again); a completed package that selection keeps
 ## choosing is not run again. When another package replaces it, the actor
-## leaves the furniture the package seated it in. Event scripts run with the
-## actor as subject; event topics are said; event idles are not played yet.
+## leaves the furniture the package seated it in. Events run their script with
+## the actor as subject, say their topic and play their idle. On Change runs
+## when AddScriptPackage adds the package already active, and when another
+## package replaces it before it is done (inferred; Plans/Actors/stage_f.md).
 ##
 ## Schedules (PSDT; over FalloutNV.esm's 4,163 PACK, month is always Any and date
 ## always 0): a package with an hour is due from it for its duration in hours,
@@ -139,6 +141,11 @@ func untrack(actor: ActorReference) -> void:
 ## Gives `actor` `package` as its script package (AddScriptPackage), or clears
 ## it with null (RemoveScriptPackage); either way the actor chooses again at once.
 func set_script_package(actor: ActorReference, package: PackageBase) -> void:
+	# Added again while it runs: its On Change runs (VCG01 stage 7: "this is
+	# the second time we call this - it triggers the OnChange animation").
+	if package != null and package == actor.script_package and package == actor.active_package:
+		_run_event(actor, package.on_change)
+		return
 	actor.script_package = package
 	track(actor)
 	evaluate_now(actor)
@@ -226,6 +233,10 @@ func _evaluate(actor: ActorReference) -> void:
 	var chosen := choose_package(actor)
 	if chosen == actor.active_package:
 		return
+	# Replaced before it is done: its On Change runs (inferred from the name;
+	# Plans/Actors/stage_f.md).
+	if actor.active_package != null and not actor.package_completed:
+		_run_event(actor, actor.active_package.on_change)
 	_end_package(actor)
 	actor.package_completed = false
 	actor.active_package = chosen
@@ -387,8 +398,8 @@ func _reference_destination(reference: EsmReference) -> Dictionary:
 		return {}
 	return {"space_form_id": reference.current_space_form_id, "position": reference.position, "reference": reference}
 
-## A package event: its script runs with the actor as subject and its topic is
-## said; its idle is not played yet (the actors plan's stage F).
+## A package event, in the GECK's order: its script runs with the actor as
+## subject, its topic is said, and its idle plays (ScriptServer's ActorIdles).
 func _run_event(actor: ActorReference, event: PackageEventCollection) -> void:
 	if event == null:
 		return
@@ -396,6 +407,8 @@ func _run_event(actor: ActorReference, event: PackageEventCollection) -> void:
 		ScriptServer.run_result_script(event.script_source, actor)
 	if event.topic != null:
 		DialogueServer.say(actor, event.topic, null)
+	if event.idle != null:
+		ScriptServer.actor_idles.play(actor, event.idle)
 
 func _warn_once(message: String) -> void:
 	if _warned.has(message):

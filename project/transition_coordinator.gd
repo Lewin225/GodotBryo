@@ -29,6 +29,12 @@ var _generation := 0
 ## above the loaded CELL's geometry instead of at the reference.
 var _drop_into_cell := false
 
+func _process(delta: float) -> void:
+	if is_transitioning():
+		$ColorRect.modulate.a = 1.0
+	else:
+		$ColorRect.modulate.a = lerpf($ColorRect.modulate.a, 0, delta*2.0)
+
 func _ready() -> void:
 	ScriptServer.reference_teleported.connect(_on_reference_teleported)
 	cell_streamer.load_completed.connect(_on_load_completed)

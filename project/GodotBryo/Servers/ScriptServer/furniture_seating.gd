@@ -40,6 +40,8 @@ var _waiting: Dictionary = {}
 
 ## `actor` has started using `furniture`: seats it once the markers are known.
 func seat(actor: ActorReference, furniture: FurnitureReference) -> void:
+	# The furniture idles replace any idle the actor was asked to play.
+	actor.special_idle = null
 	actor.sit_state = WANTS_TO_SIT
 	var model := _model_key(furniture)
 	if _markers_by_model.has(model):

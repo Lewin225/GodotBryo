@@ -166,6 +166,10 @@ func _restore_locomotion_root_pose() -> void:
 func get_idle() -> IdleBase:
 	return _idle
 
+## Whether the locomotion clips have loaded, so an idle can play.
+func is_loaded() -> bool:
+	return not _loading and _player != null and is_instance_valid(_player)
+
 func _on_idle_library_delivered(raw_library: AnimationLibrary, generation: int, idle: IdleBase, from_end: bool) -> void:
 	if generation != _idle_generation or _player == null or not is_instance_valid(_player):
 		return
