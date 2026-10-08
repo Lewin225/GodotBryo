@@ -3,14 +3,15 @@ extends Node
 
 ## Plays the idles actors are asked to play, for any actor, on screen or off:
 ## PlayIdle and PickIdle, a package's On Begin / End / Change idle, its idle
-## collection, and ambient idles from the idle tree (Plans/Actors/stage_f.md).
+## collection, ambient idles from the idle tree, and dialogue gestures on each
+## response said or heard (Plans/Actors/stage_f.md).
 ## A child of ScriptServer, beside FurnitureSeating.
 ##
 ## The idle is the actor's state (ActorReference.special_idle); the actor
 ## node's ActorAnimator plays it in place of locomotion, its StartLoop - EndLoop
 ## section the IDLE's loop count of times (forever for 255, until something
-## replaces or finishes it), and when it ends the actor returns to locomotion, turned the way the idle left its
-## body (as standing up from furniture does). An actor whose animations are
+## replaces or finishes it), and when it ends the actor returns to locomotion,
+## facing as it did. An actor whose animations are
 ## still loading keeps the idle and plays it once they load (EsmActorNode). An
 ## actor without a built visual ends the idle at once: nothing sees it
 ## (Plans/Actors/stage_f.md, Open). A seated actor does not play it: the
@@ -30,6 +31,8 @@ const IDLE_ANIMATION_DISTANCE := 2000.0 / 70.0
 ## lower energy idles more often; the formula has no source.
 @export var ambient_idle_seconds := 20.0
 
+## Actor -> the dialogue gesture it is playing for the line said or heard.
+var _dialogue_idles: Dictionary = {}
 ## Actor -> Time.get_ticks_msec() of its next ambient pick.
 var _ambient_next_msec: Dictionary = {}
 ## Actor -> {"package", "next_msec", "index", "done"}: where it is in its
@@ -39,11 +42,20 @@ var _collections: Dictionary = {}
 ## Replay Delay.
 var _last_played: Dictionary = {}
 
+func _ready() -> void:
+	# DialogueServer is an autoload that may be added after ScriptServer.
+	_connect_dialogue.call_deferred()
+
+func _connect_dialogue() -> void:
+	DialogueServer.response_started.connect(_on_response_started)
+	DialogueServer.line_finished.connect(_on_line_finished)
+
 ## `actor` plays `idle`, replacing any idle asked for before.
 func play(actor: ActorReference, idle: IdleBase) -> void:
 	if actor == null or idle == null or actor.sit_state != FurnitureSeating.NOT_SITTING:
 		return
 	actor.special_idle = idle
+	actor.last_idle = idle
 	var animator := FurnitureSeating._animator_for(actor)
 	if animator == null:
 		actor.special_idle = null
@@ -58,17 +70,15 @@ func play(actor: ActorReference, idle: IdleBase) -> void:
 		animator.idle_finished.connect(on_finished)
 	animator.play_idle(idle)
 
-## `actor`'s idle has ended: it returns to locomotion.
+## `actor`'s idle has ended: it returns to locomotion, facing as it did. (Only
+## standing up from furniture turns the actor, FurnitureSeating; a gesture's
+## torso yaw against locomotion's is the clips' frame, not a turn.)
 func finish(actor: ActorReference) -> void:
 	actor.special_idle = null
 	var animator := FurnitureSeating._animator_for(actor)
 	if animator == null or animator.get_idle() == null:
 		return
-	var turn := animator.stop_idle()
-	var body := FurnitureSeating._body_for(actor)
-	if body != null:
-		body.rotation.y -= turn
-		actor.rotation = EsmReferencePhysicaliser.authored_heading(body.rotation.y)
+	animator.stop_idle()
 
 ## An actor standing idle with a 3D node (NpcController, each physics frame),
 ## within IDLE_ANIMATION_DISTANCE of the player and while no idle plays: its
@@ -205,6 +215,47 @@ func _near_player(actor: ActorReference) -> bool:
 	if player == null or player.current_space_form_id != actor.current_space_form_id:
 		return false
 	return player.position.distance_to(actor.position) <= IDLE_ANIMATION_DISTANCE
+
+## Dialogue gestures: on each response (a "conversation item", GECK "Idle
+## Animations"), the speaker plays the response's speaker idle (INFO SNAM)
+## and the listener its listener idle (LNAM) when it names one, else each its
+## Idle Manager pick, which the idle tree's DialogueIdles serves while they
+## talk (GetCurrentAIProcedure DIALOGUE, IsTalking, GetDialogueEmotion,
+## IsLastIdlePlayed). Any actor, the player's body included.
+func _on_response_started(line: DialogueLine, _text: String) -> void:
+	var response := line.current_response()
+	if response == null:
+		return
+	_play_dialogue_idle(line.speaker as ActorReference, response.speaker_idle_form_id)
+	_play_dialogue_idle(line.listener as ActorReference, response.listener_idle_form_id)
+
+## Plays the named idle (a FormID, 0 for none) or the actor's pick, when it
+## has a KF and its Replay Delay has run out.
+func _play_dialogue_idle(actor: ActorReference, named_form_id: int) -> void:
+	if actor == null:
+		return
+	var idle: IdleBase = null
+	if named_form_id != 0:
+		idle = EsmServer.get_base(named_form_id) as IdleBase
+	else:
+		idle = ScriptServer.idle_tree.pick_for(actor)
+	if idle == null or not idle.has_kf() or not _replay_delay_passed(actor, idle):
+		return
+	_mark_played(actor, idle)
+	play(actor, idle)
+	if actor.special_idle == idle:
+		_dialogue_idles[actor] = idle
+
+## A line ended: a dialogue gesture its speaker or listener still plays (one
+## that loops) ends with it.
+func _on_line_finished(line: DialogueLine) -> void:
+	for reference in [line.speaker, line.listener]:
+		var actor := reference as ActorReference
+		if actor == null or not _dialogue_idles.has(actor):
+			continue
+		if actor.special_idle == _dialogue_idles[actor]:
+			finish(actor)
+		_dialogue_idles.erase(actor)
 
 ## An idle ended on `animator`: the actor returns to locomotion if it is the
 ## idle it was asked to play (not a furniture idle, nor one since replaced).

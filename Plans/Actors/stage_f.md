@@ -162,7 +162,39 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
      group, which plays nothing: every item a standing NPC without a weapon reaches needs
      SmokerFaction or GeneralIdleFaction, and he is in neither. Johnson Nash (a smoker) picks
      NPCSmokingIdle at its 30%.
-   - 5c: dialogue idles.
+   - 5c done (`test_actor_idles`): dialogue idles. Saying his farewell, Doc plays
+     ttnpcNTRLHandsDownTalkC, B and F for its three neutral responses and
+     ttnpcHappyArmsLooseTalkA for the fourth (emotion 5, Happy), all from DialogueIdles. On each response (DialogueServer `response_started`; a
+     "conversation item" read as a response: SNAM and TRDT emotion are per response), the
+     speaker and the listener each play the response's SNAM / LNAM idle when it names one
+     (SNAM on 320 INFOs, LNAM on 1), else their tree pick; the player's body too (actor logic,
+     no player exception). A dialogue idle still playing when the line ends is ended. New
+     condition functions: IsTalking (saying a line now), GetDialogueEmotion (the response said
+     or heard; xEdit TRDT: 0 Neutral, 1 Anger, 2 Disgust, 3 Fear, 4 Sad, 5 Happy, 6 Surprise,
+     7 Pained), IsLastIdlePlayed (`ActorReference.last_idle`), GetIsRace, GetIsClass, IsChild
+     (RACE DATA flag 0x04), GetCurrentAIPackage (the active package's type mapped by name onto
+     the GECK's codes: 0 EXPLORE, 1 FOLLOW, 3 EAT, 4 SLEEP, 5 COMBAT, 6 DIALOGUE, 13 WANDER,
+     14 TRAVEL, 15 ACCOMPANY, 16 USEITEMAT, 36 SANDBOX, 37 PATROL ...), and
+     GetCurrentAIProcedure from what the actor does (the GECK page saved under
+     `enginedocs/Geck/`, written for Fallout 3: 0 TRAVEL, 3 WAIT, 4 DIALOGUE, 5 GREET, 10 EAT,
+     11 FOLLOW, 13 COMBAT, 16 FLEE, 24 DO_NOTHING, 48 SITTING ...; "the procedure is not the same
+     as the current package": a Travel package travels, then waits). The idle data agrees:
+     DialogueIdles tests 4, EatIdles 10, NPCOnlyIdles excludes 4 and 10, LooseSmokingStanding
+     excludes 13 and 16.
+
+## Root bones in idle KFs
+
+Census over all 649 IDLE KFs under `Characters\_Male\` (`_diag/diag_idle_root_frames`): no KF
+keys Bip01's rotation; where Bip01's position is keyed (91) it is at the origin, or near it plus
+the root motion of furniture enters / exits and hit staggers; Bip01 NonAccum carries the stance,
+about 0.9 m up and a quarter turn about the up axis (80-110 degrees with authored leans: 116 with
+Bip01 unkeyed, 43 with it keyed). 127 key NonAccum's height but not its rotation (many talk and
+listen gestures, LooseSmokingStanding); 107 key neither (first-person and player camera clips).
+skeleton.nif instead rests Bip01 at 0.968 m and 90 degrees, NonAccum at identity. So an idle
+taking over from locomotion holds Bip01 at identity at the origin and, where the clip does not
+drive it, NonAccum at the transform locomotion's Bip01 and NonAccum gave it together
+(`ActorAnimator._hold_missing_tracks`): held at rest, keyed heights counted twice (Doc floated
+0.95 m) and unkeyed rotations lost the quarter turn (bodies turned 90 to 180 degrees).
 
 ## Open
 
@@ -171,6 +203,7 @@ From FalloutNV.esm (Python scans of every SCPT, INFO, QUST, PACK and IDLE) and t
 - What ends a forever idle besides another idle or the package's next event idle: an actor
   given a move target while one plays slides in its pose; a package's collection waits behind
   it.
-- GeneralIdles' NPC branch also tests GetCurrentAIPackage (!= 5, != 6) and NPCUnconscious
-  GetUnconscious (== 1), both unimplemented: reading 0 gives the right answer for a standing,
-  conscious NPC, by chance rather than design.
+- NPCUnconscious tests GetUnconscious (== 1), unimplemented: reading 0 gives the right answer
+  for a conscious NPC, by chance. BartenderDialogue tests GetHeadingAngle, unimplemented.
+- Whether FNV's procedure codes are Fallout 3's (the saved GECK page is FO3's); the idle data's
+  own uses (4, 10, 13, 16) agree.

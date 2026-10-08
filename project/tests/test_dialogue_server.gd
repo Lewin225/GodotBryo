@@ -73,6 +73,7 @@ func _ready() -> void:
 	_check_built_infos(esm_server, quests, dialogue, doc, player, vcg01)
 	_check_actor_functions(esm_server, script_server, doc, player)
 	await _check_lines_keep_scripts(esm_server, quests, dialogue, doc, player)
+	await _check_follow_ups(esm_server, quests, dialogue, doc, player)
 
 	quests.stop_quest(vcg01)
 	quests.reset_quest(vcg01)
@@ -113,6 +114,47 @@ func _check_built_infos(esm_server, quests, dialogue, doc: EsmReference, player:
 ## Doc's farewell (VCG01DocMitchellTopic076, INFO 001057E7) hands VCG01 to
 ## VGenericTimer in its End script. Cut short by another line, or skipped to
 ## its end, it still runs.
+## VCG01's farewell is reached by follow-ups (TCFU): the Pip-Boy line
+## (001057E4) follows up into the vault suit line (001057E5 / E6, by sex), whose
+## choices are topics 083-085; Doc's reply to 083 (0015E139) follows up into the
+## farewell (001057E7, Goodbye), whose End script starts VGenericTimer.
+func _check_follow_ups(esm_server, quests, dialogue, doc: EsmReference, player: EsmReference) -> void:
+	var topic: DialogueTopicBase = esm_server.find_base_by_editor_id("VCG01DocMitchellTopic076")
+	var timer: QuestBase = esm_server.find_quest_by_editor_id("VGenericTimer")
+	var said: Array[String] = []
+	var on_response := func(line: DialogueLine, _text: String) -> void:
+		var entry := "%08X" % line.info.form_id
+		if said.is_empty() or said.back() != entry:
+			said.append(entry)
+	dialogue.response_started.connect(on_response)
+	var offered := [[]]
+	var on_choices := func(choices: Array[DialogueChoice]) -> void:
+		var names: Array[String] = []
+		for choice in choices:
+			names.append(choice.topic.editor_id)
+		offered[0] = names
+	dialogue.choices_ready.connect(on_choices)
+	check(dialogue.start_conversation(doc, player, topic), "Doc starts a conversation on topic 076")
+	await _skip_until(dialogue, doc, func() -> bool: return not (offered[0] as Array).is_empty())
+	check(said.size() == 2 and said[0] == "001057E4" and (said[1] == "001057E5" or said[1] == "001057E6"), "the Pip-Boy line follows up into the vault suit line (%s)" % ", ".join(said))
+	var index := (offered[0] as Array).find("VCG01DocMitchellTopic083")
+	check(index != -1, "whose choices include topic 083 (%s)" % ", ".join(offered[0]))
+	dialogue.choose(index)
+	await _skip_until(dialogue, doc, func() -> bool: return dialogue.get_conversation_speaker() == null)
+	dialogue.response_started.disconnect(on_response)
+	dialogue.choices_ready.disconnect(on_choices)
+	check(said.size() == 4 and said[2] == "0015E139" and said[3] == "001057E7", "Doc's reply to 083 follows up into the farewell (%s)" % ", ".join(said))
+	check(dialogue.get_conversation_speaker() == null and quests.is_running(timer), "whose Goodbye ends the conversation and End script starts VGenericTimer")
+	quests.stop_quest(timer)
+
+## Skips Doc's lines, frame by frame, until `done` holds or 20 s pass.
+func _skip_until(dialogue, doc: EsmReference, done: Callable) -> void:
+	var deadline := Time.get_ticks_msec() + 20000
+	while not done.call() and Time.get_ticks_msec() < deadline:
+		dialogue.wait_for_loads()
+		dialogue.skip(doc)
+		await get_tree().process_frame
+
 func _check_lines_keep_scripts(esm_server, quests, dialogue, doc: EsmReference, player: EsmReference) -> void:
 	var topic: DialogueTopicBase = esm_server.find_base_by_editor_id("VCG01DocMitchellTopic076")
 	var farewell: DialogueInfoBase = null

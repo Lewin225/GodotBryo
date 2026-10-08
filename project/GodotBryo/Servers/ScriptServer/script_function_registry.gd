@@ -602,12 +602,45 @@ func _register_defaults() -> void:
 		return 0)
 	register("GetVATSValue", func(_a: Array, _ctx: ScriptExecutionContext):
 		return 0)
-	# `[Actor.]GetCurrentAIProcedure`: the code of the AI procedure the actor
-	# runs. Shipped conditions compare it with 4, 6, 10, 13, 16, 34 and others;
-	# their meaning has no source here yet, so it is -1, matching none
-	# (Plans/Actors/stage_f.md).
-	register("GetCurrentAIProcedure", func(_a: Array, _ctx: ScriptExecutionContext):
-		return -1)
+	# `[Actor.]GetCurrentAIProcedure` / `GetCurrentAIPackage`: the GECK's codes
+	# for what the actor is doing and its package (ActorAICodes).
+	register("GetCurrentAIProcedure", func(_a: Array, ctx: ScriptExecutionContext):
+		return ActorAICodes.procedure_code(ctx.calling_reference as ActorReference))
+	register("GetCurrentAIPackage", func(_a: Array, ctx: ScriptExecutionContext):
+		return ActorAICodes.package_code(ctx.calling_reference as ActorReference))
+	# `[Actor.]IsTalking`: 1 while the actor is saying a line (DialogueServer).
+	register("IsTalking", func(_a: Array, ctx: ScriptExecutionContext):
+		var line := DialogueServer.get_line(ctx.calling_reference)
+		return 1 if line != null and line.started else 0)
+	# `[Actor.]GetDialogueEmotion`: the emotion (INFO TRDT: 0 Neutral, 1 Anger,
+	# 2 Disgust, 3 Fear, 4 Sad, 5 Happy, 6 Surprise, 7 Pained) of the response
+	# the actor is saying, else of the one it is hearing; 0 with neither.
+	register("GetDialogueEmotion", func(_a: Array, ctx: ScriptExecutionContext):
+		var line := DialogueServer.get_line(ctx.calling_reference)
+		if line == null:
+			line = DialogueServer.get_line_heard_by(ctx.calling_reference)
+		var response := line.current_response() if line != null else null
+		return int(response.emotion) if response != null else 0)
+	# `[Actor.]IsLastIdlePlayed Idle`: 1 when Idle is the idle the actor last
+	# started (ActorReference.last_idle).
+	register("IsLastIdlePlayed", func(a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		var idle := _base_arg(a, 0)
+		return 1 if actor != null and idle != null and actor.last_idle == idle else 0)
+	# `[Actor.]GetIsRace Race`, `GetIsClass Class`, `IsChild`: the actor's base
+	# (through its Traits template) has that race or class, or a race with the
+	# Child flag (RACE DATA 0x04). Creatures have neither.
+	register("GetIsRace", func(a: Array, ctx: ScriptExecutionContext):
+		var npc := _traits_of(ctx.calling_reference)
+		var race := _base_arg(a, 0)
+		return 1 if npc != null and race != null and npc.race == race else 0)
+	register("GetIsClass", func(a: Array, ctx: ScriptExecutionContext):
+		var npc := _traits_of(ctx.calling_reference)
+		var actor_class := _base_arg(a, 0)
+		return 1 if npc != null and actor_class != null and npc.actor_class == actor_class else 0)
+	register("IsChild", func(_a: Array, ctx: ScriptExecutionContext):
+		var npc := _traits_of(ctx.calling_reference)
+		return 1 if npc != null and npc.race != null and (npc.race.flags & RaceBase.FLAG_CHILD) != 0 else 0)
 	register("GetSitting", func(_a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		return actor.sit_state if actor != null else 0)
@@ -868,6 +901,13 @@ static func _inventory_of(ref: EsmReference) -> Inventory:
 
 ## The base record at argument `index`: an EsmBase as a condition passes it,
 ## or an editor ID as a script names it. Null when neither.
+## The NpcBase that supplies `reference`'s traits (race, class): its base or
+## its Traits template; null for creatures and non-actors.
+static func _traits_of(reference: EsmReference) -> NpcBase:
+	if reference == null:
+		return null
+	return ActorBase.template_source(reference.base, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+
 static func _base_arg(args: Array, index: int) -> EsmBase:
 	if index >= args.size():
 		return null

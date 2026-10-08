@@ -1,6 +1,6 @@
 # Actors
 
-**Status: stages A, B, C and D done (E's ownership built during D, creatures aside); stage H next, see `stage_h.md`.**
+**Status: the done-condition is met: a new game plays VCG01 from stage 80 to stage 200, and completes it, with no console. Stages A-D, F (`stage_f.md`; the player's wake-up idles moved to `first_person.md`), G (`stage_g.md`) and H (`stage_h.md`) done; E's ownership built during D and H, creatures aside. Left: I (positional voice) and J (creatures).**
 
 Actor references, one actor node, an NPC controller, ownership between the simulation server and
 the controller, animation, furniture and AI packages. Done when a new game plays VCG01 from stage

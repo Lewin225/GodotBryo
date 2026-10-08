@@ -28,5 +28,9 @@ var voice_player: AudioStreamPlayer = null
 ## null.
 var loaded: Dictionary = {}
 
+## The response being said, or null after the last.
+func current_response() -> DialogueResponseCollection:
+	return info.responses[response_index] if response_index < info.responses.size() else null
+
 func current_text() -> String:
 	return info.responses[response_index].text if response_index < info.responses.size() else ""

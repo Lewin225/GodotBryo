@@ -20,7 +20,7 @@ const FLAG_HIGH_INTELLIGENCE := 0x20
 
 ## Not an INFO field: the DIAL whose child GRUP holds this INFO (TPIC, which
 ## would name it, is absent from FalloutNV.esm's INFOs). Set from the record
-## index; not used yet.
+## index; used by DialogueServer to say a follow-up INFO in its own topic.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var topic_form_id: int = 0
 ## QSTI: the quest this INFO belongs to, on every INFO. Read; resolved into
 ## `quest`.
@@ -52,7 +52,8 @@ const FLAG_HIGH_INTELLIGENCE := 0x20
 ## TCLF: the topics this INFO follows in a conversation, on 645 INFOs. Read;
 ## not used yet.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "int", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var link_from_form_ids: Array[int] = []
-## TCFU: follow-up INFOs, on 1,107 INFOs. Read; not used yet.
+## TCFU: follow-up INFOs, on 1,107 INFOs. Read; used by DialogueServer: in a
+## conversation, the first the speaker qualifies for is said after this one.
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "int", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var follow_up_form_ids: Array[int] = []
 ## NAME: topics added to the player's topic list when this INFO is said, on
 ## 420 INFOs. Read; not used yet.

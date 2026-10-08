@@ -129,6 +129,15 @@ func skip(speaker: EsmReference) -> void:
 		return
 	line.elapsed = line.durations[line.response_index]
 
+## A line `listener` is hearing (being said to it), or null.
+func get_line_heard_by(listener: EsmReference) -> DialogueLine:
+	if listener == null:
+		return null
+	for line: DialogueLine in _lines.values():
+		if line.listener == listener:
+			return line
+	return null
+
 ## The line `speaker` is saying, or null.
 func get_line(speaker: EsmReference) -> DialogueLine:
 	return _lines.get(speaker.instance_id) if speaker != null else null
@@ -322,8 +331,18 @@ func _say_in_conversation(topic: DialogueTopicBase, chosen: DialogueInfoBase = n
 	for form_id in line.info.add_topic_form_ids:
 		add_topic(EsmServer.get_base(form_id) as DialogueTopicBase)
 
+## After a line in a conversation: its first follow-up INFO (TCFU) the speaker
+## qualifies for is said next; else a Goodbye INFO ends the conversation; else
+## the player chooses. VCG01's farewell is reached only this way (the door
+## greeting follows up into the Pip-Boy line, that into the vault suit line,
+## and the replies to its choices into the farewell, whose End script hands
+## VCG01 to stage 200).
 func _continue_conversation(line: DialogueLine) -> void:
 	_conversation_line = null
+	var follow_up := _follow_up(line)
+	if follow_up != null:
+		_say_in_conversation(EsmServer.get_base(follow_up.topic_form_id) as DialogueTopicBase, follow_up)
+		return
 	if line.info.has_flag(DialogueInfoBase.FLAG_GOODBYE):
 		end_conversation(false)
 		return
@@ -445,6 +464,19 @@ func reset() -> void:
 	for task: int in _tasks.keys():
 		WorkerThreadPool.wait_for_task_completion(task)
 	_tasks.clear()
+
+## The first of `line`'s follow-up INFOs (TCFU, in order) its speaker
+## qualifies for, or null.
+func _follow_up(line: DialogueLine) -> DialogueInfoBase:
+	if line.info.follow_up_form_ids.is_empty():
+		return null
+	var context := ConditionContext.new(line.speaker, line.listener)
+	context.owner_label = "INFO %08X follow-up" % line.info.form_id
+	for form_id in line.info.follow_up_form_ids:
+		var info := EsmServer.get_base(form_id) as DialogueInfoBase
+		if info != null and _qualifies(info, line.speaker, context):
+			return info
+	return null
 
 func _qualifies(info: DialogueInfoBase, speaker: EsmReference, context: ConditionContext) -> bool:
 	if info.quest == null or not QuestServer.is_running(info.quest):

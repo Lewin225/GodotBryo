@@ -2,6 +2,10 @@
 class_name RaceBase
 extends EsmBase
 
+## DATA flag bits (xEdit FNV RACE).
+const FLAG_PLAYABLE := 0x01
+const FLAG_CHILD := 0x04
+
 ## RACE's four marker-delimited appearance collections. Head indices are the
 ## fopdoc-defined Head/Ears/Mouth/Teeth Lower/Teeth Upper/Tongue/Left Eye/
 ## Right Eye values; body indices are Upper Body/Left Hand/Right Hand/Upper
@@ -26,7 +30,9 @@ var female_voice_form_id: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_height: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_weight: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_weight: float = 0.0
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
+## DATA's flags (xEdit: Playable, Child). Read; Child used by the condition
+## function IsChild.
+@export_custom(PROPERTY_HINT_FLAGS, "Playable:1,Child:4", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var facegen_main_clamp: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var facegen_face_clamp: float = 0.0
 var male_default_hair_color: int = 0

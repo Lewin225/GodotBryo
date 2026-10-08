@@ -62,8 +62,9 @@ mode (`ScriptServer.is_menu_mode()`) lines do not advance and their voices pause
 **Conversations.** `start_conversation()` (StartConversation with the player, or the player
 activating an NPC) opens the Dialog menu (1009), records that the speaker has talked to the
 player, and has the speaker say the topic's INFO, GREETING by default; a said INFO's Add
-Topics join the player's topics. When the line finishes, a Goodbye INFO ends the
-conversation; otherwise the choices are its Link To topics, or else the topic list:
+Topics join the player's topics. When the line finishes, its first follow-up INFO (TCFU)
+the speaker qualifies for is said next; without one, a Goodbye INFO ends the conversation;
+otherwise the choices are its Link To topics, or else the topic list:
 top-level topics, then the player's added topics, each by priority (highest first), each
 with an INFO this speaker would say. A choice shows that INFO's prompt (RNAM), or else the
 topic's name. `choose()` has the speaker say the chosen topic. The player cannot leave a conversation

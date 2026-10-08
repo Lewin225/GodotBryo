@@ -16,7 +16,11 @@ extends Node3D
 ## Ambient idles (step 5): standing, the movement and current-state condition
 ## functions read as he is; he is in no faction GeneralIdles' items need, so his
 ## pick plays nothing; Johnson Nash, a smoker, picks NPCSmokingIdle at its 30%;
-## PickIdle plays the pick.
+## PickIdle plays the pick. Dialogue gestures (5c): saying his farewell, Doc
+## reports IsTalking, GetCurrentAIProcedure DIALOGUE (4) and
+## GetCurrentAIPackage 6, his response's emotion, and plays a gesture from
+## under DialogueIdles (or the response's own SNAM idle) that ends with the
+## line.
 
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
@@ -57,11 +61,23 @@ func _ready() -> void:
 	await _wait_until(func() -> bool: return _player_clip(doc_node) != ActorAnimator.IDLE_CLIP_NAME and _player_clip(doc_node) != "")
 	check(_player_clip(doc_node).begins_with("locomotion"), "and plays a locomotion clip again (%s)" % _player_clip(doc_node))
 
+	var standing_pelvis := _pelvis_height(doc_node)
+	var standing_heading := doc_node.rotation.y
 	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle LooseHandsOnHeart")
 	var started := Time.get_ticks_msec()
-	await _wait_until(func() -> bool: return doc.special_idle == null)
+	var highest := 0.0
+	var standing_torso := animator._torso_yaw()
+	var widest_turn := 0.0
+	await get_tree().process_frame
+	while doc.special_idle != null and Time.get_ticks_msec() - started < 10000:
+		highest = maxf(highest, _pelvis_height(doc_node))
+		widest_turn = maxf(widest_turn, absf(angle_difference(standing_torso, animator._torso_yaw())))
+		await get_tree().process_frame
+	check(highest < standing_pelvis + 0.05, "playing a gesture his pelvis stays at standing height (at most %.2f m, standing %.2f m): Bip01 held in the clips' frame" % [highest, standing_pelvis])
+	check(rad_to_deg(widest_turn) < 15.0, "and his torso keeps facing ahead (LooseHandsOnHeart keys no NonAccum rotation; at most %.0f degrees off)" % rad_to_deg(widest_turn))
 	var seconds := (Time.get_ticks_msec() - started) / 1000.0
 	check(seconds > 4.0 and seconds < 6.0, "LooseHandsOnHeart (loop 3-3, its 1.33 s section 3 times) plays %.1f s, not its 2.03 s clip once" % seconds)
+	check(absf(_pelvis_height(doc_node) - standing_pelvis) < 0.05 and absf(angle_difference(standing_heading, doc_node.rotation.y)) < 0.01, "and leaves him at his standing height facing as he did (pelvis %.2f m against %.2f m; turned %.0f degrees)" % [_pelvis_height(doc_node), standing_pelvis, rad_to_deg(angle_difference(standing_heading, doc_node.rotation.y))])
 	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle BartenderTalk")
 	var forever := Time.get_ticks_msec() + 9000
 	while Time.get_ticks_msec() < forever:
@@ -94,6 +110,7 @@ func _ready() -> void:
 
 	await _check_collections(doc)
 	await _check_ambient(doc)
+	await _check_dialogue(doc)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -148,7 +165,7 @@ func _check_ambient(doc: ActorReference) -> void:
 	var values := []
 	for line in ["IsMoving", "IsRunning", "IsSneaking", "GetHitLocation", "GetKnockedState", "IsInCombat", "GetCurrentAIProcedure"]:
 		values.append(ScriptServer.run_debug_line("DocMitchellREF.%s" % line).get("result"))
-	check(values == [0, 0, 0, -1, 0, 0, -1], "standing, Doc's IsMoving, IsRunning, IsSneaking, GetHitLocation, GetKnockedState, IsInCombat, GetCurrentAIProcedure are %s" % [values])
+	check(values == [0, 0, 0, -1, 0, 0, ActorAICodes.PROCEDURE_DO_NOTHING], "standing with no package, Doc's IsMoving, IsRunning, IsSneaking, GetHitLocation, GetKnockedState, IsInCombat, GetCurrentAIProcedure are %s (24: DO_NOTHING)" % [values])
 
 	# Doc is in neither SmokerFaction nor GeneralIdleFaction, which every
 	# GeneralIdles item a standing NPC without a weapon can reach needs, so the
@@ -179,6 +196,59 @@ func _check_ambient(doc: ActorReference) -> void:
 			played = true
 			break
 	check(played, "PickIdle on him plays the pick (with no 3D node it ends at once)")
+
+## Dialogue gestures while Doc says his farewell (VCG01DocMitchellTopic076,
+## INFO 001057E7, four responses) to the player.
+func _check_dialogue(doc: ActorReference) -> void:
+	ScriptServer.actor_idles.finish(doc)
+	var npc := doc.base as NpcBase
+	var race_result := int(ScriptServer.run_debug_line("DocMitchellREF.GetIsRace %s" % npc.race.editor_id).get("result", 0))
+	var child_result := int(ScriptServer.run_debug_line("DocMitchellREF.IsChild").get("result", -1))
+	check(race_result == 1 and child_result == 0, "GetIsRace %s is 1 and IsChild is 0 for Doc" % npc.race.editor_id)
+
+	var topic := EsmServer.find_base_by_editor_id("VCG01DocMitchellTopic076") as DialogueTopicBase
+	var farewell: DialogueInfoBase = null
+	for info in topic.infos:
+		if info.form_id == 0x001057E7:
+			farewell = info
+	var gestures: Array[String] = []
+	var states: Array[String] = []
+	var on_response := func(line: DialogueLine, _text: String) -> void:
+		if line.speaker != doc:
+			return
+		states.append("talking %s procedure %s package %s emotion %s/%d" % [
+			ScriptServer.run_debug_line("DocMitchellREF.IsTalking").get("result"),
+			ScriptServer.run_debug_line("DocMitchellREF.GetCurrentAIProcedure").get("result"),
+			ScriptServer.run_debug_line("DocMitchellREF.GetCurrentAIPackage").get("result"),
+			ScriptServer.run_debug_line("DocMitchellREF.GetDialogueEmotion").get("result"),
+			int(line.current_response().emotion)])
+	DialogueServer.response_started.connect(on_response)
+	var line := DialogueServer.say(doc, topic, ScriptServer.player_reference, farewell)
+	DialogueServer.wait_for_loads()
+	var last: IdleBase = null
+	var deadline := Time.get_ticks_msec() + 60000
+	while DialogueServer.get_line(doc) == line and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if doc.special_idle != null and doc.special_idle != last:
+			gestures.append("%s (%s)" % [doc.special_idle.editor_id, _top_of(doc.special_idle).editor_id])
+		last = doc.special_idle
+	DialogueServer.response_started.disconnect(on_response)
+	await get_tree().process_frame
+	check(not states.is_empty() and states.all(func(state: String) -> bool: return state.begins_with("talking 1 procedure 4 package 6") and state.get_slice(" ", 7).get_slice("/", 0) == state.get_slice(" ", 7).get_slice("/", 1)), "saying each response he is talking, procedure DIALOGUE, package 6, with the response's emotion (%s)" % "; ".join(states))
+	var named := farewell.responses.any(func(response: DialogueResponseCollection) -> bool: return response.speaker_idle_form_id != 0)
+	check(not gestures.is_empty() and gestures.all(func(gesture: String) -> bool: return gesture.ends_with("(DialogueIdles)") or named), "he gestures from DialogueIdles while he speaks (%s)" % ", ".join(gestures))
+	check(doc.special_idle == null or doc.special_idle.editor_id.is_empty() or not gestures.has("%s (DialogueIdles)" % doc.special_idle.editor_id), "and the gesture ends with the line (%s)" % (doc.special_idle.editor_id if doc.special_idle != null else "none"))
+	quests_stop_timer()
+
+## The farewell's End script starts VGenericTimer; stop it again.
+func quests_stop_timer() -> void:
+	QuestServer.stop_quest(EsmServer.find_quest_by_editor_id("VGenericTimer"))
+
+## The pelvis's height above the controller's origin, metres.
+func _pelvis_height(node: NpcController) -> float:
+	var skeleton := node.actor.find_child("Skeleton3D", true, false) as Skeleton3D
+	var pelvis := skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("Bip01 Pelvis"))
+	return pelvis.origin.y - node.global_position.y
 
 func _top_of(idle: IdleBase) -> IdleBase:
 	var top := idle

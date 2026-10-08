@@ -66,6 +66,10 @@ var _loop_start := -1.0
 var _loop_end := -1.0
 ## How many more times the loop section plays; -1 plays it forever.
 var _loops_left := 0
+## The idle being played took over from locomotion (rather than following
+## another idle): Bip01, if the clip does not drive it, is held at the clips'
+## frame, not where locomotion left it.
+var _idle_from_locomotion := false
 ## Bone index -> [position, rotation] of each root bone when locomotion last
 ## handed over to an idle; empty while locomotion plays.
 var _locomotion_root_pose: Dictionary = {}
@@ -118,6 +122,7 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 ## already past it (seated when its animations load).
 func play_idle(idle: IdleBase, from_end := false) -> void:
 	_idle_generation += 1
+	_idle_from_locomotion = _idle == null
 	if _idle == null:
 		_remember_locomotion_root_pose()
 	_idle = idle
@@ -210,24 +215,49 @@ func _on_idle_library_delivered(raw_library: AnimationLibrary, generation: int, 
 ## For each bone `animation` has no rotation or position track for, a one-key
 ## track holding the bone where it is now, so an idle that drives only some
 ## bones plays over the pose the previous clip left (the seated loop has no
-## calf or pelvis tracks: without this the knees straighten to rest). Bip01's
-## rotation is held at identity instead (the clips' frame). Holding untouched
-## bones is how Gamebryo's layered sequences are read here, not verified: it
-## approximates a lower sequence still holding them.
+## calf or pelvis tracks: without this the knees straighten to rest). The root
+## bones are held in the clips' frame instead. The KFs put Bip01 at the actor's
+## origin, unrotated, and Bip01 NonAccum carrying the stance: 0.947 m up and a
+## quarter turn about the up axis (ttnpcNTRLHandsDownTalkC keys it at 90
+## degrees), where skeleton.nif rests Bip01 there (0.968 m, 90 degrees) and
+## NonAccum at identity. So Bip01 is held at identity, and when the idle takes
+## over from locomotion, NonAccum, where the clip does not drive it, is held at
+## the transform locomotion's Bip01 and NonAccum gave it together. Held at their
+## rest instead, a gesture keying NonAccum's height lifted the body by its hip
+## height, and one not keying its rotation (LooseHandsOnHeart,
+## DialogArmsCrossedTalkA) turned the body a quarter turn and more. Holding
+## untouched bones is how Gamebryo's layered sequences are read here, not
+## verified: it approximates a lower sequence still holding them.
 func _hold_missing_tracks(animation: Animation) -> void:
 	var skeleton_path := _body.get_path_to(_skeleton)
+	var held_non_accum := _locomotion_non_accum_in_clip_frame()
 	for bone in _skeleton.get_bone_count():
 		var bone_name := _skeleton.get_bone_name(bone)
 		var path := NodePath("%s:%s" % [skeleton_path, bone_name])
+		var held := Transform3D(Basis(_skeleton.get_bone_pose_rotation(bone)), _skeleton.get_bone_pose_position(bone))
+		if bone_name == "Bip01":
+			held = Transform3D(Basis.IDENTITY, held.origin if not _idle_from_locomotion else Vector3.ZERO)
+		elif bone_name == NifNamesScript.escape("Bip01 NonAccum") and _idle_from_locomotion:
+			held = held_non_accum
 		if animation.find_track(path, Animation.TYPE_POSITION_3D) == -1:
 			var track := animation.add_track(Animation.TYPE_POSITION_3D)
 			animation.track_set_path(track, path)
-			animation.position_track_insert_key(track, 0.0, _skeleton.get_bone_pose_position(bone))
+			animation.position_track_insert_key(track, 0.0, held.origin)
 		if animation.find_track(path, Animation.TYPE_ROTATION_3D) == -1:
 			var track := animation.add_track(Animation.TYPE_ROTATION_3D)
 			animation.track_set_path(track, path)
-			var held := Quaternion.IDENTITY if bone_name == "Bip01" else _skeleton.get_bone_pose_rotation(bone)
-			animation.rotation_track_insert_key(track, 0.0, held)
+			animation.rotation_track_insert_key(track, 0.0, held.basis.get_rotation_quaternion())
+
+## Bip01 NonAccum's pose under locomotion expressed with Bip01 at the clips'
+## origin: locomotion's Bip01 pose composed with NonAccum's.
+func _locomotion_non_accum_in_clip_frame() -> Transform3D:
+	var root := _skeleton.find_bone("Bip01")
+	var non_accum := _skeleton.find_bone(NifNamesScript.escape("Bip01 NonAccum"))
+	if root == -1 or non_accum == -1:
+		return Transform3D.IDENTITY
+	var root_pose := Transform3D(Basis(_skeleton.get_bone_pose_rotation(root)), _skeleton.get_bone_pose_position(root))
+	var non_accum_pose := Transform3D(Basis(_skeleton.get_bone_pose_rotation(non_accum)), _skeleton.get_bone_pose_position(non_accum))
+	return root_pose * non_accum_pose
 
 ## Reads the idle clip's loop section from its StartLoop / EndLoop text keys
 ## (NifServer's `nif_text_keys` metadata; 256 of the 258 looping IDLEs' KFs have

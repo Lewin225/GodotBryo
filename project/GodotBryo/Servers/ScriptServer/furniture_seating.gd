@@ -137,7 +137,9 @@ func _on_sat_down(_idle: IdleBase, actor: ActorReference, animator: ActorAnimato
 	if actor.sit_state != SITTING_DOWN:
 		return
 	actor.sit_state = SITTING
-	animator.play_idle(_pick_seated_loop(actor))
+	var loop := _pick_seated_loop(actor)
+	actor.last_idle = loop
+	animator.play_idle(loop)
 
 func _on_stood(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) -> void:
 	if actor.sit_state != STANDING_UP:
@@ -155,6 +157,9 @@ func _on_stood(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) 
 func _play(animator: ActorAnimator, idle: IdleBase, on_finished: Callable, from_end := false) -> void:
 	if animator.idle_finished.is_connected(on_finished):
 		return
+	var actor := (animator.get_parent() as EsmActorNode).reference as ActorReference
+	if actor != null:
+		actor.last_idle = idle
 	animator.idle_finished.connect(on_finished, CONNECT_ONE_SHOT)
 	animator.play_idle(idle, from_end)
 

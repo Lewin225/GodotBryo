@@ -29,4 +29,9 @@ func _on_library(library: AnimationLibrary, path: String) -> void:
 		if type == "position":
 			var keys := animation.track_get_key_count(track)
 			line += " %s -> %s" % [animation.track_get_key_value(track, 0), animation.track_get_key_value(track, keys - 1)]
+		elif type == "rotation" and String(animation.track_get_path(track)).begins_with("Bip01") and String(animation.track_get_path(track)).length() <= 15:
+			var keys := animation.track_get_key_count(track)
+			var first: Quaternion = animation.track_get_key_value(track, 0)
+			var last: Quaternion = animation.track_get_key_value(track, keys - 1)
+			line += " euler degrees %s -> %s (%d keys)" % [(first.get_euler() * 180.0 / PI).round(), (last.get_euler() * 180.0 / PI).round(), keys]
 		print(line)

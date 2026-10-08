@@ -117,6 +117,11 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## Set and cleared by ScriptServer's ActorIdles; played by the actor node's
 ## ActorAnimator.
 @export var special_idle: IdleBase
+## Runtime state with no ESM source: the idle the actor last started playing
+## (any: PlayIdle, package and ambient idles, dialogue gestures, furniture).
+## Set by ScriptServer's ActorIdles and FurnitureSeating; read by the condition
+## function IsLastIdlePlayed, which the dialogue gestures chain on.
+@export var last_idle: IdleBase
 ## Runtime state with no ESM source: the actor is moving (walking, running or
 ## sneaking along). Set by the controller driving it (PlayerController,
 ## NpcController) each physics frame; false while no controller drives it.

@@ -278,7 +278,9 @@ Each is a reason to test before building on it.
 | `GetSitting` is 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5 standing up | `ActorReference.sit_state`, `FurnitureSeating` | the idle tree's order (SitDown 2, DefaultSitIdle 1, sitting idles 3, StandUp 4) and Oblivion-era docs, recalled | console `GetSitting` on an NPC as it sits down, sits and stands |
 | A seated actor faces the furniture's heading plus the marker's orientation | `FurnitureSeating.get_placement` | inferred from census A4 | an NPC sitting in a chair turned in the world |
 | `PlayIdle` on an actor with no 3D node ends at once; on a seated actor it does nothing | `ActorIdles.play` | conservative default; no source | `PlayIdle` on a distant NPC, then on a seated one |
-| GetHitLocation is -1; GetKnockedState, IsInCombat, IsWeaponOut, GetSleeping, IsGreetingPlayer, GetPlantedExplosive, GetUsedItemActivate, GetVATSMode, GetVATSValue are 0; GetCurrentAIProcedure is -1 | registry | the state of systems not built yet; GetCurrentAIProcedure's codes have no source | each again once hits, combat, sleep, VATS and AI procedures exist |
+| GetHitLocation is -1; GetKnockedState, IsInCombat, IsWeaponOut, GetSleeping, IsGreetingPlayer, GetPlantedExplosive, GetUsedItemActivate, GetVATSMode, GetVATSValue are 0 | registry | the state of systems not built yet | each again once hits, combat, sleep, VATS and AI procedures exist |
+| GetCurrentAIProcedure is DIALOGUE while an actor says or hears a line or is in a conversation, SITTING while it uses furniture, then by its package (Travel travels while it has somewhere to go, then waits; a Dialogue package greets until done), DO_NOTHING with none; GetCurrentAIPackage is 6 in dialogue, else its package type mapped by name | `ActorAICodes` | codes from the GECK pages (GetCurrentAIProcedure's is Fallout 3's); the mapping from names | `GetCurrentAIProcedure` on an NPC walking a Travel package, then arrived, then talking |
+| Each response said picks a gesture for the speaker and the listener (its SNAM / LNAM, else the idle tree); a looping one ends with the line | `ActorIdles._on_response_started` | GECK "Idle Animations" says each "conversation item"; read as a response | a long multi-response INFO in a conversation |
 | Ambient idles come every 20 s x energy / 50 (at least 1 s) while an NPC stands idle with no package idle collection | `ActorIdles.update_ambient` | GECK: lower energy idles more often; the formula has no source | an energy-10 and an energy-100 NPC standing side by side |
 | A package's idle collection plays an idle IDLT seconds after the last ended (fAIIdleWaitTime, 1 s, when 0), within fAIIdleAnimationDistance of the player; IDLF 0x01 in order, 0x04 one pass | `ActorIdles.update_collection` | IDLF bit names recalled from FO3's GECK; the rest from setting names | a Tops dealer's smoke break, a Strip crowd's cheering |
 
@@ -293,6 +295,7 @@ Each is a reason to test before building on it.
 | `script_execution_context.gd` | per-dispatch state |
 | `idle_tree.gd` | the IDLE tree and its pick (GECK "Idle Animations"), `ScriptServer.idle_tree` |
 | `furniture_seating.gd` | seats and stands actors that use furniture, from the NIF's markers; `GetFurnitureMarkerID` |
+| `actor_ai_codes.gd` | the GECK's GetCurrentAIPackage and GetCurrentAIProcedure codes, and which applies to an actor now |
 | `actor_idles.gd` | plays the idles `PlayIdle`, package events and package idle collections ask for (`ActorReference.special_idle`), `ScriptServer.actor_idles` |
 
 ## Tests
