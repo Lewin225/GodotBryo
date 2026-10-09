@@ -1033,8 +1033,8 @@ func _update_head_camera(delta: float) -> void:
 	camera_mount.global_transform = camera_mount.global_transform.interpolate_with(head as Transform3D, weight)
 
 ## Where the eyes are: the head bone's position plus head_camera_eye_offset, facing
-## where the head faces (its +Y, the look-at modifier's forward axis), upright.
-## Null without a built skeleton.
+## where the head faces (its +Y, the look-at modifier's forward axis), turned
+## and pitched with it but without its roll. Null without a built skeleton.
 func _head_transform() -> Variant:
 	if actor == null or not actor.is_visual_built():
 		return null
@@ -1045,11 +1045,10 @@ func _head_transform() -> Variant:
 	if _head_skeleton != skeleton or _head_pose == null:
 		return null
 	var head: Transform3D = _head_pose
-	var forward := head.basis.y
-	forward.y = 0.0
-	if forward.length() < 0.01:
+	var forward := head.basis.y.normalized()
+	if absf(forward.dot(Vector3.UP)) > 0.99:
 		return null
-	var facing := Basis.looking_at(forward.normalized(), Vector3.UP)
+	var facing := Basis.looking_at(forward, Vector3.UP)
 	return Transform3D(facing, head.origin + facing * Vector3(head_camera_eye_offset.x, head_camera_eye_offset.y, -head_camera_eye_offset.z))
 
 ## The head bone's global transform as of the skeleton's last update, with its

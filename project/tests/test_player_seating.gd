@@ -11,6 +11,11 @@ extends Node3D
 
 const VISUAL_FRAMES := 120 * 60
 const FRAMES := 30 * 60
+## How far the camera's pitch may be from the pitch to Doc's eyes, degrees: the
+## head bone sits below the eyes and the look-at aims from origin_offset.
+const PITCH_TOLERANCE_DEGREES := 8.0
+## How far Doc's body is raised for the pitch check, metres.
+const RAISE_METERS := 4.0
 
 var failures := 0
 
@@ -63,6 +68,8 @@ func _ready() -> void:
 	var during := _camera_angle_to(player, _eyes_of(doc))
 	var seated_short := _short_of_limit(player)
 	check(player.actor.head_tracking.get_target() == doc and absf(during - seated_short) < 3.0, "in conversation with Doc the seated camera turns to him as far as the neck allows (%.0f degrees off, from %.0f; %.0f beyond the left-right limit)" % [during, before, seated_short])
+	var seated_pitch := _camera_pitch_off(player, _eyes_of(doc))
+	check(absf(seated_pitch.x - seated_pitch.y) < PITCH_TOLERANCE_DEGREES, "and pitches up or down to his eyes (camera %.0f degrees, his eyes %.0f)" % [seated_pitch.x, seated_pitch.y])
 	DialogueServer._conversation_speaker = null
 	DialogueServer._conversation_listener = null
 
@@ -93,6 +100,17 @@ func _ready() -> void:
 	var standing_during := _camera_angle_to(player, _eyes_of(doc))
 	var standing_short := _short_of_limit(player)
 	check(player.camera_mode == 1 and absf(standing_during - standing_short) < 3.0, "standing in conversation with Doc the camera follows the head to him as far as the neck allows (camera_mode %d, %.0f degrees off, from %.0f; %.0f beyond the left-right limit)" % [player.camera_mode, standing_during, standing_before, standing_short])
+	var standing_pitch := _camera_pitch_off(player, _eyes_of(doc))
+	check(absf(standing_pitch.x - standing_pitch.y) < PITCH_TOLERANCE_DEGREES, "and pitches up or down to his eyes (camera %.0f degrees, his eyes %.0f)" % [standing_pitch.x, standing_pitch.y])
+	# Doc's body raised (he stands about 15 m away): the camera pitches up
+	# to his eyes.
+	var doc_body := (EsmNode.node_for(doc) as NpcController).actor
+	doc_body.position.y += RAISE_METERS
+	for frame in 150:
+		await get_tree().process_frame
+	var raised_pitch := _camera_pitch_off(player, _eyes_of(doc))
+	check(raised_pitch.y > standing_pitch.y + 10.0 and absf(raised_pitch.x - raised_pitch.y) < PITCH_TOLERANCE_DEGREES, "with Doc raised %.0f m the camera pitches up to his eyes (camera %.0f degrees, his eyes %.0f)" % [RAISE_METERS, raised_pitch.x, raised_pitch.y])
+	doc_body.position.y -= RAISE_METERS
 	DialogueServer._conversation_speaker = null
 	DialogueServer._conversation_listener = null
 	await get_tree().process_frame
@@ -115,6 +133,13 @@ func _camera_angle_to(player: PlayerController, point: Vector3) -> float:
 	var forward := -player.camera_mount.global_basis.z
 	var to_point := point - player.camera_mount.global_position
 	return rad_to_deg(absf(Vector2(forward.x, forward.z).angle_to(Vector2(to_point.x, to_point.z))))
+
+## The camera's pitch and the pitch from the camera to `point`, degrees, up
+## positive: x the camera's, y the point's.
+func _camera_pitch_off(player: PlayerController, point: Vector3) -> Vector2:
+	var forward := -player.camera_mount.global_basis.z
+	var to_point := (point - player.camera_mount.global_position).normalized()
+	return Vector2(rad_to_deg(asin(forward.y)), rad_to_deg(asin(to_point.y)))
 
 ## How far the look point lies beyond the head's left-right limit, degrees (0
 ## when within it): the angle about the head bone's X axis from its rest pose
