@@ -51,8 +51,11 @@ the same topic again gets the next line. The line starts when its voice files ar
 cached ones at once, others read and parsed on a `WorkerThreadPool` task (usually ready the
 next frame; Doc's 15 VCG01Intro files take 0.05-1.4 ms to read and 0.05 ms each to parse).
 Starting runs the begin script on the speaker (the listener as action reference). Each
-response lasts its voice file's length and plays it, not positionally, through an
-`AudioStreamPlayer` the line owns; with no voice file it lasts its text at
+response lasts its voice file's length and plays it at the speaker, through an
+`AudioStreamPlayer3D` the line owns, placed each frame at the speaker's eyes (its head
+tracking's eye point, or its position plus `voice_height` without a 3D node) and silent
+while the speaker is in another space than the player; the falloff (`voice_unit_size`,
+`voice_max_distance`) has no ESM or GECK source; with no voice file it lasts its text at
 `fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
 every line; when its last response ends, the end script runs on the speaker, then the
 speaker's `SayToDone` block for the topic, then `line_finished`. A new line from a speaker
@@ -91,7 +94,7 @@ factions from its record or, when its template flags say so, its template
 
 ## Not yet
 
-- Positional voice at the speaker (stage E); lip sync and speaker/listener idles.
+- Lip sync.
 - The speaker walking to the player before StartConversation; conversations between NPCs.
 - Shading heard choices, Info Refusal, speech challenges.
 - Runtime faction changes (SetFactionRank, AddToFaction); GetInFaction reads authored SNAM.

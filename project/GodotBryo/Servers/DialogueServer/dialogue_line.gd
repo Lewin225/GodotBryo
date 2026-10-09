@@ -22,8 +22,9 @@ var started := false
 var response_index := 0
 ## Seconds the current response has been said.
 var elapsed := 0.0
-## Plays the current response's voice; freed when the line ends.
-var voice_player: AudioStreamPlayer = null
+## Plays the current response's voice at the speaker (DialogueServer places
+## it each frame); freed when the line ends.
+var voice_player: AudioStreamPlayer3D = null
 ## Filled by the loading task, read once it completes: path -> AudioStream or
 ## null.
 var loaded: Dictionary = {}

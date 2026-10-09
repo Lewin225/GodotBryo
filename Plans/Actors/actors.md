@@ -1,6 +1,6 @@
 # Actors
 
-**Status: the done-condition is met: a new game plays VCG01 from stage 80 to stage 200, and completes it, with no console. Stages A-D, F (`stage_f.md`; the player's wake-up idles moved to `first_person.md`), G (`stage_g.md`) and H (`stage_h.md`) done; E's ownership built during D and H, creatures aside. Left: I (positional voice) and J (creatures).**
+**Status: the done-condition is met: a new game plays VCG01 from stage 80 to stage 200, and completes it, with no console. Stages A-D, F (`stage_f.md`; the player's wake-up idles moved to `first_person.md`), G (`stage_g.md`) and H (`stage_h.md`) done; E's ownership built during D and H, creatures aside. I (positional voice) done. Left: J (creatures), held back until the actor refactor.**
 
 Actor references, one actor node, an NPC controller, ownership between the simulation server and
 the controller, animation, furniture and AI packages. Done when a new game plays VCG01 from stage
@@ -91,7 +91,7 @@ Each stage has a gate; a later stage does not start on an unmet gate.
 | F. Animation | Locomotion from the controller's movement; furniture enter, sit and exit; `PlayIdle` and package idles from IDLE records (VCG01's are loose special idles played by name; the idle tree is not needed); `Look` / `StopLook`. | Doc plays VCG01DocGiveMirror, the player plays the VCG01 wake-up idles (moved to `first_person.md`), and Doc looks at the player. NPCSmokingIdle needs SmokerFaction, which Doc is not in (`stage_f.md`). |
 | G. Furniture | Plan: `stage_g.md`. FURN markers; entering and leaving a seat for any actor, NPC, creature or the player: sitting is the actor's state (`ScriptServer.begin_use`, `ActorReference.using`), not a controller's; controllers only stop moving while it is set, and the actor node plays the furniture animations; `IsCurrentFurnitureRef`, `GetSitting`. | The player sitting on the couch completes objective 40. |
 | H. Packages | Plan: `stage_h.md`. First slice done early (stage D): FOLLOW through `PackageRunner` and `LowLevelTravel`, `AddScriptPackage` / `RemoveScriptPackage`; see `stage_d.md`. Typed `PackageBase`; the package stack (PKID, quest-added); selection by order, schedule and conditions; `evp`; Travel (using furniture at a radius-0 FURN destination, as Use Item At does) and Dialogue (force-greet), per census A3; `AddScriptPackage` / `RemoveScriptPackage`; packages on the player too (VCG00/VCG01 add them). Generic over actors, in both `NpcController` and `NpcSimulationServer`. | The done-condition. |
-| I. Positional voice | Speech plays at the speaker's actor node. | Doc's lines come from Doc. |
+| I. Positional voice (done) | Speech plays at the speaker's actor node. DialogueServer places each line's AudioStreamPlayer3D at the speaker's eyes every frame (its position plus eye height without a node; silent in another space than the player); the falloff exports have no source (`test_actor_idles`). | Doc's lines come from Doc. |
 | J. Creatures | CREA parts from `NIFZ`/`TPLT` through the actor node; creatures through D-H unchanged. | A Goodsprings creature renders, animates and runs its packages. |
 
 ## Unverified

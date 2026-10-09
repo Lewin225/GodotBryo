@@ -23,6 +23,14 @@ const VOICE_PLUGIN := "falloutnv.esm"
 const VOICE_NAME_LENGTH := 25
 const VOICE_QUEST_LENGTH := 10
 
+## A voice's falloff: full volume within this many metres of the speaker
+## (AudioStreamPlayer3D.unit_size). No ESM or GECK setting gives voice range.
+@export var voice_unit_size := 4.0
+## A voice is not heard beyond this many metres.
+@export var voice_max_distance := 40.0
+## Height of the voice above a speaker with no 3D node, metres.
+@export var voice_height := 1.6
+
 var _said: Dictionary = {} # speaker instance_id -> {INFO FormID: game day said}
 var _talked_to_player: Dictionary = {} # actor instance_id -> true
 var _added_topics: Dictionary = {} # DIAL FormID -> true
@@ -163,6 +171,7 @@ func _process(delta: float) -> void:
 	for line: DialogueLine in _lines.values():
 		if not line.started:
 			continue
+		_place_voice(line)
 		line.elapsed += delta
 		while line.response_index < line.durations.size() and line.elapsed >= line.durations[line.response_index]:
 			line.elapsed -= line.durations[line.response_index]
@@ -208,9 +217,12 @@ func _say_response(line: DialogueLine) -> void:
 	var stream: AudioStream = line.streams[line.response_index]
 	if stream != null:
 		if line.voice_player == null:
-			line.voice_player = AudioStreamPlayer.new()
+			line.voice_player = AudioStreamPlayer3D.new()
+			line.voice_player.unit_size = voice_unit_size
+			line.voice_player.max_distance = voice_max_distance
 			add_child(line.voice_player)
 		line.voice_player.stream = stream
+		_place_voice(line)
 		line.voice_player.play()
 	elif line.voice_player != null:
 		line.voice_player.stop()
@@ -368,6 +380,32 @@ func _get_top_level_topics() -> Array[DialogueTopicBase]:
 				if data.size() >= 2 and (data[1] & DialogueTopicBase.FLAG_TOP_LEVEL) != 0:
 					_top_level_topics.append(EsmServer.get_base(int(row["form_id"])) as DialogueTopicBase)
 	return _top_level_topics
+
+## Puts a line's voice at its speaker's eyes: its ActorHeadTracking's eye point
+## when it has a 3D node (an NPC's, or the player's body), else its position
+## plus voice_height, so a speaker with no node is heard from where it stands.
+## A speaker in another space than the player is silent (spaces' coordinates
+## overlap).
+func _place_voice(line: DialogueLine) -> void:
+	if line.voice_player == null or line.speaker == null:
+		return
+	line.voice_player.global_position = speaker_voice_position(line.speaker)
+	var player := ScriptServer.player_reference
+	var same_space := player == null or player.current_space_form_id == line.speaker.current_space_form_id
+	line.voice_player.volume_db = 0.0 if same_space else -80.0
+
+## Where `speaker`'s voice comes from (Godot space).
+func speaker_voice_position(speaker: EsmReference) -> Vector3:
+	var actor_node: EsmActorNode = null
+	var controller := EsmNode.node_for(speaker) as NpcController
+	if controller != null:
+		actor_node = controller.actor
+	var player := ScriptServer.player_node as PlayerController
+	if actor_node == null and player != null and player.possessed == speaker:
+		actor_node = player.actor
+	if actor_node != null and actor_node.is_inside_tree() and actor_node.head_tracking != null:
+		return actor_node.head_tracking.get_eye_position()
+	return EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * speaker.position + Vector3.UP * voice_height
 
 ## Pauses or resumes every line's voice.
 func _pause_voices(paused: bool) -> void:

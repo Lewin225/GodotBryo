@@ -227,8 +227,14 @@ func _check_dialogue(doc: ActorReference) -> void:
 	DialogueServer.wait_for_loads()
 	var last: IdleBase = null
 	var deadline := Time.get_ticks_msec() + 60000
+	var voice_off := -1.0
+	var voice_volume := -100.0
 	while DialogueServer.get_line(doc) == line and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
+		if line.voice_player != null and voice_off < 0.0:
+			var eyes := (EsmNode.node_for(doc) as NpcController).actor.head_tracking.get_eye_position()
+			voice_off = line.voice_player.global_position.distance_to(eyes)
+			voice_volume = line.voice_player.volume_db
 		if doc.special_idle != null and doc.special_idle != last:
 			gestures.append("%s (%s)" % [doc.special_idle.editor_id, _top_of(doc.special_idle).editor_id])
 		last = doc.special_idle
@@ -238,7 +244,24 @@ func _check_dialogue(doc: ActorReference) -> void:
 	var named := farewell.responses.any(func(response: DialogueResponseCollection) -> bool: return response.speaker_idle_form_id != 0)
 	check(not gestures.is_empty() and gestures.all(func(gesture: String) -> bool: return gesture.ends_with("(DialogueIdles)") or named), "he gestures from DialogueIdles while he speaks (%s)" % ", ".join(gestures))
 	check(doc.special_idle == null or doc.special_idle.editor_id.is_empty() or not gestures.has("%s (DialogueIdles)" % doc.special_idle.editor_id), "and the gesture ends with the line (%s)" % (doc.special_idle.editor_id if doc.special_idle != null else "none"))
+	check(voice_off >= 0.0 and voice_off < 0.05 and voice_volume == 0.0, "his voice plays from his eyes (an AudioStreamPlayer3D %.3f m from them, %.0f dB)" % [voice_off, voice_volume])
+	_check_voice_without_node()
 	quests_stop_timer()
+
+## A speaker with no 3D node is heard from its reference's position plus
+## voice_height; one in another space than the player is silent.
+func _check_voice_without_node() -> void:
+	var sunny := EsmServer.find_reference_by_editor_id("SunnyRef") as ActorReference
+	var expected := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * sunny.position + Vector3.UP * DialogueServer.voice_height
+	var line := DialogueLine.new()
+	line.speaker = sunny
+	line.voice_player = AudioStreamPlayer3D.new()
+	add_child(line.voice_player)
+	DialogueServer._place_voice(line)
+	var off := line.voice_player.global_position.distance_to(expected)
+	check(EsmNode.node_for(sunny) == null and off < 0.01, "Sunny, with no node, is heard from her position plus eye height (%.3f m off)" % off)
+	check(sunny.current_space_form_id != ScriptServer.player_reference.current_space_form_id and line.voice_player.volume_db <= -80.0, "and, in another space than the player, not at all (%.0f dB)" % line.voice_player.volume_db)
+	line.voice_player.queue_free()
 
 ## The farewell's End script starts VGenericTimer; stop it again.
 func quests_stop_timer() -> void:
