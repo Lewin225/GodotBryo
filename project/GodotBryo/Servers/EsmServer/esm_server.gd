@@ -876,8 +876,13 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
 		armor.model_path = armor.male_world_model
 		armor.biped_flags = _u32(_subrecord(raw, "BMDT"))
-		armor.equipment_type = _u32(_subrecord(raw, "ETYP"))
-		var adata := _subrecord(raw, "DATA"); armor.value = _i32(adata); armor.weight = _f32(adata, 4); armor.armor_rating = _i32(_subrecord(raw, "DNAM"))
+		armor.equipment_type = _i32(_subrecord(raw, "ETYP"))
+		var adata := _subrecord(raw, "DATA")
+		armor.value = _i32(adata)
+		armor.weight = _f32(adata, 8)
+		var dnam := _subrecord(raw, "DNAM")
+		armor.armor_rating = roundi(_i16(dnam) / 100.0)
+		armor.damage_threshold = int(_f32(dnam, 4))
 		armor.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
 		armor.biped_model_list = get_base(armor.biped_model_list_form_id) as FormListBase
 	elif result is ArmorAddonBase:

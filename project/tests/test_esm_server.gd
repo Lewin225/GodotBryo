@@ -73,6 +73,7 @@ func _ready() -> void:
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
 	_check_armor_slot_conflicts()
+	_check_armor_fields(server)
 	await _check_door_resources(server, index)
 	await _check_open_door_full_visual_state(server)
 	_check_item_resources(server, index)
@@ -924,6 +925,22 @@ func _check_inventory_contract(server) -> void:
 	_check(restored.restore_state(saved, factory), "Inventory restores typed item state")
 	_check(restored.get_item_count(0x000E3778) == 2, "Inventory restore preserves count")
 	_check(restored.get_equipped_items().size() == 1, "Inventory restore preserves equipped state")
+
+## ARMO DATA, DNAM, BMDT and ETYP on authored armour: the combat armour's
+## value, weight and DT; a DR in hundredths; a power armour helmet whose DNAM
+## Modulates Voice flag must not leak into its DR; a hat's slots and type.
+func _check_armor_fields(server) -> void:
+	var combat := server.find_base_by_editor_id("ArmorCombatReinforcedMark2") as ArmorBase
+	_check(combat != null and combat.value == 8000 and is_equal_approx(combat.weight, 25.0), "ArmorCombatReinforcedMark2 reads DATA value 8000 and weight 25")
+	_check(combat != null and combat.damage_threshold == 20 and combat.armor_rating == 0, "ArmorCombatReinforcedMark2 reads DNAM DT 20 and DR 0")
+	_check(combat != null and combat.equipment_type == ArmorBase.EQUIPMENT_TYPE_BODY_WEAR, "ArmorCombatReinforcedMark2 is Body Wear")
+	var trooper := server.find_base_by_editor_id("DamWarTrooper") as ArmorBase
+	_check(trooper != null and trooper.armor_rating == 20, "DamWarTrooper reads DNAM DR 2000 as 20 percent")
+	var helmet := server.find_base_by_editor_id("ArmorPowerT51bHelmet") as ArmorBase
+	_check(helmet != null and helmet.armor_rating == 0, "ArmorPowerT51bHelmet's Modulates Voice flag stays out of its DR")
+	var hat := server.find_base_by_editor_id("CowboyHat03") as ArmorBase
+	_check(hat != null and hat.equipment_type == ArmorBase.EQUIPMENT_TYPE_HEAD_WEAR, "CowboyHat03 is Head Wear")
+	_check(hat != null and hat.biped_flags == ArmorBase.BIPED_HAIR | ArmorBase.BIPED_HEADBAND | ArmorBase.BIPED_HAT, "CowboyHat03 covers Hair, Headband and Hat")
 
 func _check_armor_slot_conflicts() -> void:
 	var first_base := ArmorBase.new()
