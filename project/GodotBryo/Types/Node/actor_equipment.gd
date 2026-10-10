@@ -39,6 +39,8 @@ var _trees := {}
 var _failures: Array[String] = []
 var _staging: Node3D = null
 var _observed_resources: Array[Resource] = []
+## The committed set's bone attachments, children of the skeleton.
+var _attachments: Array[BoneAttachment3D] = []
 
 ## Watches `reference`'s inventory and projects what it has equipped.
 func watch(reference: ActorReference) -> void:
@@ -335,8 +337,11 @@ func _commit(equipment: Node3D, signature: String) -> void:
 		equipment.get_parent().remove_child(equipment)
 	equipment.name = EQUIPMENT_NODE_NAME
 	_body.add_child(equipment)
+	_hang_attachments_from_skeleton(equipment)
 	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
 		_own_recursive(equipment)
+		for attachment in _attachments:
+			_own_recursive(attachment)
 	if old_equipment != null:
 		old_equipment.queue_free()
 	_applied_signature = signature
@@ -348,6 +353,22 @@ func _commit(equipment: Node3D, signature: String) -> void:
 		_staging.queue_free()
 	_staging = null
 	committed.emit(_body)
+
+## Moves each bone attachment out of the committed equipment onto the
+## skeleton, replacing the previous set's. An attachment on an external
+## skeleton follows the animated bone but not the look-at modifier, so a hat
+## would stay put while the head turns; one under the skeleton follows both.
+func _hang_attachments_from_skeleton(equipment: Node3D) -> void:
+	for attachment in _attachments:
+		if is_instance_valid(attachment):
+			attachment.queue_free()
+	_attachments.clear()
+	for attachment: BoneAttachment3D in equipment.find_children("*", "BoneAttachment3D", true, false):
+		attachment.get_parent().remove_child(attachment)
+		attachment.use_external_skeleton = false
+		attachment.external_skeleton = NodePath()
+		_skeleton.add_child(attachment)
+		_attachments.append(attachment)
 
 func _move_tree(tree: Node3D, new_parent: Node, node_name: String) -> void:
 	if tree.get_parent() != null:

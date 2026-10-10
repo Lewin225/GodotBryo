@@ -16,6 +16,8 @@ signal animation_load_failed(reason: String)
 
 @export_enum("Custom", "Doc Mitchell (Goodsprings)") var preset: String = "Doc Mitchell (Goodsprings)"
 @export var custom_base_form_id: String = ""
+## Shows the hair's Hat variant in place of its NoHat variant. Set from the
+## equipment on each commit: true while something covers the Hat slot.
 @export var wearing_hat: bool = false:
 	set(value):
 		wearing_hat = value
@@ -573,8 +575,19 @@ func _clear_staging() -> void:
 	_staging_root = null
 
 
-func _apply_equipment_body_coverage(body: Node3D) -> void:
+## The biped slots the equipment meshes under `body` cover, gore caps aside.
+func _equipped_biped_flags(body: Node3D) -> int:
 	var occupied := 0
+	for child in body.find_children("*", "MeshInstance3D", true, false):
+		if _is_gore_cap_mesh(child as MeshInstance3D):
+			continue
+		if bool(child.get_meta("gamebryo_equipment", false)):
+			occupied |= int(child.get_meta("gamebryo_equipment_biped_flags", 0))
+	return occupied
+
+
+func _apply_equipment_body_coverage(body: Node3D) -> void:
+	var occupied := _equipped_biped_flags(body)
 	for child in body.find_children("*", "MeshInstance3D", true, false):
 		# Body and clothing caps can also carry nude-body metadata. They remain
 		# exclusively governed by show_gore, never ordinary coverage restoration.
@@ -582,21 +595,19 @@ func _apply_equipment_body_coverage(body: Node3D) -> void:
 			continue
 		if bool(child.get_meta("gamebryo_nude_body", false)):
 			child.visible = bool(child.get_meta("gamebryo_nude_body_original_visible", true))
-		if bool(child.get_meta("gamebryo_equipment", false)):
-			occupied |= int(child.get_meta("gamebryo_equipment_biped_flags", 0))
 	for child in body.find_children("*", "MeshInstance3D", true, false):
 		if not bool(child.get_meta("gamebryo_nude_body", false)):
 			continue
 		var path := String(child.get_meta("gamebryo_model_path", "")).to_lower().replace("/", "\\")
 		var coverage := 0
 		if path.contains("upperbody") or path.contains("torso"):
-			coverage = 0x4
+			coverage = ArmorBase.BIPED_UPPER_BODY
 		elif path.contains("lefthand"):
-			coverage = 0x8
+			coverage = ArmorBase.BIPED_LEFT_HAND
 		elif path.contains("righthand"):
-			coverage = 0x10
+			coverage = ArmorBase.BIPED_RIGHT_HAND
 		elif path.contains("head"):
-			coverage = 0x1
+			coverage = ArmorBase.BIPED_HEAD
 		if coverage != 0 and (occupied & coverage) != 0:
 			child.visible = false
 
@@ -692,13 +703,15 @@ func unload_actor() -> void:
 func _editor_refresh_equipment() -> void:
 	equipment.refresh()
 
-## New equipment is attached: the dismember index, nude-body coverage and the
-## first-person shadow mode cover it too.
+## New equipment is attached: the dismember index, nude-body coverage, the
+## hair variant and the first-person shadow mode cover it too. Equipment on
+## the Hat slot shows the hair's Hat variant.
 func _on_equipment_committed(body: Node3D) -> void:
 	# Clothing carries its own SECTIONCAP_/TORSOCAP_ meshes. Re-index after
 	# every replacement before restoring ordinary body coverage.
 	_rebuild_dismember_partition_index(body)
 	_apply_equipment_body_coverage(body)
+	wearing_hat = (_equipped_biped_flags(body) & ArmorBase.BIPED_HAT) != 0
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
 
