@@ -899,6 +899,23 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 			if entry != null: form_list.entries.append(entry)
 	elif result is VoiceTypeBase:
 		(result as VoiceTypeBase).flags = _u8(_subrecord(raw, "DNAM"))
+	elif result is HairBase:
+		var hair: HairBase = result
+		hair.model_path = _string(_subrecord(raw, "MODL"))
+		hair.texture_path = _string(_subrecord(raw, "ICON"))
+		hair.flags = _u8(_subrecord(raw, "DATA"))
+	elif result is HeadPartBase:
+		var head_part: HeadPartBase = result
+		head_part.model_path = _string(_subrecord(raw, "MODL"))
+		head_part.playable = _u8(_subrecord(raw, "DATA")) != 0
+		head_part.extra_part_form_ids.clear()
+		head_part.extra_parts.clear()
+		for part_data in _all_subrecords(raw, "HNAM"):
+			var form_id := _u32(part_data)
+			head_part.extra_part_form_ids.append(form_id)
+			var extra_part := get_base(form_id) as HeadPartBase
+			if extra_part != null:
+				head_part.extra_parts.append(extra_part)
 	elif result is GlobalBase:
 		var global_base: GlobalBase = result
 		var fnam := _subrecord(raw, "FNAM")

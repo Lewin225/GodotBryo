@@ -74,6 +74,7 @@ func _ready() -> void:
 	_check_inventory_contract(server)
 	_check_armor_slot_conflicts()
 	_check_armor_fields(server)
+	_check_hair_and_head_part_fields(server, index)
 	await _check_door_resources(server, index)
 	await _check_open_door_full_visual_state(server)
 	_check_item_resources(server, index)
@@ -941,6 +942,48 @@ func _check_armor_fields(server) -> void:
 	var hat := server.find_base_by_editor_id("CowboyHat03") as ArmorBase
 	_check(hat != null and hat.equipment_type == ArmorBase.EQUIPMENT_TYPE_HEAD_WEAR, "CowboyHat03 is Head Wear")
 	_check(hat != null and hat.biped_flags == ArmorBase.BIPED_HAIR | ArmorBase.BIPED_HEADBAND | ArmorBase.BIPED_HAT, "CowboyHat03 covers Hair, Headband and Hat")
+
+func _check_hair_and_head_part_fields(server, index: Array) -> void:
+	var hair_count := 0
+	var hair_with_texture := 0
+	var head_part_count := 0
+	var head_parts_with_model := 0
+	var extra_part_count := 0
+	var unresolved_extra_parts := 0
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if record_type == "HAIR":
+			hair_count += 1
+			var hair := server.get_base(int(row["form_id"])) as HairBase
+			if hair != null and hair.texture_path.to_lower().ends_with(".dds"):
+				hair_with_texture += 1
+		elif record_type == "HDPT":
+			head_part_count += 1
+			var head_part := server.get_base(int(row["form_id"])) as HeadPartBase
+			if head_part == null:
+				continue
+			if not head_part.model_path.is_empty():
+				head_parts_with_model += 1
+			extra_part_count += head_part.extra_part_form_ids.size()
+			unresolved_extra_parts += head_part.extra_part_form_ids.size() - head_part.extra_parts.size()
+	_check(hair_count == 67 and hair_with_texture == 67, "every HAIR reads an ICON texture (%d of %d)" % [hair_with_texture, hair_count])
+	_check(head_part_count == 61 and head_parts_with_model == 46, "46 of 61 HDPT read a MODL (%d of %d)" % [head_parts_with_model, head_part_count])
+	_check(extra_part_count == 33 and unresolved_extra_parts == 0, "33 HDPT HNAM extra parts read and resolved (%d, %d unresolved)" % [extra_part_count, unresolved_extra_parts])
+
+	var balding := server.find_base_by_editor_id("HairBalding") as HairBase
+	_check(balding != null and balding.model_path.to_lower() == "characters\\hair\\hairbase.nif", "HairBalding uses HairBase.NIF")
+	_check(balding != null and balding.texture_path.to_lower() == "characters\\hair\\hairbalding.dds", "HairBalding reads its own ICON texture")
+	var curly := server.find_base_by_editor_id("HairCurlyF") as HairBase
+	_check(curly != null and curly.flags == HairBase.FLAG_PLAYABLE | HairBase.FLAG_NOT_MALE, "HairCurlyF is Playable and Not Male")
+	var brow := server.find_base_by_editor_id("EyebrowM") as HeadPartBase
+	_check(brow != null and not brow.model_path.is_empty() and brow.extra_parts.is_empty(), "EyebrowM reads a MODL and no extra parts")
+	var mix := server.find_base_by_editor_id("BeardMix01a") as HeadPartBase
+	var mix_parts: PackedStringArray = []
+	if mix != null:
+		for part in mix.extra_parts:
+			mix_parts.append(part.editor_id)
+	_check(mix != null and mix.model_path.is_empty() and mix_parts == PackedStringArray(["BeardMustacheThin", "BeardGoateeThin"]),
+		"BeardMix01a has no MODL and resolves its extra parts (%s)" % [mix_parts])
 
 func _check_armor_slot_conflicts() -> void:
 	var first_base := ArmorBase.new()

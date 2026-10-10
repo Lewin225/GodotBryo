@@ -86,7 +86,7 @@ placed reference keeps only its FormID, with a method that builds the reference 
 (`ActorReference.get_merchant_container()`, `PackageBase.get_location_reference(n)`), since
 placed references are world state rather than record data. SCRI resolves to
 `script_record` (a `ScriptBase`) on every record. The record types actor records point at have
-Base classes even where nothing reads their subrecords yet (VTYP, GLOB, LVLN, LVLC, HDPT, IPDS,
+Base classes even where nothing reads their subrecords yet (VTYP, GLOB, LVLN, LVLC, IPDS,
 SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE); each class's doc comment lists
 the subrecords it does not read. FLST is `FormListBase`, a general list whose `entries` resolve to
 each record's own Base.
