@@ -30,7 +30,7 @@ const TYPE_TO_BASE := {
 	"HDPT": "HeadPartBase", "IPDS": "ImpactDatasetBase", "SOUN": "SoundBase", "FACT": "FactionBase",
 	"ENCH": "EnchantmentBase", "SPEL": "SpellBase", "CSTY": "CombatStyleBase", "SCPT": "ScriptBase",
 	"NOTE": "NoteBase", "EXPL": "ExplosionBase", "DEBR": "DebrisBase", "ECZN": "EncounterZoneBase",
-	"IDLE": "IdleBase"
+	"IDLE": "IdleBase", "TXST": "TextureSetBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "NpcReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -832,6 +832,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is WeaponBase:
 		var weapon: WeaponBase = result
 		weapon.model_path = _string(_subrecord(raw, "MODL"))
+		weapon.alternate_textures = _alternate_textures(raw, "MODS")
 		var data := _subrecord(raw, "DATA")
 		weapon.value = _i32(data); weapon.health = _i32(data, 4); weapon.weight = _f32(data, 8)
 		weapon.base_damage = _u16(data, 12); weapon.clip_size = _u8(data, 14)
@@ -875,6 +876,10 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		armor.male_biped_model = _string(_subrecord(raw, "MODL")); armor.male_world_model = _string(_subrecord(raw, "MOD2"))
 		armor.female_biped_model = _string(_subrecord(raw, "MOD3")); armor.female_world_model = _string(_subrecord(raw, "MOD4"))
 		armor.model_path = armor.male_world_model
+		armor.male_biped_alternate_textures = _alternate_textures(raw, "MODS")
+		armor.male_world_alternate_textures = _alternate_textures(raw, "MO2S")
+		armor.female_biped_alternate_textures = _alternate_textures(raw, "MO3S")
+		armor.female_world_alternate_textures = _alternate_textures(raw, "MO4S")
 		armor.biped_flags = _u32(_subrecord(raw, "BMDT"))
 		armor.equipment_type = _i32(_subrecord(raw, "ETYP"))
 		var adata := _subrecord(raw, "DATA")
@@ -890,6 +895,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		addon.model_path = _string(_subrecord(raw, "MODL"))
 		addon.male_biped_model = addon.model_path
 		addon.female_biped_model = _string(_subrecord(raw, "MOD3"))
+		addon.male_biped_alternate_textures = _alternate_textures(raw, "MODS")
+		addon.female_biped_alternate_textures = _alternate_textures(raw, "MO3S")
 		addon.biped_flags = _u32(_subrecord(raw, "BMDT"))
 	elif result is FormListBase:
 		var form_list: FormListBase = result
@@ -907,6 +914,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is HeadPartBase:
 		var head_part: HeadPartBase = result
 		head_part.model_path = _string(_subrecord(raw, "MODL"))
+		head_part.alternate_textures = _alternate_textures(raw, "MODS")
 		head_part.playable = _u8(_subrecord(raw, "DATA")) != 0
 		head_part.extra_part_form_ids.clear()
 		head_part.extra_parts.clear()
@@ -924,6 +932,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is DoorBase:
 		var door: DoorBase = result
 		door.model_path = _string(_subrecord(raw, "MODL"))
+		door.alternate_textures = _alternate_textures(raw, "MODS")
 		door.open_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		door.close_sound_form_id = _u32(_subrecord(raw, "ANAM"))
 		door.loop_sound_form_id = _u32(_subrecord(raw, "BNAM"))
@@ -965,6 +974,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is ActivatorBase:
 		var activator: ActivatorBase = result
 		activator.model_path = _string(_subrecord(raw, "MODL"))
+		activator.alternate_textures = _alternate_textures(raw, "MODS")
 		activator.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		activator.activation_sound_form_id = _u32(_subrecord(raw, "VNAM"))
 		activator.radio_template_form_id = _u32(_subrecord(raw, "INAM"))
@@ -1000,6 +1010,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	elif result is TerminalBase:
 		var terminal: TerminalBase = result
 		terminal.model_path = _string(_subrecord(raw, "MODL"))
+		terminal.alternate_textures = _alternate_textures(raw, "MODS")
 		terminal.welcome_text = _string(_subrecord(raw, "DESC"))
 		terminal.looping_sound_form_id = _u32(_subrecord(raw, "SNAM"))
 		terminal.looping_sound_path = _sound_path(terminal.looping_sound_form_id)
@@ -1032,10 +1043,53 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 				item_index += 1
 			elif tag == "CTDA" and item_index >= 0 and item_index < terminal.menu_items.size():
 				_append_condition(terminal.menu_items[item_index].conditions, terminal, sub.get("data", PackedByteArray()))
+	elif result is StaticBase:
+		var static_base: StaticBase = result
+		static_base.model_path = _string(_subrecord(raw, "MODL"))
+		static_base.alternate_textures = _alternate_textures(raw, "MODS")
+	elif result is TextureSetBase:
+		_populate_texture_set(result as TextureSetBase, raw)
 	else:
 		if _has_property(result, "model_path"):
 			result.set("model_path", _string(_subrecord(raw, "MODL")))
 	result._rehydrating = false
+
+func _populate_texture_set(texture_set: TextureSetBase, raw: Dictionary) -> void:
+	var obnd := _subrecord(raw, "OBND")
+	if obnd.size() >= 12:
+		texture_set.bounds_min = Vector3i(obnd.decode_s16(0), obnd.decode_s16(2), obnd.decode_s16(4))
+		texture_set.bounds_max = Vector3i(obnd.decode_s16(6), obnd.decode_s16(8), obnd.decode_s16(10))
+	texture_set.diffuse_path = _string(_subrecord(raw, "TX00"))
+	texture_set.normal_path = _string(_subrecord(raw, "TX01"))
+	texture_set.environment_mask_path = _string(_subrecord(raw, "TX02"))
+	texture_set.glow_path = _string(_subrecord(raw, "TX03"))
+	texture_set.parallax_path = _string(_subrecord(raw, "TX04"))
+	texture_set.environment_path = _string(_subrecord(raw, "TX05"))
+	texture_set.flags = _u16(_subrecord(raw, "DNAM"))
+
+## Decodes an Alternate Textures subrecord (MODS, MO2S, MO3S or MO4S): a u32
+## count, then per entry a u32-length 3D name, a TXST FormID and an s32 3D
+## index. Empty when the record has no such subrecord.
+func _alternate_textures(raw: Dictionary, tag: String) -> Array[AlternateTextureCollection]:
+	var entries: Array[AlternateTextureCollection] = []
+	var data := _subrecord(raw, tag)
+	var count := _u32(data)
+	var offset := 4
+	for i in count:
+		var name_length := _u32(data, offset)
+		offset += 4
+		if offset + name_length + 8 > data.size():
+			push_warning("EsmServer: %s on %08X is shorter than its %d entries" % [tag, int(raw.get("form_id", 0)), count])
+			break
+		var entry := AlternateTextureCollection.new()
+		entry.shape_name = _string(data.slice(offset, offset + name_length))
+		offset += name_length
+		entry.texture_set_form_id = _u32(data, offset)
+		entry.texture_set = get_base(entry.texture_set_form_id) as TextureSetBase
+		entry.shape_index = _i32(data, offset + 4)
+		offset += 8
+		entries.append(entry)
+	return entries
 
 func _populate_dialogue_topic(topic: DialogueTopicBase, raw: Dictionary) -> void:
 	topic.quest_form_ids.clear()

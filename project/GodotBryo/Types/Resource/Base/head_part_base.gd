@@ -5,15 +5,15 @@ extends EsmBase
 ## HDPT (Head Part): brows, beards and the like. Named by NPC_ PNAM. EsmBase
 ## holds EDID and FULL.
 ##
-## Not read (xEdit labels): MODT texture hashes; MODS Alternate Textures, on 26
-## of 61 HDPT in FalloutNV.esm, which swap a beard or brow shape's texture set
-## for a TXST (BeardFullT, BeardThinT, BeardCircleT, BeardLincolnT), so several
-## HDPT share one NIF; read once TXST has a Base.
+## Not read (xEdit labels): MODT texture hashes.
 
 ## MODL: the head part NIF. Present on 46 of 61 HDPT; the 15 BeardMix* records
 ## have none and are made of `extra_parts`. Read; not used yet (the humanoid
 ## head comes from RACE).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_path: String = ""
+## MODS: Alternate Textures for MODL. On 26 of 61 HDPT in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var alternate_textures: Array[AlternateTextureCollection] = []
 ## DATA (u8, bool): Playable. Read; not used yet (the race menu).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var playable: bool = false
 ## HNAM, repeated (xEdit "Extra Parts"): HDPT FormIDs. Two or three on each of

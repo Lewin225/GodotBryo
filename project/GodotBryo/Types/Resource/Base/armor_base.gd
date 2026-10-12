@@ -57,14 +57,26 @@ const BIPED_FLAG_NAMES := "Head:1,Hair:2,Upper Body:4,Left Hand:8,Right Hand:16,
 @export_custom(PROPERTY_HINT_ENUM, EQUIPMENT_TYPE_NAMES, PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var equipment_type: int = EQUIPMENT_TYPE_NONE
 ## MODL: the male biped model, worn on the body. Read; used by ActorEquipment.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_biped_model: String = ""
+## MODS: Alternate Textures for MODL. On 51 of 389 ARMO in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_biped_alternate_textures: Array[AlternateTextureCollection] = []
 ## MOD2: the male world model. Read; used through `model_path`.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_world_model: String = ""
+## MO2S: Alternate Textures for MOD2. On 54 of 389 ARMO in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_world_alternate_textures: Array[AlternateTextureCollection] = []
 ## MOD3: the female biped model. Read; used by ActorEquipment for female
 ## actors.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_biped_model: String = ""
+## MO3S: Alternate Textures for MOD3. On 47 of 389 ARMO in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_biped_alternate_textures: Array[AlternateTextureCollection] = []
 ## MOD4: the female world model. Read; not used (a placed ARMO shows the male
 ## world model).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_world_model: String = ""
+## MO4S: Alternate Textures for MOD4. On 10 of 389 ARMO in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_world_alternate_textures: Array[AlternateTextureCollection] = []
 ## BIPL: the FormID of the biped model list (FLST of ARMA). Read; resolved
 ## into `biped_model_list`.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var biped_model_list_form_id: int = 0

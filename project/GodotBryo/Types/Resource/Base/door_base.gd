@@ -4,6 +4,9 @@ extends EsmBase
 
 ## DOOR Model Data model path.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_path: String = ""
+## MODS: Alternate Textures for MODL. On 21 of 320 DOOR in FalloutNV.esm.
+## Read; not used yet (NifServer would swap the named shapes' texture sets).
+@export_custom(PROPERTY_HINT_ARRAY_TYPE, "AlternateTextureCollection", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var alternate_textures: Array[AlternateTextureCollection] = []
 ## Resolved DOOR SNAM open sound path.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var open_sound_path: String = ""
 ## Resolved DOOR ANAM close sound path.

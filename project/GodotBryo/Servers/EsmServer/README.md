@@ -91,6 +91,11 @@ SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE); each class's 
 the subrecords it does not read. FLST is `FormListBase`, a general list whose `entries` resolve to
 each record's own Base.
 
+**Alternate textures.** A model's MODS (MO2S, MO3S and MO4S for ARMO's other models, MO3S for
+ARMA's female model) is a list of `AlternateTextureCollection`: a shape name, its 3D index and
+the `TextureSetBase` (TXST) that replaces that shape's textures. ACTI, ARMA, ARMO, DOOR, HDPT,
+STAT, TERM and WEAP carry them in FalloutNV.esm; nothing applies them yet.
+
 **Base versus Reference.** An `EsmBase` is the authored record: what a Nuka-Cola
 *is*. An `EsmReference` is one placed or carried instance of it. Two dispatch
 tables map a record type to each — `TYPE_TO_BASE` and `TYPE_TO_REFERENCE`,

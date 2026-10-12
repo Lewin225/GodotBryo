@@ -75,6 +75,7 @@ func _ready() -> void:
 	_check_armor_slot_conflicts()
 	_check_armor_fields(server)
 	_check_hair_and_head_part_fields(server, index)
+	_check_texture_sets(server, index)
 	await _check_door_resources(server, index)
 	await _check_open_door_full_visual_state(server)
 	_check_item_resources(server, index)
@@ -984,6 +985,84 @@ func _check_hair_and_head_part_fields(server, index: Array) -> void:
 			mix_parts.append(part.editor_id)
 	_check(mix != null and mix.model_path.is_empty() and mix_parts == PackedStringArray(["BeardMustacheThin", "BeardGoateeThin"]),
 		"BeardMix01a has no MODL and resolves its extra parts (%s)" % [mix_parts])
+
+func _check_texture_sets(server, index: Array) -> void:
+	var texture_set_count := 0
+	var field_errors: PackedStringArray = []
+	for row: Dictionary in index:
+		if String(row.get("record_type", "")) != "TXST":
+			continue
+		texture_set_count += 1
+		var form_id := int(row["form_id"])
+		var texture_set := server.get_base(form_id) as TextureSetBase
+		if texture_set == null:
+			field_errors.append("%08X type" % form_id)
+			continue
+		var raw: Dictionary = server.reader.get_record_data(form_id)
+		var expected := [_string(_subrecord(raw, "TX00")), _string(_subrecord(raw, "TX01")), _string(_subrecord(raw, "TX02")),
+			_string(_subrecord(raw, "TX03")), _string(_subrecord(raw, "TX04")), _string(_subrecord(raw, "TX05"))]
+		var actual := [texture_set.diffuse_path, texture_set.normal_path, texture_set.environment_mask_path,
+			texture_set.glow_path, texture_set.parallax_path, texture_set.environment_path]
+		if actual != expected and field_errors.size() < 5:
+			field_errors.append("%08X TXnn" % form_id)
+	_check(texture_set_count == 493 and field_errors.is_empty(), "every TXST reads its TX00-TX05 (%d, errors %s)" % [texture_set_count, field_errors])
+
+	var counts := {}
+	var entry_count := 0
+	var unresolved := 0
+	for row: Dictionary in index:
+		var record_type := String(row.get("record_type", ""))
+		if not record_type in ["ACTI", "ARMA", "ARMO", "DOOR", "HDPT", "STAT", "TERM", "WEAP"]:
+			continue
+		var base: EsmBase = server.get_base(int(row["form_id"]))
+		for entries in _alternate_texture_lists(base):
+			if entries.is_empty():
+				continue
+			counts[record_type] = int(counts.get(record_type, 0)) + 1
+			for entry: AlternateTextureCollection in entries:
+				entry_count += 1
+				if entry.texture_set == null:
+					unresolved += 1
+	var expected_counts := {"ACTI": 12, "ARMA": 7, "ARMO": 162, "DOOR": 21, "HDPT": 26, "STAT": 289, "TERM": 14, "WEAP": 1}
+	_check(counts == expected_counts, "Alternate Textures subrecords per record type match the census (%s)" % [counts])
+	_check(entry_count == 1838 and unresolved == 0, "all 1838 Alternate Textures entries resolve to a TXST (%d, %d unresolved)" % [entry_count, unresolved])
+
+	var circle := server.find_base_by_editor_id("BeardGoateeCircle") as HeadPartBase
+	var entry: AlternateTextureCollection = circle.alternate_textures[0] if circle != null and circle.alternate_textures.size() == 1 else null
+	_check(entry != null and entry.shape_name == "BeardGoatee:0" and entry.shape_index == 0, "BeardGoateeCircle swaps shape BeardGoatee:0, index 0")
+	var beard_set: TextureSetBase = entry.texture_set if entry != null else null
+	_check(beard_set != null and beard_set.editor_id == "BeardCircleT", "BeardGoateeCircle's swap resolves to BeardCircleT")
+	_check(beard_set != null and beard_set.diffuse_path == "Characters\\Hair\\BeardCircle.dds" and beard_set.glow_path == "Characters\\Hair\\BeardCircle_hl.dds",
+		"BeardCircleT reads TX00 and TX03")
+	var curly := server.find_base_by_editor_id("BeardMustacheCurlyFull") as HeadPartBase
+	var indices: Array[int] = []
+	if curly != null:
+		for curly_entry in curly.alternate_textures:
+			indices.append(curly_entry.shape_index)
+	_check(indices == [-1, 0], "BeardMustacheCurlyFull reads 3D indices -1 and 0 (%s)" % [indices])
+
+## The Alternate Textures lists a record carries, one per model.
+func _alternate_texture_lists(base: EsmBase) -> Array:
+	if base is ArmorBase:
+		var armor: ArmorBase = base
+		return [armor.male_biped_alternate_textures, armor.male_world_alternate_textures,
+			armor.female_biped_alternate_textures, armor.female_world_alternate_textures]
+	if base is ArmorAddonBase:
+		var addon: ArmorAddonBase = base
+		return [addon.male_biped_alternate_textures, addon.female_biped_alternate_textures]
+	if base is ActivatorBase:
+		return [(base as ActivatorBase).alternate_textures]
+	if base is DoorBase:
+		return [(base as DoorBase).alternate_textures]
+	if base is HeadPartBase:
+		return [(base as HeadPartBase).alternate_textures]
+	if base is StaticBase:
+		return [(base as StaticBase).alternate_textures]
+	if base is TerminalBase:
+		return [(base as TerminalBase).alternate_textures]
+	if base is WeaponBase:
+		return [(base as WeaponBase).alternate_textures]
+	return []
 
 func _check_armor_slot_conflicts() -> void:
 	var first_base := ArmorBase.new()
