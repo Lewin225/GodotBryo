@@ -554,6 +554,7 @@ func test_corpus_parses() -> void:
 	var kf_single_sequence := 0
 	var kf_multi_sequence := 0
 	var multi_sequence_examples: PackedStringArray = []
+	var shader_types := {}
 	for p in ArchiveServer.list_files_with_prefix("meshes/"):
 		var sp := String(p)
 		if not (sp.ends_with(".nif") or sp.ends_with(".kf")):
@@ -578,6 +579,9 @@ func test_corpus_parses() -> void:
 		for n in src.get_nodes():
 			av += 1
 			types[String(n["block_type"])] = true
+			if n.has("positions") and bool(n.get("has_shader_flags", false)):
+				var shader_key := "%s %d" % [String(n["shader_type"]), int(n["bs_shader_type"])]
+				shader_types[shader_key] = int(shader_types.get(shader_key, 0)) + 1
 	check(files > 25000, "%d NIF/KF files in the catalog" % files)
 	check(ok == files, "all %d parsed, 0 failures (got %d)" % [files, ok])
 	check(av > 140000, "%d NiAVObject blocks" % av)
@@ -587,6 +591,14 @@ func test_corpus_parses() -> void:
 	# copies of 178 paths shadowed by a higher-priority archive.
 	check(kf_files == 4765, "4,765 distinct shipped KFs in the catalog (got %d)" % kf_files)
 	check(kf_single_sequence == 4732, "4,732 KFs have one sequence (got %d)" % kf_single_sequence)
+	# One Shader Type per block type, except BSShaderPPLightingProperty: 1
+	# (default) or 14 (skin). Counts are shapes, from native/tools/texture_slot2_census.
+	var expected_shader_types := {
+		"BSShaderNoLightingProperty 33": 7936, "BSShaderPPLightingProperty 1": 57630,
+		"BSShaderPPLightingProperty 14": 332, "SkyShaderProperty 10": 7, "TallGrassShaderProperty 0": 18,
+		"TileShaderProperty 32": 49, "WaterShaderProperty 17": 8,
+	}
+	check(shader_types == expected_shader_types, "Shader Type per shader block matches the census (got %s)" % [shader_types])
 	check(kf_multi_sequence == 33, "33 KFs have multiple sequences (got %d; e.g. %s)" % [
 		kf_multi_sequence, ", ".join(multi_sequence_examples),
 	])
@@ -606,6 +618,14 @@ func test_shader_flags() -> void:
 		"flags1 preserves unsigned high bit and authored bits")
 	check(int(tank.get("shader_flags2", 0)) == 0x1,
 		"flags2 preserves authored depth-write bit")
+	check(int(tank.get("bs_shader_type", -1)) == 1, "the tank's Shader Type is 1 (default)")
+	var upper_body := _load(UPPERBODY)
+	if upper_body == null:
+		return
+	var skin := _by_name(upper_body, "Arms:1")
+	var underwear := _by_name(upper_body, "Arms:0")
+	check(int(skin.get("bs_shader_type", -1)) == 14, "upperbody.nif's skin shape Arms:1 has Shader Type 14 (skin)")
+	check(int(underwear.get("bs_shader_type", -1)) == 1, "upperbody.nif's underwear shape Arms:0 has Shader Type 1 (default)")
 	check(bool(tank.get("alpha_blend_enabled", false)) and not bool(tank.get("alpha_test_enabled", true)),
 		"third shape blends without alpha testing")
 

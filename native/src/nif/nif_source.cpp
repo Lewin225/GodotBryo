@@ -1025,6 +1025,7 @@ Document load(const uint8_t *data, size_t size) {
 				out.has_shader_flags = true;
 				out.shader_flags1 = bs_shader->shaderFlags1;
 				out.shader_flags2 = bs_shader->shaderFlags2;
+				out.bs_shader_type = static_cast<uint32_t>(bs_shader->shaderType);
 			}
 
 			// Resolution order matches nifly's own GetTextureSlot: a real

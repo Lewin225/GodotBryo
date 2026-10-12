@@ -267,6 +267,11 @@ struct SceneNode {
 	bool has_shader_flags = false;
 	uint32_t shader_flags1 = 0;
 	uint32_t shader_flags2 = 0;
+	// BSShaderProperty's Shader Type enum (nif.xml BSShaderType: 0 tall grass,
+	// 1 default, 10 sky, 14 skin, 17 water, 32 tile, 33 no lighting), set
+	// beside the flags. Every block type carries one value corpus-wide except
+	// BSShaderPPLightingProperty, which is 1 or 14 (skin).
+	uint32_t bs_shader_type = 0;
 
 	// NiProperty blocks this node references, by BLOCK INDEX -- the identity
 	// nif_server_v2.md 7.3 needs. Property blocks are shared: ~34% of

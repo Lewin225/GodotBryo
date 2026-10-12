@@ -158,7 +158,12 @@ work, and NifServer offers no entry point for it.
 
 **Shader flags.** `NifSource.get_nodes()` exposes the two raw FO3/FNV
 `BSShaderProperty` flag words (`shader_flags1` and `shader_flags2`, guarded by
-`has_shader_flags`). NifTreeBuilder preserves both on the material as metadata
+`has_shader_flags`), and beside them `bs_shader_type`, the block's Shader Type
+enum (nif.xml `BSShaderType`). `shader_type` is the shader block's type name,
+not this enum. Every shader block type carries one Shader Type corpus-wide
+except `BSShaderPPLightingProperty`: 1 (default) on 57,630 shapes, 14 (skin) on
+332. NifTreeBuilder does not read `bs_shader_type` yet. It preserves both flag
+words on the material as metadata
 and maps only `ZBuffer_Test` and `ZBuffer_Write` to Godot depth state. Other
 named bits remain available for later, separately verified mappings. Godot's
 ordinary alpha-blend mode still does not cast shadows; depth writing alone
