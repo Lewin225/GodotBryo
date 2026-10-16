@@ -75,7 +75,10 @@ var hair_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "HairBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair: HairBase
 ## LNAM: Hair length. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair_length: float = 0.0
-## HCLR: Hair color (RGB bytes). Read; not used yet.
+## HCLR: Hair color (RGB bytes; on all 3,816 NPC_ in FalloutNV.esm), as
+## authored: Gamebryo-linear, like XEMI's colour. Read; a template supplying
+## traits is not followed. Used by EsmActorNode, converted to sRGB, to tint the
+## shapes on NifServer's hair material path.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var hair_color: Color = Color.BLACK
 ## ENAM: the EYES FormID. Read; resolved into `eyes`.
 var eyes_form_id: int = 0

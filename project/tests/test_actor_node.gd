@@ -60,6 +60,7 @@ func _ready() -> void:
 	for key: String in EXPECTED:
 		var expected: int = EXPECTED[key]
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
+	_check_hair_color(node, doc)
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
 	_check_hitboxes(node)
@@ -69,6 +70,31 @@ func _ready() -> void:
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+## Doc's hair-path shapes each get their own copy of the material, tinted with
+## his HCLR converted from linear to sRGB, while the material NifServer shares
+## stays white.
+func _check_hair_color(node: EsmActorNode, doc: EsmReference) -> void:
+	var hair_color := (doc.base as NpcBase).hair_color.linear_to_srgb()
+	var hair_meshes := 0
+	var tinted := 0
+	var shared_white := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null or mesh_instance.mesh.get_surface_count() == 0:
+			continue
+		var shared := mesh_instance.mesh.surface_get_material(0)
+		if shared == null or shared.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_HAIR:
+			continue
+		hair_meshes += 1
+		if (shared as StandardMaterial3D).albedo_color == Color.WHITE:
+			shared_white += 1
+		var override := mesh_instance.get_surface_override_material(0) as StandardMaterial3D
+		if override != null and override != shared and override.albedo_color == hair_color:
+			tinted += 1
+	check(hair_meshes == EXPECTED["hair_variant_meshes"], "Doc's hair has %d shapes on the hair material path (got %d)" % [EXPECTED["hair_variant_meshes"], hair_meshes])
+	check(tinted == hair_meshes, "each has its own material tinted with his HCLR %s (got %d)" % [hair_color, tinted])
+	check(shared_white == hair_meshes, "the shared materials stay white (got %d)" % shared_white)
 
 ## The animator follows the node's ActorMotion: each motion state plays its
 ## clip after a physics frame.

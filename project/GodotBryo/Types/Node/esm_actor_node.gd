@@ -499,6 +499,32 @@ func _track_hair_meshes(body: Node) -> void:
 	_apply_hair_variant()
 
 
+## Tints every shape NifServer dispatched to the hair material path with the
+## NPC's HCLR, by multiplying its albedo. Delivered materials are shared by
+## every instance of the model, so each actor gets its own copy as a surface
+## override, which takes its hair out of the batch.
+##
+## Temporary: PPLighting will get a proper shader with per-instance properties
+## (hair colour among them), which tints without copying the material.
+func _apply_hair_color(body: Node) -> void:
+	if body == null or not (_active_record is NpcBase):
+		return
+	# HCLR is authored Gamebryo-linear RGB, as XEMI's colour is (see
+	# _apply_external_emittance). albedo_color is sRGB-facing.
+	var hair_color := (_active_record as NpcBase).hair_color.linear_to_srgb()
+	for child in body.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			var source := mesh_instance.mesh.surface_get_material(surface) as StandardMaterial3D
+			if source == null or source.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_HAIR:
+				continue
+			var tinted := source.duplicate() as StandardMaterial3D
+			tinted.albedo_color = hair_color
+			mesh_instance.set_surface_override_material(surface, tinted)
+
+
 func _rebuild_dismember_partition_index(body: Node) -> void:
 	_dismember_meshes_by_part_id.clear()
 	if body == null:
@@ -542,6 +568,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_loading = false
 	_clear_staging()
 	_track_hair_meshes(body)
+	_apply_hair_color(body)
 	_rebuild_dismember_partition_index(body)
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
