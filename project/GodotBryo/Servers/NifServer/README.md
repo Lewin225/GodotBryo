@@ -188,7 +188,7 @@ material path chosen from what the shape's NifSource node declares, added as cas
 
 | path | selected by | slot 2 | stock material |
 |---|---|---|---|
-| `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission; the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
+| `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission and without vertex colour as albedo (hair vertex colours are not a colour; their use is unknown, and they stay in the mesh); the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
 | `PATH_STANDARD` | every other shape | `glow` | the `StandardMaterial3D` described here |
 
 `NifServer.set_material_path()` replaces a path's builder: it receives a

@@ -260,8 +260,14 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 ## for the highlight, so it is not rendered; its path stays in
 ## `nif_texture_roles` and in the context. albedo_color is left white for the
 ## owner to tint with the hair colour, on its own copy of the material.
+##
+## Vertex colour is not used as albedo. Hair meshes carry vertex colours that
+## are not a colour (a white-blond diffuse renders teal through them); what the
+## hair shader uses them for is not known. They stay in the mesh's ARRAY_COLOR.
 static func _build_hair(context: NifMaterialContext) -> Material:
-	return _build_standard(context)
+	var mat := _build_standard(context) as StandardMaterial3D
+	mat.vertex_color_use_as_albedo = false
+	return mat
 
 
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth

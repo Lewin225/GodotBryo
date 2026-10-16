@@ -158,6 +158,9 @@ func _check_hair() -> void:
 	if mat != null:
 		check(mat.albedo_texture != null and mat.normal_enabled, "it keeps its diffuse and normal map")
 		check(mat.albedo_color == Color.WHITE, "its albedo colour is white, for the owner to tint")
+		check(not mat.vertex_color_use_as_albedo, "it does not use vertex colour as albedo")
+		check(beard.mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_COLOR,
+			"the beard mesh keeps its vertex colours")
 		var roles: Dictionary = mat.get_meta("nif_texture_roles", {})
 		check(String(roles.get(NifMaterialBuilderScript.ROLE_HAIR_HIGHLIGHT, "")) == BEARD_HIGHLIGHT,
 			"the material records the highlight path in nif_texture_roles")
