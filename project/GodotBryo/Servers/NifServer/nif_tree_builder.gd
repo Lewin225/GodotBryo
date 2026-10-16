@@ -18,16 +18,11 @@ const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_b
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
+const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 
 ## nif_server_v2.md section 1: the result is already Y-up and Godot-forward, so
 ## no consumer applies an axis correction afterwards.
 const ROOT_BASIS := Basis(Vector3.RIGHT, -PI / 2.0)
-
-# Provisional StandardMaterial3D stand-in for additive XEMI light shafts.
-# These distances and the alpha scale are visual tuning, not NIF fields.
-const LIGHT_SHAFT_SOFT_CLIP_METERS := 1.0
-const LIGHT_SHAFT_NEAR_FADE_METERS := 1.5
-const LIGHT_SHAFT_ALPHA_SCALE := 0.2
 
 # BSDismemberBodyPartType names are format labels, not actor policy. They make
 # the split tree inspectable while the raw integer remains the programmatic
@@ -56,8 +51,9 @@ const DISMEMBER_PART_NAMES := {
 
 
 ## Every (path, alpha_safe) pair this file's materials will ask for, deduped.
-## Used by _resolve_textures() so the warmed key and the looked-up key cannot
-## drift apart.
+## Used by _resolve_textures(); each shape's list comes from
+## NifMaterialBuilder.texture_refs(), which build() looks textures up through,
+## so the warmed key and the looked-up key cannot drift apart.
 static func _texture_refs(src: NifSource) -> Array:
 	var refs: Array = []
 	if src == null:
@@ -66,25 +62,12 @@ static func _texture_refs(src: NifSource) -> Array:
 	for nd in src.get_nodes():
 		if not nd.has("positions"):
 			continue
-		var slots: PackedStringArray = nd["texture_slots"]
-		if slots.is_empty():
-			continue
-		var alpha_safe := false
-		if bool(nd.get("has_alpha_property", false)):
-			alpha_safe = bool(nd["alpha_blend_enabled"]) or bool(nd["alpha_test_enabled"])
-		var wanted: Array = _texture_slot_map(String(nd.get("texture_convention", "")))
-		for i in wanted.size():
-			var slot: int = wanted[i]
-			if slot < 0 or slot >= slots.size() or String(slots[slot]).is_empty():
-				continue
-			# Only the diffuse carries the shape's alpha-safe requirement; a
-			# normal or glow map is never the DXT1 punch-through case.
-			var ref := {"path": String(slots[slot]), "alpha_safe": alpha_safe and i == 0}
-			var key: String = TextureServerScript.cache_key(ref["path"], ref["alpha_safe"])
+		for shape_ref in NifMaterialBuilderScript.texture_refs(nd):
+			var key: String = TextureServerScript.cache_key(shape_ref["path"], shape_ref["alpha_safe"])
 			if seen.has(key):
 				continue
 			seen[key] = true
-			refs.append(ref)
+			refs.append({"path": shape_ref["path"], "alpha_safe": shape_ref["alpha_safe"]})
 	return refs
 
 
@@ -113,17 +96,6 @@ static func _texture_server() -> Node:
 	if loop == null or not (loop is SceneTree):
 		return null
 	return (loop as SceneTree).root.get_node_or_null("TextureServer")
-
-
-## [diffuse, normal, glow] slot indices for a texture convention, -1 for a
-## channel the convention does not carry. See _make_material.
-static func _texture_slot_map(convention: String) -> Array:
-	match convention:
-		"texturing_property":
-			return [0, 5, 4]
-		"effect_shader":
-			return [0, 1, -1]
-	return [0, 1, 2]
 
 
 ## `prefer_static` asks for section 10's flattened form: one wrapper Node3D with
@@ -729,7 +701,7 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.surface_set_material(0, _make_material(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
+	mesh.surface_set_material(0, NifMaterialBuilderScript.build(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
 	mi.mesh = mesh
 	# XEMI is placement data, so NifServer only identifies which authored
 	# shapes consume it. The delivered tree's owner supplies the actual tint.
@@ -750,153 +722,6 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 		mi.skin = skin
 		mi.set_meta("nif_skin_bones", names)
 	return mi
-
-
-## Vertex colour is not decoration in this content: Bethesda's unlit AO fades
-## and glow overlays carry NO texture at all, so the per-vertex colour and its
-## alpha are the only pixels the shape has. A StandardMaterial3D ignores
-## ARRAY_COLOR unless `vertex_color_use_as_albedo` says otherwise, so without
-## it those shapes render as solid opaque white quads.
-static func _make_material(nd: Dictionary, has_vertex_colors: bool, textures: Dictionary) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.set_meta("nif_shader_type", String(nd["shader_type"]))
-	if bool(nd.get("has_shader_flags", false)):
-		_apply_shader_depth(mat, int(nd["shader_flags1"]), int(nd["shader_flags2"]))
-
-	if has_vertex_colors:
-		mat.vertex_color_use_as_albedo = true
-
-	# Alpha is resolved before the textures, because a blend- or test-enabled
-	# shape needs its diffuse fetched through TextureServer's alpha-safe path.
-	var blend_enabled := false
-	var test_enabled := false
-	if bool(nd.get("has_alpha_property", false)):
-		blend_enabled = bool(nd["alpha_blend_enabled"])
-		test_enabled = bool(nd["alpha_test_enabled"])
-		_apply_alpha(mat, nd, blend_enabled, test_enabled)
-	var alpha_safe := blend_enabled or test_enabled
-
-	# Slot NUMBERS mean different things per convention, so the mapping is
-	# picked from the block the slots came from rather than assumed. Reading a
-	# NiTexturingProperty as if it were a BSShaderTextureSet is how a terminal
-	# screen ends up with no albedo at all and renders solid white.
-	var slots: PackedStringArray = nd["texture_slots"]
-	var convention := String(nd.get("texture_convention", ""))
-	mat.set_meta("nif_texture_convention", convention)
-	# NiTexturingProperty is 0 base, 1 dark, 2 detail, 3 gloss, 4 glow, 5 bump,
-	# 6-9 decal. Corpus-wide only `base` is ever occupied -- 4,701 of 4,701
-	# shapes, with a single `dark` -- so the rest are mapped for correctness
-	# rather than because anything ships them. BSEffectShaderProperty has no
-	# glow slot at all.
-	var map: Array = _texture_slot_map(convention)
-	var diffuse_slot: int = map[0]
-	var normal_slot: int = map[1]
-	var glow_slot: int = map[2]
-
-	if diffuse_slot < slots.size():
-		mat.albedo_texture = _texture(textures, String(slots[diffuse_slot]), alpha_safe)
-	if normal_slot >= 0 and normal_slot < slots.size():
-		var normal := _texture(textures, String(slots[normal_slot]), false)
-		if normal != null:
-			mat.normal_enabled = true
-			mat.normal_texture = normal
-	if glow_slot >= 0 and glow_slot < slots.size():
-		var glow := _texture(textures, String(slots[glow_slot]), false)
-		if glow != null:
-			mat.emission_enabled = true
-			mat.emission_texture = glow
-	# Everything else is read by the source but not rendered yet; recorded so
-	# nothing is silently dropped.
-	for i in slots.size():
-		if i != diffuse_slot and i != normal_slot and i != glow_slot and String(slots[i]) != "":
-			mat.set_meta("nif_texture_slot_%d" % i, String(slots[i]))
-
-	# BSShaderNoLightingProperty is Bethesda's own signal that scene lighting
-	# must not touch this shape. An AO fade's dark-to-transparent gradient
-	# washes out to lit grey under ordinary shading, which is what NoLighting
-	# exists to prevent.
-	if String(nd["shader_type"]) == "BSShaderNoLightingProperty":
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		# The light-ray/beam shapes use additive NoLighting plus external
-		# emittance. Do not apply this to every unlit shape: the boarded-window
-		# glow plane has no alpha blend, and the beam's editor marker has no XEMI.
-		if bool(nd.get("has_shader_flags", false)) \
-				and (int(nd.get("shader_flags1", 0)) & 0x20000000) != 0 \
-				and blend_enabled and String(nd.get("alpha_blend_func", "")) == "add":
-			mat.proximity_fade_enabled = true
-			mat.proximity_fade_distance = LIGHT_SHAFT_SOFT_CLIP_METERS
-			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
-			mat.distance_fade_min_distance = 0.0
-			mat.distance_fade_max_distance = LIGHT_SHAFT_NEAR_FADE_METERS
-			var shaft_color := mat.albedo_color
-			shaft_color.a *= LIGHT_SHAFT_ALPHA_SCALE
-			mat.albedo_color = shaft_color
-	return mat
-
-
-## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Keep the raw
-## words on the material for inspection; only the two depth bits have a direct
-## BaseMaterial3D mapping here. Disabling depth testing also disables writes
-## in Godot, even if the authored write bit happens to be set.
-static func _apply_shader_depth(mat: StandardMaterial3D, flags1: int, flags2: int) -> void:
-	mat.set_meta("nif_shader_flags1", flags1)
-	mat.set_meta("nif_shader_flags2", flags2)
-	var depth_test := (flags1 & 0x80000000) != 0
-	var depth_write := (flags2 & 0x1) != 0
-	if not depth_test:
-		mat.set_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST, true)
-	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if depth_write else BaseMaterial3D.DEPTH_DRAW_DISABLED
-
-
-## NiAlphaProperty -> Godot transparency. Blend and test are separate bits and
-## a shape can set either or both. StandardMaterial3D cannot combine authored
-## blending with authored alpha testing; try alpha scissor for the dual-bit
-## case, using the authored cutoff so discarded pixels cannot occlude each
-## other when depth writing is enabled. This drops the authored edge blending.
-static func _apply_alpha(mat: StandardMaterial3D, nd: Dictionary,
-		blend_enabled: bool, test_enabled: bool) -> void:
-	mat.set_meta("nif_alpha_blend_func", String(nd["alpha_blend_func"]))
-	if blend_enabled and test_enabled:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		# NiAlphaProperty's GREATER 0 still rejects fully transparent pixels.
-		# Godot's cutoff of 0 rejects none, so use the smallest 8-bit step.
-		mat.alpha_scissor_threshold = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
-	elif blend_enabled:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		# Light shafts and glow overlays ship src=SRC_ALPHA dst=ONE and are
-		# genuinely additive; grime decals ship ZERO/SRC_COLOR and multiply.
-		# Defaulting everything to mix loses both.
-		match String(nd["alpha_blend_func"]):
-			"add":
-				mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-			"multiply":
-				mat.blend_mode = BaseMaterial3D.BLEND_MODE_MUL
-			_:
-				mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
-	elif test_enabled:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		# Bethesda's alpha test is "keep if alpha > threshold"; Godot's scissor
-		# discards below the threshold, so an authored 0 keeps everything and
-		# the test becomes a no-op -- tree LOD billboards render as opaque
-		# squares. 0.5 is Bethesda's own modal authored value (128/255).
-		var threshold := float(nd["alpha_threshold"])
-		mat.alpha_scissor_threshold = threshold if threshold > 0.0 else 0.5
-
-
-## A lookup into what _resolve_textures() already awaited. No server call, no
-## decode, no cache access -- by the time any material is built every texture
-## this file needs is resident.
-##
-## `alpha_safe` selects TextureServer's DXT1 -> RGBA8 variant. Godot maps
-## FORMAT_DXT1 to the BC1_RGB GPU format, which is opaque by spec, so BC1
-## punch-through alpha is discarded by the sampler before any fragment shader
-## runs -- alpha scissor then has nothing to cut and transparent texels render
-## as the black they are encoded to. Not shader-fixable.
-static func _texture(textures: Dictionary, path: String, alpha_safe: bool) -> ImageTexture:
-	if path.is_empty():
-		return null
-	return textures.get(TextureServerScript.cache_key(path, alpha_safe))
 
 
 static func _apply_extra_data(node: Node3D, nd: Dictionary) -> void:

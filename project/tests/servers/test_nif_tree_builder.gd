@@ -8,6 +8,7 @@ extends Node
 ## any of them in the editor and walk the tree.
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 const PREVIEW_DIR := "res://GodotBryo/Servers/NifServer/previews"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
@@ -875,7 +876,7 @@ func test_shader_depth_flags() -> void:
 	check(not third.is_empty(), "third water tank shape found")
 	if third.is_empty():
 		return
-	var mat: StandardMaterial3D = NifTreeBuilderScript._make_material(third, false, {})
+	var mat: StandardMaterial3D = NifMaterialBuilderScript.build(third, false, {})
 	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
 		"third shape retains authored alpha blending")
 	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
@@ -885,10 +886,12 @@ func test_shader_depth_flags() -> void:
 	check(int(mat.get_meta("nif_shader_flags1", 0)) == 0x82000101 and
 		int(mat.get_meta("nif_shader_flags2", 0)) == 0x1,
 		"both raw shader flag words remain inspectable on material")
+	check(mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_STANDARD,
+		"the material records its material path")
 	var no_depth := third.duplicate()
 	no_depth["shader_flags1"] = 0
 	no_depth["shader_flags2"] = 0
-	var no_depth_mat: StandardMaterial3D = NifTreeBuilderScript._make_material(no_depth, false, {})
+	var no_depth_mat: StandardMaterial3D = NifMaterialBuilderScript.build(no_depth, false, {})
 	check(no_depth_mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
 		"cleared authored test bit disables depth testing")
 	check(no_depth_mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED,
@@ -966,7 +969,7 @@ func test_dual_alpha_scissor() -> void:
 		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
 		check(bool(shape["alpha_test_enabled"]) == (expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR),
 			"%s authored test bit matches expected mode" % shape_name)
-		var mat: StandardMaterial3D = NifTreeBuilderScript._make_material(shape, false, {})
+		var mat: StandardMaterial3D = NifMaterialBuilderScript.build(shape, false, {})
 		check(mat.transparency == expected_mode,
 			"%s selects expected transparency mode" % shape_name)
 		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:

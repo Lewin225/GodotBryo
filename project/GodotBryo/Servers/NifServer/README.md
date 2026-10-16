@@ -42,6 +42,7 @@ NifServer.request_lod(nif_path, owner, on_complete: Callable, prefer_static := f
 NifServer.lod_companion_path(nif_path) -> String
 NifServer.get_stats() -> Dictionary  ·  reset_stats()
 NifServer.purge(nif_path, prefer_static := false)  ·  purge_all()
+NifServer.set_material_path(path: StringName, builder: Callable) -> bool
 NifServer.canonical(nif_path) -> String   # static
 
 await NifTreeBuilder.build(src: NifSource, apply_root_basis := true) -> Node3D
@@ -162,8 +163,8 @@ work, and NifServer offers no entry point for it.
 enum (nif.xml `BSShaderType`). `shader_type` is the shader block's type name,
 not this enum. Every shader block type carries one Shader Type corpus-wide
 except `BSShaderPPLightingProperty`: 1 (default) on 57,630 shapes, 14 (skin) on
-332. NifTreeBuilder does not read `bs_shader_type` yet. It preserves both flag
-words on the material as metadata
+332. NifTreeBuilder does not read `bs_shader_type` yet. NifMaterialBuilder
+preserves both flag words on the material as metadata
 and maps only `ZBuffer_Test` and `ZBuffer_Write` to Godot depth state. Other
 named bits remain available for later, separately verified mappings. Godot's
 ordinary alpha-blend mode still does not cast shadows; depth writing alone
@@ -180,6 +181,21 @@ every NoLighting shape, with the block's four falloff values
 (`falloff_start_angle`, `falloff_stop_angle`, `falloff_start_opacity`,
 `falloff_stop_opacity`; the angles are cosines). NifTreeBuilder reads neither
 yet.
+
+**Material paths.** `NifMaterialBuilder` builds each shape's material by dispatching it to a
+material path chosen from what the shape's NifSource node declares. Every shape currently goes to
+`PATH_STANDARD`, the `StandardMaterial3D` described here; further paths are added as cases in
+`path_for()`. `NifServer.set_material_path()` replaces a path's builder: it receives a
+`NifMaterialContext` (the shape's node dictionary, its textures by role, and `default_material()`,
+the path's stock material) and returns a `Material`, either the stock one adjusted or its own, such
+as a `ShaderMaterial`. Whatever it returns gets the same `nif_*` metadata: `nif_material_path`, the
+shader block, the texture convention, both flag words, the alpha blend function and every texture
+slot the path does not use. An override must be registered before the first material is built;
+later ones are refused, because delivered trees are cached and would mix old and new materials.
+The textures a path uses come from `texture_refs()`, which is also what the build warms, so an
+override receives every texture the path declares and no others. A replaced material is shared by
+every instance like any other, so it batches the same way. `EsmNode`'s XEMI tint only handles
+`StandardMaterial3D` and leaves other materials untinted.
 
 `NiAlphaProperty` with both blend and test enabled currently uses Godot alpha
 scissor at the authored test threshold as an explicit approximation:
@@ -225,6 +241,8 @@ stops `_enter_tree`/`_ready` firing part-way through construction.
 |---|---|
 | `nif_server.gd` | The autoload: queue, admission, budgets, document and tree caches. |
 | `nif_tree_builder.gd` | The builder. `build()` is the whole public surface. |
+| `nif_material_builder.gd` | Material path dispatch, overrides, and the stock `StandardMaterial3D` path. |
+| `nif_material_context.gd` | What a material path receives for one shape. |
 | `nif_billboard_node.gd` | Per-frame billboard orientation for `NiBillboardNode`. |
 | `nif_names.gd` | Reversible NIF-name ↔ node-name escaping. |
 | `previews/` | Generated scenes for visual inspection. Written by the test, not by hand. |
@@ -240,6 +258,7 @@ without flattening or interpreting it.
 `project/tests/servers/test_nif_tree_builder.gd` — the tree, and it regenerates `previews/`.
 `project/tests/servers/test_nif_server.gd` — the contract: delivery, budgets, the tree cache.
 `project/tests/servers/test_nif_furniture_markers.gd` — furniture markers in the tree, against census A4.
+`project/tests/servers/test_nif_material_paths.gd` — material path dispatch and overrides, in its own process.
 `project/tests/servers/test_nif_duplicate_bench.gd` — timing measurement, skipped by the runner.
 
 Both must print `ALL CHECKS PASSED` and exit `0` before a change here is done.

@@ -10,6 +10,7 @@ extends Node
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
 const NifAnimationBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_builder.gd")
+const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 
 ## The raw-target AnimationLibrary schema. Bump when NifAnimationBuilder's
@@ -342,6 +343,14 @@ func request_lod(nif_path: String, requesting_node: Node, on_complete: Callable,
 		_deliver(waiter, null)
 		return
 	request(lod_path, requesting_node, on_complete, prefer_static)
+
+## Replaces the builder for one material path (NifMaterialBuilder.PATH_*).
+## `builder` takes a NifMaterialContext and returns a Material: the context's
+## default_material() adjusted, or a Material of its own. Refused, returning
+## false, once any material has been built, because delivered trees are cached
+## and a later override would leave old and new materials mixed.
+func set_material_path(path: StringName, builder: Callable) -> bool:
+	return NifMaterialBuilderScript.set_material_path(path, builder)
 
 ## Returns active data about the server state for profilling
 func get_stats() -> Dictionary:
