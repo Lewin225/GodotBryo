@@ -169,6 +169,18 @@ named bits remain available for later, separately verified mappings. Godot's
 ordinary alpha-blend mode still does not cast shadows; depth writing alone
 does not change that.
 
+**Shader File Name and falloff.** `shader_file_name` is the texture path the
+shader block itself names: `BSShaderNoLightingProperty`'s Base Texture, or the
+File Name of `SkyShaderProperty`, `TileShaderProperty` and
+`TallGrassShaderProperty`; empty for every other block. It is not merged into
+`texture_slots`. All 4,670 NoLighting shapes that name one also have a
+`NiTexturingProperty`, and 30 of those name a different path there. The 73 Sky,
+Tile and TallGrass shapes have no other texture at all. `has_falloff` is set on
+every NoLighting shape, with the block's four falloff values
+(`falloff_start_angle`, `falloff_stop_angle`, `falloff_start_opacity`,
+`falloff_stop_opacity`; the angles are cosines). NifTreeBuilder reads neither
+yet.
+
 `NiAlphaProperty` with both blend and test enabled currently uses Godot alpha
 scissor at the authored test threshold as an explicit approximation:
 `StandardMaterial3D` cannot combine both authored operations, so the authored

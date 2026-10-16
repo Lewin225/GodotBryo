@@ -83,6 +83,14 @@ Array NifSource::get_nodes() const {
 			d["shader_flags2"] = static_cast<int64_t>(n.shader_flags2);
 			d["bs_shader_type"] = static_cast<int64_t>(n.bs_shader_type);
 		}
+		d["shader_file_name"] = String(n.shader_file_name.c_str());
+		d["has_falloff"] = n.has_falloff;
+		if (n.has_falloff) {
+			d["falloff_start_angle"] = n.falloff_start_angle;
+			d["falloff_stop_angle"] = n.falloff_stop_angle;
+			d["falloff_start_opacity"] = n.falloff_start_opacity;
+			d["falloff_stop_opacity"] = n.falloff_stop_opacity;
+		}
 		d["texture_convention"] = String(n.texture_convention.c_str());
 		d["has_alpha_property"] = n.has_alpha_property;
 		if (n.has_alpha_property) {

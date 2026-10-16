@@ -272,6 +272,24 @@ struct SceneNode {
 	// beside the flags. Every block type carries one value corpus-wide except
 	// BSShaderPPLightingProperty, which is 1 or 14 (skin).
 	uint32_t bs_shader_type = 0;
+	// The texture path the shader block itself names: BSShaderNoLightingProperty's
+	// Base Texture, or the File Name of Sky-, Tile- and TallGrassShaderProperty.
+	// Empty for every other block. Not merged into texture_slots, which only
+	// ever come from a texture set, an effect shader or a NiTexturingProperty.
+	// Corpus-wide 4,743 shapes name one: every NoLighting one (4,670) also has a
+	// NiTexturingProperty, 30 of them with a different path; the 73 Sky, Tile
+	// and TallGrass ones have no other texture at all.
+	std::string shader_file_name;
+	// BSShaderNoLightingProperty's falloff, set only on that block: the opacity
+	// at two view-angle cosines. The GECK says the Empty flag (flags1 bit 6)
+	// enables it. The 7,936 shipped shapes carry 129 distinct value sets; 6,151
+	// are (1, cos 90 degrees, 1, 0), which a float stores as a stop angle of
+	// -4.37e-8 rather than 0.
+	bool has_falloff = false;
+	float falloff_start_angle = 1.0f;
+	float falloff_stop_angle = 0.0f;
+	float falloff_start_opacity = 1.0f;
+	float falloff_stop_opacity = 1.0f;
 
 	// NiProperty blocks this node references, by BLOCK INDEX -- the identity
 	// nif_server_v2.md 7.3 needs. Property blocks are shared: ~34% of

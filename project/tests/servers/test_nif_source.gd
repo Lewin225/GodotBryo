@@ -31,6 +31,9 @@ const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
 const TRANSFORM_SHAPE := "meshes/architecture/freeside/ramshacklebusdoor02.nif"
 const BSPLINE := "meshes/dlc05/creatures/alien/locomotion/forwardwalk.kf"
 const WATER_TANK := "meshes/architecture/goodsprings/NV_WaterTank.NIF"
+const CHAMBER_FX := "meshes/animobjects/hchamberfx.nif"
+const GRASS := "meshes/landscape/grass/grasslawn01.nif"
+const SONIC_PROJECTILE := "meshes/nvdlc03/projectiles/sonicblueprojectile01.nif"
 
 var failures := 0
 
@@ -555,6 +558,9 @@ func test_corpus_parses() -> void:
 	var kf_multi_sequence := 0
 	var multi_sequence_examples: PackedStringArray = []
 	var shader_types := {}
+	var file_names := {}
+	var falloff_shapes := 0
+	var falloff_common := 0
 	for p in ArchiveServer.list_files_with_prefix("meshes/"):
 		var sp := String(p)
 		if not (sp.ends_with(".nif") or sp.ends_with(".kf")):
@@ -582,6 +588,12 @@ func test_corpus_parses() -> void:
 			if n.has("positions") and bool(n.get("has_shader_flags", false)):
 				var shader_key := "%s %d" % [String(n["shader_type"]), int(n["bs_shader_type"])]
 				shader_types[shader_key] = int(shader_types.get(shader_key, 0)) + 1
+			if n.has("positions"):
+				_count_shader_file_name(n, file_names)
+			if n.has("positions") and bool(n["has_falloff"]):
+				falloff_shapes += 1
+				if _is_common_falloff(n):
+					falloff_common += 1
 	check(files > 25000, "%d NIF/KF files in the catalog" % files)
 	check(ok == files, "all %d parsed, 0 failures (got %d)" % [files, ok])
 	check(av > 140000, "%d NiAVObject blocks" % av)
@@ -599,9 +611,79 @@ func test_corpus_parses() -> void:
 		"TileShaderProperty 32": 49, "WaterShaderProperty 17": 8,
 	}
 	check(shader_types == expected_shader_types, "Shader Type per shader block matches the census (got %s)" % [shader_types])
+	# Counts are shapes, from native/tools/shader_path_census.
+	var expected_file_names := {
+		"BSShaderNoLightingProperty texturing_property same": 4640,
+		"BSShaderNoLightingProperty texturing_property different": 30,
+		"SkyShaderProperty no slots": 6, "TileShaderProperty no slots": 49, "TallGrassShaderProperty no slots": 18,
+	}
+	check(file_names == expected_file_names,
+		"shader File Name against the shape's texture slots matches the census (got %s)" % [file_names])
+	check(falloff_shapes == 7936, "every NoLighting shape has falloff, 7,936 (got %d)" % falloff_shapes)
+	check(falloff_common == 6151, "6,151 NoLighting shapes have falloff (1, cos 90, 1, 0) (got %d)" % falloff_common)
 	check(kf_multi_sequence == 33, "33 KFs have multiple sequences (got %d; e.g. %s)" % [
 		kf_multi_sequence, ", ".join(multi_sequence_examples),
 	])
+
+
+## Tallies a shape's shader File Name by block and by how it relates to the
+## shape's texture slots.
+func _count_shader_file_name(n: Dictionary, file_names: Dictionary) -> void:
+	var file_name := String(n["shader_file_name"])
+	if file_name.is_empty():
+		return
+	var slots: PackedStringArray = n["texture_slots"]
+	var relation := "no slots"
+	if not slots.is_empty():
+		var same := String(slots[0]).to_lower() == file_name.to_lower()
+		relation = "%s %s" % [String(n["texture_convention"]), "same" if same else "different"]
+	var key := "%s %s" % [String(n["shader_type"]), relation]
+	file_names[key] = int(file_names.get(key, 0)) + 1
+
+
+func _is_common_falloff(n: Dictionary) -> bool:
+	if not is_equal_approx(float(n["falloff_start_angle"]), 1.0):
+		return false
+	if not is_zero_approx(float(n["falloff_stop_angle"])):
+		return false
+	if not is_equal_approx(float(n["falloff_start_opacity"]), 1.0):
+		return false
+	return is_zero_approx(float(n["falloff_stop_opacity"]))
+
+
+func test_shader_file_name_and_falloff() -> void:
+	print("--- shader File Name and NoLighting falloff ---")
+	var grass_src := _load(GRASS)
+	if grass_src == null:
+		return
+	var grass := _by_name(grass_src, "GrassLawn03:0")
+	check(String(grass.get("shader_file_name", "")) == "textures\\landscape\\grass\\GrassLawn01.dds",
+		"grasslawn01.nif's TallGrass File Name is read")
+	check((grass.get("texture_slots", PackedStringArray(["x"])) as PackedStringArray).is_empty(),
+		"the grass shape has no other texture slots")
+	check(not bool(grass.get("has_falloff", true)), "a TallGrass shape has no falloff")
+
+	var sonic_src := _load(SONIC_PROJECTILE)
+	if sonic_src == null:
+		return
+	var sonic := _by_name(sonic_src, "RefractMesh:0")
+	check(String(sonic.get("shader_file_name", "")) == "textures\\effects\\MezRing01.dds",
+		"the sonic projectile's NoLighting Base Texture is read")
+	var sonic_slots: PackedStringArray = sonic.get("texture_slots", PackedStringArray())
+	check(sonic_slots.size() > 0 and sonic_slots[0] == "textures\\nvdlc03\\effects\\nvdlc03fx\\mezblue_rev.dds",
+		"its NiTexturingProperty base stays in texture_slots, unmerged")
+
+	var chamber_src := _load(CHAMBER_FX)
+	if chamber_src == null:
+		return
+	var smoke := _by_name(chamber_src, "##SmokeExp:0")
+	check(bool(smoke.get("has_falloff", false)), "hchamberfx.nif's ##SmokeExp:0 has falloff")
+	check((int(smoke.get("shader_flags1", 0)) & 0x40) != 0, "and sets Empty")
+	check(is_equal_approx(float(smoke.get("falloff_start_angle", 0.0)), cos(deg_to_rad(75.0))),
+		"its falloff start angle is cos 75 degrees")
+	check(is_zero_approx(float(smoke.get("falloff_stop_angle", 1.0))), "its falloff stop angle is cos 90 degrees")
+	check(is_equal_approx(float(smoke.get("falloff_start_opacity", 0.0)), 1.0), "its start opacity is 1")
+	check(is_zero_approx(float(smoke.get("falloff_stop_opacity", 1.0))), "its stop opacity is 0")
 
 
 func test_shader_flags() -> void:
@@ -644,6 +726,7 @@ func _ready() -> void:
 	test_d10_controller_chain_and_text_keys()
 	test_node_transform_units()
 	test_shader_flags()
+	test_shader_file_name_and_falloff()
 	test_corpus_parses()
 
 	print("=======================")

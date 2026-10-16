@@ -1027,6 +1027,20 @@ Document load(const uint8_t *data, size_t size) {
 				out.shader_flags2 = bs_shader->shaderFlags2;
 				out.bs_shader_type = static_cast<uint32_t>(bs_shader->shaderType);
 			}
+			if (const auto *no_lighting = dynamic_cast<nifly::BSShaderNoLightingProperty *>(shader)) {
+				out.shader_file_name = no_lighting->baseTexture.get();
+				out.has_falloff = true;
+				out.falloff_start_angle = no_lighting->falloffStartAngle;
+				out.falloff_stop_angle = no_lighting->falloffStopAngle;
+				out.falloff_start_opacity = no_lighting->falloffStartOpacity;
+				out.falloff_stop_opacity = no_lighting->falloffStopOpacity;
+			} else if (const auto *sky = dynamic_cast<nifly::SkyShaderProperty *>(shader)) {
+				out.shader_file_name = sky->fileName.get();
+			} else if (const auto *tile = dynamic_cast<nifly::TileShaderProperty *>(shader)) {
+				out.shader_file_name = tile->fileName.get();
+			} else if (const auto *grass = dynamic_cast<nifly::TallGrassShaderProperty *>(shader)) {
+				out.shader_file_name = grass->fileName.get();
+			}
 
 			// Resolution order matches nifly's own GetTextureSlot: a real
 			// BSShaderTextureSet first, then the effect-shader inline paths,
