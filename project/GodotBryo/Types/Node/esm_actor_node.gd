@@ -229,8 +229,15 @@ func _rehydrate_and_build() -> void:
 	if _loading or _humanoid_visual_built:
 		return
 	equipment.watch(reference as ActorReference)
-	if _load_requested:
+	if _load_requested or _is_editor_preview():
 		_start_visual_load(reference.base)
+
+
+## In the editor, an actor node no parent places is a preview (the browser's,
+## or one placed by hand), and loads as soon as its reference is ready. Its
+## load request is runtime state, so a saved and reopened scene has lost it.
+func _is_editor_preview() -> bool:
+	return Engine.is_editor_hint() and not placed_by_parent
 
 
 ## The explicit near-residency entry point. Rehydration/importing only makes

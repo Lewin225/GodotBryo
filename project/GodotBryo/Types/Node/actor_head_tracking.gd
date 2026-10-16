@@ -102,6 +102,8 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	_instances.erase(self)
+	if Engine.is_editor_hint():
+		return
 	if DialogueServer.response_started.is_connected(_on_response_started):
 		DialogueServer.response_started.disconnect(_on_response_started)
 		DialogueServer.line_finished.disconnect(_on_line_finished)
