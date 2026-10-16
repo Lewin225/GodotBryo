@@ -183,14 +183,21 @@ every NoLighting shape, with the block's four falloff values
 yet.
 
 **Material paths.** `NifMaterialBuilder` builds each shape's material by dispatching it to a
-material path chosen from what the shape's NifSource node declares. Every shape currently goes to
-`PATH_STANDARD`, the `StandardMaterial3D` described here; further paths are added as cases in
-`path_for()`. `NifServer.set_material_path()` replaces a path's builder: it receives a
+material path chosen from what the shape's NifSource node declares, added as cases in
+`path_for()`:
+
+| path | selected by | slot 2 | stock material |
+|---|---|---|---|
+| `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission; the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
+| `PATH_STANDARD` | every other shape | `glow` | the `StandardMaterial3D` described here |
+
+`NifServer.set_material_path()` replaces a path's builder: it receives a
 `NifMaterialContext` (the shape's node dictionary, its textures by role, and `default_material()`,
 the path's stock material) and returns a `Material`, either the stock one adjusted or its own, such
 as a `ShaderMaterial`. Whatever it returns gets the same `nif_*` metadata: `nif_material_path`, the
-shader block, the texture convention, both flag words, the alpha blend function and every texture
-slot the path does not use. An override must be registered before the first material is built;
+shader block, the texture convention, both flag words, the alpha blend function,
+`nif_texture_roles` (role → authored path, including roles the material does not render) and every
+texture slot the path does not use. An override must be registered before the first material is built;
 later ones are refused, because delivered trees are cached and would mix old and new materials.
 The textures a path uses come from `texture_refs()`, which is also what the build warms, so an
 override receives every texture the path declares and no others. A replaced material is shared by

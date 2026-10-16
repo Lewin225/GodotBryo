@@ -10,19 +10,33 @@ class_name NifMaterialBuilder
 ## returning a different Material altogether. build() stamps the `nif_*`
 ## metadata onto whatever the path returns.
 ##
-## Every shape currently goes to PATH_STANDARD.
+## Shapes with the Hair flag go to PATH_HAIR; every other shape goes to
+## PATH_STANDARD.
 
 # For cache_key() only, which is static.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
 const NifMaterialContextScript := preload("res://GodotBryo/Servers/NifServer/nif_material_context.gd")
 
-## The StandardMaterial3D path every shape is dispatched to.
+## The StandardMaterial3D path for every shape no other path claims.
 const PATH_STANDARD := &"standard"
-const PATHS: Array[StringName] = [PATH_STANDARD]
+## Shapes whose BSShaderPPLightingProperty sets the Hair flag. The GECK: "Enables
+## hair shaders. Glowmaps are used as highlight textures." 159 shapes in the
+## shipped corpus, all Shader Type 1 with a texture set, every one with an
+## `_hl` texture in slot 2: 154 under meshes/characters/hair, 3 Fort head
+## pikes and 2 skeleton clutter shapes.
+const PATH_HAIR := &"hair"
+const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR]
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
 const ROLE_GLOW := &"glow"
+## Slot 2 on a hair shape: the hair highlight texture, not a glow map.
+const ROLE_HAIR_HIGHLIGHT := &"hair_highlight"
+
+## BSShaderFlags bit 18, Hair (nif.xml F3SF1).
+const SHADER_FLAG1_HAIR := 1 << 18
+## The blocks the GECK lists the Hair flag for.
+const HAIR_SHADER_BLOCKS: Array[String] = ["BSShaderPPLightingProperty", "Lighting30ShaderProperty"]
 
 # Provisional StandardMaterial3D stand-in for additive XEMI light shafts.
 # These distances and the alpha scale are visual tuning, not NIF fields.
@@ -52,8 +66,18 @@ static func set_material_path(path: StringName, builder: Callable) -> bool:
 
 
 ## The material path for a shape's NifSource node.
-static func path_for(_nd: Dictionary) -> StringName:
+static func path_for(nd: Dictionary) -> StringName:
+	if _is_hair(nd):
+		return PATH_HAIR
 	return PATH_STANDARD
+
+
+static func _is_hair(nd: Dictionary) -> bool:
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	if not HAIR_SHADER_BLOCKS.has(String(nd["shader_type"])):
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_HAIR) != 0
 
 
 ## The textures a shape's path uses: [{role, slot, path, alpha_safe}] in slot
@@ -67,6 +91,8 @@ static func texture_refs(nd: Dictionary) -> Array:
 	var alpha_safe := _alpha_safe(nd)
 	var map: Array = _texture_slot_map(String(nd.get("texture_convention", "")))
 	var roles: Array[StringName] = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_GLOW]
+	if path_for(nd) == PATH_HAIR:
+		roles = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_HAIR_HIGHLIGHT]
 	for i in map.size():
 		var slot: int = map[i]
 		if slot < 0 or slot >= slots.size() or String(slots[slot]).is_empty():
@@ -104,7 +130,7 @@ static func build(nd: Dictionary, has_vertex_colors: bool, textures: Dictionary)
 			push_error("NifMaterialBuilder: override for '%s' returned null; using the stock material" % path)
 	if material == null:
 		material = context.default_material()
-	_stamp_metadata(material, nd, path, used_slots)
+	_stamp_metadata(material, nd, path, role_paths, used_slots)
 	return material
 
 
@@ -112,12 +138,17 @@ static func _stock_builder(path: StringName) -> Callable:
 	match path:
 		PATH_STANDARD:
 			return _build_standard
+		PATH_HAIR:
+			return _build_hair
 	return _build_standard
 
 
 ## The raw file data every material carries, whichever path built it.
-static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName, used_slots: Dictionary) -> void:
+static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName,
+		role_paths: Dictionary, used_slots: Dictionary) -> void:
 	material.set_meta("nif_material_path", path)
+	# Role -> authored path, including roles the material does not render.
+	material.set_meta("nif_texture_roles", role_paths)
 	material.set_meta("nif_shader_type", String(nd["shader_type"]))
 	material.set_meta("nif_texture_convention", String(nd.get("texture_convention", "")))
 	if bool(nd.get("has_shader_flags", false)):
@@ -222,6 +253,15 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 			shaft_color.a *= LIGHT_SHAFT_ALPHA_SCALE
 			mat.albedo_color = shaft_color
 	return mat
+
+
+## PATH_HAIR's stock material: PATH_STANDARD's, with no emission, because slot 2
+## is the highlight rather than a glow map. StandardMaterial3D has no channel
+## for the highlight, so it is not rendered; its path stays in
+## `nif_texture_roles` and in the context. albedo_color is left white for the
+## owner to tint with the hair colour, on its own copy of the material.
+static func _build_hair(context: NifMaterialContext) -> Material:
+	return _build_standard(context)
 
 
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth
