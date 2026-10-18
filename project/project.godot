@@ -13,6 +13,7 @@ config_version=5
 config/name="GodotByro"
 run/main_scene="res://game.tscn"
 config/features=PackedStringArray("4.7")
+run/max_fps=120
 
 [autoload]
 
@@ -21,6 +22,7 @@ GodotBryoSettings="*res://godot_bryo_settings.gd"
 ArchiveServer="*res://GodotBryo/Servers/ArchiveServer/archive_server.gd"
 TextureServer="*res://GodotBryo/Servers/TextureServer/texture_server.gd"
 NifServer="*res://GodotBryo/Servers/NifServer/nif_server.gd"
+FaceGenServer="*res://GodotBryo/Servers/FaceGenServer/face_gen_server.gd"
 EsmServer="*res://GodotBryo/Servers/EsmServer/esm_server.gd"
 ScriptServer="*res://GodotBryo/Servers/ScriptServer/script_server.gd"
 QuestServer="*res://GodotBryo/Servers/QuestServer/quest_server.gd"
@@ -32,7 +34,7 @@ NpcSimulationServer="*res://GodotBryo/Servers/NpcSimulationServer/nav_npc_simula
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/subwindows/embed_subwindows=false
-window/vsync/vsync_mode=2
+window/vsync/vsync_mode=0
 
 [editor_plugins]
 
@@ -119,6 +121,7 @@ zoom={
 
 [physics]
 
+common/max_physics_steps_per_frame=2
 common/physics_interpolation=true
 
 [rendering]
