@@ -1,0 +1,335 @@
+@tool
+extends Node
+
+## FaceGenServer: shapes a delivered head-part mesh to one NPC's face.
+## `request_morph()` reads the mesh's EGM, adds the NPC's FaceGen offsets to its
+## vertices on a worker, and calls back on the main thread with that NPC's own
+## copy of the mesh. See README.md.
+
+## Coefficient digits in a result key.
+const SCALE_KEY_DIGITS := 6
+## Metadata on every delivered mesh: the EGM path it was morphed with.
+const META_EGM_PATH := "face_gen_egm_path"
+
+## Every result is delivered from `_process`, never from inside
+## `request_morph()`, so a callback always fires after the request returns.
+@export var deliveries_per_frame: int = 64
+
+var _archive_server: Node = null
+var _shutting_down := false
+
+## EGM path -> {"egm": EgmReader, "tri_vertex_count": int, "tri_extra_vertex_count": int},
+## or null when the EGM is missing or does not load.
+var _bases := {}
+## EGM path -> jobs waiting for the basis to load.
+var _base_waiters := {}
+## Result key -> WeakRef to a morphed ArrayMesh. The actors holding the mesh
+## keep it alive; a key whose mesh has gone is morphed again.
+var _morphed := {}
+## Result key -> jobs waiting for one morph in flight.
+var _morph_waiters := {}
+## Jobs ready to call back: [{job, mesh}].
+var _deliveries := []
+var _warned := {}
+
+var _stats := {
+	"request_count": 0,
+	"cache_hits": 0,
+	"no_egm_count": 0,
+	"vertex_mismatch_count": 0,
+	"morph_count": 0,
+	"base_load_count": 0,
+	"owner_gone_count": 0,
+}
+
+
+func _ready() -> void:
+	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")
+	if _archive_server == null:
+		push_error("FaceGenServer: ArchiveServer autoload not found; every request will deliver null")
+
+
+func _exit_tree() -> void:
+	_shutting_down = true
+
+
+## Calls `on_complete(mesh: ArrayMesh)` once, on the main thread: `mesh` with
+## `npc`'s FaceGen applied, or null when the shape has no EGM to apply (none
+## exists, or its vertex count does not fit the mesh). `on_complete` must be a
+## method on `requesting_node`; nothing is delivered once that node is freed.
+##
+## `model_path` is the NIF's MODL-style path and `shape_name` the shape's
+## authored name (`nif_name`), which picks a hair NIF's Hat or NoHat EGM.
+## The delivered mesh is shared by every request with the same mesh, EGM and
+## FaceGen values, so callers must not modify it.
+func request_morph(mesh: ArrayMesh, model_path: String, shape_name: String, npc: NpcBase,
+		requesting_node: Node, on_complete: Callable) -> void:
+	_stats["request_count"] += 1
+	if not _valid_callback(requesting_node, on_complete):
+		push_error("FaceGenServer: on_complete must be a method on `requesting_node`; request for '%s' refused" % model_path)
+		return
+	var job := {"owner": requesting_node, "cb": on_complete}
+	if _shutting_down or _archive_server == null or mesh == null or npc == null:
+		_queue_delivery(job, null)
+		return
+	var egm_path := egm_path_for(model_path, shape_name)
+	var coordinates := geometry_coordinates(npc)
+	job["mesh"] = mesh
+	job["egm_path"] = egm_path
+	job["symmetric"] = coordinates[0]
+	job["asymmetric"] = coordinates[1]
+	job["key"] = _result_key(mesh, egm_path, coordinates[0], coordinates[1])
+
+	var cached := _cached_mesh(String(job["key"]))
+	if cached != null:
+		_stats["cache_hits"] += 1
+		_queue_delivery(job, cached)
+		return
+	if _morph_waiters.has(job["key"]):
+		(_morph_waiters[job["key"]] as Array).append(job)
+		return
+	if _bases.has(egm_path):
+		_start_morph(job)
+		return
+	if _base_waiters.has(egm_path):
+		(_base_waiters[egm_path] as Array).append(job)
+		return
+	_base_waiters[egm_path] = [job]
+	WorkerThreadPool.add_task(_load_base_task.bind(egm_path))
+
+
+## The EGM for one shape of `model_path`: `<stem>.egm`, or for a shape named
+## Hat or NoHat (hair NIFs), `<stem>hat.egm` / `<stem>nohat.egm`. Lowercase,
+## with `/` separators and the `meshes/` prefix.
+static func egm_path_for(model_path: String, shape_name: String) -> String:
+	var stem := model_path.replace("\\", "/").strip_edges().to_lower()
+	while stem.begins_with("/"):
+		stem = stem.substr(1)
+	if not stem.begins_with("meshes/"):
+		stem = "meshes/" + stem
+	stem = stem.get_basename()
+	var variant := shape_name.strip_edges().to_lower()
+	if variant == "hat" or variant == "nohat":
+		return stem + variant + ".egm"
+	return stem + ".egm"
+
+
+## `npc`'s FaceGen geometry coefficients: [FGGS, FGGA], each its race's (for
+## its gender) plus its own. Both come from the template when the NPC takes its
+## traits from one.
+static func geometry_coordinates(npc: NpcBase) -> Array[PackedFloat32Array]:
+	var source := ActorBase.template_source(npc, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	if source == null:
+		source = npc
+	var symmetric := PackedFloat32Array()
+	var asymmetric := PackedFloat32Array()
+	if source.face_gen != null:
+		symmetric = source.face_gen.fggs.to_float32_array()
+		asymmetric = source.face_gen.fgga.to_float32_array()
+	if source.race != null:
+		var female := source.is_female()
+		symmetric = _sum(symmetric, source.race.facegen_geometry_symmetric(female))
+		asymmetric = _sum(asymmetric, source.race.facegen_geometry_asymmetric(female))
+	return [symmetric, asymmetric]
+
+
+func get_stats() -> Dictionary:
+	var stats := _stats.duplicate()
+	stats["bases_resident"] = _bases.size()
+	stats["morphed_entries"] = _morphed.size()
+	return stats
+
+
+func reset_stats() -> void:
+	for key in _stats:
+		_stats[key] = 0
+
+
+## Drops the loaded EGMs and the morphed-mesh index. Meshes already delivered
+## stay with their holders.
+func purge_all() -> void:
+	_bases.clear()
+	_morphed.clear()
+
+
+func _process(_delta: float) -> void:
+	var delivered := 0
+	while not _deliveries.is_empty() and delivered < deliveries_per_frame:
+		var delivery: Dictionary = _deliveries.pop_front()
+		_deliver(delivery["job"], delivery["mesh"])
+		delivered += 1
+
+
+static func _valid_callback(owner_node: Node, on_complete: Callable) -> bool:
+	return owner_node != null and on_complete.is_valid() and on_complete.get_object() == owner_node
+
+
+static func _sum(a: PackedFloat32Array, b: PackedFloat32Array) -> PackedFloat32Array:
+	var result := PackedFloat32Array()
+	result.resize(maxi(a.size(), b.size()))
+	for i in result.size():
+		var value := 0.0
+		if i < a.size():
+			value += a[i]
+		if i < b.size():
+			value += b[i]
+		result[i] = value
+	return result
+
+
+static func _result_key(mesh: ArrayMesh, egm_path: String, symmetric: PackedFloat32Array,
+		asymmetric: PackedFloat32Array) -> String:
+	var parts := PackedStringArray([egm_path, str(mesh.get_instance_id())])
+	for value in symmetric:
+		parts.append(String.num(value, SCALE_KEY_DIGITS))
+	parts.append("|")
+	for value in asymmetric:
+		parts.append(String.num(value, SCALE_KEY_DIGITS))
+	return ",".join(parts)
+
+
+func _cached_mesh(key: String) -> ArrayMesh:
+	if not _morphed.has(key):
+		return null
+	var mesh := (_morphed[key] as WeakRef).get_ref() as ArrayMesh
+	if mesh == null:
+		_morphed.erase(key)
+	return mesh
+
+
+## Worker: reads and parses the EGM and, when it exists, the TRI of the same
+## stem, whose vertex counts say how many EGM vertices belong to the NIF shape.
+func _load_base_task(egm_path: String) -> void:
+	var base = null
+	var error := ""
+	var result: Dictionary = _archive_server.read(egm_path)
+	if not bool(result["found"]):
+		error = "not found"
+	else:
+		var egm := EgmReader.new()
+		if egm.load(PackedByteArray(result["data"]), egm_path):
+			base = {"egm": egm, "tri_vertex_count": 0, "tri_extra_vertex_count": 0}
+			_read_tri_counts(egm_path, base)
+		else:
+			error = egm.get_last_error()
+	_on_base_loaded.bind(egm_path, base, error).call_deferred()
+
+
+## A hair EGM has no TRI of its own (`<stem>hat.tri` does not exist), and
+## needs none: its vertex count is the shape's.
+func _read_tri_counts(egm_path: String, base: Dictionary) -> void:
+	var tri_path := egm_path.get_basename() + ".tri"
+	var result: Dictionary = _archive_server.read(tri_path)
+	if not bool(result["found"]):
+		return
+	var tri := TriReader.new()
+	if not tri.load(PackedByteArray(result["data"]), tri_path):
+		return
+	base["tri_vertex_count"] = tri.get_vertex_count()
+	base["tri_extra_vertex_count"] = tri.get_statistical_vertex_count()
+
+
+func _on_base_loaded(egm_path: String, base, error: String) -> void:
+	_bases[egm_path] = base
+	if base == null:
+		_stats["no_egm_count"] += 1
+		if error != "not found":
+			_warn_once(egm_path, "FaceGenServer: %s failed to load (%s)" % [egm_path, error])
+	else:
+		_stats["base_load_count"] += 1
+	var waiters: Array = _base_waiters.get(egm_path, [])
+	_base_waiters.erase(egm_path)
+	for job in waiters:
+		var cached := _cached_mesh(String(job["key"]))
+		if cached != null:
+			_queue_delivery(job, cached)
+		elif _morph_waiters.has(job["key"]):
+			(_morph_waiters[job["key"]] as Array).append(job)
+		else:
+			_start_morph(job)
+
+
+func _start_morph(job: Dictionary) -> void:
+	var base = _bases.get(job["egm_path"])
+	if base == null:
+		_queue_delivery(job, null)
+		return
+	var mesh := job["mesh"] as ArrayMesh
+	var surfaces: Array = []
+	for surface in mesh.get_surface_count():
+		surfaces.append(mesh.surface_get_arrays(surface))
+	_morph_waiters[job["key"]] = [job]
+	WorkerThreadPool.add_task(_morph_task.bind(job, base, surfaces))
+
+
+## Worker: the morphed vertex array of every surface, or an empty array when a
+## surface's vertex count does not fit the EGM.
+func _morph_task(job: Dictionary, base: Dictionary, surfaces: Array) -> void:
+	var egm := base["egm"] as EgmReader
+	var morphed: Array[PackedVector3Array] = []
+	for arrays in surfaces:
+		var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		if not _fits(positions.size(), base):
+			morphed.clear()
+			break
+		morphed.append(egm.morph(positions, job["symmetric"], job["asymmetric"]))
+	_on_morphed.bind(job, surfaces, morphed).call_deferred()
+
+
+## An EGM fits a shape whose vertex count is its own, or the paired TRI's V
+## when the EGM holds the TRI's V + K vertices (heads and eyes).
+static func _fits(vertex_count: int, base: Dictionary) -> bool:
+	var egm := base["egm"] as EgmReader
+	if vertex_count == egm.get_vertex_count():
+		return true
+	var tri_vertex_count := int(base["tri_vertex_count"])
+	var tri_extra := int(base["tri_extra_vertex_count"])
+	return vertex_count == tri_vertex_count and tri_vertex_count + tri_extra == egm.get_vertex_count()
+
+
+func _on_morphed(job: Dictionary, surfaces: Array, morphed: Array[PackedVector3Array]) -> void:
+	var key := String(job["key"])
+	var waiters: Array = _morph_waiters.get(key, [])
+	_morph_waiters.erase(key)
+	var result: ArrayMesh = null
+	if morphed.is_empty():
+		_stats["vertex_mismatch_count"] += 1
+		_warn_once(String(job["egm_path"]), "FaceGenServer: %s does not fit its shape's vertex count" % job["egm_path"])
+	else:
+		result = _build_mesh(job["mesh"] as ArrayMesh, surfaces, morphed)
+		result.set_meta(META_EGM_PATH, job["egm_path"])
+		_morphed[key] = weakref(result)
+		_stats["morph_count"] += 1
+	for waiter in waiters:
+		_queue_delivery(waiter, result)
+
+
+static func _build_mesh(source: ArrayMesh, surfaces: Array, morphed: Array[PackedVector3Array]) -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	for surface in surfaces.size():
+		var arrays: Array = surfaces[surface]
+		arrays[Mesh.ARRAY_VERTEX] = morphed[surface]
+		mesh.add_surface_from_arrays(source.surface_get_primitive_type(surface), arrays)
+		mesh.surface_set_material(surface, source.surface_get_material(surface))
+	mesh.resource_name = source.resource_name
+	return mesh
+
+
+func _queue_delivery(job: Dictionary, mesh: ArrayMesh) -> void:
+	_deliveries.append({"job": job, "mesh": mesh})
+
+
+func _deliver(job: Dictionary, mesh: ArrayMesh) -> void:
+	var owner_node = job.get("owner")
+	var cb: Callable = job.get("cb", Callable())
+	if owner_node == null or not is_instance_valid(owner_node) or not cb.is_valid():
+		_stats["owner_gone_count"] += 1
+		return
+	cb.call(mesh)
+
+
+func _warn_once(key: String, message: String) -> void:
+	if _warned.has(key):
+		return
+	_warned[key] = true
+	push_warning(message)

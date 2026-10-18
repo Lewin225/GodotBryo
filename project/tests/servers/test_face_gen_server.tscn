@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/servers/test_face_gen_server.gd" id="1"]
+
+[node name="TestFaceGenServer" type="Node"]
+script = ExtResource("1")
