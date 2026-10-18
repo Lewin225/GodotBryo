@@ -208,7 +208,8 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   gender) plus its own.
 - **FaceGen geometry.** `FaceGenServer` (done): native `EgmReader`; each head part, eye and
   hair shape is morphed once at load by the effective FGGS/FGGA as offsets on the NIF
-  vertices, delivered by callback, cached by (mesh, EGM, values). Headgear is next.
+  vertices, delivered by callback, cached by (mesh, EGM, values). Headgear morphs are
+  [`headgear_facegen.md`](headgear_facegen.md).
 - **TRI expressions.** Difference morphs and statistical morphs (blinks, squints, eye looks)
   become blend shapes as offsets from the TRI base; statistical offsets come from the
   EGM-morphed extra vertices, so they are per NPC.
@@ -221,8 +222,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   parts load.
 - **Hats.** Headgear hangs from a HeadAnims attachment under the skeleton (done).
   `wearing_hat` is true while equipment covers the Hat slot (0x400), showing the hair's Hat
-  variant (done). Attachment chosen by biped slots rather than path. Headgear with MODD /
-  MOSD Head gets the EGM morph.
+  variant (done). Attachment chosen by biped slots rather than path.
 - **Lip sync.** A decoder for `.lip` (native, beside `TriReader`), TRI targets as blend
   shapes on the head, mouth, teeth and tongue, and a facial player that DialogueServer starts
   with each line's voice. Blinks and KF face tracks run on the same player.
@@ -232,8 +232,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 1. **Hats.** Done: `wearing_hat` from the equipped headgear's biped slots; headgear on the
    hair's attachment.
 2. **Hair colour.** Done for hair; beards and brows wait on PNAM head parts.
-3. **FaceGen geometry.** Done for head parts, eyes and hair (`FaceGenServer`); Head-flagged
-   headgear still to do.
+3. **FaceGen geometry.** Done for head parts, eyes and hair (`FaceGenServer`).
 4. **Facemods.** Shipped facemod on the head; combination with the base texture decided by
    a visual check against the game.
 5. **TRI blend shapes and a facial player.** Difference and statistical morphs; blinks.
