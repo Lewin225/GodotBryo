@@ -91,6 +91,11 @@ SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE); each class's 
 the subrecords it does not read. FLST is `FormListBase`, a general list whose `entries` resolve to
 each record's own Base.
 
+**FaceGen.** An NPC_'s FGGS, FGGA and FGTS are in `NpcBase.face_gen`. RACE carries the same
+three per gender, male block first (`RaceBase.facegen_geometry_symmetric(female)` and its
+siblings); an NPC's FaceGen is its race's plus its own (`Plans/Actors/faces.md`).
+`tests/test_race_facegen` checks every race.
+
 **Alternate textures.** A model's MODS (MO2S, MO3S and MO4S for ARMO's other models, MO3S for
 ARMA's female model) is a list of `AlternateTextureCollection`: a shape name, its 3D index and
 the `TextureSetBase` (TXST) that replaces that shape's textures. ACTI, ARMA, ARMO, DOOR, HDPT,

@@ -35,6 +35,25 @@ var female_voice_form_id: int = 0
 @export_custom(PROPERTY_HINT_FLAGS, "Playable:1,Child:4", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var facegen_main_clamp: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var facegen_face_clamp: float = 0.0
+## FGGS in the male FaceGen block (after the last MNAM): 50 geometry-symmetric
+## coefficients. Read. Used by FaceGenServer, which adds an NPC_'s own FGGS to
+## its race's for its gender.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_facegen_geometry_symmetric: PackedFloat32Array = PackedFloat32Array()
+## FGGA in the male FaceGen block: 30 geometry-asymmetric coefficients, zero on
+## every race in FalloutNV.esm. Read. Used by FaceGenServer, as FGGS.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_facegen_geometry_asymmetric: PackedFloat32Array = PackedFloat32Array()
+## FGTS in the male FaceGen block: 50 texture-symmetric coefficients. Read; not
+## used yet (FaceGen textures).
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_facegen_texture_symmetric: PackedFloat32Array = PackedFloat32Array()
+## FGGS in the female FaceGen block (after the last FNAM). Read. Used by
+## FaceGenServer.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_geometry_symmetric: PackedFloat32Array = PackedFloat32Array()
+## FGGA in the female FaceGen block. Read. Used by FaceGenServer.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_geometry_asymmetric: PackedFloat32Array = PackedFloat32Array()
+## FGTS in the female FaceGen block. Read; not used yet.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_texture_symmetric: PackedFloat32Array = PackedFloat32Array()
+## SNAM after each FaceGen block (u16, xEdit "Unknown"; the same value in both
+## blocks of every race). Not read.
 var male_default_hair_color: int = 0
 var female_default_hair_color: int = 0
 
@@ -43,3 +62,12 @@ func head_parts(female: bool) -> Array[RacePartCollection]:
 
 func body_parts(female: bool) -> Array[RacePartCollection]:
 	return female_body_parts if female else male_body_parts
+
+func facegen_geometry_symmetric(female: bool) -> PackedFloat32Array:
+	return female_facegen_geometry_symmetric if female else male_facegen_geometry_symmetric
+
+func facegen_geometry_asymmetric(female: bool) -> PackedFloat32Array:
+	return female_facegen_geometry_asymmetric if female else male_facegen_geometry_asymmetric
+
+func facegen_texture_symmetric(female: bool) -> PackedFloat32Array:
+	return female_facegen_texture_symmetric if female else male_facegen_texture_symmetric

@@ -1225,6 +1225,20 @@ func _populate_race(race: RaceBase, raw: Dictionary) -> void:
 		race.flags = _u32(data, 32)
 	race.facegen_main_clamp = _f32(_subrecord(raw, "PNAM"))
 	race.facegen_face_clamp = _f32(_subrecord(raw, "UNAM"))
+	# The male FaceGen block comes first, then the female one; every RACE in
+	# FalloutNV.esm carries both.
+	var fggs := _all_subrecords(raw, "FGGS")
+	var fgga := _all_subrecords(raw, "FGGA")
+	var fgts := _all_subrecords(raw, "FGTS")
+	if fggs.size() == 2:
+		race.male_facegen_geometry_symmetric = fggs[0].to_float32_array()
+		race.female_facegen_geometry_symmetric = fggs[1].to_float32_array()
+	if fgga.size() == 2:
+		race.male_facegen_geometry_asymmetric = fgga[0].to_float32_array()
+		race.female_facegen_geometry_asymmetric = fgga[1].to_float32_array()
+	if fgts.size() == 2:
+		race.male_facegen_texture_symmetric = fgts[0].to_float32_array()
+		race.female_facegen_texture_symmetric = fgts[1].to_float32_array()
 
 	for female in [false, true]:
 		var body_parts: Array = reader.get_race_body_parts(race.form_id, female)
