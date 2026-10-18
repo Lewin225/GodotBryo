@@ -85,8 +85,9 @@ var eyes_form_id: int = 0
 ## ENAM's EYES. Used: EsmActorNode loads its mesh.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EyesBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var eyes: EyesBase
 ## FGGS, FGGA and FGTS: FaceGen geometry-symmetric, geometry-asymmetric and
-## texture-symmetric coefficients, raw and decoded. Read; not used by
-## EsmActorNode yet (only the legacy GamebryoMeshResolver accepts it).
+## texture-symmetric coefficients, raw and decoded, as offsets from the race's.
+## Read. FGGS and FGGA used by FaceGenServer to shape the head parts, eyes and
+## hair EsmActorNode builds; FGTS not used yet.
 var face_gen: FaceGenData
 ## NAM6: Height. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var height: float = 1.0

@@ -111,6 +111,8 @@ var _humanoid_visual_built := false
 var _rehydrate_queued := false
 var _rehydrating_reference := false
 var _pending_requests := 0
+## FaceGenServer morphs still to be delivered before the staged body is shown.
+var _pending_face_gen := 0
 var _requested_assets := {}
 var _delivered_trees := {}
 var _load_failures: Array[String] = []
@@ -393,7 +395,7 @@ func _assemble_staged_body(generation: int) -> void:
 	appearance.visible = false
 	body.add_child(appearance)
 	_assemble_staged_appearance(body, skeleton, appearance)
-	_commit_staged_body(body, generation)
+	_request_face_gen(body, generation)
 	# The base body is now constructed
 	# Whoo
 
@@ -460,6 +462,48 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 	if skinned_parts.get_child_count() == 0:
 		skinned_parts.queue_free()
 	staging.queue_free()
+
+
+## Shapes this NPC's head parts, eyes and hair to its face: FaceGenServer
+## returns each mesh with the race's and the NPC's FaceGen applied, and the
+## body is committed once every one has come back. A mesh with no EGM keeps
+## the shared mesh.
+func _request_face_gen(body: Node3D, generation: int) -> void:
+	var face_gen_server := get_tree().root.get_node_or_null("FaceGenServer")
+	var npc := _active_record as NpcBase
+	var targets := _face_gen_targets(body)
+	if face_gen_server == null or npc == null or targets.is_empty():
+		_commit_staged_body(body, generation)
+		return
+	_pending_face_gen = targets.size()
+	for mesh_instance in targets:
+		var model_path := String(mesh_instance.get_meta("gamebryo_model_path", ""))
+		var shape_name := String(mesh_instance.get_meta("nif_dismember_source_shape", mesh_instance.get_meta("nif_name", "")))
+		face_gen_server.request_morph(mesh_instance.mesh, model_path, shape_name, npc, self,
+				_on_face_gen_delivered.bind(mesh_instance, body, generation))
+
+
+## Every mesh tagged as a head part, eyes or hair by _tag_appearance_meshes.
+func _face_gen_targets(body: Node3D) -> Array[MeshInstance3D]:
+	var targets: Array[MeshInstance3D] = []
+	for child in body.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if not mesh_instance.has_meta("gamebryo_head_part_type"):
+			continue
+		if not (mesh_instance.mesh is ArrayMesh):
+			continue
+		targets.append(mesh_instance)
+	return targets
+
+
+func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance: MeshInstance3D, body: Node3D, generation: int) -> void:
+	if generation != _load_generation or not _loading or not is_instance_valid(body):
+		return
+	if mesh != null and is_instance_valid(mesh_instance):
+		mesh_instance.mesh = mesh
+	_pending_face_gen -= 1
+	if _pending_face_gen == 0:
+		_commit_staged_body(body, generation)
 
 
 func _create_facial_attachment(skeleton: Skeleton3D) -> BoneAttachment3D:

@@ -6,6 +6,8 @@ extends Node3D
 ## Plans/Actors split it into child nodes; every step of that split must
 ## reproduce them.
 
+const FaceGenServerScript := preload("res://GodotBryo/Servers/FaceGenServer/face_gen_server.gd")
+
 const EXPECTED := {
 	"bones": 65,
 	"meshes": 58,
@@ -61,6 +63,7 @@ func _ready() -> void:
 		var expected: int = EXPECTED[key]
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	_check_hair_color(node, doc)
+	_check_face_gen(node)
 	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
 	_check_hitboxes(node)
@@ -95,6 +98,22 @@ func _check_hair_color(node: EsmActorNode, doc: EsmReference) -> void:
 	check(hair_meshes == EXPECTED["hair_variant_meshes"], "Doc's hair has %d shapes on the hair material path (got %d)" % [EXPECTED["hair_variant_meshes"], hair_meshes])
 	check(tinted == hair_meshes, "each has its own material tinted with his HCLR %s (got %d)" % [hair_color, tinted])
 	check(shared_white == hair_meshes, "the shared materials stay white (got %d)" % shared_white)
+
+## Every head-part, eye and hair mesh of Doc's has an EGM, so each carries
+## FaceGenServer's morphed copy rather than NifServer's shared mesh.
+func _check_face_gen(node: EsmActorNode) -> void:
+	var head_part_meshes := 0
+	var morphed := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if not mesh_instance.has_meta("gamebryo_head_part_type"):
+			continue
+		head_part_meshes += 1
+		if mesh_instance.mesh != null and mesh_instance.mesh.has_meta(FaceGenServerScript.META_EGM_PATH):
+			morphed += 1
+	var expected: int = EXPECTED["skinned_head_meshes"] + EXPECTED["facial_attached_meshes"]
+	check(head_part_meshes == expected, "Doc has %d head-part, eye and hair meshes (got %d)" % [expected, head_part_meshes])
+	check(morphed == head_part_meshes, "each carries its FaceGen-morphed mesh (got %d)" % morphed)
 
 ## The animator follows the node's ActorMotion: each motion state plays its
 ## clip after a physics frame.
