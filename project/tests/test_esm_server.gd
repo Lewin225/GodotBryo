@@ -421,7 +421,7 @@ func _check_base_scripts(server, index: Array) -> void:
 	var doc: EsmReference = server.find_reference_by_editor_id("DocMitchellREF")
 	_check(doc != null and doc.base.script_form_id != 0, "Doc Mitchell's NPC record has an object script")
 
-## The record types actor records point at (Plans/Actors/fields.md): every
+## The record types actor records point at (Plans/Completed Plans/Actors/fields.md): every
 ## record of each resolves to its typed Base; VTYP flags and GLOB type and value
 ## match their subrecords; every FLST entry resolves.
 func _check_referenced_types(server, index: Array) -> void:
@@ -462,7 +462,7 @@ func _check_referenced_types(server, index: Array) -> void:
 	_check(wrong.is_empty(), "every VTYP, GLOB, LVLN, LVLC, HDPT, IPDS, SOUN, FACT, ENCH, SPEL, CSTY, SCPT, NOTE, EXPL, DEBR, ECZN, IDLE and FLST resolves to its typed Base (%s)" % [totals if wrong.is_empty() else wrong])
 	_check(field_errors.is_empty(), "VTYP flags, GLOB type and value, and every FLST's %d entries match their subrecords (%s)" % [flst_entries, field_errors.slice(0, 5)])
 
-## ActorBase, NpcBase and CreatureBase (Plans/Actors/fields.md): over every
+## ActorBase, NpcBase and CreatureBase (Plans/Completed Plans/Actors/fields.md): over every
 ## NPC_ and CREA, each FormID field resolves when set, Items match CNTO and
 ## COED, DEST, NIFZ and CSDT match their subrecords; census A1 counts hold; a
 ## seeded inventory carries COED's condition.

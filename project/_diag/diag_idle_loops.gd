@@ -1,6 +1,6 @@
 extends Node
 
-## Census for looping idles (Plans/Actors/stage_f.md step 3): the DATA loop
+## Census for looping idles (Plans/Completed Plans/Actors/stage_f.md step 3): the DATA loop
 ## min / max and replay delay over every IDLE; and, for the idles PlayIdle and
 ## package events play (the editor IDs or hex FormIDs in the file named on the
 ## command line, or "all-looping" for every IDLE with a loop maximum above 0),

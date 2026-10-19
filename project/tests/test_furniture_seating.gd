@@ -1,6 +1,6 @@
 extends Node3D
 
-## Furniture use (Plans/Actors/stage_g.md steps 1 and 3): the idle tree picks
+## Furniture use (Plans/Completed Plans/Actors/stage_g.md steps 1 and 3): the idle tree picks
 ## the chair's enter, sitting and stand-up idles for Doc in his chair by sit
 ## state and marker ID; using the chair seats him at its marker (GetSitting 3,
 ## GetFurnitureMarkerID 14) and leaving it stands him; his VCG01 stage 80 Travel

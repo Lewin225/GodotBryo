@@ -15,14 +15,14 @@ extends Node
 ## transform, facing the furniture's heading plus the marker's orientation: the
 ## marker is where the actor stands before sitting, facing the seat (the chair
 ## enter KF carries the root 0.78 m forward from it; front marker orientation
-## pi; Plans/Actors/stage_g.md). The controller stays there throughout.
+## pi; Plans/Completed Plans/Actors/stage_g.md). The controller stays there throughout.
 ##
 ## An actor with a built visual (an NpcController's actor node) is animated
 ## from the idle tree's FurnitureIdles: sit state 2 plays the enter idle, then 3
 ## with the seated loop (the item picked at sit state 1, DefaultSitIdle);
 ## standing picks the exit at 4 and plays it at 5, then 0 returns it to
 ## locomotion. Without a visual it goes straight to 3, or 0. GetSitting's values
-## are inferred (Plans/Actors/stage_g.md).
+## are inferred (Plans/Completed Plans/Actors/stage_g.md).
 
 ## ActorReference.sit_state values (GetSitting; inferred).
 const NOT_SITTING := 0

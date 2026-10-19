@@ -4,7 +4,7 @@ extends Node
 ## Plays the idles actors are asked to play, for any actor, on screen or off:
 ## PlayIdle and PickIdle, a package's On Begin / End / Change idle, its idle
 ## collection, ambient idles from the idle tree, and dialogue gestures on each
-## response said or heard (Plans/Actors/stage_f.md).
+## response said or heard (Plans/Completed Plans/Actors/stage_f.md).
 ## A child of ScriptServer, beside FurnitureSeating.
 ##
 ## The idle is the actor's state (ActorReference.special_idle); the actor
@@ -14,7 +14,7 @@ extends Node
 ## facing as it did. An actor whose animations are
 ## still loading keeps the idle and plays it once they load (EsmActorNode). An
 ## actor without a built visual ends the idle at once: nothing sees it
-## (Plans/Actors/stage_f.md, Open). A seated actor does not play it: the
+## (Plans/Completed Plans/Actors/stage_f.md, Open). A seated actor does not play it: the
 ## furniture idles own its body.
 
 ## Seconds between a collection's idles when its IDLT is 0: GECK's default for

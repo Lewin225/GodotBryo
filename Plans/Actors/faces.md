@@ -2,7 +2,7 @@
 
 The parts of a humanoid's head the actor node does not yet build from data: each NPC's
 FaceGen shape and skin, hair colour, hats that sit on the head and replace the hair, and
-lip sync for spoken lines. Done before stage J (creatures). See `actors.md`.
+lip sync for spoken lines. See `Plans/Completed Plans/Actors/actors.md`.
 
 ## Facts
 

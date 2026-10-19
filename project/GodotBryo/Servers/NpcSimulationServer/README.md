@@ -307,7 +307,7 @@ every cross-space route synchronously (143 s headless) and frames grew past
 - **`PackageRunner`** (`package_runner.gd`) runs each actor's
   `active_package` and decides where it goes (`ActorReference.move_target`).
   Selection, Travel and its events: see `package_runner.gd`'s header and
-  `Plans/Actors/stage_h.md`. FOLLOW: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
+  `Plans/Completed Plans/Actors/stage_h.md`. FOLLOW: within PTDT Count / Distance (Gamebryo units) of Target 1 (a
   specific reference, 0x14 the player, or the actor's XLKR linked reference)
   it clears the target, else sends the actor to the target, again once the
   target has moved 1 m. When the target is in another space,
@@ -352,7 +352,7 @@ separated by `|`):
   (animator clip choice, look-at, skeleton process, visual, controllers,
   avoidance, animation players) and prints median process / physics / frame ms
   against a baseline. Figures from a 1,342-actor crowd are in
-  `Plans/Actors/stage_d.md` Open.
+  `Plans/Completed Plans/Actors/stage_d.md` Open.
 - `DebugSetLowLevelSpeed Multiplier`, `DebugNpcControllers 0|1` (every
   controller's per-frame work), `DebugActorThreads 0|1` (each actor in its own
   sub-thread group; slower than the main thread headless).

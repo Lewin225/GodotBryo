@@ -1,6 +1,6 @@
 extends Node3D
 
-## PlayIdle through ScriptServer's ActorIdles (Plans/Actors/stage_f.md step 1):
+## PlayIdle through ScriptServer's ActorIdles (Plans/Completed Plans/Actors/stage_f.md step 1):
 ## Doc Mitchell, physicalised in his house, plays VCG01DocGiveMirror (VCG01's
 ## stage script line) in place of locomotion and returns to it when the clip
 ## ends; an actor without a node ends the idle at once; a seated actor does not

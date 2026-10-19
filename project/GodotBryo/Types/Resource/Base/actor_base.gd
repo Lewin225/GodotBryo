@@ -2,7 +2,7 @@
 class_name ActorBase
 extends EsmBase
 
-## The fields NPC_ and CREA share with the same meaning (Plans/Actors/census.md
+## The fields NPC_ and CREA share with the same meaning (Plans/Completed Plans/Actors/census.md
 ## A1). Abstract: every actor record is an NpcBase or a CreatureBase, which add
 ## their own DATA, RNAM, PNAM, CNAM, NAM5, LNAM and ACBS flag names. EsmBase
 ## holds EDID, FULL and SCRI.

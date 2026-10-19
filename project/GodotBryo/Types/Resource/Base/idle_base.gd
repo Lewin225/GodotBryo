@@ -5,7 +5,7 @@ extends EsmBase
 ## IDLE (Idle Animation). Named by PACK idle lists and events, ACHR / ACRE
 ## Patrol Data INAM and PlayIdle, and arranged in a tree (ANAM) that IdleTree
 ## picks from. EsmBase holds EDID. Layout from xEdit's FNV definition; the
-## Animation Group Section byte's bits from `Plans/Actors/census.md` A5.
+## Animation Group Section byte's bits from `Plans/Completed Plans/Actors/census.md` A5.
 
 ## DATA byte 0, low six bits: the animation group section (0 Idle, 1 Movement,
 ## 7 Special Idle, 20 Whole Body, 21 Upper Body and others; census A5).
@@ -47,7 +47,7 @@ const FLAG_NO_ATTACKING := 0x01
 ## section plays at least; 255 (with max 255, on 85 IDLEs) loops forever.
 ## Read; used by ActorAnimator, which plays the section a random count between
 ## min and max (at least once; the count's meaning is inferred,
-## Plans/Actors/stage_f.md).
+## Plans/Completed Plans/Actors/stage_f.md).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_minimum: int = 0
 ## DATA offset 2: Looping max, as loop_minimum. Read; used by ActorAnimator.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_maximum: int = 0

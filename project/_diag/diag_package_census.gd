@@ -1,6 +1,6 @@
 extends Node
 
-## Census A3 (Plans/Actors/census.md): the AI packages of every NPC placed in
+## Census A3 (Plans/Completed Plans/Actors/census.md): the AI packages of every NPC placed in
 ## Goodsprings -- ACHRs filed in an interior CELL whose editor ID starts with
 ## "GS", and ACHRs in WastelandNV at grid x -19..-15, y -2..1 -- with the
 ## packages each runs (PKID, through TPLT when ACBS template flag 0x20, Use AI

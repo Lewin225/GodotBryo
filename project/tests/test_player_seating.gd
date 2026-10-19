@@ -1,6 +1,6 @@
 extends Node3D
 
-## The player on Doc Mitchell's couch (Plans/Actors/stage_g.md step 5), and in
+## The player on Doc Mitchell's couch (Plans/Completed Plans/Actors/stage_g.md step 5), and in
 ## conversation seated and standing (Plans/Actors/head_tracking.md), in the
 ## running game scene: activating DocMitchellCouchREF seats the possessed
 ## actor through FurnitureSeating with the furniture idles on the player's

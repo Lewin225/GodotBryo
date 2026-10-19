@@ -44,7 +44,7 @@ const ROOT_BONES := ["Bip01", "Bip01 NonAccum"]
 ## The library name an idle clip is added under.
 const IDLE_CLIP_NAME := "idle__current"
 ## IDLE DATA loop count meaning Loop Forever (on 85 of 1,597 IDLEs, min and max
-## both; Plans/Actors/stage_f.md).
+## both; Plans/Completed Plans/Actors/stage_f.md).
 const LOOP_FOREVER := 255
 
 var _generation := 0

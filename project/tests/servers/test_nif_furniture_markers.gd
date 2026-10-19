@@ -3,7 +3,7 @@ extends Node
 ## BSFurnitureMarker positions in NifServer's tree: one Marker3D per position
 ## under its owning node, in file order, its offset as the position (metres)
 ## and the raw orientation and posRef bytes in metadata. Checked against
-## Plans/Actors/census.md A4 (native/tools/furniture_census): SubChairDirty01's
+## Plans/Completed Plans/Actors/census.md A4 (native/tools/furniture_census): SubChairDirty01's
 ## three markers, the couch's four, the same markers through a flattened
 ## (prefer_static) tree, and the FURN population, 516 markers over 233 records.
 

@@ -6,7 +6,7 @@ extends RefCounted
 ## GetCurrentAIPackage - GECK.html`, `enginedocs/Geck/GetCurrentAIProcedure -
 ## GECK.html`, the latter written for Fallout 3). Which code applies is derived
 ## from what the actor is doing here; the mapping is inferred from the names
-## (Plans/Actors/stage_f.md).
+## (Plans/Completed Plans/Actors/stage_f.md).
 
 ## GetCurrentAIPackage codes.
 const PACKAGE_DIALOGUE_RUNNING := 6

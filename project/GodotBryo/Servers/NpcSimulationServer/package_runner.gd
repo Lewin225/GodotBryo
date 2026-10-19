@@ -39,7 +39,7 @@ extends Node
 ## leaves the furniture the package seated it in. Events run their script with
 ## the actor as subject, say their topic and play their idle. On Change runs
 ## when AddScriptPackage adds the package already active, and when another
-## package replaces it before it is done (inferred; Plans/Actors/stage_f.md).
+## package replaces it before it is done (inferred; Plans/Completed Plans/Actors/stage_f.md).
 ##
 ## Schedules (PSDT; over FalloutNV.esm's 4,163 PACK, month is always Any and date
 ## always 0): a package with an hour is due from it for its duration in hours,
@@ -234,7 +234,7 @@ func _evaluate(actor: ActorReference) -> void:
 	if chosen == actor.active_package:
 		return
 	# Replaced before it is done: its On Change runs (inferred from the name;
-	# Plans/Actors/stage_f.md).
+	# Plans/Completed Plans/Actors/stage_f.md).
 	if actor.active_package != null and not actor.package_completed:
 		_run_event(actor, actor.active_package.on_change)
 	_end_package(actor)
