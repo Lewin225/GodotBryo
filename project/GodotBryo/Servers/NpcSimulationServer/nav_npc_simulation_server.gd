@@ -603,7 +603,7 @@ func find_door_sequence(from_space: int, from_position: Vector3, to_space: int, 
 ## Whether `actor` may route through `door`: it is not locked, or the actor
 ## carries its key. Ownership (REFR XOWN / XRNK) is not read yet, so an owner
 ## without the key is not let through; lockpicking is not considered
-## (Plans/Completed Plans/Actors/stage_d.md, "Door passability").
+## (Plans/Navigation/door_obstacle_cut.md, "Door passability").
 func can_pass_door(actor: ActorReference, door: DoorReference) -> bool:
 	if not door.is_locked:
 		return true
