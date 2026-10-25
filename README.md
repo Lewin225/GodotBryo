@@ -8,7 +8,7 @@ Rather the (currently very popular) decomp route, this aims to load everything f
 
 [2]*Huge thanks to the GECK team and their discord for putting up with my inane implementation questions*
 
-[3]*No demomp or binary peeking was done here, all behaviour was manually documented from gameplay and cross referenced against the geck/openmw
+[3]*No decomp or binary peeking was done here, all behaviour was manually documented from gameplay and cross referenced against the geck/openmw
 
 <img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
 
