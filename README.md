@@ -74,6 +74,18 @@ Biggest gaps by number of calls: `GetDead`, `RewardXP`, `StartCombat`, `RemoveFr
 
 Script Functions - https://github.com/Lewin225/GodotBryo/blob/master/project/GodotBryo/Servers/ScriptServer/script_function_registry.gd#L64
 
+### Performance
+I've only been implementing the sort of "runtime" perf, things like minimising hitching, making use of as many threads as possible, limiting per frame node tree additions, gpu upload timing ect... mostly through the Servers - which offer a promises style file delivery and handle gpu upload when there's time to do it
+
+However... Memory usage is high (~7GB) - The servers keep a converted godot version of every unique object they're asked for, they use this for cache so any further calls are fast, but this cache never clears (it will in future)
+
+The Terrain is loaded to your gpu vram and never removed. interior/exterior transitions are usually near instant because of this, but vram usage is high
+
+Video settings are tuned for me, and there's no way to change them (3080ti, 16gb ram)
+
+All of the ESM lights are rendered as called for, which on a deferred pipeline like gamebryo was near free. Godot uses forward rendering, with a clustering optimisation. this seems to work well enough that i've enabled shadows for every light in the game. but probably worth reviewing at some point
+
+GI - GI is currently the most expensive bit of the render pass ~2ms, this needs work
 
 ### Extra console commands
 
