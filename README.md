@@ -14,21 +14,27 @@ my inane implementation questions*
 [3]*No decomp or binary peeking was done here, all behaviour was manually
 documented from gameplay and cross referenced against the geck/openmw
 ```
-<img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
+<img width="1909" height="1074" alt="104" src="https://github.com/user-attachments/assets/5f1b4621-cb33-46c8-90e5-e07ece21271b" />
 
 It reads the original ESM/BSA/NIF/DDS files directly, so you need your own copy of the game. Nothing from the game is in this repo.
 
 Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtension, source available, multi-platform.
 
-<img width="2256" height="1355" alt="88" src="https://github.com/user-attachments/assets/bc7202d2-9d05-446c-9f88-6a4358b242ba" />
+<img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/4e8344cf-1ab2-4580-ab38-6e4dd9008f11" />
 
 Why at all. I don't like the character controller in new vegas, and I never found a mod that fixed it the way I wanted. I'd also like to add boneworks style vr weapon controls, coop and those nice half life alyx npc animations where they place feet properly.
 
+<img width="2418" height="1359" alt="68" src="https://github.com/user-attachments/assets/b631fb6d-5ad1-441e-a7e8-c92c1b33a303" />
+
 The goal is an open platform to do stuff with new vegas / fo3 in an easier way than modding or injecting the original. planning on a feature to replace a given REFR with a godot scene, to allow easy modding and allow a vr mod to replace weapons
 
-Moviemaker works too, and you can drag and drop from the inspector to build scenes for it
+<img width="2651" height="1139" alt="11" src="https://github.com/user-attachments/assets/be4eba31-4d48-4c37-9535-cb46f268e933" />
 
-<img width="2192" height="1291" alt="72" src="https://github.com/user-attachments/assets/ff158bfd-b6be-4fa7-811d-7b2eb880ff70" />
+
+Moviemaker kinda works too, and you can drag and drop from the inspector to build scenes for it
+
+<img width="2192" height="1291" alt="72" src="https://github.com/user-attachments/assets/bedee1e3-13ab-4b24-a149-dfa3e33eb0b3" />
+
 
 
 ## Where it's at
@@ -57,7 +63,7 @@ Most of these felt like improvements that were limited by hardware at the time, 
 * The player is a controller that possesses any actor, defaulting to the player NPC_ (0x07), not a special player object. Any actor could be possessed, which is wip groundwork for co-op
 * All REFR's are godot resources, compiled on demand - dirtying the resource in any way flags it as save data (saving isn't built yet), then it will no longer be fetched from the master ESM. This is so generic it serves everything from npc health to being able to base build
 
-<img width="1909" height="1074" alt="104" src="https://github.com/user-attachments/assets/e3362b02-85f5-4c58-aa0f-638cd69a0dc9" />
+<img width="1910" height="1067" alt="99" src="https://github.com/user-attachments/assets/053c8893-3462-4d28-bc4d-99fed1db1ab2" />
 
 
 ## Script engine
@@ -74,6 +80,9 @@ Biggest gaps by number of calls: `GetDead`, `RewardXP`, `StartCombat`, `RemoveFr
 
 Script Functions - https://github.com/Lewin225/GodotBryo/blob/master/project/GodotBryo/Servers/ScriptServer/script_function_registry.gd#L64
 
+<img width="1910" height="1067" alt="99" src="https://github.com/user-attachments/assets/2c418f95-695e-40ec-bf92-775240c30ebc" />
+
+
 ### Performance
 I've only been implementing the sort of "runtime" perf, things like minimising hitching, making use of as many threads as possible, limiting per frame node tree additions, gpu upload timing ect... mostly through the Servers - which offer a promises style file delivery and handle gpu upload when there's time to do it
 
@@ -86,6 +95,9 @@ Video settings are tuned for me, and there's no way to change them (3080ti, 16gb
 All of the ESM lights are rendered as called for, which on a deferred pipeline like gamebryo was near free. Godot uses forward rendering, with a clustering optimisation. this seems to work well enough that i've enabled shadows for every light in the game. but probably worth reviewing at some point
 
 GI - GI is currently the most expensive bit of the render pass ~2ms, this needs work
+
+<img width="1916" height="1076" alt="22" src="https://github.com/user-attachments/assets/e405f85f-08c4-42ae-a305-d03cd2e7cc83" />
+
 
 ### Extra console commands
 
@@ -103,7 +115,8 @@ Godotbryo specific bits, not in the original. Type them in the script console (d
 | `DebugActorCost` | Turns off each part of every loaded actor in turn and prints what it costs |
 | `DebugCopyBench [mode]` | Times creating nodes and copying actor meshes, for profiling NifServer |
 
-<img width="1906" height="1071" alt="122" src="https://github.com/user-attachments/assets/1a8e102c-8a65-42bb-9734-b05dcac2a818" />
+<img width="1911" height="1074" alt="120" src="https://github.com/user-attachments/assets/9a0e1a79-c321-474e-8627-b362ab0e95dc" />
+
 
 ## Building
 
