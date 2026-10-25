@@ -2,19 +2,22 @@
 
 An attempt at a from-scratch, drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
 
+<img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
+
 It reads the original ESM/BSA/NIF/DDS files directly, so you need your own copy of the game. Nothing from the game is in this repo.
 
 Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtension, source available, multi-platform.
+
+<img width="2256" height="1355" alt="88" src="https://github.com/user-attachments/assets/bc7202d2-9d05-446c-9f88-6a4358b242ba" />
 
 Why at all. I don't like the character controller in vew vegas, and I never found a mod that fixed it. I'd also like to add boneworks style vr controlls, coop and those nice half life alyx npc animations where they place feet properly.
 
 Plus it's just an open platform to do stuff with new vegas in an easier way than injecting the original. planning on a feature to replace a given REFR with a godot scene, to allow easy modding and allow a vr mod to replace weapons
 
-Moviemaker works too, and you can drag and drop from the inspector to build scenes
+Moviemaker works too, and you can drag and drop from the inspector to build scenes for it
 
-[57.webm](https://github.com/user-attachments/assets/acd63b62-cdd3-4947-a576-eafb900f62df)
+<img width="2192" height="1291" alt="72" src="https://github.com/user-attachments/assets/ff158bfd-b6be-4fa7-811d-7b2eb880ff70" />
 
-<img width="1141" height="636" alt="56" src="https://github.com/user-attachments/assets/0e071226-0fae-4177-9dc6-979726d76cc6" />
 
 ## Where it's at
 
@@ -34,6 +37,9 @@ What works, roughly:
 * Editor plugin for browsing and previewing ESM records
 
 Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, face textures, lip sync, NPCs that get their look from leveled lists (they're invisible right now), only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
+
+<img width="1909" height="1074" alt="104" src="https://github.com/user-attachments/assets/e3362b02-85f5-4c58-aa0f-638cd69a0dc9" />
+
 
 ## Script engine
 
@@ -62,6 +68,8 @@ Godotbryo specific bits, not in the original. Type them in the script console (d
 | `DebugActorThreads 0\|1` | Runs each actor on its own thread group, or back on the main thread |
 | `DebugActorCost` | Turns off each part of every loaded actor in turn and prints what it costs |
 | `DebugCopyBench [mode]` | Times creating nodes and copying actor meshes, for profiling NifServer |
+
+<img width="1906" height="1071" alt="122" src="https://github.com/user-attachments/assets/1a8e102c-8a65-42bb-9734-b05dcac2a818" />
 
 ## Building
 
