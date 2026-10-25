@@ -50,6 +50,13 @@ What works, roughly:
 
 Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, face textures, lip sync, NPCs that get their look from leveled lists (they're invisible right now), only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
 
+## Some deliberate behaviour differences
+* Npc's move off screen using the full detail navmesh combined with a proxy for fast search, not a linear path like the original. no more black mountain stuck re-spawns at 0,0
+* A REFR keeps its id for good. New Vegas gives picked-up and dropped items new ref ids, which makes them a pain to track; here a reference is one object with one id, whatever moves it (inventory, dropping, scripts). If your mod spawns a pistol, that ref is good forever, wherever it ends up. (Pickup and drop aren't built yet; the reference model is.)
+* The player is a controller that possesses any actor, defaulting to the player NPC_ (0x07), not a special player object. Any actor could be possessed, which is groundwork for co-op
+* Sitting and package state belong to the actor, not to whatever controls it. Whether the player or the simulation drives an NPC, it's in the same state
+* All REFR's are godot resources, compiled on demand - dirtying the resource in any way flags it as save data (saving isn't built yet), then it will no longer be fetched from the master ESM
+
 <img width="1909" height="1074" alt="104" src="https://github.com/user-attachments/assets/e3362b02-85f5-4c58-aa0f-638cd69a0dc9" />
 
 
