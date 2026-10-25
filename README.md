@@ -18,7 +18,7 @@ Moviemaker works too, and you can drag and drop from the inspector to build scen
 
 ## Where it's at
 
-You can explore the whole map, but other than that. Very early. You can start a new game in Doc Mitchell's house and play through the opening quest (Doc's intro, the Rorschach test on the couch, Doc seeing you out). Most of the rest of the game is softlocked behind not being able to shoot Sunny’s bottles. Some other quests work. YMMV
+You can explore the whole map, but other than that. Very early. You can start a new game in Doc Mitchell's house and play through the opening quest (Doc's intro, the Rorschach test on the couch, Doc seeing you out). Most of the rest of the intro is softlocked behind not being able to shoot Sunny’s bottles (no weapons). Some other quests work. YMMV
 
 What works, roughly:
 
