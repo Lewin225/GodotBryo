@@ -1,8 +1,8 @@
 # GodotBryo
 
-An attempt at a from-scratch*, drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
+An attempt at a from-scratch[], drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
 
-* OpenMW's source was read to help answer a few questions that the geck didn't document
+[]*OpenMW's source was read to help answer a few questions that the geck didn't document*
 <img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
 
 It reads the original ESM/BSA/NIF/DDS files directly, so you need your own copy of the game. Nothing from the game is in this repo.
