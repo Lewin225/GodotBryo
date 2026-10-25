@@ -12,7 +12,7 @@ From `Plans/Actors/census.md` A3 and A4, the GECK pages in `enginedocs/Geck/Pack
   flag 0x20 (Use AI Packages) is set (`ActorBase.template_source`). Scripts add one with
   `AddScriptPackage` (1,141 calls in FalloutNV.esm) and remove it with `RemoveScriptPackage`.
   Four Goodsprings powder gangers take theirs from a leveled list, which `template_source` does
-  not follow (the parked templated-actor item in `stage_d.md`).
+  not follow (`Plans/Actors/templated_npcs.md`).
 - **Selection** (GECK "How Are Packages Evaluated"): the list is searched top to bottom and the
   first package whose schedule and conditions hold is chosen. Re-evaluated about every 10 s, on
   `EvaluatePackage` (`evp`), and when a package completes.
@@ -134,4 +134,4 @@ check above; the player's packages (VCG00/VCG01 wake-up sections, before stage 8
 - Inferred, not verified: a Dialogue trigger location of radius 0 on a reference with an XPRM
   primitive means the target inside that volume (`PackageRunner.is_inside_primitive`); a
   Dialogue package that finds nothing to say still completes, so the actor does not retry.
-- Leveled-list package sources (the parked templated-actor item in `stage_d.md`).
+- Leveled-list package sources (`Plans/Actors/templated_npcs.md`).
