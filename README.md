@@ -29,7 +29,7 @@ Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtens
 
 Why at all. I don't like the character controller in new vegas, and I never found a mod that fixed it the way I wanted. + this runs on Linux
 
-I'd also like to add boneworks style vr weapon controls, coop and those nice half life alyx npc animations where they place feet properly. Generally just touch up and modernise the handling like fallout 4 did
+I'd also like to add boneworks style vr weapon controls, coop and those [nice half life alyx npc animations where they place feet properly](https://www.youtube.com/watch?v=UOYSg08eu5Q). Generally just touch up and modernise the handling like fallout 4 did
 
 
 <img width="2418" height="1359" alt="68" src="https://github.com/user-attachments/assets/b631fb6d-5ad1-441e-a7e8-c92c1b33a303" />
