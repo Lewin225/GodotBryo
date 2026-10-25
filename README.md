@@ -29,6 +29,7 @@ What works, roughly:
 * Dialogue with voice, terminals, message boxes
 * NPCs: race/head/hair/equipment, FaceGen head shapes, walking, idles, sitting on furniture, head tracking
 * AI packages (Travel, Dialogue, Follow), running both on screen and off screen
+* Proper REFR managment, including actors. (Any refr can be moved in or out of it's cell.. eg. DocMitchellREF.moveto player )
 * Containers, activators, lights, physics items you can pick up
 * Editor plugin for browsing and previewing ESM records
 
@@ -48,7 +49,7 @@ Biggest gaps by number of calls: `GetDead`, `RewardXP`, `StartCombat`, `RemoveFr
 
 ### Extra console commands
 
-Not in the original game. Type them in the script console (debug tools, Scripting tab).
+Godotbryo specific bits, not in the original. Type them in the script console (debug tools, Scripting tab).
 
 | Command | What it does |
 |---|---|
