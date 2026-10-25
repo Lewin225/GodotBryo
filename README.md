@@ -1,9 +1,9 @@
 # GodotBryo
 
-An attempt at a from-scratch[], drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
-[]*OpenMW's source was read to help answer a few questions that the geck didn't document*
-
+An attempt at a from-scratch[1], drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
 Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the renderer, gamebryo is banished forever
+
+[1]*OpenMW's source was read to help answer a few questions that the geck didn't document, nothing from openmw was used directly*
 
 <img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
 
