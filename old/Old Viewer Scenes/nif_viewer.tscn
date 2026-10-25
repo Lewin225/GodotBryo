@@ -1,8 +1,0 @@
-[gd_scene format=3 uid="uid://dijw84pn2wto1"]
-
-[ext_resource type="Script" uid="uid://c1vxstypix6l2" path="res://Old Viewer Scenes/nif_viewer.gd" id="1"]
-
-[node name="NifViewer" type="Node3D" unique_id=1911384985]
-script = ExtResource("1")
-preset = "Custom"
-custom_nif_path = "Characters\\_Male\\Skeleton.NIF"

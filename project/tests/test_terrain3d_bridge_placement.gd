@@ -14,8 +14,8 @@ extends Node3D
 #      terrain rather than each being a disconnected island.
 
 const DATA_DIR := "../fresh_nv_copy/Data/"
-# The v0 CellStreamBuilder these came from now lives in old/, outside the Godot
-# project. native/src/common/units.h is the authority for the 70 units/m ratio.
+# The v0 CellStreamBuilder these came from is removed (see the git history).
+# native/src/common/units.h is the authority for the 70 units/m ratio.
 const CELL_SIZE_UNITS := 4096.0
 const GAMEBRYO_UNITS_TO_METERS := 1.0 / 70.0
 const WORLDSPACE_EDITOR_ID := "WastelandNV"

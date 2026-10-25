@@ -4,9 +4,8 @@ These classes do not properly handle the separation of base forms and
 references. Only use them for learning how to generally do something. Any
 statement in these files presented as fact must be rechecked, not believed.
 
-Most of v0 left the Godot project on 2026-09-23 -- 41 implementation files plus
-their tests, diagnostics and viewers now live in `old/` at the repo root, which
-nothing loads. See `old/README.md`.
+Most of v0 was removed on 2026-09-23: 41 implementation files plus their tests,
+diagnostics and viewers. They remain in the git history.
 
 What remains here is only what `project/` still reaches:
 
