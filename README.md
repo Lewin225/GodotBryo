@@ -41,7 +41,7 @@ What works, roughly:
 * Distant LOD, day/night, weather
 * Doors and load doors, `coc`
 * Script engine (lots of functions still missing), quests, conditions (+dialog conditions)
-* Dialogue with voice, terminals, message boxes
+* Dialogue with voice, terminals, message boxes, doors and animated static (lockpick / hacking has a placeholder swipe to unlock prefab)
 * NPCs: race/head/hair/equipment, FaceGen head shapes, walking, idles, sitting on furniture, head tracking
 * AI packages (Travel, Dialogue, Follow), running both on screen and off screen
 * Proper REFR managment, including actors. (Any refr can be moved in or out of it's cell.. eg. DocMitchellREF.moveto player )
