@@ -132,7 +132,7 @@ From `Plans/Actors/census.md` A4 and A5, `_diag/diag_furniture_anims`,
   PASSED, every thread asleep and the main thread in `pthread_cond_wait` (no symbols to say
   where). Not NpcSimulationServer's worker: stopping it explicitly before quitting returned at
   once (that run exited cleanly, so this is not conclusive).
-- Settled (`Plans/Actors/head_tracking.md`): the default look target was behind a seated actor.
+- Settled (`Plans/Completed Plans/Actors/head_tracking.md`): the default look target was behind a seated actor.
   `ActorHeadTracking` carries the default aim point with the hips' displacement from rest, so a
   seated actor looks ahead of its seated body.
 - Layered sequences. `DynamicIdle_ChairSit.kf` drives the thighs and feet but no calves, pelvis or

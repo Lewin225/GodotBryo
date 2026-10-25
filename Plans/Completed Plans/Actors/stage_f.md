@@ -1,7 +1,7 @@
 # Stage F: idles
 
 `PlayIdle`, package event idles, package idle lists and ambient idles. Locomotion, the
-furniture idles and `Look` / `StopLook` are done (stage D, `stage_g.md`, `Plans/Actors/head_tracking.md`).
+furniture idles and `Look` / `StopLook` are done (stage D, `stage_g.md`, `Plans/Completed Plans/Actors/head_tracking.md`).
 The player's VCG01 wake-up idles move only `Camera1st` and wait for the first-person rig
 (`Plans/Actors/first_person.md`).
 

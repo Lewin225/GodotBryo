@@ -5,7 +5,7 @@ gate test (`tests/test_esm_server`, `test_script_interpreter`,
 `test_cell_streamer_v2`, `WorldStreamer/test_world_streamer_v2`,
 `test_nav_npc_simulation_server`, `test_transitions`). Follow-on work:
 `Plans/UseState/use_state.md` (UI driven by `ActorReference.using`, exterior
-`coc`), `Plans/Navigation/npc_server.md` (seeding in game, streamer
+`coc`), `Plans/Completed Plans/Navigation/npc_server.md` (seeding in game, streamer
 checkout/checkin). Behaviour assumed but not verified in game is listed in
 `project/GodotBryo/Servers/ScriptServer/README.md` under "Unverified
 behaviour".

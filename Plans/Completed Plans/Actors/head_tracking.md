@@ -1,5 +1,8 @@
 # Head tracking
 
+**Status: complete.** Rules 1, 2, 3 and 5 are built (`test_head_tracking`); rule 4 waits on
+combat (Open).
+
 Which way an actor's head turns, and at what: for every actor, not only in dialogue. A component of
 the actor node, `ActorHeadTracking`, beside `ActorAnimator` and `ActorEquipment`.
 
@@ -78,9 +81,9 @@ Not now: looking at the package's target part of the time, and other randomness 
    default rule's candidates are the other actors with an `ActorHeadTracking` (rendered actors,
    the player's body included), not every simulated actor. Line of sight is a ray on physics
    layer 1 (the world); there is no awareness check.
-3. Rule 4 when combat exists.
 
 ## Open
 
+- Rule 4, when combat exists.
 - What fAIBestHeadTrackDistance distinguishes from fAIMaxHeadTrackDistance.
 - Whether FNV checks line of sight and awareness as OpenMW does.

@@ -1,4 +1,4 @@
-// One-off diagnostic for Plans/Navigation/npc_server.md: confirms that a
+// One-off diagnostic for Plans/Completed Plans/Navigation/npc_server.md: confirms that a
 // door REFR's own XTEL subrecord alone is sufficient to resolve door-to-door
 // pairing (no NAVI/NVCI cross-reference needed), and that two doors placed
 // in the SAME interior CELL have directly-comparable raw positions.

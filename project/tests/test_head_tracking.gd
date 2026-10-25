@@ -1,6 +1,6 @@
 extends Node3D
 
-## ActorHeadTracking's rules (Plans/Actors/head_tracking.md) with Doc Mitchell
+## ActorHeadTracking's rules (Plans/Completed Plans/Actors/head_tracking.md) with Doc Mitchell
 ## and Sunny Smiles physicalised in Doc's house: the default target is the
 ## nearest actor in front within range (indoors 200 units), not one behind;
 ## Look overrides it until StopLook; in conversation each looks at the other;

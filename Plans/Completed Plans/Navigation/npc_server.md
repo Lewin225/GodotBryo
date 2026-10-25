@@ -1,5 +1,12 @@
 # NpcSimulationServer (NSS) design
 
+**Status: complete.** The server seeds in the running game (`game.gd`), simulates checked-in
+actors' packages over the door graph, and hands actors to and from `NpcController` by check-out
+and check-in. Left as follow-ons: saving and restoring dirty references
+(`Plans/Saving/reference_persistence.md`), DOOR FNAM Minimal Use in portal choice, exterior
+blockers for off-screen travel, and interior NAVM sampling for in-space routes (all under "Not
+now" below).
+
 
 ## Short intro
 `NpcSimulationServer (NSS)` owns the persistent background simulation of placed NPCs. It is
@@ -43,7 +50,7 @@ identity. `EsmServer` can return a handle to the same instance to any caller;
 actor record.
 
 For scale: the base game plus all official DLC place 3,957 `ACHR` references
-game-wide (per `Plans/Navigation/navmesh_esm_census.md`) — every one of them
+game-wide (per `Plans/Completed Plans/Navigation/navmesh_esm_census.md`) — every one of them
 a permanent, always-indexed point-cloud entry from game start, since indexing
 costs nothing here (no node, no collision, no `_process()`). 
 

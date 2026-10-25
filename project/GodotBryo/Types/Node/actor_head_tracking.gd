@@ -2,7 +2,7 @@
 class_name ActorHeadTracking
 extends Node
 
-## Which way the actor's head turns (Plans/Actors/head_tracking.md). A child of
+## Which way the actor's head turns (Plans/Completed Plans/Actors/head_tracking.md). A child of
 ## the actor node (esm_actor_node.tscn), beside ActorAnimator and
 ## ActorEquipment. Owns the LookAtModifier3D on the skeleton's head bone; the
 ## actor node hands it the skeleton once the visual is built (set_skeleton).

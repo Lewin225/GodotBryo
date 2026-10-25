@@ -70,7 +70,7 @@ later if needed. Actor state stays on resources; these nodes are presentation on
 - CREA `NIFZ` (xEdit "Model List"): 1,059 of 1,578 CREA in FalloutNV.esm; 468 of the rest are
   templated; about 51 are audio templates or spawn markers.
 - PACK: 4,163 in FalloutNV.esm, each with `PKDT` and `PSDT`; 2,992 CTDAs; types by count in
-  `Plans/Navigation/navmesh_esm_census.md`. `NPC_.PKID` lists an NPC's packages in order.
+  `Plans/Completed Plans/Navigation/navmesh_esm_census.md`. `NPC_.PKID` lists an NPC's packages in order.
 - The couch trigger, SCPT 001055B4: when `player.IsCurrentFurnitureRef DocMitchellCouchREF`, with
   objective 40 displayed and not completed, it completes objective 40 and sets `VCG01.bGiveTest`.
   Doc's script (SCPT 00105BCB) checks `bDocInChair`.
