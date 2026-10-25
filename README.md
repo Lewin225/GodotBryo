@@ -65,6 +65,9 @@ approximate coverage
 
 Biggest gaps by number of calls: `GetDead`, `RewardXP`, `StartCombat`, `RemoveFromFaction` / `AddToFaction`, `PlayGroup`, reputation (`AddReputation`, `GetReputation`, ...), `ResetAI`, `SetEnemy`, `GetLinkedRef`, `RemoveAllTypedItems`, `SetDestroyed`, `MoveToMarkerWithFade`, `StopCombat`, `SetRestrained`, perks, `PlaySound`.
 
+Script Functions - https://github.com/Lewin225/GodotBryo/blob/master/project/GodotBryo/Servers/ScriptServer/script_function_registry.gd#L64
+
+
 ### Extra console commands
 
 Godotbryo specific bits, not in the original. Type them in the script console (debug tools, Scripting tab).
