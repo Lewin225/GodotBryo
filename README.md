@@ -52,7 +52,7 @@ Moviemaker kinda works too, and you can drag and drop from the inspector to buil
 
 You can explore the whole map, but other than that. Very early. You can start a new game in Doc Mitchell's house and play through the opening quest (Doc's intro, the Rorschach test on the couch, Doc seeing you out). Most of the rest of the intro is softlocked behind not being able to shoot Sunny’s bottles (no weapons). Some other quests work. YMMV
 
-What works, roughly:
+What works, roughly, on linux:
 
 * Interior cells with their lighting/fog, and streaming the open world with terrain built from LAND (including the 7+1 layer texture blending)
 * Distant LOD, day/night, weather
