@@ -2,7 +2,7 @@
 
 An attempt at a from-scratch [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
 
-Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the renderer, gamebryo is banished forever
+Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the godot renderer, gamebryo is g o n e
 
 ```
 [1]*OpenMW's source was read to help answer a few questions that the geck
