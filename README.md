@@ -1,12 +1,14 @@
 # GodotBryo
 
-An attempt at a from-scratch[1][2] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
+An attempt at a from-scratch[1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
 
 Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the renderer, gamebryo is banished forever
 
 [1]*OpenMW's source was read to help answer a few questions that the geck didn't document, nothing from openmw was used directly*
 
 [2]*Huge thanks to the GECK team and their discord for putting up with my inane implementation questions*
+
+[3]*No demomp or binary peeking was done here, all behaviour was manually documented from gameplay and cross referenced against the geck/openmw
 
 <img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
 
