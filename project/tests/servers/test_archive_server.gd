@@ -4,7 +4,7 @@ extends Node
 ## discovery, BSA priority and byte reads, with an immutable catalog that is
 ## safe for concurrent reads.
 
-const DATA_DIR := "../fresh_nv_copy/Data/" ## relative to the project dir (the process CWD)
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 const THREADS := 8
 
 var failures := 0

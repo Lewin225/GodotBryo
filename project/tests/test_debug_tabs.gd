@@ -104,7 +104,7 @@ func _ready() -> void:
 
 	# Test EsmReader dynamic item and cell scanning against real game data
 	var test_esm := EsmReader.new()
-	if test_esm.open("fresh_nv_copy/Data/FalloutNV.esm"):
+	if test_esm.open(String(GameDataConfig.resolve()["data_dir"]) + GameDataConfig.ESM_FILE):
 		var esm_items := test_esm.get_all_item_candidates()
 		check(esm_items.size() > 1000, "EsmReader scans >1000 items from FalloutNV.esm (got %d)" % esm_items.size())
 		check(esm_items.has("WeapNV9mmPistol") or esm_items.has("Stimpak"), "EsmReader item candidates include standard items")

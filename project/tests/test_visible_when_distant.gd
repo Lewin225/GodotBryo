@@ -3,7 +3,7 @@ extends Node3D
 # 2.12 step 1 — "Visible When Distant" REFR flag exposure. See
 # phases/2/12-distant-object-lod.md and enginedocs/lod.md.
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 
 var failures := 0
 

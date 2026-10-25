@@ -1,6 +1,6 @@
 extends Node3D
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 const OUT_DIR := "/tmp/nv_test_screenshots/" # stable, session-independent -- created fresh by make_dir_recursive_absolute() below regardless of who's running this
 
 var failures := 0

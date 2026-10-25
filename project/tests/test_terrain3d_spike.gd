@@ -13,7 +13,7 @@ extends Node3D
 # Terrain3D faithfully stores/returns the real heights we hand it, in whatever axis
 # convention Terrain3D itself uses.
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 const WORLDSPACE_EDITOR_ID := "WastelandNV"
 const CELL_GRID_X := -17
 const CELL_GRID_Y := 0

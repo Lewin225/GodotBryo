@@ -10,7 +10,7 @@ extends Node
 ## carried over intact from mesh_resolver.
 
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
-const DATA_DIR := "../fresh_nv_copy/Data/" ## relative to the project dir (the process CWD)
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 
 var failures := 0
 var _dxt1 := ""

@@ -1,6 +1,6 @@
 extends Node3D
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 const WASTELAND_USABLE_CELLS := 16388
 const WASTELAND_TOUCHED_REGIONS := 292
 const WASTELAND_DOMAIN_SIZE := Vector2i(18, 18)

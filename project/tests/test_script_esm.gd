@@ -1,6 +1,6 @@
 extends Node
 
-const ESM_PATH := "../fresh_nv_copy/Data/FalloutNV.esm"
+var ESM_PATH: String = GameDataConfig.resolve()["data_dir"] + GameDataConfig.ESM_FILE
 
 var failures := 0
 

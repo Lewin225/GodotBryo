@@ -15,7 +15,7 @@ func check(condition: bool, message: String) -> void:
 
 func _ready() -> void:
 	var invalid_existing_dir := ProjectSettings.globalize_path("res://tests/")
-	var valid_data_dir := ProjectSettings.globalize_path("res://../fresh_nv_copy/Data/")
+	var valid_data_dir := String(GameDataConfig.resolve()["data_dir"])
 	var config = GameDataConfigScript.resolve_from_candidates("", [invalid_existing_dir, valid_data_dir])
 	check(String(config.get("error", "")) == "", "candidate discovery finds the installed data directory")
 	check(String(config.get("data_dir", "")) == GameDataConfigScript.normalise_data_dir(valid_data_dir), "existing directory without FalloutNV.esm does not mask a later valid candidate")

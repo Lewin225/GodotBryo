@@ -3,7 +3,7 @@ extends Node3D
 # 2.11 — Exterior Cell Lookup Index. See
 # phases/2/11-exterior-cell-lookup-index.md.
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 
 var failures := 0
 

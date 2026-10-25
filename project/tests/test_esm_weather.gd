@@ -5,7 +5,7 @@
 ##   cd project
 ##   ../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_esm_weather.tscn
 ##
-## Requires: real fresh_nv_copy/Data/ at the project root.
+## Requires: the game data picked in the launcher, or GODOTBRYO_DATA_DIR.
 
 extends Node
 

@@ -3,7 +3,7 @@ extends Node
 ## Issue #12's native ESM contract test.  These are real vanilla fixtures,
 ## selected from grass_survey.cpp rather than synthetic GRAS/LTEX records.
 
-const ESM_PATH := "../fresh_nv_copy/Data/FalloutNV.esm"
+var ESM_PATH: String = GameDataConfig.resolve()["data_dir"] + GameDataConfig.ESM_FILE
 var failures := 0
 
 func check(condition: bool, message: String) -> void:

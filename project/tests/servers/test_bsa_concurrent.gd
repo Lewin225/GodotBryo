@@ -4,7 +4,7 @@ extends Node
 ## positional (pread / ReadFile+OVERLAPPED), so one shared reader is safe for
 ## concurrent extraction with no per-thread reader and no mutex.
 
-const DATA_DIR := "../fresh_nv_copy/Data/" ## relative to the project dir (the process CWD), not to this script
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 const THREADS := 8
 
 var failures := 0

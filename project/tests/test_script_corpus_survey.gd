@@ -25,7 +25,7 @@ extends Node
 ## figure was counted across every DLC .esm too; this survey doesn't open
 ## those, a real, deliberate scope match to what this whole milestone
 ## covers so far, not a discrepancy.
-const ESM_PATH := "../fresh_nv_copy/Data/FalloutNV.esm"
+var ESM_PATH: String = GameDataConfig.resolve()["data_dir"] + GameDataConfig.ESM_FILE
 
 func _ready() -> void:
 	var esm := EsmReader.new()

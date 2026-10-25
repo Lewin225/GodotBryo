@@ -13,7 +13,7 @@ extends Node3D
 #      agree on height there, confirming cells actually compose into continuous
 #      terrain rather than each being a disconnected island.
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 # The v0 CellStreamBuilder these came from is removed (see the git history).
 # native/src/common/units.h is the authority for the 70 units/m ratio.
 const CELL_SIZE_UNITS := 4096.0

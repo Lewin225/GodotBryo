@@ -7,7 +7,7 @@ extends Node
 # equivalent native-side check. Deliberately native parsing only: no
 # rendering, no GamebryoActor -- that's chunk 3+ of issue #52's plan.
 
-const DATA_DIR := "../fresh_nv_copy/Data/"
+var DATA_DIR: String = GameDataConfig.resolve()["data_dir"] ## the launcher's data folder, or GODOTBRYO_DATA_DIR
 
 var failures := 0
 
