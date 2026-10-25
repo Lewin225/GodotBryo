@@ -10,7 +10,7 @@ Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtens
 
 <img width="2256" height="1355" alt="88" src="https://github.com/user-attachments/assets/bc7202d2-9d05-446c-9f88-6a4358b242ba" />
 
-Why at all. I don't like the character controller in vew vegas, and I never found a mod that fixed it. I'd also like to add boneworks style vr controlls, coop and those nice half life alyx npc animations where they place feet properly.
+Why at all. I don't like the character controller in vew vegas, and I never found a mod that fixed it. I'd also like to add boneworks style vr weapon controls, coop and those nice half life alyx npc animations where they place feet properly.
 
 Plus it's just an open platform to do stuff with new vegas in an easier way than injecting the original. planning on a feature to replace a given REFR with a godot scene, to allow easy modding and allow a vr mod to replace weapons
 
