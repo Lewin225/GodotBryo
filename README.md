@@ -1,9 +1,11 @@
 # GodotBryo
 
-An attempt at a from-scratch[1][2], drop-in replacement for Gamebryo, in Godot 4.7. Targeting Fallout: New Vegas for now (Fallout 3 and Skyrim maybe later).
+An attempt at a from-scratch[1][2] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
+
 Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the renderer, gamebryo is banished forever
 
 [1]*OpenMW's source was read to help answer a few questions that the geck didn't document, nothing from openmw was used directly*
+
 [2]*Huge thanks to the GECK team and their discord for putting up with my inane implementation questions*
 
 <img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/456494c3-2c8d-46e3-b9ad-1dada39486e9" />
@@ -14,7 +16,7 @@ Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtens
 
 <img width="2256" height="1355" alt="88" src="https://github.com/user-attachments/assets/bc7202d2-9d05-446c-9f88-6a4358b242ba" />
 
-Why at all. I don't like the character controller in vew vegas, and I never found a mod that fixed it the way I wanted. I'd also like to add boneworks style vr weapon controls, coop and those nice half life alyx npc animations where they place feet properly.
+Why at all. I don't like the character controller in new vegas, and I never found a mod that fixed it the way I wanted. I'd also like to add boneworks style vr weapon controls, coop and those nice half life alyx npc animations where they place feet properly.
 
 The goal is an open platform to do stuff with new vegas / fo3 in an easier way than modding or injecting the original. planning on a feature to replace a given REFR with a godot scene, to allow easy modding and allow a vr mod to replace weapons
 
