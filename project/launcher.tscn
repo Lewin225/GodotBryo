@@ -1,0 +1,63 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://launcher.gd" id="1_launcher"]
+
+[node name="Launcher" type="MarginContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+script = ExtResource("1_launcher")
+
+[node name="Panel" type="VBoxContainer" parent="."]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+
+[node name="Notice" type="Label" parent="Panel"]
+layout_mode = 2
+text = "GodotBryo is early and most of Fallout: New Vegas is missing: no combat, Pip-Boy, inventory, saving or creatures yet, and plenty of bugs. A new game starts in Doc Mitchell's house.
+
+Pick FalloutNV.esm from your own copy of the game below."
+autowrap_mode = 3
+
+[node name="DataLabel" type="Label" parent="Panel"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="StatusLabel" type="Label" parent="Panel"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+
+[node name="ChooseButton" type="Button" parent="Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Pick FalloutNV.esm..."
+
+[node name="NewGameButton" type="Button" parent="Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "New game"
+
+[node name="QuitButton" type="Button" parent="Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Quit"
+
+[node name="EsmDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Pick FalloutNV.esm"
+file_mode = 0
+access = 2
+filters = PackedStringArray("FalloutNV.esm ; Fallout: New Vegas master file")
+use_native_dialog = true

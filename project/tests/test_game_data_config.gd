@@ -22,9 +22,26 @@ func _ready() -> void:
 
 	var invalid_override = GameDataConfigScript.resolve_from_candidates(invalid_existing_dir, [valid_data_dir])
 	check(not String(invalid_override.get("error", "")).is_empty(), "invalid environment override reports a clear error")
+
+	_check_saved_choice(valid_data_dir)
 	print("=======================")
 	if failures == 0:
 		print("ALL CHECKS PASSED")
 	else:
 		print("FAILURES: ", failures)
 	get_tree().quit(1 if failures > 0 else 0)
+
+
+## The launcher's saved choice: refused without FalloutNV.esm, read back once
+## saved, and named as the source by resolve(). Any earlier choice is restored.
+func _check_saved_choice(valid_data_dir: String) -> void:
+	var previous := GameDataConfigScript.saved_data_dir()
+	check(not GameDataConfigScript.save_data_dir(ProjectSettings.globalize_path("res://tests/")), "a folder without FalloutNV.esm is not saved")
+	check(GameDataConfigScript.save_data_dir(valid_data_dir), "the data folder is saved")
+	check(GameDataConfigScript.saved_data_dir() == GameDataConfigScript.normalise_data_dir(valid_data_dir), "the saved folder is read back")
+	if OS.get_environment("GODOTBRYO_DATA_DIR").is_empty() and OS.get_environment("FNV_DATA_DIR").is_empty():
+		check(String(GameDataConfigScript.resolve().get("source", "")) == "saved", "resolve() uses the saved folder")
+	if previous.is_empty():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(GameDataConfigScript.SAVED_CONFIG))
+	else:
+		GameDataConfigScript.save_data_dir(previous)

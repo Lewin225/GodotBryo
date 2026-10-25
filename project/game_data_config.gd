@@ -7,6 +7,8 @@ extends RefCounted
 
 const ESM_FILE := "FalloutNV.esm"
 const ENVIRONMENT_VARIABLES := ["GODOTBRYO_DATA_DIR", "FNV_DATA_DIR"]
+## The data directory chosen in the launcher.
+const SAVED_CONFIG := "user://game_data.cfg"
 
 static func resolve() -> Dictionary:
 	var environment_data_dir := ""
@@ -15,7 +17,30 @@ static func resolve() -> Dictionary:
 		if value != "":
 			environment_data_dir = value
 			break
-	return resolve_from_candidates(environment_data_dir, default_candidates())
+	var candidates: Array[String] = []
+	var saved := saved_data_dir()
+	if not saved.is_empty():
+		candidates.append(saved)
+	return resolve_from_candidates(environment_data_dir, candidates)
+
+
+## The data directory the launcher saved, or "" when none is saved.
+static func saved_data_dir() -> String:
+	var file := ConfigFile.new()
+	if file.load(SAVED_CONFIG) != OK:
+		return ""
+	return String(file.get_value("game_data", "data_dir", ""))
+
+
+## Saves `data_dir` as the launcher's choice. False when it holds no ESM_FILE
+## or the file cannot be written.
+static func save_data_dir(data_dir: String) -> bool:
+	var normalised := normalise_data_dir(data_dir)
+	if not has_base_esm(normalised):
+		return false
+	var file := ConfigFile.new()
+	file.set_value("game_data", "data_dir", normalised)
+	return file.save(SAVED_CONFIG) == OK
 
 
 ## Public for tests and a future installation picker. An explicit override is
@@ -38,20 +63,11 @@ static func resolve_from_candidates(environment_data_dir: String, candidates: Ar
 		# valid install candidate.
 		if has_base_esm(data_dir_candidate):
 			config["data_dir"] = data_dir_candidate
-			config["source"] = "checkout"
+			config["source"] = "saved"
 			return config
 
-	config["error"] = "Could not find %s. Set GODOTBRYO_DATA_DIR to the game's Data directory." % ESM_FILE
+	config["error"] = "Could not find %s. Choose it in the launcher, or set GODOTBRYO_DATA_DIR to the game's Data directory." % ESM_FILE
 	return config
-
-
-static func default_candidates() -> Array[String]:
-	return [
-		ProjectSettings.globalize_path("res://../fresh_nv_copy/Data/"),
-		ProjectSettings.globalize_path("res://../fresh_nv_copy/NV/Data/"),
-		ProjectSettings.globalize_path("res://fresh_nv_copy/Data/"),
-		ProjectSettings.globalize_path("res://fresh_nv_copy/NV/Data/"),
-	]
 
 
 static func normalise_data_dir(path: String) -> String:
