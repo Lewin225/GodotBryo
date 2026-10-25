@@ -55,7 +55,7 @@ Most of these felt like improvements that were limited by hardware at the time, 
 * Npc's move off screen using the full detail navmesh combined with a proxy for fast search, not a linear path like the original. no more black mountain stuck re-spawns at 0,0. It could also support genuine encounters with npc's that you pass during fast travel
 * A REFR keeps its id for good. New Vegas gives picked-up and dropped items new ref ids, which makes them a pain to track - here a reference is one resource with one esm id, whatever moves it (inventory, dropping, scripts). If your mod spawns a pistol, that ref handle is good forever, wherever it ends up. (Pickup and drop aren't built yet; the reference model is.)
 * The player is a controller that possesses any actor, defaulting to the player NPC_ (0x07), not a special player object. Any actor could be possessed, which is wip groundwork for co-op
-* All REFR's are godot resources, compiled on demand - dirtying the resource in any way flags it as save data (saving isn't built yet), then it will no longer be fetched from the master ESM
+* All REFR's are godot resources, compiled on demand - dirtying the resource in any way flags it as save data (saving isn't built yet), then it will no longer be fetched from the master ESM. This is so generic it serves everything from npc health to being able to base build
 
 <img width="1909" height="1074" alt="104" src="https://github.com/user-attachments/assets/e3362b02-85f5-4c58-aa0f-638cd69a0dc9" />
 
