@@ -48,7 +48,7 @@ What works, roughly:
 * Containers, activators, lights, physics items you can pick up
 * Editor plugin for browsing and previewing ESM records
 
-Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, face textures, lip sync, NPCs that get their look from leveled lists (they're invisible right now), only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
+Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, face textures, lip sync, NPCs that get their look from leveled lists (they're invisible right now), multi ESM / load order / plugins, only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
 
 ## Some deliberate behaviour differences
 Most of these felt like improvements that were limited by hardware at the time, refr to resource gives us editor inspect-ability at the cost of a bit more ram  
