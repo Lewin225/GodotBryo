@@ -16,8 +16,11 @@ A clean-room engine replacement for Fallout: New Vegas's Gamebryo engine,
 built in Godot 4.7. It reads Bethesda's original file formats (ESM, BSA, NIF,
 DDS) directly and reproduces observed runtime behavior — in the spirit of
 OpenMW, not a decompilation or a mod. It runs against a legally-owned copy of
-the game's own data (`fresh_nv_copy/Data/`, gitignored, ~2.5GB) at runtime;
-no original assets or code are ever redistributed or embedded in this repo.
+the game's own data at runtime: the folder picked in the launcher
+(`launcher.tscn`, saved to `user://game_data.cfg`) or `GODOTBRYO_DATA_DIR`. The
+native tools and some tests read `fresh_nv_copy/Data/` (gitignored, ~2.5GB)
+directly. No original assets or code are ever redistributed or embedded in this
+repo.
 
 ## Why this is NOT "run New Vegas in Godot"
 

@@ -23,6 +23,26 @@ World Blues, Lonesome Road, Gun Runners' Arsenal, Caravan Pack, Classic Pack, Me
 Pack, Tribal Pack). All Phase 0+ tooling should point at this copy directly rather than
 a placeholder path.
 
+
+## Current status (October 2026)
+
+| Phase | State |
+|---|---|
+| 0 Groundwork | Done |
+| 1 Static world rendering | Done |
+| 2 World streaming and scale | Done: interior and continuous exterior streaming, terrain, distant LOD |
+| 3 Actors, skeletons, animation | Done for NPCs: skinned assembly, equipment, hair colour, FaceGen geometry, locomotion and idles. Creatures: `Plans/Actors/creatures.md` |
+| 4 Actor runtime | Done: actor references and bases, inventory, actor values, packages, furniture use |
+| 5 Scripting VM | In use: result and object scripts, conditions, quest stages; many functions still unimplemented |
+| 6 AI and combat | AI packages (Travel, Dialogue, Follow) on and off screen through `NpcSimulationServer`; no combat |
+| 7 Dialogue, quests, UI | Dialogue with voice, quests and objectives, terminals, message boxes; no Pip-Boy or inventory UI |
+| 8 VATS | Not started |
+| 9 Save/load | Not started (`Plans/Saving/reference_persistence.md`) |
+| 10 Content pass | Not started; the opening quest VCG01 plays start to finish |
+| 14 Physics | Physics items that can be picked up, and the player controller |
+
+Work in progress is planned in `Plans/`; finished plans are in `Plans/Completed Plans/`.
+
 ---
 
 ## Phase 0 — Groundwork (foundational, no gameplay) — done
@@ -59,7 +79,7 @@ exterior/terrain.
   interior cell (e.g. Doc Mitchell's house) with correct static geometry, textures,
   and walkable collision, using only original game assets at runtime.
 
-## Phase 2 — World Streaming & Scale
+## Phase 2 — World Streaming & Scale — done
 
 Goal: move continuously through the game's actual worldspace, not one cell at a time.
 
