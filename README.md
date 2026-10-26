@@ -101,7 +101,7 @@ I've only been implementing the sort of "runtime" perf, things like minimising h
 
 However... Memory usage is high (~7GB) - The servers keep a converted godot version of every unique object they're asked for, they use this for cache so any further calls are fast, but this cache never clears (it will in future)
 
-The Terrain is loaded to your gpu vram and never removed. interior/exterior transitions are usually near instant because of this, but vram usage is high
+The Terrain is loaded to your gpu vram and never removed. interior/exterior transitions are usually near instant because of this, but vram usage is much higher than it needs to be
 
 Video settings are tuned for me, and there's no way to change them (3080ti, 16gb ram)
 
