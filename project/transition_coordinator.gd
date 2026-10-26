@@ -15,6 +15,8 @@ signal entered_interior(cell_form_id: int)
 signal entered_exterior(worldspace_form_id: int)
 
 const COC_MARKER_BASE_EDITOR_ID := "COCMarkerHeading"
+## Seconds a transition runs before the loading screen offers Force finish.
+const FORCE_FINISH_AFTER_SECONDS := 5.0
 
 @export var player: PlayerController
 @export var cell_streamer: CellStreamerV2
@@ -28,16 +30,41 @@ var _generation := 0
 ## Set when a CenterOnCell destination has no COC marker: the body is placed
 ## above the loaded CELL's geometry instead of at the reference.
 var _drop_into_cell := false
+## Seconds the current transition has been running.
+var _transition_seconds := 0.0
+
+@onready var _force_finish_button: Button = $ColorRect/ForceFinishButton
 
 func _process(delta: float) -> void:
 	if is_transitioning():
 		$ColorRect.modulate.a = 1.0
+		_transition_seconds += delta
 	else:
 		$ColorRect.modulate.a = lerpf($ColorRect.modulate.a, 0, delta*2.0)
+		_transition_seconds = 0.0
+	var offer_force_finish := _transition_seconds >= FORCE_FINISH_AFTER_SECONDS
+	if offer_force_finish and not _force_finish_button.visible:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_force_finish_button.visible = offer_force_finish
 
 func _ready() -> void:
 	ScriptServer.reference_teleported.connect(_on_reference_teleported)
 	cell_streamer.load_completed.connect(_on_load_completed)
+	_force_finish_button.visible = false
+	_force_finish_button.pressed.connect(force_finish)
+
+## Ends the current transition without waiting for its loads: the destination
+## counts as loaded, the body is placed from the actor's reference and
+## released. A load still in flight carries on, but no longer holds the body.
+func force_finish() -> void:
+	if not is_transitioning():
+		return
+	_generation += 1
+	_settling = false
+	loaded_space_form_id = _target_space_form_id
+	_place_body()
+	player.set_frozen(false)
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func is_transitioning() -> bool:
 	return _target_space_form_id != loaded_space_form_id or _settling

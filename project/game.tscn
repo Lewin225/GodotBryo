@@ -31,6 +31,7 @@
 [ext_resource type="Script" uid="uid://dnblgqynq1t7l" path="res://addons/SunshineClouds2/SunshineClouds.gd" id="19_l1i01"]
 [ext_resource type="Script" uid="uid://bm7kppeppb6st" path="res://quests_debug_tab.gd" id="19_questsdebug"]
 [ext_resource type="NoiseTexture3D" uid="uid://bnck2kxeg5bkg" path="res://addons/SunshineClouds2/NoiseTextures/SmallScaleNoise.tres" id="20_r62pu"]
+[ext_resource type="Script" path="res://debug_monitors_label.gd" id="monitors_label"]
 [ext_resource type="Script" uid="uid://djusduuxf0voj" path="res://addons/SunshineClouds2/SunshineCloudsDriver.gd" id="32_dhpj7"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
@@ -225,6 +226,21 @@ label_settings = SubResource("LabelSettings_ggi80")
 horizontal_alignment = 1
 vertical_alignment = 1
 script = SubResource("GDScript_dhpj7")
+
+[node name="ForceFinishButton" type="Button" parent="TransitionCoordinator/ColorRect"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -60.0
+offset_top = -64.0
+offset_right = 60.0
+offset_bottom = -33.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Force finish"
 
 [node name="GameTimeManager" type="Node" parent="." unique_id=391827164]
 script = ExtResource("13_gametimemanager")
@@ -1961,6 +1977,21 @@ theme_override_font_sizes/font_size = 16
 text = "cell: —"
 horizontal_alignment = 2
 vertical_alignment = 1
+
+[node name="MonitorsLabel" type="Label" parent="DebugHud"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 11.0
+offset_top = -34.0
+offset_right = 1000.0
+grow_vertical = 0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 16
+vertical_alignment = 1
+script = ExtResource("monitors_label")
 
 [node name="SunshineCloudsDriverGD" type="Node" parent="." unique_id=900350280 node_paths=PackedStringArray("tracked_directional_lights")]
 script = ExtResource("32_dhpj7")
