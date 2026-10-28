@@ -393,6 +393,24 @@ func _place_voice(line: DialogueLine) -> void:
 	var player := ScriptServer.player_reference
 	var same_space := player == null or player.current_space_form_id == line.speaker.current_space_form_id
 	line.voice_player.volume_db = 0.0 if same_space else -80.0
+	# The player's own conversation is heard at any distance: no falloff.
+	if _is_player_conversation_line(line):
+		line.voice_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+		line.voice_player.max_distance = 0.0
+	else:
+		line.voice_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		line.voice_player.max_distance = voice_max_distance
+
+## Whether `line` is said between the two sides of a conversation with the
+## player.
+func _is_player_conversation_line(line: DialogueLine) -> bool:
+	var player := ScriptServer.player_reference
+	if player == null or _conversation_speaker == null:
+		return false
+	if _conversation_speaker != player and _conversation_listener != player:
+		return false
+	var sides := [_conversation_speaker, _conversation_listener]
+	return sides.has(line.speaker) and (line.listener == null or sides.has(line.listener))
 
 ## Where `speaker`'s voice comes from (Godot space).
 func speaker_voice_position(speaker: EsmReference) -> Vector3:

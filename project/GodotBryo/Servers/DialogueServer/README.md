@@ -55,7 +55,8 @@ response lasts its voice file's length and plays it at the speaker, through an
 `AudioStreamPlayer3D` the line owns, placed each frame at the speaker's eyes (its head
 tracking's eye point, or its position plus `voice_height` without a 3D node) and silent
 while the speaker is in another space than the player; the falloff (`voice_unit_size`,
-`voice_max_distance`) has no ESM or GECK source; with no voice file it lasts its text at
+`voice_max_distance`) has no ESM or GECK source, and lines between the two sides of a
+conversation with the player have none, so a speaker who starts one from afar is heard; with no voice file it lasts its text at
 `fNoticeTextTimePerCharacter` seconds a character. `_process(delta)` advances
 every line; when its last response ends, the end script runs on the speaker, then the
 speaker's `SayToDone` block for the topic, then `line_finished`. A new line from a speaker

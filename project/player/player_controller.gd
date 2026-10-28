@@ -23,6 +23,13 @@ extends CharacterBody3D
 @export_range(10.0, 89.0) var pitch_limit_degrees: float = 89.0
 
 # --- Movement Parameters ---
+## In a conversation, the body turns towards the other side once it is
+## further round than the head can turn, and stops within this many degrees.
+@export var face_partner_stop_degrees := 10.0
+## How fast the body turns towards the conversation partner, degrees per
+## second.
+@export var face_partner_turn_speed_degrees := 180.0
+
 @export_group("Movement")
 ## Base target walk speed in meters/second.
 @export var base_speed: float = 4.0
@@ -221,6 +228,8 @@ func toggle_noclip() -> bool:
 ## Seconds a "Quest Added" notice stays on screen.
 const QUEST_NOTICE_SECONDS := 4.0
 var _quest_notice_generation := 0
+## Whether the body is turning towards its conversation partner.
+var _facing_partner := false
 var _subtitle_line: DialogueLine = null # the line the subtitle shows
 
 func _ready() -> void:
@@ -338,6 +347,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		_publish_actor_motion(delta)
 		return
+	_face_conversation_partner(delta)
 	_sync_possessed()
 	if is_teleporting:
 		is_teleporting = false
@@ -1015,6 +1025,29 @@ func is_in_conversation() -> bool:
 	if possessed == null:
 		return false
 	return DialogueServer.get_conversation_speaker() == possessed or DialogueServer.get_conversation_listener() == possessed
+
+## Turns the body towards the other side of the conversation: starts once it
+## is beyond the head's reach, and turns until within
+## face_partner_stop_degrees, so the head, and the camera on it, can see them.
+func _face_conversation_partner(delta: float) -> void:
+	var tracking := actor.head_tracking if actor != null else null
+	var partner := tracking.get_conversation_partner() if tracking != null else null
+	if partner == null or partner.current_space_form_id != possessed.current_space_form_id:
+		_facing_partner = false
+		return
+	# Towards the partner's head: a seated actor's reference is at the
+	# furniture marker, in front of the chair.
+	var to_partner := tracking.get_eye_position_of(partner) - global_position
+	var difference := wrapf(atan2(-to_partner.x, -to_partner.z) - rotation.y, -PI, PI)
+	if absf(difference) > tracking.get_left_right_reach():
+		_facing_partner = true
+	if not _facing_partner:
+		return
+	if absf(difference) <= deg_to_rad(face_partner_stop_degrees):
+		_facing_partner = false
+		return
+	var step := deg_to_rad(face_partner_turn_speed_degrees) * delta
+	rotation.y += clampf(difference, -step, step)
 
 ## While seated or in a conversation, camera_mount follows the skeleton's head
 ## (camera_mode 1), so the head tracking turns the view to whoever it looks at;

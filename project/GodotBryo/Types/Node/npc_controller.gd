@@ -45,7 +45,7 @@ extends EsmNode
 ## When the way ahead is more than this many degrees off the actor's facing,
 ## it turns on the spot before moving.
 @export var turn_in_place_degrees := 45.0
-## Standing in a conversation, the actor turns towards its partner once the
+## Standing in a conversation (not a line said outside one), the actor turns towards its partner once the
 ## partner is further round than the head can turn, and stops turning within
 ## this many degrees of facing them.
 @export var face_partner_stop_degrees := 10.0
@@ -172,6 +172,13 @@ func _physics_process(delta: float) -> void:
 		# Seated, or sitting down or standing up: the furniture idles move the
 		# body; the controller holds at the marker.
 		_publish_idle(delta)
+		return
+	if _in_conversation():
+		# Held in place while talking; the route resumes when the conversation
+		# ends, even if the package changed during it.
+		_face_conversation_partner(delta)
+		_hold_stuck_timer()
+		_publish_motion(Vector3.ZERO, Vector3.ZERO, delta)
 		return
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
@@ -345,6 +352,12 @@ func _recover_if_stuck(delta: float) -> void:
 	_progress_position = global_position
 	_stalled_seconds = 0.0
 
+## Restarts the stuck check from here, so standing still on purpose (in a
+## conversation) is not taken for being stuck.
+func _hold_stuck_timer() -> void:
+	_progress_position = global_position
+	_stalled_seconds = 0.0
+
 ## Nowhere to go: publishes standing still, turning on the spot if the actor
 ## was, and leaves the reference as it is.
 func _publish_idle(delta: float) -> void:
@@ -493,6 +506,10 @@ func _yaw_difference(direction: Vector3) -> float:
 		return 0.0
 	return wrapf(atan2(-direction.x, -direction.z) - rotation.y, -PI, PI)
 
+## Whether the actor is the speaker or listener of the running conversation.
+func _in_conversation() -> bool:
+	return DialogueServer.get_conversation_speaker() == _actor or DialogueServer.get_conversation_listener() == _actor
+
 ## Turns the standing actor towards its conversation partner: starts once the
 ## partner is beyond the head's reach, and turns until within
 ## face_partner_stop_degrees. Writes the new heading to the reference when the
@@ -503,7 +520,9 @@ func _face_conversation_partner(delta: float) -> void:
 	if partner == null or partner.current_space_form_id != _actor.current_space_form_id:
 		_facing_partner = false
 		return
-	var to_partner := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * partner.position - global_position
+	# Towards the partner's head: a seated actor's reference is at the
+	# furniture marker, in front of the chair.
+	var to_partner := tracking.get_eye_position_of(partner) - global_position
 	var difference := absf(_yaw_difference(to_partner))
 	if difference > tracking.get_left_right_reach():
 		_facing_partner = true
