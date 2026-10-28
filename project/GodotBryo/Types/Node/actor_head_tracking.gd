@@ -174,6 +174,23 @@ func get_modifier() -> LookAtModifier3D:
 func get_target() -> EsmReference:
 	return _target
 
+## The other side of the conversation or line this actor is in (rule 3), or
+## null when it is in none, or its head tracking is off or overridden by Look.
+func get_conversation_partner() -> EsmReference:
+	var actor := _actor()
+	if actor == null or not actor.alive or actor.look_target != null:
+		return null
+	if _package_has_head_tracking_off(actor):
+		return null
+	var partner := _conversation_partner(actor)
+	if partner != null:
+		return partner
+	return _current_line_partner()
+
+## Half the left-right range: how far, in radians, the head turns either way.
+func get_left_right_reach() -> float:
+	return deg_to_rad(left_right_limit_degrees) / 2.0
+
 ## Where this actor's eyes are, in the world: its head bone, else the actor
 ## node plus eye_height. For other actors aiming at it.
 func get_eye_position() -> Vector3:

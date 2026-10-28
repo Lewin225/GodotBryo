@@ -45,6 +45,13 @@ extends EsmNode
 ## When the way ahead is more than this many degrees off the actor's facing,
 ## it turns on the spot before moving.
 @export var turn_in_place_degrees := 45.0
+## Standing in a conversation, the actor turns towards its partner once the
+## partner is further round than the head can turn, and stops turning within
+## this many degrees of facing them.
+@export var face_partner_stop_degrees := 10.0
+## How fast the actor turns towards its conversation partner, degrees per
+## second.
+@export var face_partner_turn_speed_degrees := 180.0
 ## An actor with route left that moves less than `stuck_distance` metres in
 ## this many seconds is stuck, and is moved to its current waypoint.
 @export var stuck_seconds := 3.0
@@ -126,6 +133,8 @@ var _leased: ActorReference = null
 ## `reference` as an ActorReference, kept when it changes rather than cast on
 ## every use.
 var _actor: ActorReference = null
+## Whether the actor is turning towards its conversation partner.
+var _facing_partner := false
 ## Seconds until position and heading are next written to the reference.
 var _placement_write_timer := 0.0
 
@@ -166,6 +175,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_route()
 	if _waypoint_index >= _waypoints.size() and _link_exit == Vector3.INF:
+		_face_conversation_partner(delta)
 		_publish_idle(delta)
 		ScriptServer.actor_idles.update_standing(_actor)
 		return
@@ -482,6 +492,29 @@ func _yaw_difference(direction: Vector3) -> float:
 	if Vector2(direction.x, direction.z).length() < 0.01:
 		return 0.0
 	return wrapf(atan2(-direction.x, -direction.z) - rotation.y, -PI, PI)
+
+## Turns the standing actor towards its conversation partner: starts once the
+## partner is beyond the head's reach, and turns until within
+## face_partner_stop_degrees. Writes the new heading to the reference when the
+## turn ends.
+func _face_conversation_partner(delta: float) -> void:
+	var tracking := actor.head_tracking if actor != null else null
+	var partner := tracking.get_conversation_partner() if tracking != null else null
+	if partner == null or partner.current_space_form_id != _actor.current_space_form_id:
+		_facing_partner = false
+		return
+	var to_partner := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * partner.position - global_position
+	var difference := absf(_yaw_difference(to_partner))
+	if difference > tracking.get_left_right_reach():
+		_facing_partner = true
+	if not _facing_partner:
+		return
+	if difference <= deg_to_rad(face_partner_stop_degrees):
+		_facing_partner = false
+		_write_placement()
+		return
+	var step := deg_to_rad(face_partner_turn_speed_degrees) * delta
+	rotation.y += clampf(_yaw_difference(to_partner), -step, step)
 
 func _turn_toward(direction: Vector3, delta: float) -> void:
 	var step := deg_to_rad(turn_speed_degrees) * delta
