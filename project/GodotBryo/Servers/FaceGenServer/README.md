@@ -37,6 +37,14 @@ the shipped facemods fit race + NPC FGTS, and NPC FGGS centres on zero in every 
 70 for metres, added in the shape's own (Gamebryo) axes — the same space as the positions NifServer
 delivers. Normals, UVs, skin weights and materials are the source mesh's.
 
+**Expressions.** When the shape is its TRI's (vertex count V), the delivered mesh carries the
+TRI's expressions as blend shapes named as in the TRI (normalized: the morphed positions plus the
+offsets, with the source mesh's normals and tangents). A difference morph's offsets are its
+deltas. A statistical morph (blinks, squints, eye looks) moves each listed vertex to the next of
+the TRI's extra vertices, both with the NPC's FaceGen applied, so it follows this face. A name
+met twice keeps its first. Hair and other shapes without a TRI get none. Nothing here sets a
+weight; that is the actor's.
+
 **Results are shared and immutable.** A result is cached by (source mesh, EGM, coefficients), held
 weakly, so actors with the same face (templated NPCs, NPCs with zero FaceGen) share one mesh for as
 long as one of them holds it. Each delivered mesh carries `face_gen_egm_path` metadata. Callers
@@ -48,7 +56,7 @@ thread. `deliveries_per_frame` caps the callbacks made in one frame.
 
 ## Not done here
 
-- TRI expression morphs (blinks, phonemes) and FGTS textures.
+- Expression weights (the actor's facial player) and FGTS textures.
 - Headgear: `ActorEquipment` attaches it without asking for a morph yet.
 
 ## Tests
@@ -56,4 +64,6 @@ thread. `deliveries_per_frame` caps the callbacks made in one frame.
 `tests/servers/test_face_gen_server.tscn`: path and coefficient rules, Doc Mitchell's head, the
 callback contract, and a census of every shape of every HAIR, HDPT and RACE head-part NIF in
 FalloutNV.esm (171 shapes in 110 NIFs, all with an EGM that fits). `tests/test_actor_node.tscn`
-checks that each of Doc's head-part, eye and hair meshes is morphed.
+checks that each of Doc's head-part, eye and hair meshes is morphed. The server test also
+checks Doc's head carries its TRI's 46 expressions and that `BlinkLeft` moves only its 20
+vertices; 46 of the 171 census shapes carry expressions.

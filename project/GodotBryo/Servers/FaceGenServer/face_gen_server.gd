@@ -18,8 +18,8 @@ const META_EGM_PATH := "face_gen_egm_path"
 var _archive_server: Node = null
 var _shutting_down := false
 
-## EGM path -> {"egm": EgmReader, "tri_vertex_count": int, "tri_extra_vertex_count": int},
-## or null when the EGM is missing or does not load.
+## EGM path -> {"egm": EgmReader, "tri": TriReader or null, "tri_vertex_count": int,
+## "tri_extra_vertex_count": int}, or null when the EGM is missing or does not load.
 var _bases := {}
 ## EGM path -> jobs waiting for the basis to load.
 var _base_waiters := {}
@@ -208,16 +208,17 @@ func _load_base_task(egm_path: String) -> void:
 	else:
 		var egm := EgmReader.new()
 		if egm.load(PackedByteArray(result["data"]), egm_path):
-			base = {"egm": egm, "tri_vertex_count": 0, "tri_extra_vertex_count": 0}
-			_read_tri_counts(egm_path, base)
+			base = {"egm": egm, "tri": null, "tri_vertex_count": 0, "tri_extra_vertex_count": 0}
+			_read_tri(egm_path, base)
 		else:
 			error = egm.get_last_error()
 	_on_base_loaded.bind(egm_path, base, error).call_deferred()
 
 
-## A hair EGM has no TRI of its own (`<stem>hat.tri` does not exist), and
-## needs none: its vertex count is the shape's.
-func _read_tri_counts(egm_path: String, base: Dictionary) -> void:
+## Reads the TRI of the EGM's stem, for its vertex counts and expression
+## morphs. A hair EGM has no TRI of its own (`<stem>hat.tri` does not exist),
+## and needs none: its vertex count is the shape's.
+func _read_tri(egm_path: String, base: Dictionary) -> void:
 	var tri_path := egm_path.get_basename() + ".tri"
 	var result: Dictionary = _archive_server.read(tri_path)
 	if not bool(result["found"]):
@@ -225,6 +226,7 @@ func _read_tri_counts(egm_path: String, base: Dictionary) -> void:
 	var tri := TriReader.new()
 	if not tri.load(PackedByteArray(result["data"]), tri_path):
 		return
+	base["tri"] = tri
 	base["tri_vertex_count"] = tri.get_vertex_count()
 	base["tri_extra_vertex_count"] = tri.get_statistical_vertex_count()
 
@@ -263,17 +265,85 @@ func _start_morph(job: Dictionary) -> void:
 
 
 ## Worker: the morphed vertex array of every surface, or an empty array when a
-## surface's vertex count does not fit the EGM.
+## surface's vertex count does not fit the EGM; and the TRI's expression
+## morphs as offsets for those vertices.
 func _morph_task(job: Dictionary, base: Dictionary, surfaces: Array) -> void:
 	var egm := base["egm"] as EgmReader
 	var morphed: Array[PackedVector3Array] = []
+	var vertex_count := -1
 	for arrays in surfaces:
 		var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		if not _fits(positions.size(), base):
+		if not _fits(positions.size(), base) or (vertex_count != -1 and positions.size() != vertex_count):
 			morphed.clear()
 			break
+		vertex_count = positions.size()
 		morphed.append(egm.morph(positions, job["symmetric"], job["asymmetric"]))
-	_on_morphed.bind(job, surfaces, morphed).call_deferred()
+	var expressions: Array = []
+	if not morphed.is_empty():
+		expressions = _expression_offsets(base, vertex_count, job["symmetric"], job["asymmetric"])
+	_on_morphed.bind(job, surfaces, morphed, expressions).call_deferred()
+
+
+## The TRI's expression morphs for a shape of `vertex_count` vertices, as
+## [{"name": String, "offsets": PackedVector3Array}], one offset per vertex;
+## empty without a TRI or when the shape is not the TRI's. A difference morph's
+## offsets are its deltas. A statistical morph moves each listed vertex to the
+## next of the TRI's extra vertices, both with the NPC's FaceGen applied, so
+## blinks and eye looks follow this face. A name met twice keeps its first.
+static func _expression_offsets(base: Dictionary, vertex_count: int, symmetric: PackedFloat32Array,
+		asymmetric: PackedFloat32Array) -> Array:
+	var tri := base["tri"] as TriReader
+	if tri == null or vertex_count != tri.get_vertex_count():
+		return []
+	var expressions: Array = []
+	var seen := {}
+	for i in tri.get_delta_morph_count():
+		var name := tri.get_delta_morph_name(i)
+		var deltas := tri.get_delta_morph_deltas(i)
+		if name.is_empty() or seen.has(name) or deltas.size() != vertex_count * 3:
+			continue
+		seen[name] = true
+		var offsets := PackedVector3Array()
+		offsets.resize(vertex_count)
+		for v in vertex_count:
+			offsets[v] = Vector3(deltas[v * 3], deltas[v * 3 + 1], deltas[v * 3 + 2])
+		expressions.append({"name": name, "offsets": offsets})
+	if tri.get_statistical_morph_count() == 0:
+		return expressions
+	var face := _tri_face_positions(tri, base["egm"] as EgmReader, symmetric, asymmetric)
+	if face.is_empty():
+		return expressions
+	var extra := vertex_count
+	for i in tri.get_statistical_morph_count():
+		var name := tri.get_statistical_morph_name(i)
+		var indices := tri.get_statistical_morph_vertex_indices(i)
+		var offsets := PackedVector3Array()
+		offsets.resize(vertex_count)
+		for index in indices:
+			if index >= 0 and index < vertex_count and extra < face.size():
+				offsets[index] = face[extra] - face[index]
+			extra += 1
+		if name.is_empty() or seen.has(name):
+			continue
+		seen[name] = true
+		expressions.append({"name": name, "offsets": offsets})
+	return expressions
+
+
+## The TRI's base and extra vertices with the NPC's FaceGen applied, or empty
+## when the EGM does not hold the TRI's V + K vertices.
+static func _tri_face_positions(tri: TriReader, egm: EgmReader, symmetric: PackedFloat32Array,
+		asymmetric: PackedFloat32Array) -> PackedVector3Array:
+	var flat := tri.get_vertices()
+	@warning_ignore("integer_division")
+	var count := flat.size() / 3
+	if count != egm.get_vertex_count():
+		return PackedVector3Array()
+	var positions := PackedVector3Array()
+	positions.resize(count)
+	for v in count:
+		positions[v] = Vector3(flat[v * 3], flat[v * 3 + 1], flat[v * 3 + 2])
+	return egm.morph(positions, symmetric, asymmetric)
 
 
 ## An EGM fits a shape whose vertex count is its own, or the paired TRI's V
@@ -287,7 +357,7 @@ static func _fits(vertex_count: int, base: Dictionary) -> bool:
 	return vertex_count == tri_vertex_count and tri_vertex_count + tri_extra == egm.get_vertex_count()
 
 
-func _on_morphed(job: Dictionary, surfaces: Array, morphed: Array[PackedVector3Array]) -> void:
+func _on_morphed(job: Dictionary, surfaces: Array, morphed: Array[PackedVector3Array], expressions: Array) -> void:
 	var key := String(job["key"])
 	var waiters: Array = _morph_waiters.get(key, [])
 	_morph_waiters.erase(key)
@@ -296,7 +366,7 @@ func _on_morphed(job: Dictionary, surfaces: Array, morphed: Array[PackedVector3A
 		_stats["vertex_mismatch_count"] += 1
 		_warn_once(String(job["egm_path"]), "FaceGenServer: %s does not fit its shape's vertex count" % job["egm_path"])
 	else:
-		result = _build_mesh(job["mesh"] as ArrayMesh, surfaces, morphed)
+		result = _build_mesh(job["mesh"] as ArrayMesh, surfaces, morphed, expressions)
 		result.set_meta(META_EGM_PATH, job["egm_path"])
 		_morphed[key] = weakref(result)
 		_stats["morph_count"] += 1
@@ -304,15 +374,45 @@ func _on_morphed(job: Dictionary, surfaces: Array, morphed: Array[PackedVector3A
 		_queue_delivery(waiter, result)
 
 
-static func _build_mesh(source: ArrayMesh, surfaces: Array, morphed: Array[PackedVector3Array]) -> ArrayMesh:
+## The morphed mesh, with one blend shape per expression, named as in the TRI,
+## on every surface. Blend shapes are normalized: each holds the morphed
+## positions plus its offsets, with the surface's own normals and tangents
+## (Godot stores normals compressed, so zero normal offsets cannot be given).
+static func _build_mesh(source: ArrayMesh, surfaces: Array, morphed: Array[PackedVector3Array],
+		expressions: Array) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
+	mesh.blend_shape_mode = Mesh.BLEND_SHAPE_MODE_NORMALIZED
+	for expression in expressions:
+		mesh.add_blend_shape(String(expression["name"]))
 	for surface in surfaces.size():
 		var arrays: Array = surfaces[surface]
 		arrays[Mesh.ARRAY_VERTEX] = morphed[surface]
-		mesh.add_surface_from_arrays(source.surface_get_primitive_type(surface), arrays)
+		var blend_shapes := _blend_shape_arrays(arrays, expressions)
+		mesh.add_surface_from_arrays(source.surface_get_primitive_type(surface), arrays, blend_shapes)
 		mesh.surface_set_material(surface, source.surface_get_material(surface))
 	mesh.resource_name = source.resource_name
 	return mesh
+
+
+## One array set per expression, as add_surface_from_arrays wants: the
+## surface's positions plus the expression's offsets, and the surface's own
+## normals and tangents.
+static func _blend_shape_arrays(arrays: Array, expressions: Array) -> Array:
+	var blend_shapes: Array = []
+	var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for expression in expressions:
+		var offsets: PackedVector3Array = expression["offsets"]
+		var shaped := PackedVector3Array()
+		shaped.resize(positions.size())
+		for v in positions.size():
+			shaped[v] = positions[v] + offsets[v]
+		var blend_shape := []
+		blend_shape.resize(Mesh.ARRAY_MAX)
+		blend_shape[Mesh.ARRAY_VERTEX] = shaped
+		blend_shape[Mesh.ARRAY_NORMAL] = arrays[Mesh.ARRAY_NORMAL]
+		blend_shape[Mesh.ARRAY_TANGENT] = arrays[Mesh.ARRAY_TANGENT]
+		blend_shapes.append(blend_shape)
+	return blend_shapes
 
 
 func _queue_delivery(job: Dictionary, mesh: ArrayMesh) -> void:

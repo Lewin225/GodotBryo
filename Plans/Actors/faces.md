@@ -107,6 +107,38 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   `BlinkLeft` / `BlinkRight` as difference morphs).
 - A statistical morph moves its listed vertices to the TRI's extra vertices, in order. The EGM
   morphs those extra vertices too, so blinks and eye looks follow each NPC's face.
+- Morph names over all 49 TRIs (`_diag/diag_tri_name_census`):
+  - Heads (human, old, ghoul, child; male and female): 38 difference morphs, the same set,
+    except male, old, ghoul and child heads name `Cocky` where female heads name `MoodCocky`;
+    8 statistical morphs (`BlinkLeft`, `BlinkRight`, `SquintLeft`, `SquintRight`, `LookDown`,
+    `LookLeft`, `LookRight`, `LookUp`). Male heads K = 238, female heads K = 1,078.
+  - Eyes: statistical `LookDown`, `LookLeft`, `LookRight`, `LookUp` only.
+  - Mouths: `Aah`, `Anger`, `BigAah`, `Surprise`, `W`. Tongues: 8 phonemes. Lower teeth: 11
+    phonemes and `CombatAnger`. Upper teeth: none.
+  - Beards (17) and brows (3), eyepatch: difference morphs only, 24 to 34 each, mostly the
+    head's names; brows and `beardside` carry `BlinkLeft` / `BlinkRight`, brows `LookDown` /
+    `LookUp`, some beards `EyeSquintLeft` / `EyeSquintRight` or `SquintLeft` / `SquintRight`,
+    as difference morphs.
+- No head-part NIF carries morph data: of 171 NIFs under `meshes\characters` only
+  `_male\skeleton.nif` does (`_diag/diag_head_morph_census`). Its `HeadAnims:0` is a one-vertex
+  geometry with a `NiGeomMorpherController` of 31 targets: `Base`, the 8 statistical names,
+  `Aah`, `Anger`, `BigAah`, `BMP`, the six brow morphs, `Eh`, `EyeSquintLeft`, `EyeSquintRight`,
+  `Fear`, `FV`, `Oh`, `OohQ`, `Sad`, `W`, `Happy` (`LookDown` and `LookUp` twice). Every one is a
+  TRI name except `Base`. The face shapes are the TRI morphs; the skeleton's morpher is the set
+  of weight channels KF clips animate.
+- KF face tracks (`native/tools/kf_face_census`): of 4,765 KFs, 250 sequences have
+  `NiGeomMorpherController` links on `HeadAnims:0`, 32 with a non-zero key: eating, drinking,
+  smoking, laughing, dancing and microscope idles, and `testfacialanims`. The other 218 hold
+  every channel at 0 (128 of them `Base`, `Aah`, `Oh`, `OohQ`). No locomotion or idle loop
+  animates a blink.
+- INFO TRDT (FalloutNV.esm, 29,674 responses): emotion type Neutral 22,684, Anger 2,052,
+  Happy 1,928, Surprise 753, Sad 707, Disgust 643, Fear 553, Pained 354; emotion value 0 to
+  100 in steps of 5, 50 on 25,399. The seven non-neutral types are head difference morph
+  names.
+- Blinks are the engine's: no KF animates one. Game settings (GECK's list of GameSettings; not
+  in FalloutNV.esm, named in `FalloutNV.exe`): `fBlinkDelayMin` 1.5, `fBlinkDelayMax` 4.0,
+  `fBlinkDownTime` 0.04, `fBlinkUpTime` 0.14, `fLookDownDisableBlinkingAmt` 0.25 (by name, no
+  blink while `LookDown` is above it).
 
 ### Face textures
 
@@ -212,7 +244,11 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   [`headgear_facegen.md`](headgear_facegen.md).
 - **TRI expressions.** Difference morphs and statistical morphs (blinks, squints, eye looks)
   become blend shapes as offsets from the TRI base; statistical offsets come from the
-  EGM-morphed extra vertices, so they are per NPC.
+  EGM-morphed extra vertices, so they are per NPC. A facial player on the actor node holds one
+  weight per morph name and sets it on every face part that has a blend shape of that name
+  (`Cocky` and `MoodCocky` as one). Its inputs: KF face tracks (the `HeadAnims` morpher's
+  channels), the response's TRDT emotion (type as morph, value / 100 as weight) while a line
+  is said, blinks, and later lip sync.
 - **Face texture.** The NPC's shipped facemod, where one exists, on the head through the
   material path the skin shader needs. NPCs without one get the same map built from the
   effective FGTS and the head EGT (126 + 0.46 x sum), natively.
@@ -235,7 +271,9 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 3. **FaceGen geometry.** Done for head parts, eyes and hair (`FaceGenServer`).
 4. **Facemods.** Shipped facemod on the head; combination with the base texture decided by
    a visual check against the game.
-5. **TRI blend shapes and a facial player.** Difference and statistical morphs; blinks.
+5. **TRI blend shapes and a facial player.** Blend shapes done: FaceGenServer delivers each
+   face part with its TRI's difference and statistical morphs (Doc's head 46). Next the facial
+   player: blinks, the response's emotion, KF face tracks.
 6. **LIP decoding and lip sync.** Census of the `.lip` header and records over all 60,702
    files before a decoder; then lines drive the facial player.
 7. **EGT synthesis.** Facemods for NPCs without one; upper-body tint.
@@ -255,4 +293,3 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 - Whether Head (0x1) or Hair (0x2) without Hat should hide the hair (helmets, masks). Only
   Hat is acted on; no source found. Every cowboy hat carries Hair and Hat, so "Hair hides
   hair" alone would leave them bald.
-- What blinks: a KF, a timer, or the TRI targets directly.

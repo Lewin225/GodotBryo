@@ -80,6 +80,7 @@ func _check_head(server: Node, doc: NpcBase) -> void:
 	print("       largest head vertex offset %.4f m" % largest)
 	check(largest > 0.001 and largest < 0.05, "Doc's face moves vertices by more than a millimetre and less than 5 cm")
 	check(morphed.surface_get_material(0) == mesh.surface_get_material(0), "the copy keeps the shared material")
+	_check_expressions(morphed)
 
 	var again := await _request_morph(server, mesh, HEAD, shape, doc)
 	check(again == morphed, "the same mesh and face come back as the same copy")
@@ -110,6 +111,38 @@ func _check_head(server: Node, doc: NpcBase) -> void:
 	tree.free()
 
 
+## The head's TRI expressions: 38 difference and 8 statistical morphs as
+## blend shapes. A blink moves only its 20 vertices, by a few millimetres.
+func _check_expressions(morphed: ArrayMesh) -> void:
+	check(morphed.get_blend_shape_count() == 46, "the head has its TRI's 46 expressions as blend shapes (got %d)" % morphed.get_blend_shape_count())
+	check(morphed.blend_shape_mode == Mesh.BLEND_SHAPE_MODE_NORMALIZED, "the blend shapes are normalized (morphed positions plus offsets)")
+	var base: PackedVector3Array = morphed.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var names := {}
+	for i in morphed.get_blend_shape_count():
+		names[String(morphed.get_blend_shape_name(i))] = i
+	check(names.has("Aah") and names.has("MoodSad") and names.has("BlinkLeft") and names.has("LookUp"),
+			"difference (Aah, MoodSad) and statistical (BlinkLeft, LookUp) morphs are named as in the TRI")
+	if not names.has("BlinkLeft") or not names.has("Aah"):
+		return
+	var blend_shapes: Array = morphed.surface_get_blend_shape_arrays(0)
+	var blink: PackedVector3Array = blend_shapes[names["BlinkLeft"]][Mesh.ARRAY_VERTEX]
+	var moved := 0
+	var largest := 0.0
+	for v in blink.size():
+		var offset := blink[v] - base[v]
+		if offset.length() > 0.00001:
+			moved += 1
+		largest = maxf(largest, offset.length())
+	print("       BlinkLeft moves %d vertices, at most %.4f m" % [moved, largest])
+	check(moved == 20 and largest > 0.001 and largest < 0.03, "BlinkLeft moves its 20 vertices by 1 mm to 3 cm")
+	var aah: PackedVector3Array = blend_shapes[names["Aah"]][Mesh.ARRAY_VERTEX]
+	var aah_largest := 0.0
+	for v in aah.size():
+		aah_largest = maxf(aah_largest, (aah[v] - base[v]).length())
+	print("       Aah moves at most %.4f m" % aah_largest)
+	check(aah_largest > 0.002 and aah_largest < 0.05, "Aah opens the jaw by 2 mm to 5 cm")
+
+
 ## Every shape of every HAIR, HDPT and RACE head-part NIF.
 func _census(esm: Node, server: Node, doc: NpcBase) -> void:
 	var paths := {}
@@ -125,6 +158,7 @@ func _census(esm: Node, server: Node, doc: NpcBase) -> void:
 		elif base is HairBase or base is HeadPartBase:
 			_add_path(paths, String(base.model_path))
 	var morphed_shapes := 0
+	var expression_shapes := 0
 	var unmorphed := {}
 	var names := paths.keys()
 	names.sort()
@@ -145,8 +179,10 @@ func _census(esm: Node, server: Node, doc: NpcBase) -> void:
 				unmorphed["%s [%s]" % [path, shape]] = server.egm_path_for(path, shape)
 			else:
 				morphed_shapes += 1
+				if morphed.get_blend_shape_count() > 0:
+					expression_shapes += 1
 		tree.free()
-	print("       %d NIFs, %d shapes morphed, %d not" % [names.size(), morphed_shapes, unmorphed.size()])
+	print("       %d NIFs, %d shapes morphed, %d not; %d with expressions" % [names.size(), morphed_shapes, unmorphed.size(), expression_shapes])
 	for key in unmorphed:
 		print("       not morphed: %s -> %s" % [key, unmorphed[key]])
 	check(morphed_shapes == 171 and unmorphed.is_empty(), "all 171 shapes of the 110 NIFs have an EGM that fits (got %d)" % morphed_shapes)
