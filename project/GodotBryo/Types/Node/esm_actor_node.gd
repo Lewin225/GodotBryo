@@ -144,6 +144,11 @@ var equipment: ActorEquipment:
 var head_tracking: ActorHeadTracking:
 	get:
 		return get_node_or_null(^"ActorHeadTracking") as ActorHeadTracking
+## The child that sets the face's expression weights (looked up as skinning
+## is).
+var facial_player: ActorFacialPlayer:
+	get:
+		return get_node_or_null(^"ActorFacialPlayer") as ActorFacialPlayer
 
 
 
@@ -625,6 +630,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_apply_possessed_first_person_render_mode()
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
 	equipment.set_body(body, skeleton, _is_female)
+	facial_player.set_body(body)
 	animator.load_locomotion(_active_record.animation_search_paths(), body, skeleton)
 	visual_load_completed.emit()
 

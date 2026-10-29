@@ -272,8 +272,10 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 4. **Facemods.** Shipped facemod on the head; combination with the base texture decided by
    a visual check against the game.
 5. **TRI blend shapes and a facial player.** Blend shapes done: FaceGenServer delivers each
-   face part with its TRI's difference and statistical morphs (Doc's head 46). Next the facial
-   player: blinks, the response's emotion, KF face tracks.
+   face part with its TRI's difference and statistical morphs (Doc's head 46). Facial player
+   (`ActorFacialPlayer`) done for blinks and the response's emotion. Next KF face tracks: the
+   NIF loader reads the `HeadAnims` morpher's float keys and the animator plays them as
+   weights. Gate: a drinking idle moves the mouth.
 6. **LIP decoding and lip sync.** Census of the `.lip` header and records over all 60,702
    files before a decoder; then lines drive the facial player.
 7. **EGT synthesis.** Facemods for NPCs without one; upper-body tint.

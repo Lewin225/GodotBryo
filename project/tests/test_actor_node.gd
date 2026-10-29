@@ -69,6 +69,7 @@ func _ready() -> void:
 	_check_hitboxes(node)
 	var modifier := node.head_tracking.get_modifier() if node.head_tracking != null else null
 	check(modifier != null and modifier.bone_name == ActorHeadTracking.HEAD_BONE_NAME and modifier.get_parent() is Skeleton3D, "ActorHeadTracking owns the look-at modifier on Doc's %s" % ActorHeadTracking.HEAD_BONE_NAME)
+	await _check_facial_player(node, doc)
 	await _check_motion(node, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
@@ -114,6 +115,55 @@ func _check_face_gen(node: EsmActorNode) -> void:
 	var expected: int = EXPECTED["skinned_head_meshes"] + EXPECTED["facial_attached_meshes"]
 	check(head_part_meshes == expected, "Doc has %d head-part, eye and hair meshes (got %d)" % [expected, head_part_meshes])
 	check(morphed == head_part_meshes, "each carries its FaceGen-morphed mesh (got %d)" % morphed)
+
+## ActorFacialPlayer finds Doc's blend shapes, blinks on its own, and shows a
+## response's emotion while he says it: the response's DialogueServer signals
+## are emitted here with a made-up Happy 50 response.
+func _check_facial_player(node: EsmActorNode, doc: EsmReference) -> void:
+	var facial_player := node.facial_player
+	check(facial_player != null and facial_player.has_weight("BlinkLeft") and facial_player.has_weight("Cocky"), "ActorFacialPlayer has Doc's BlinkLeft and Cocky")
+	if facial_player == null:
+		return
+	var head := _head_mesh(node)
+	var blink_index := head.find_blend_shape_by_name("BlinkLeft") if head != null else -1
+	var most_closed := 0.0
+	for frame in 600:
+		await get_tree().process_frame
+		most_closed = maxf(most_closed, head.get_blend_shape_value(blink_index) if blink_index != -1 else 0.0)
+		if most_closed > 0.5:
+			break
+	check(most_closed > 0.5, "Doc's head blinks within %d frames (BlinkLeft up to %.2f)" % [600, most_closed])
+	var response := DialogueResponseCollection.new()
+	response.emotion = DialogueResponseCollection.Emotion.HAPPY
+	response.emotion_value = 50
+	var info := DialogueInfoBase.new()
+	info.responses = [response]
+	var line := DialogueLine.new()
+	line.info = info
+	line.speaker = doc
+	DialogueServer.response_started.emit(line, "")
+	var happy_index := head.find_blend_shape_by_name("Happy") if head != null else -1
+	for frame in 120:
+		await get_tree().process_frame
+	var happy := head.get_blend_shape_value(happy_index) if happy_index != -1 else 0.0
+	check(is_equal_approx(happy, 0.5), "while Doc says a Happy 50 response his head's Happy is 0.5 (got %.2f)" % happy)
+	DialogueServer.line_finished.emit(line)
+	for frame in 120:
+		await get_tree().process_frame
+	happy = head.get_blend_shape_value(happy_index) if happy_index != -1 else 1.0
+	check(happy == 0.0, "after the line it returns to 0 (got %.2f)" % happy)
+
+## The head-part mesh with the most blend shapes: the head.
+func _head_mesh(node: EsmActorNode) -> MeshInstance3D:
+	var head: MeshInstance3D = null
+	var most := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		var mesh := mesh_instance.mesh as ArrayMesh
+		if mesh != null and mesh.get_blend_shape_count() > most:
+			most = mesh.get_blend_shape_count()
+			head = mesh_instance
+	return head
 
 ## The animator follows the node's ActorMotion: each motion state plays its
 ## clip after a physics frame.

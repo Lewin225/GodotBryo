@@ -8,9 +8,11 @@ extends Resource
 
 enum Emotion { NEUTRAL, ANGER, DISGUST, FEAR, SAD, HAPPY, SURPRISE, PAINED }
 
-## TRDT offset 0. Read; not used yet (facial animation).
+## TRDT offset 0. Read; used by ActorFacialPlayer as the morph shown while
+## the response is said.
 @export_custom(PROPERTY_HINT_ENUM, "Neutral,Anger,Disgust,Fear,Sad,Happy,Surprise,Pained", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var emotion: Emotion = Emotion.NEUTRAL
-## TRDT offset 4: the emotion's strength. Read; not used yet.
+## TRDT offset 4: the emotion's strength, 0 to 100. Read; used by
+## ActorFacialPlayer as the morph's weight (value / 100).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var emotion_value: int = 0
 ## TRDT offset 12: the response number, which names its voice file. Read; not
 ## used yet (voice file paths).
