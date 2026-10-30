@@ -18,6 +18,7 @@ DialogueServer.get_line(speaker) -> DialogueLine                # the line being
 DialogueServer.response_duration(info, index, speaker) -> float  # loads on the calling thread
 DialogueServer.wait_for_loads()                                  # blocks on pending voice loads (tests)
 DialogueServer.voice_path(info, index, speaker) -> String       # "" when the speaker has no voice type
+DialogueServer.lip_path(voice_file_path) -> String               # the .lip beside a voice file
 DialogueServer.start_conversation(speaker, listener, topic = GREETING) -> bool
 DialogueServer.choose(index)                                     # one of the last choices_ready
 DialogueServer.end_conversation(say_goodbye = true)           # scripts and tests; the player leaves only by choosing
@@ -49,7 +50,9 @@ is chosen with `rng`.
 **Saying.** `say()` chooses the INFO and marks it said at once, so an end script that says
 the same topic again gets the next line. The line starts when its voice files are loaded:
 cached ones at once, others read and parsed on a `WorkerThreadPool` task (usually ready the
-next frame; Doc's 15 VCG01Intro files take 0.05-1.4 ms to read and 0.05 ms each to parse).
+next frame; Doc's 15 VCG01Intro files take 0.05-1.4 ms to read and 0.05 ms each to parse). The `.lip` beside each voice file (same path, `.lip`) is read on the same task into a
+`LipReader`; `DialogueLine.current_lip()` gives the response's, which the speaker's
+`ActorFacialPlayer` plays.
 Starting runs the begin script on the speaker (the listener as action reference). Each
 response lasts its voice file's length and plays it at the speaker, through an
 `AudioStreamPlayer3D` the line owns, placed each frame at the speaker's eyes (its head

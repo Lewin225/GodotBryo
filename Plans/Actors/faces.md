@@ -227,9 +227,26 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 ### Lip sync
 
 - 60,702 `.lip` files sit beside the voice files (same stem; `enginedocs/Data Types/LIP.txt`).
-  Doc's `vcg01_vcg01intro_00104bee_1.lip` is 2,804 bytes: u32 1, u32 0x4194, u32 1, then
-  packed records mixing 16-bit fields and floats. The format is not documented anywhere
-  found; it has to be decoded from the files.
+  No published description of the format was found (UESP, FaceFXWrapper); the layout below
+  is decoded from the files.
+- `.lip` layout, decoded and checked against all 60,702 files: u32 1, u32 S, u32 1, then a
+  zero-run-length body from offset 12: a `00` byte and a u16 n stand for n zero bytes, any
+  other byte is itself. Every file decodes to exactly S - 16 = 8 + 132 x N bytes: u32 N (the
+  frame count, equal to the u16 at offset 12 in every file), an i32 from 0 to -9 (meaning not
+  known), then N frames of 33 floats.
+- The 33 floats are FaceGen's 16 phonemes and 17 modifiers. By the census over every frame:
+  0-15 lie in 0..1; 16 and 17 are always equal; 18-21 are never set; 22 and 23 are always
+  equal and reach 1.43 and below 0; 24-27 are small and positive; 28 and 29 are never set;
+  30-32 are small and signed. Read in FaceGen order: `Aah`, `BigAah`, `BMP`, `ChJSh`, `DST`,
+  `Eee`, `Eh`, `FV`, `i`, `K`, `N`, `Oh`, `OohQ`, `R`, `Th`, `W` (the TRIs name `Eee` `Ee` and
+  `i` `I`), then `BlinkLeft`,
+  `BlinkRight`, `BrowDown`, `BrowIn`, `BrowUp` (left, right each), `LookDown`, `LookLeft`,
+  `LookRight`, `LookUp`, `SquintLeft`, `SquintRight`, head pitch, roll, yaw. The phoneme
+  order is checked on Doc's `00104bee_1` ("You're awake. How about that."): Eee and i, R, Aah,
+  W, Aah, K, a pause, Aah, BMP at the b, Aah, Th and DST, DST; a blink on 16 and 17 midway.
+  The modifier order rests on the census shape only.
+- Frames run at about 30 per second (Doc's 370 lines: N = 29.07 x duration + 24), with
+  trailing all-zero frames: Doc's `00104bee_1` speaks over frames 3 to 86 of 127.
 - The head TRI files name phoneme and expression targets (`Aah`, `BigAah`, `BlinkLeft`,
   `BlinkRight`, `Anger`, ...); `testfacialanims.kf` drives them through a
   `NiGeomMorpherController` on HeadAnims, so KF clips can carry face tracks too.
@@ -259,9 +276,9 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 - **Hats.** Headgear hangs from a HeadAnims attachment under the skeleton (done).
   `wearing_hat` is true while equipment covers the Hat slot (0x400), showing the hair's Hat
   variant (done). Attachment chosen by biped slots rather than path.
-- **Lip sync.** A decoder for `.lip` (native, beside `TriReader`), TRI targets as blend
-  shapes on the head, mouth, teeth and tongue, and a facial player that DialogueServer starts
-  with each line's voice. Blinks and KF face tracks run on the same player.
+- **Lip sync.** Native `LipReader`; TRI targets as blend shapes on every face part;
+  `ActorFacialPlayer` follows the line's voice position (done). Blinks run on the same player
+  (done); KF face tracks will too.
 
 ## Build order
 
@@ -276,8 +293,10 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
    (`ActorFacialPlayer`) done for blinks and the response's emotion. Next KF face tracks: the
    NIF loader reads the `HeadAnims` morpher's float keys and the animator plays them as
    weights. Gate: a drinking idle moves the mouth.
-6. **LIP decoding and lip sync.** Census of the `.lip` header and records over all 60,702
-   files before a decoder; then lines drive the facial player.
+6. **LIP decoding and lip sync.** Done for phonemes: native `LipReader`; DialogueServer loads
+   each response's `.lip` with its voice; `ActorFacialPlayer` plays channels 0-15 at 30 frames
+   a second from the voice's playback position, blending between neighbouring frames. Checked
+   in game on Doc's lines. The modifier channels are not played.
 7. **EGT synthesis.** Facemods for NPCs without one; upper-body tint.
 
 ## Open
@@ -291,7 +310,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 - Which EGT, if any, tints hands; nothing names one.
 - What the `M%08X_%08X_%i` / `F%08X_%08X_%i` facemod patterns are for (no files ship).
 - Whether Gamebryo recomputes normals after the EGM morph.
-- What the `.lip` records are (keys, channels, timing) and how channels name TRI targets.
+- The `.lip` header's i32 (0 to -9), the exact frame rate, and the modifier channels' order.
 - Whether Head (0x1) or Hair (0x2) without Hat should hide the hair (helmets, masks). Only
   Hat is acted on; no source found. Every cowboy hat carries Hair and Hat, so "Hair hides
   hair" alone would leave them bald.

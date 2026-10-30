@@ -36,6 +36,7 @@ var _talked_to_player: Dictionary = {} # actor instance_id -> true
 var _added_topics: Dictionary = {} # DIAL FormID -> true
 var _lines: Dictionary = {} # speaker instance_id -> DialogueLine being said
 var _streams: Dictionary = {} # voice file path -> AudioStream, or null when it does not load
+var _lips: Dictionary = {} # voice file path -> LipReader of the .lip beside it, or null
 var _tasks: Dictionary = {} # WorkerThreadPool task ID -> DialogueLine whose voice it loads
 ## The conversation being held, or null: its speaker, listener and the line
 ## the speaker is saying in it.
@@ -166,6 +167,7 @@ func _process(delta: float) -> void:
 		var loaded_line: DialogueLine = _tasks[task]
 		_tasks.erase(task)
 		_streams.merge(loaded_line.loaded)
+		_lips.merge(loaded_line.loaded_lips)
 		if _lines.get(loaded_line.speaker.instance_id) == loaded_line:
 			_start(loaded_line)
 	for line: DialogueLine in _lines.values():
@@ -190,15 +192,33 @@ func wait_for_loads() -> void:
 	_tasks.clear()
 	for line: DialogueLine in lines:
 		_streams.merge(line.loaded)
+		_lips.merge(line.loaded_lips)
 		if _lines.get(line.speaker.instance_id) == line:
 			_start(line)
 
-## Reads and parses `paths` into `line.loaded`. Runs on a worker thread;
-## ArchiveServer.read is thread-safe once initialised.
+## Reads and parses `paths` into `line.loaded`, and the .lip beside each
+## into `line.loaded_lips`. Runs on a worker thread; ArchiveServer.read is
+## thread-safe once initialised.
 func _load_voice(line: DialogueLine, paths: PackedStringArray) -> void:
 	for path in paths:
 		var file: Dictionary = ArchiveServer.read(path)
 		line.loaded[path] = AudioStreamOggVorbis.load_from_buffer(file["data"]) if bool(file.get("found", false)) else null
+		line.loaded_lips[path] = _load_lip(lip_path(path))
+
+## The .lip file beside a voice file: the same path ending in .lip.
+static func lip_path(voice_file_path: String) -> String:
+	return voice_file_path.get_basename() + ".lip"
+
+## Reads and decodes a .lip file; null when it is missing or does not decode.
+func _load_lip(path: String) -> LipReader:
+	var file: Dictionary = ArchiveServer.read(path)
+	if not bool(file.get("found", false)):
+		return null
+	var lip := LipReader.new()
+	if not lip.load(file["data"], path):
+		push_warning("DialogueServer: %s: %s" % [path, lip.get_last_error()])
+		return null
+	return lip
 
 ## Begins a line whose voice is loaded: sets each response's stream and
 ## duration, runs the begin script, and says the first response.
@@ -206,6 +226,7 @@ func _start(line: DialogueLine) -> void:
 	for i in line.info.responses.size():
 		var stream: AudioStream = _streams.get(line.voice_paths[i])
 		line.streams.append(stream)
+		line.lips.append(_lips.get(line.voice_paths[i]))
 		line.durations.append(stream.get_length() if stream != null and stream.get_length() > 0.0 else _text_duration(line.info.responses[i].text))
 	line.started = true
 	ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)

@@ -18,7 +18,12 @@ extends Node
 ##   `LookDown` is above `look_down_disable_blinking`;
 ## - while the actor says a response (DialogueServer response_started to
 ##   line_finished), its TRDT emotion: the type is the morph name, the value
-##   / 100 the weight, reached over `emotion_blend_seconds`.
+##   / 100 the weight, reached over `emotion_blend_seconds`;
+## - while the actor says a response, its .lip (DialogueLine.current_lip):
+##   the first 16 channels, FaceGen's phonemes, as the TRI's phoneme weights,
+##   at `lip_frames_per_second` from where the voice is heard
+##   (DialogueLine.voice_seconds), blending between neighbouring frames.
+##   The other 17 channels (blinks, brows, looks, head turns) are not played.
 ## Defaults are the game settings the GECK lists (fBlinkDelayMin and the rest;
 ## not in FalloutNV.esm).
 
@@ -28,6 +33,8 @@ const EMOTION_MORPHS := ["", "Anger", "Disgust", "Fear", "Sad", "Happy", "Surpri
 const MORPH_ALIASES := {"MoodCocky": "Cocky"}
 const BLINK_MORPHS := ["BlinkLeft", "BlinkRight"]
 const LOOK_DOWN_MORPH := "LookDown"
+## The TRI morph of each .lip phoneme channel, in channel order.
+const LIP_PHONEMES := ["Aah", "BigAah", "BMP", "ChJSh", "DST", "Ee", "Eh", "FV", "I", "K", "N", "Oh", "OohQ", "R", "Th", "W"]
 
 @export_group("Blinks")
 ## fBlinkDelayMin (GECK default 1.5 s).
@@ -40,6 +47,11 @@ const LOOK_DOWN_MORPH := "LookDown"
 @export var blink_up_seconds := 0.14
 ## fLookDownDisableBlinkingAmt (GECK default 0.25).
 @export var look_down_disable_blinking := 0.25
+
+@export_group("Lip sync")
+## .lip frames per second. Doc's 370 lines give N = 29.07 x duration + 24
+## with trailing silent frames; 30 is assumed.
+@export var lip_frames_per_second := 30.0
 
 @export_group("Emotion")
 ## Seconds for a response's emotion to come in and to go out. No game setting
@@ -58,6 +70,11 @@ var _blink_elapsed := -1.0
 var _emotion_morph := ""
 var _emotion_target := 0.0
 var _emotion_weight := 0.0
+## The line the actor is saying, while its lip animation plays.
+var _line: DialogueLine = null
+## The lip animation last played and its frames.
+var _lip: LipReader = null
+var _lip_frames := PackedFloat32Array()
 
 
 func _enter_tree() -> void:
@@ -128,6 +145,7 @@ func set_weight(weight_name: String, weight: float) -> void:
 func _process(delta: float) -> void:
 	_update_blink(delta)
 	_update_emotion(delta)
+	_update_lip()
 
 
 func _update_blink(delta: float) -> void:
@@ -169,10 +187,38 @@ func _update_emotion(delta: float) -> void:
 		_emotion_morph = ""
 
 
-## The actor started saying a response: shows its emotion.
+func _update_lip() -> void:
+	if _line == null:
+		return
+	var lip := _line.current_lip()
+	if lip != _lip:
+		_lip = lip
+		_lip_frames = lip.get_frames() if lip != null else PackedFloat32Array()
+	if _lip == null or _lip.get_frame_count() == 0:
+		_set_phonemes_zero()
+		return
+	var last_frame := _lip.get_frame_count() - 1
+	var position := _line.voice_seconds() * lip_frames_per_second
+	var frame := mini(int(position), last_frame)
+	var next_frame := mini(frame + 1, last_frame)
+	var blend := clampf(position - frame, 0.0, 1.0)
+	var first := frame * _lip.get_channel_count()
+	var next_first := next_frame * _lip.get_channel_count()
+	for channel in LIP_PHONEMES.size():
+		var weight := lerpf(_lip_frames[first + channel], _lip_frames[next_first + channel], blend)
+		set_weight(LIP_PHONEMES[channel], weight)
+
+
+func _set_phonemes_zero() -> void:
+	for phoneme in LIP_PHONEMES:
+		set_weight(phoneme, 0.0)
+
+
+## The actor started saying a response: shows its emotion and plays its lips.
 func _on_response_started(line: DialogueLine, _text: String) -> void:
 	if line.speaker == null or line.speaker != _actor():
 		return
+	_line = line
 	var response := line.current_response()
 	if response == null:
 		return
@@ -185,11 +231,16 @@ func _on_response_started(line: DialogueLine, _text: String) -> void:
 		_emotion_target = 0.0
 
 
-## The line ended: the emotion fades out.
+## The line ended: the emotion fades out and the mouth closes.
 func _on_line_finished(line: DialogueLine) -> void:
 	if line.speaker == null or line.speaker != _actor():
 		return
 	_emotion_target = 0.0
+	if line == _line:
+		_line = null
+		_lip = null
+		_lip_frames = PackedFloat32Array()
+		_set_phonemes_zero()
 
 
 func _clear_emotion_now() -> void:

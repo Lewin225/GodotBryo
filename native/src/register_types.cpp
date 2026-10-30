@@ -7,6 +7,7 @@
 #include "gamebryo/direct_geometry_batch.h"
 #include "nav/navmesh_reader_gd.h"
 #include "nif/nif_reader_gd.h"
+#include "lip/lip_reader_gd.h"
 #include "nif/nif_source_gd.h"
 #include "tri/tri_reader_gd.h"
 #include "ping.h"
@@ -26,6 +27,7 @@ void initialize_nv_engine_module(ModuleInitializationLevel p_level) {
 	ClassDB::register_class<BsaReader>();
 	ClassDB::register_class<EsmReader>();
 	ClassDB::register_class<EgmReader>();
+	ClassDB::register_class<LipReader>();
 	ClassDB::register_class<NavmeshReader>();
 	ClassDB::register_class<NifReader>();
 	ClassDB::register_class<NifSource>();
