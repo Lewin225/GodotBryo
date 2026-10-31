@@ -1240,6 +1240,9 @@ func _populate_race(race: RaceBase, raw: Dictionary) -> void:
 		race.male_facegen_texture_symmetric = fgts[0].to_float32_array()
 		race.female_facegen_texture_symmetric = fgts[1].to_float32_array()
 
+	race.male_body_egt_path = _race_body_egt_path(raw, "MNAM")
+	race.female_body_egt_path = _race_body_egt_path(raw, "FNAM")
+
 	for female in [false, true]:
 		var body_parts: Array = reader.get_race_body_parts(race.form_id, female)
 		for item in body_parts:
@@ -1266,6 +1269,27 @@ func _form_ids(raw: Dictionary, tag: String) -> Array[int]:
 		for offset in range(0, data.size() - 3, 4):
 			result.append(_u32(data, offset))
 	return result
+
+## The MODL of body part INDX 3 (Upper Body Texture) in the Body Data block
+## (after NAM1) for the gender `gender_marker` (MNAM or FNAM) opens. The native
+## race-part query keeps only .nif models, so this EGT is read here.
+func _race_body_egt_path(raw: Dictionary, gender_marker: String) -> String:
+	var in_body := false
+	var in_gender := false
+	var index := -1
+	for subrecord in raw.get("subrecords", []):
+		var tag := String(subrecord.get("type", ""))
+		var data: PackedByteArray = subrecord.get("data", PackedByteArray())
+		if tag == "NAM1":
+			in_body = true
+		elif in_body and (tag == "MNAM" or tag == "FNAM"):
+			in_gender = tag == gender_marker
+			index = -1
+		elif in_body and in_gender and tag == "INDX":
+			index = _u32(data, 0)
+		elif in_body and in_gender and tag == "MODL" and index == 3:
+			return _string(data)
+	return ""
 
 func _race_head_part_type(index: int) -> String:
 	return ["head", "ears", "mouth", "teeth_lower", "teeth_upper", "tongue", "eye_left", "eye_right"][index] if index >= 0 and index < 8 else "unknown_%d" % index

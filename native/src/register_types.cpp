@@ -4,6 +4,7 @@
 #include "bsa/bsa_reader_gd.h"
 #include "esm/esm_reader_gd.h"
 #include "facegen/egm_reader_gd.h"
+#include "facegen/egt_reader_gd.h"
 #include "gamebryo/direct_geometry_batch.h"
 #include "nav/navmesh_reader_gd.h"
 #include "nif/nif_reader_gd.h"
@@ -27,6 +28,7 @@ void initialize_nv_engine_module(ModuleInitializationLevel p_level) {
 	ClassDB::register_class<BsaReader>();
 	ClassDB::register_class<EsmReader>();
 	ClassDB::register_class<EgmReader>();
+	ClassDB::register_class<EgtReader>();
 	ClassDB::register_class<LipReader>();
 	ClassDB::register_class<NavmeshReader>();
 	ClassDB::register_class<NifReader>();

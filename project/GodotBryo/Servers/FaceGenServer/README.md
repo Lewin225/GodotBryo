@@ -1,11 +1,12 @@
 # FaceGenServer
 
-Shapes a head-part mesh to one NPC's face. `request_morph()` takes a mesh NifServer delivered,
-finds the shape's EGM, adds the NPC's FaceGen offsets to its vertices on a worker, and calls back
-with that NPC's own copy of the mesh. The morph is done once, when the actor loads; nothing is
-recomputed per frame.
+Shapes a head-part mesh to one NPC's face, and gives the NPC's skin its FaceGen colour.
+`request_morph()` takes a mesh NifServer delivered, finds the shape's EGM, adds the NPC's FaceGen
+offsets to its vertices on a worker, and calls back with that NPC's own copy of the mesh.
+`request_skin()` calls back with the NPC's face map and body offset. Both are done once, when the
+actor loads; nothing is recomputed per frame.
 
-Research and plan: [`Plans/Actors/faces.md`](../../../../Plans/Actors/faces.md).
+Research and plan: [`Plans/Completed Plans/Actors/faces.md`](../../../../Plans/Completed%20Plans/Actors/faces.md).
 
 ---
 
@@ -16,6 +17,10 @@ FaceGenServer.request_morph(mesh: ArrayMesh, model_path: String, shape_name: Str
 		requesting_node: Node, on_complete: Callable) -> void   # on_complete(mesh: ArrayMesh)
 FaceGenServer.egm_path_for(model_path, shape_name) -> String          # static
 FaceGenServer.geometry_coordinates(npc) -> Array[PackedFloat32Array]  # static: [FGGS, FGGA]
+FaceGenServer.request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable) -> void
+		# on_complete(skin: Dictionary): {"face_map": Texture2D or null, "body_offset": Color}
+FaceGenServer.texture_coordinates(npc) -> PackedFloat32Array        # static: FGTS
+FaceGenServer.facemod_path_for(npc) · head_egt_path_for(npc) · body_egt_path_for(npc)  # static
 FaceGenServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
 ```
 
@@ -54,10 +59,23 @@ must not modify it.
 `EgmReader`, `TriReader`); each morph runs on a worker; only the `ArrayMesh` is built on the main
 thread. `deliveries_per_frame` caps the callbacks made in one frame.
 
+**The skin.** FGTS is the race's for the NPC's gender plus the NPC's own, from the template when the
+NPC takes its traits from one. The face map is the NPC's shipped facemod
+(`textures\characters\facemods\falloutnv.esm\<form id>_0.dds`, through TextureServer), else one
+built on a worker from the race head's EGT (`<head NIF stem>.egt`): each texel 128 + offset / 2,
+the facemods' encoding (they fit 126.3 + 0.46 x offset). Built maps are cached by (EGT,
+coefficients), held weakly, like morphed meshes. The body offset is the race's upper-body EGT
+(RACE body INDX 3) at the NPC's FGTS, averaged over its texels: every shipped upper-body EGT moves
+all its texels alike, so one colour holds it. Offsets are in 8-bit levels; the body offset is
+divided by 255 and signed. How the actor combines them with the skin texture is
+`EsmActorNode._apply_skin` and `actor_skin.gdshader`.
+
 ## Not done here
 
-- Expression weights (the actor's facial player) and FGTS textures.
+- Expression weights (the actor's facial player).
 - Headgear: `ActorEquipment` attaches it without asking for a morph yet.
+- The `M<race>_<npc>_0.dds` / `F<race>_<npc>_0.dds` facemods (an NPC's face on another race; 60
+  files, for templated and leveled NPCs).
 
 ## Tests
 
@@ -66,4 +84,6 @@ callback contract, and a census of every shape of every HAIR, HDPT and RACE head
 FalloutNV.esm (171 shapes in 110 NIFs, all with an EGM that fits). `tests/test_actor_node.tscn`
 checks that each of Doc's head-part, eye and hair meshes is morphed. The server test also
 checks Doc's head carries its TRI's 46 expressions and that `BlinkLeft` moves only its 20
-vertices; 46 of the 171 census shapes carry expressions.
+vertices; 46 of the 171 census shapes carry expressions. Skin: every upper-body EGT is one value
+per mode (within 2%), Doc's face map is his facemod, an NPC without one gets a built 256 x 256
+map shared between requests, and an AfricanAmerican NPC's body offset is dark.

@@ -1,7 +1,8 @@
 extends Node
 
 ## NifMaterialBuilder's material paths: Hair-flagged shapes are dispatched to
-## PATH_HAIR and every other shape to PATH_STANDARD, and an override registered
+## PATH_HAIR, FaceGen-flagged ones to PATH_SKIN and every other shape to
+## PATH_STANDARD, and an override registered
 ## through NifServer before the first build either adjusts the stock material
 ## or replaces it, while the `nif_*` metadata is stamped onto whatever it
 ## returns. Its own scene, because the overrides must be registered before
@@ -168,11 +169,14 @@ func _check_hair() -> void:
 	root.free()
 
 
-## Every Hair-flagged shape in the corpus, and only those, goes to the hair path.
-func test_hair_census() -> void:
-	print("--- hair path census ---")
+## Every Hair-flagged shape in the corpus, and only those, goes to the hair
+## path; every FaceGen-flagged one to the skin path.
+func test_path_census() -> void:
+	print("--- hair and skin path census ---")
 	var hair := 0
 	var highlights := 0
+	var skin := 0
+	var skin_sk := 0
 	for p in ArchiveServer.list_files_with_prefix("meshes/"):
 		var sp := String(p)
 		if not sp.ends_with(".nif"):
@@ -184,19 +188,27 @@ func test_hair_census() -> void:
 		for nd in src.get_nodes():
 			if not nd.has("positions"):
 				continue
-			if NifMaterialBuilderScript.path_for(nd) != NifMaterialBuilderScript.PATH_HAIR:
+			var path := NifMaterialBuilderScript.path_for(nd)
+			var slots: PackedStringArray = nd["texture_slots"]
+			var slot_2 := String(slots[2]).to_lower() if slots.size() > 2 else ""
+			if path == NifMaterialBuilderScript.PATH_SKIN:
+				skin += 1
+				if slot_2.ends_with("_sk.dds"):
+					skin_sk += 1
+			if path != NifMaterialBuilderScript.PATH_HAIR:
 				continue
 			hair += 1
-			var slots: PackedStringArray = nd["texture_slots"]
-			if slots.size() > 2 and String(slots[2]).to_lower().ends_with("_hl.dds"):
+			if slot_2.ends_with("_hl.dds"):
 				highlights += 1
 	check(hair == 159, "159 shapes go to the hair path (got %d)" % hair)
 	check(highlights == hair, "every one has an _hl texture in slot 2 (got %d)" % highlights)
+	check(skin == 332, "332 shapes go to the skin path (got %d)" % skin)
+	check(skin_sk == 238, "238 of them have an _sk texture in slot 2 (got %d)" % skin_sk)
 
 
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
-	test_hair_census()
+	test_path_census()
 	await test_override()
 
 	print("=======================")

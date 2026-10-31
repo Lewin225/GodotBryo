@@ -31,7 +31,7 @@ a placeholder path.
 | 0 Groundwork | Done |
 | 1 Static world rendering | Done |
 | 2 World streaming and scale | Done: interior and continuous exterior streaming, terrain, distant LOD |
-| 3 Actors, skeletons, animation | Done for NPCs: skinned assembly, equipment, hair colour, FaceGen geometry, locomotion and idles. Creatures: `Plans/Actors/creatures.md` |
+| 3 Actors, skeletons, animation | Done for NPCs: skinned assembly, equipment, hair colour, FaceGen geometry and skin, expressions and lip sync, locomotion and idles. Creatures: `Plans/Actors/creatures.md` |
 | 4 Actor runtime | Done: actor references and bases, inventory, actor values, packages, furniture use |
 | 5 Scripting VM | In use: result and object scripts, conditions, quest stages; many functions still unimplemented |
 | 6 AI and combat | AI packages (Travel, Dialogue, Follow) on and off screen through `NpcSimulationServer`; no combat |

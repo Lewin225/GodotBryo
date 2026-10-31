@@ -55,7 +55,10 @@ called directly only by code that already holds a `NifSource`.
 **Standalone KFs return an unbound `AnimationLibrary`.** A KF has no model tree of its own: its
 authored targets belong to a composed rig (skeleton, weapon, and animobjects). `request_kf()`
 therefore preserves every supported transform track under its escaped, bare authored target name;
-it never guesses a human skeleton or rebinds a creature clip. Sequence names key the library --
+it never guesses a human skeleton or rebinds a creature clip. Morph weight keys for skeleton.nif's
+`HeadAnims:0` morpher (`NiGeomMorpherController` links, the morph name in the interpolator ID) are
+not tracks: each clip carries them as `nif_face_tracks` metadata, morph name → time/value pairs,
+for the actor's facial player. Sequence names key the library --
 one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 sequences. Delivered
 libraries are shared immutable resources. NifServer caches them in memory and as compressed
 resources under `user://nifserver_kf_cache/`, keyed by conversion schema, canonical path and the
@@ -189,6 +192,7 @@ material path chosen from what the shape's NifSource node declares, added as cas
 | path | selected by | slot 2 | stock material |
 |---|---|---|---|
 | `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission and without vertex colour as albedo (hair vertex colours are not a colour; their use is unknown, and they stay in the mesh); the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
+| `PATH_SKIN` | FaceGen flag (flags1 bit 10) on PPLighting; 332 shapes (heads, hands, upper bodies, the skin parts of outfits) | `skin_sk` | the standard material without emission; the `_sk` texture (a flat dark red on heads and hands) is not rendered. Actors replace it with their own skin material |
 | `PATH_STANDARD` | every other shape | `glow` | the `StandardMaterial3D` described here |
 
 `NifServer.set_material_path()` replaces a path's builder: it receives a

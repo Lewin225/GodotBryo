@@ -17,6 +17,11 @@ the template's race, sex, hair, eyes and head parts, including templates that ar
 - `LeveledNpcBase` does not read LVLD (Chance None), LVLF (Flags) or LVLO (entries).
 - Four Goodsprings powder gangers take their packages from a leveled list, which
   `template_source` does not follow.
+- 60 facemods named `m<race>_<npc>_0.dds` / `f<race>_<npc>_0.dds` ship (FalloutNV.exe's
+  `M%08X_%08X_%i` / `F%08X_%08X_%i` patterns): an NPC's face on another race, for 18 NPCs,
+  mostly NCR Rangers templated on `vForlornHopeNCRRanger*TEMPLATE` / `vHDRangerKimballGuardTEMPLATE`
+  (one per human race), and five NPCs that take traits from a leveled list (one AfricanAmerican
+  file each). FaceGenServer only looks for `<npc>_0.dds` (`Completed Plans/Actors/faces.md`).
 
 ## Shape (proposed, not agreed)
 

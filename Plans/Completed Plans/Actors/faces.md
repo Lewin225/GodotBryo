@@ -2,7 +2,8 @@
 
 The parts of a humanoid's head the actor node does not yet build from data: each NPC's
 FaceGen shape and skin, hair colour, hats that sit on the head and replace the hair, and
-lip sync for spoken lines. See `Plans/Completed Plans/Actors/actors.md`.
+lip sync for spoken lines. See [`actors.md`](actors.md). An NPC's own head parts (brows, beards)
+are [`Plans/Actors/head_parts.md`](../../Actors/head_parts.md).
 
 ## Facts
 
@@ -15,7 +16,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 
 - 3,814 of 3,816 NPC_ carry FGGS (50 floats, geometry symmetric), FGGA (30, geometry
   asymmetric) and FGTS (50, texture symmetric). `EsmServer` reads them into
-  `NpcBase.face_gen` (`FaceGenData`); nothing applies them.
+  `NpcBase.face_gen` (`FaceGenData`); FaceGenServer applies them.
 - FGGS is all zero on 782 NPC_ and FGTS on 789, mostly NPCs whose template supplies traits.
   No NPC_'s FGGS or FGTS equals its race's.
 - An NPC_'s FGTS is an offset from its race's FGTS for its gender: the shipped facemods fit
@@ -89,13 +90,32 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   instance; a morphed one is per NPC.
 - RACE body INDX 3 names the upper-body EGT (`Characters\_Male\UpperBodyHumanMale.egt`,
   `UpperBodyHumanFemale.egt`, `UpperBodyChild.egt`, `UpperBodyChildFemale.egt`).
-  `EsmFile::get_race_body_parts` drops it because it is not a `.nif`. `FalloutNV.exe` holds
+  `EsmFile::get_race_body_parts` drops it because it is not a `.nif`; EsmServer reads it into
+  `RaceBase.male_body_egt_path` / `female_body_egt_path`. `FalloutNV.exe` holds
   `Characters\_Male\UpperBodyHumanMale.egt` and `UpperBodyHumanFemale.egt` as strings.
 - Nothing names a hand EGT, `body.egt`, or the old and ghoul upper-body EGTs: no record, no
   hand or body NIF (which name only their `Hand*.dds`, `_n` and `_sk` textures), and no
   string in `FalloutNV.exe`.
+- The four upper-body EGTs (32 x 32) move every texel alike in every mode: of 150 planes in
+  `upperbodyhumanmale.egt` one differs, by one s8 step on 7 of 1,024 texels. An upper-body
+  offset is one colour. At the male race FGTS it is (R, G, B levels) Caucasian (1, -1, -3),
+  Hispanic (-9, -10, -4), Asian (8, 1, -7), Ghoul (19, 25, 23), AfricanAmerican (-91, -71, -49).
 
-### TRI morphs
+### Skin textures and shapes
+
+- Every race's head, upper-body and hand textures come from its RACE ICONs (head INDX 0, body
+  INDX 0-2), not the NIF's slot 0. Caucasian, AfricanAmerican, Asian and Hispanic name the same
+  `Characters\Male\HeadHuman.dds` (female `Characters\Female\HeadHuman.dds`) and the same
+  body textures: skin tone comes from FGTS alone. Old races name `HeadHumanOld.dds` on the
+  `HeadHuman.NIF`; raider, child, old-aged and ghoul races name their own folders.
+  `HeadFemale.NIF` itself names the male `HeadHuman.dds`.
+- BSShaderPPLightingProperty flags1 bit 10 (nif.xml FaceGen) marks the skin: 332 shapes over
+  the mesh archives (one per path), nearly all with a head, hand or upper-body diffuse; the
+  rest are a few gore caps, a DLC02 body and shapes with no diffuse. Hair shapes do not carry
+  it. 23 clutter NIFs (mannequins,
+  head pikes, corpses) carry `_sk` textures without it.
+- Slot 2 on skin shapes is a `_sk` texture on 238, none on the rest. `HeadHuman_sk.dds` (128 x
+  128) and `HandMale_sk.dds` (32 x 32) are one flat colour, (21, 6, 5).
 
 - `headhuman.tri`: 38 difference morphs (phonemes `Aah` .. `W`, brows, moods, `Pained`,
   `CombatAnger`) and 8 statistical morphs: `BlinkLeft` (20 vertices), `BlinkRight` (20),
@@ -161,8 +181,11 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   `BaseMap`, `NormalMap`, `FaceGenMap0` and `FaceGenMap1`; `SLS1017`-`1020` sample `FaceGenMap`
   and `FaceGenMap2`. The constant names do not say how the maps combine.
 - `FalloutNV.exe` holds the path patterns `data\Textures\Characters\FaceMods\%s\%08X_%i.dds`,
-  `...\M%08X_%08X_%i.dds` and `...\F%08X_%08X_%i.dds`. No file of the `M` / `F` patterns
-  ships.
+  `...\M%08X_%08X_%i.dds` and `...\F%08X_%08X_%i.dds`. 60 files of the `M` / `F` patterns
+  ship (`m<race>_<npc>_0.dds`): an NPC's FGTS on races other than its own, for 18 NPCs, nearly
+  all NCR Rangers (`vForlornHopeNCRRanger*`, `vHDRanger*`, Charlie, Jackson, Ghost) with one
+  file per human race, and five Primm and Gomorrah NPCs that take traits from a leveled list
+  with one AfricanAmerican file. See [`templated_npcs.md`](../../Actors/templated_npcs.md).
 - FalloutNV.esm NPC_ by facemod:
 
   | | facemod | none |
@@ -258,7 +281,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
 - **FaceGen geometry.** `FaceGenServer` (done): native `EgmReader`; each head part, eye and
   hair shape is morphed once at load by the effective FGGS/FGGA as offsets on the NIF
   vertices, delivered by callback, cached by (mesh, EGM, values). Headgear morphs are
-  [`headgear_facegen.md`](headgear_facegen.md).
+  [`headgear_facegen.md`](../../Actors/headgear_facegen.md).
 - **TRI expressions.** Difference morphs and statistical morphs (blinks, squints, eye looks)
   become blend shapes as offsets from the TRI base; statistical offsets come from the
   EGM-morphed extra vertices, so they are per NPC. A facial player on the actor node holds one
@@ -266,11 +289,16 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   (`Cocky` and `MoodCocky` as one). Its inputs: KF face tracks (the `HeadAnims` morpher's
   channels), the response's TRDT emotion (type as morph, value / 100 as weight) while a line
   is said, blinks, and later lip sync.
-- **Face texture.** The NPC's shipped facemod, where one exists, on the head through the
-  material path the skin shader needs. NPCs without one get the same map built from the
-  effective FGTS and the head EGT (126 + 0.46 x sum), natively.
-- **Body tint.** The race's upper-body EGT (RACE body INDX 3) with the effective FGTS on the
-  upper body; hands left untinted until something names their EGT.
+- **Skin.** FaceGen-flagged shapes go to NifMaterialBuilder's `PATH_SKIN` (no emission; `_sk`
+  not rendered). The actor gives each a skin material (`actor_skin.gdshader`) holding the
+  race's ICON texture for the part (head, upper body, hand, by the NIF diffuse's stem) and the
+  NPC's FaceGen offset, applied in 8-bit space: added (default) or as a 2x modulate.
+- **Face texture.** FaceGenServer `request_skin`: the NPC's shipped facemod, else a map built
+  natively (`EgtReader`) from the effective FGTS and the head EGT as 128 + offset / 2. The
+  shader decodes 2 x (texel - 0.5).
+- **Body tint.** The race's upper-body EGT (RACE body INDX 3) at the effective FGTS, one colour,
+  on the upper body and the skin parts of outfits, and on the hands too (inferred: no hand EGT
+  is named, and an untinted hand would not match a tinted arm).
 - **Hair colour.** HCLR tints the hair material path (done); beards and brows once PNAM head
   parts load.
 - **Hats.** Headgear hangs from a HeadAnims attachment under the skeleton (done).
@@ -278,7 +306,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   variant (done). Attachment chosen by biped slots rather than path.
 - **Lip sync.** Native `LipReader`; TRI targets as blend shapes on every face part;
   `ActorFacialPlayer` follows the line's voice position (done). Blinks run on the same player
-  (done); KF face tracks will too.
+  (done); KF face tracks too (done).
 
 ## Build order
 
@@ -286,29 +314,32 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
    hair's attachment.
 2. **Hair colour.** Done for hair; beards and brows wait on PNAM head parts.
 3. **FaceGen geometry.** Done for head parts, eyes and hair (`FaceGenServer`).
-4. **Facemods.** Shipped facemod on the head; combination with the base texture decided by
-   a visual check against the game.
-5. **TRI blend shapes and a facial player.** Blend shapes done: FaceGenServer delivers each
-   face part with its TRI's difference and statistical morphs (Doc's head 46). Facial player
-   (`ActorFacialPlayer`) done for blinks and the response's emotion. Next KF face tracks: the
-   NIF loader reads the `HeadAnims` morpher's float keys and the animator plays them as
-   weights. Gate: a drinking idle moves the mouth.
+4. **Facemods.** Done: shipped facemod on the head with the race's head texture. Added by
+   default; the 2x modulate is `actor_skin.gdshader`'s `blend_mode` 1. Which matches the game
+   is a visual check against it.
+5. **TRI blend shapes and a facial player.** Done. FaceGenServer delivers each face part with
+   its TRI's difference and statistical morphs (Doc's head 46). `ActorFacialPlayer` sets
+   blinks, the response's emotion, lip sync and KF face tracks: NifAnimationBuilder keeps the
+   `HeadAnims:0` morpher's float keys as `nif_face_tracks`, ActorAnimator samples the playing
+   clip's (`face_weights`), and each input's weights combine by the larger. Gate passed:
+   NPCSmokingIdle rounds Doc's lips (Oh to 0.95).
 6. **LIP decoding and lip sync.** Done for phonemes: native `LipReader`; DialogueServer loads
    each response's `.lip` with its voice; `ActorFacialPlayer` plays channels 0-15 at 30 frames
    a second from the voice's playback position, blending between neighbouring frames. Checked
    in game on Doc's lines. The modifier channels are not played.
-7. **EGT synthesis.** Facemods for NPCs without one; upper-body tint.
+7. **EGT synthesis.** Done: face maps for NPCs without a facemod; the upper-body offset on the
+   upper body, outfit skin and hands.
 
 ## Open
 
-- How `FaceGenMap0` / `FaceGenMap1` combine with `BaseMap` (2x modulate or signed add), and
-  what `FaceGenMap1` holds. The shader bytecode answers it but reading it is disassembling
+- How `FaceGenMap0` / `FaceGenMap1` combine with `BaseMap` (2x modulate or signed add; both
+  built, add by default), and what `FaceGenMap1` holds. The shader bytecode answers it but reading it is disassembling
   engine code; the alternative is comparing renders with game screenshots.
 - Whether to build head maps for NPCs without a facemod. The shipped INI does not
   (`bLoadFaceGenHeadEGTFiles=0`); building them matches `=1` instead.
 - The facemod slope 0.46 rather than 0.5.
-- Which EGT, if any, tints hands; nothing names one.
-- What the `M%08X_%08X_%i` / `F%08X_%08X_%i` facemod patterns are for (no files ship).
+- Which EGT, if any, tints hands; nothing names one. The upper body's offset is used.
+- What the `_sk` texture does in the skin shader.
 - Whether Gamebryo recomputes normals after the EGM morph.
 - The `.lip` header's i32 (0 to -9), the exact frame rate, and the modifier channels' order.
 - Whether Head (0x1) or Hair (0x2) without Hat should hide the hair (helmets, masks). Only

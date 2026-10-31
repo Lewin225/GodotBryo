@@ -59,13 +59,13 @@ What works, roughly, on linux:
 * Doors and load doors, `coc`
 * Script engine (lots of functions still missing), quests, conditions (+dialog conditions)
 * Dialogue with voice, terminals, message boxes, doors and animated static (lockpick / hacking has a placeholder swipe to unlock prefab)
-* NPCs: race/head/hair/equipment, FaceGen head shapes, walking, idles, sitting on furniture, head tracking
+* NPCs: race/head/hair/equipment, FaceGen head shapes and skin tones, expressions and lip sync, walking, idles, sitting on furniture, head tracking
 * AI packages (Travel, Dialogue, Follow), running both on screen and off screen
 * Proper REFR managment, including actors. (Any refr can be moved in or out of it's cell.. eg. DocMitchellREF.moveto player )
 * Containers, activators, lights, physics items you can pick up
 * Editor plugin for browsing and previewing ESM records
 
-Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, face textures, lip sync, NPCs that get their look from leveled lists (they're invisible right now), multi ESM / load order / plugins, only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
+Not done yet: creatures, combat, Pip-Boy/inventory, loading the original UI XML, saving, VATS, NPCs that get their look from leveled lists (they're invisible right now), multi ESM / load order / plugins, only the follow and travel AI packages exist right now. See `Plans/` for what's being worked on and `ROADMAP.md` for the bigger picture.
 
 ## Some deliberate behaviour differences
 Most of these felt like improvements that were limited by hardware at the time, refr to resource gives us editor inspect-ability at the cost of a bit more ram  

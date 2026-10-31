@@ -42,16 +42,25 @@ var female_voice_form_id: int = 0
 ## FGGA in the male FaceGen block: 30 geometry-asymmetric coefficients, zero on
 ## every race in FalloutNV.esm. Read. Used by FaceGenServer, as FGGS.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_facegen_geometry_asymmetric: PackedFloat32Array = PackedFloat32Array()
-## FGTS in the male FaceGen block: 50 texture-symmetric coefficients. Read; not
-## used yet (FaceGen textures).
+## FGTS in the male FaceGen block: 50 texture-symmetric coefficients. Read.
+## Used by FaceGenServer, which adds an NPC_'s own FGTS to its race's for the
+## face map and body tint.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_facegen_texture_symmetric: PackedFloat32Array = PackedFloat32Array()
 ## FGGS in the female FaceGen block (after the last FNAM). Read. Used by
 ## FaceGenServer.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_geometry_symmetric: PackedFloat32Array = PackedFloat32Array()
 ## FGGA in the female FaceGen block. Read. Used by FaceGenServer.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_geometry_asymmetric: PackedFloat32Array = PackedFloat32Array()
-## FGTS in the female FaceGen block. Read; not used yet.
+## FGTS in the female FaceGen block. Read. Used by FaceGenServer, as the male
+## block's.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_facegen_texture_symmetric: PackedFloat32Array = PackedFloat32Array()
+## MODL of body part INDX 3 (Upper Body Texture) after NAM1 / MNAM: the male
+## upper-body EGT (`Characters\_Male\UpperBodyHumanMale.egt` on every adult
+## race). Read. Used by FaceGenServer for the body tint.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_body_egt_path: String = ""
+## MODL of body part INDX 3 after NAM1 / FNAM: the female upper-body EGT. Read.
+## Used by FaceGenServer.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_body_egt_path: String = ""
 ## SNAM after each FaceGen block (u16, xEdit "Unknown"; the same value in both
 ## blocks of every race). Not read.
 var male_default_hair_color: int = 0
@@ -71,3 +80,16 @@ func facegen_geometry_asymmetric(female: bool) -> PackedFloat32Array:
 
 func facegen_texture_symmetric(female: bool) -> PackedFloat32Array:
 	return female_facegen_texture_symmetric if female else male_facegen_texture_symmetric
+
+func body_egt_path(female: bool) -> String:
+	return female_body_egt_path if female else male_body_egt_path
+
+## The ICON of head part `index` (0 Head) or, with `body`, body part `index`
+## (0 Upper Body, 1 Left Hand, 2 Right Hand): the texture the race puts on that
+## part in place of the NIF's own. Empty when the part has none.
+func part_texture(female: bool, body: bool, index: int) -> String:
+	var parts := body_parts(female) if body else head_parts(female)
+	for part in parts:
+		if part.index == index:
+			return part.icon_path
+	return ""

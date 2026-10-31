@@ -206,6 +206,42 @@ func _restore_locomotion_root_pose() -> void:
 func get_idle() -> IdleBase:
 	return _idle
 
+## The face morph weights the playing clip's KF sets at its current position,
+## by morph name (NifAnimationBuilder's `nif_face_tracks`); empty when the clip
+## animates none.
+func face_weights() -> Dictionary:
+	var weights := {}
+	if _player == null or not is_instance_valid(_player) or not _player.is_playing():
+		return weights
+	if not _player.has_animation(_player.current_animation):
+		return weights
+	var animation := _player.get_animation(_player.current_animation)
+	var tracks: Dictionary = animation.get_meta("nif_face_tracks", {})
+	var time := _player.current_animation_position
+	for morph_name: String in tracks:
+		weights[morph_name] = _sample_face_track(tracks[morph_name], time)
+	return weights
+
+## A face track's value at `time`: linear between keys, held before the first
+## and after the last.
+static func _sample_face_track(pairs: PackedFloat32Array, time: float) -> float:
+	@warning_ignore("integer_division")
+	var key_count := pairs.size() / 2
+	if key_count == 0:
+		return 0.0
+	if time <= pairs[0]:
+		return pairs[1]
+	for key in range(1, key_count):
+		var key_time := pairs[key * 2]
+		if time > key_time:
+			continue
+		var previous_time := pairs[key * 2 - 2]
+		var weight := 0.0
+		if key_time > previous_time:
+			weight = (time - previous_time) / (key_time - previous_time)
+		return lerpf(pairs[key * 2 - 1], pairs[key * 2 + 1], weight)
+	return pairs[key_count * 2 - 1]
+
 ## Whether the locomotion clips have loaded, so an idle can play.
 func is_loaded() -> bool:
 	return not _loading and _player != null and is_instance_valid(_player)

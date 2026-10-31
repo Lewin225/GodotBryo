@@ -1,7 +1,7 @@
 # Headgear FaceGen
 
 Headgear whose model carries the FaceGen Head flag is morphed to the wearer's face through its
-EGM, as head parts are. Separate from [`faces.md`](faces.md), which does not depend on it.
+EGM, as head parts are. Separate from [`faces.md`](../Completed%20Plans/Actors/faces.md), which does not depend on it.
 
 ## Facts
 

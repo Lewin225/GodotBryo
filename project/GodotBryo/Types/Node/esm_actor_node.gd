@@ -49,6 +49,17 @@ signal animation_load_failed(reason: String)
 
 const PRESET_FORM_IDS := {"Doc Mitchell (Goodsprings)": 0x00104C0C,}
 const BODY_NODE_NAME := "Body"
+const SKIN_SHADER := preload("res://GodotBryo/Types/Node/actor_skin.gdshader")
+## Skin parts by the stem of the NIF's diffuse: the race part whose ICON
+## replaces it, as [body block, INDX]. Head 0 is the head; body 0 the upper
+## body, 1 and 2 the hands (both hands name the same texture on every race).
+const SKIN_PARTS := {
+	"headhuman": [false, 0],
+	"upperbodymale": [true, 0],
+	"upperbodyfemale": [true, 0],
+	"handmale": [true, 1],
+	"handfemale": [true, 1],
+}
 const STAGING_NODE_NAME := "HumanoidStaging"
 
 
@@ -111,8 +122,13 @@ var _humanoid_visual_built := false
 var _rehydrate_queued := false
 var _rehydrating_reference := false
 var _pending_requests := 0
-## FaceGenServer morphs still to be delivered before the staged body is shown.
+## FaceGenServer morphs, and the skin, still to be delivered before the staged
+## body is shown.
 var _pending_face_gen := 0
+## The NPC's skin for the body being built: FaceGenServer's "face_map" and
+## "body_offset", and "textures", part ("head", "upper_body", "hand") ->
+## the race's Texture2D for it. Empty for creatures.
+var _skin := {}
 var _requested_assets := {}
 var _delivered_trees := {}
 var _load_failures: Array[String] = []
@@ -473,14 +489,19 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 ## returns each mesh with the race's and the NPC's FaceGen applied, and the
 ## body is committed once every one has come back. A mesh with no EGM keeps
 ## the shared mesh.
+##
+## The NPC's skin (face map, body tint and the race's skin textures) is
+## fetched alongside and the body waits for it too.
 func _request_face_gen(body: Node3D, generation: int) -> void:
 	var face_gen_server := get_tree().root.get_node_or_null("FaceGenServer")
 	var npc := _active_record as NpcBase
-	var targets := _face_gen_targets(body)
-	if face_gen_server == null or npc == null or targets.is_empty():
+	_skin = {}
+	if face_gen_server == null or npc == null:
 		_commit_staged_body(body, generation)
 		return
-	_pending_face_gen = targets.size()
+	var targets := _face_gen_targets(body)
+	_pending_face_gen = targets.size() + 1
+	face_gen_server.request_skin(npc, self, _on_skin_delivered.bind(npc, body, generation))
 	for mesh_instance in targets:
 		var model_path := String(mesh_instance.get_meta("gamebryo_model_path", ""))
 		var shape_name := String(mesh_instance.get_meta("nif_dismember_source_shape", mesh_instance.get_meta("nif_name", "")))
@@ -506,6 +527,33 @@ func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance: MeshInstance3D, body
 		return
 	if mesh != null and is_instance_valid(mesh_instance):
 		mesh_instance.mesh = mesh
+	_face_gen_part_done(body, generation)
+
+
+## FaceGenServer's skin has come: loads the race's skin textures before the
+## body is committed.
+func _on_skin_delivered(skin: Dictionary, npc: NpcBase, body: Node3D, generation: int) -> void:
+	if generation != _load_generation or not _loading or not is_instance_valid(body):
+		return
+	var textures := {}
+	var source := ActorBase.template_source(npc, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	if source == null:
+		source = npc
+	if source.race != null:
+		for stem in SKIN_PARTS:
+			var part: Array = SKIN_PARTS[stem]
+			var icon := source.race.part_texture(source.is_female(), part[0], part[1])
+			if icon.is_empty():
+				continue
+			textures[stem] = await TextureServer.request("textures\\" + icon)
+	if generation != _load_generation or not _loading or not is_instance_valid(body):
+		return
+	_skin = skin.duplicate()
+	_skin["textures"] = textures
+	_face_gen_part_done(body, generation)
+
+
+func _face_gen_part_done(body: Node3D, generation: int) -> void:
 	_pending_face_gen -= 1
 	if _pending_face_gen == 0:
 		_commit_staged_body(body, generation)
@@ -581,6 +629,72 @@ func _apply_hair_color(body: Node) -> void:
 			mesh_instance.set_surface_override_material(surface, tinted)
 
 
+## Gives every skin shape under `body` (NifMaterialBuilder.PATH_SKIN) this
+## NPC's skin material, as a surface override: the race's texture for the part
+## in place of the NIF's, the face map on the head and the body offset on the
+## upper body and hands. Hands take the upper body's offset: no record or file
+## names a hand EGT, and the upper-body EGT is one value over its texels.
+## Shapes whose diffuse is no SKIN_PARTS stem (first-person hands, gore caps)
+## and alpha-blended or alpha-tested ones keep the stock material. One
+## material per stock material and part, so it batches within the actor.
+func _apply_skin(body: Node) -> void:
+	if body == null or _skin.is_empty():
+		return
+	var built := {}
+	for child in body.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			if mesh_instance.get_surface_override_material(surface) != null:
+				continue
+			var source := mesh_instance.mesh.surface_get_material(surface) as StandardMaterial3D
+			if source == null or source.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_SKIN:
+				continue
+			if source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				continue
+			var stem := _skin_stem(source)
+			if not SKIN_PARTS.has(stem):
+				continue
+			var key := "%d|%s" % [source.get_instance_id(), stem]
+			if not built.has(key):
+				built[key] = _skin_material(source, stem)
+			mesh_instance.set_surface_override_material(surface, built[key])
+
+
+## The lowercase file stem of the stock material's diffuse.
+func _skin_stem(source: StandardMaterial3D) -> String:
+	var roles: Dictionary = source.get_meta("nif_texture_roles", {})
+	var diffuse := String(roles.get(NifMaterialBuilder.ROLE_DIFFUSE, ""))
+	return diffuse.replace("\\", "/").get_file().get_basename().to_lower()
+
+
+func _skin_material(source: StandardMaterial3D, stem: String) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = SKIN_SHADER
+	var albedo: Texture2D = _skin["textures"].get(stem)
+	if albedo == null:
+		albedo = source.albedo_texture
+	material.set_shader_parameter("albedo_texture", albedo)
+	material.set_shader_parameter("normal_texture", source.normal_texture)
+	material.set_shader_parameter("use_normal_texture", source.normal_enabled and source.normal_texture != null)
+	material.set_shader_parameter("use_vertex_color", source.vertex_color_use_as_albedo)
+	material.set_shader_parameter("roughness", source.roughness)
+	material.set_shader_parameter("metallic", source.metallic)
+	material.set_shader_parameter("specular", source.metallic_specular)
+	var face_map: Texture2D = _skin.get("face_map")
+	var is_head := not bool(SKIN_PARTS[stem][0])
+	if is_head and face_map != null:
+		material.set_shader_parameter("face_map", face_map)
+		material.set_shader_parameter("use_face_map", true)
+	elif not is_head:
+		var offset: Color = _skin.get("body_offset", Color(0, 0, 0))
+		material.set_shader_parameter("skin_offset", Vector3(offset.r, offset.g, offset.b))
+	for meta in source.get_meta_list():
+		material.set_meta(meta, source.get_meta(meta))
+	return material
+
+
 func _rebuild_dismember_partition_index(body: Node) -> void:
 	_dismember_meshes_by_part_id.clear()
 	if body == null:
@@ -625,6 +739,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_clear_staging()
 	_track_hair_meshes(body)
 	_apply_hair_color(body)
+	_apply_skin(body)
 	_rebuild_dismember_partition_index(body)
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
@@ -795,6 +910,7 @@ func _on_equipment_committed(body: Node3D) -> void:
 	# every replacement before restoring ordinary body coverage.
 	_rebuild_dismember_partition_index(body)
 	_apply_equipment_body_coverage(body)
+	_apply_skin(body)
 	wearing_hat = (_equipped_biped_flags(body) & ArmorBase.BIPED_HAT) != 0
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()

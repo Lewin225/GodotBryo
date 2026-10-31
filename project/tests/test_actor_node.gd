@@ -70,6 +70,7 @@ func _ready() -> void:
 	var modifier := node.head_tracking.get_modifier() if node.head_tracking != null else null
 	check(modifier != null and modifier.bone_name == ActorHeadTracking.HEAD_BONE_NAME and modifier.get_parent() is Skeleton3D, "ActorHeadTracking owns the look-at modifier on Doc's %s" % ActorHeadTracking.HEAD_BONE_NAME)
 	await _check_facial_player(node, doc)
+	await _check_skin(node)
 	await _check_motion(node, player)
 	await _check_creature(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
@@ -99,6 +100,34 @@ func _check_hair_color(node: EsmActorNode, doc: EsmReference) -> void:
 	check(hair_meshes == EXPECTED["hair_variant_meshes"], "Doc's hair has %d shapes on the hair material path (got %d)" % [EXPECTED["hair_variant_meshes"], hair_meshes])
 	check(tinted == hair_meshes, "each has its own material tinted with his HCLR %s (got %d)" % [hair_color, tinted])
 	check(shared_white == hair_meshes, "the shared materials stay white (got %d)" % shared_white)
+
+## Every skin shape of Doc's (head, hands and upper body; his outfit has none)
+## wears his own skin material: the head the CaucasianOld race's
+## HeadHumanOld.dds in place of the NIF's HeadHuman.dds, with his facemod; the
+## rest the body offset.
+func _check_skin(node: EsmActorNode) -> void:
+	var head_texture := await TextureServer.request("textures\\Characters\\Male\\HeadHumanOld.dds")
+	var skin_surfaces := 0
+	var skinned := 0
+	var heads := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			var shared := mesh_instance.mesh.surface_get_material(surface)
+			if shared == null or shared.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_SKIN:
+				continue
+			skin_surfaces += 1
+			var override := mesh_instance.get_surface_override_material(surface) as ShaderMaterial
+			if override == null or override.shader != EsmActorNode.SKIN_SHADER:
+				continue
+			skinned += 1
+			if override.get_shader_parameter("use_face_map") == true:
+				if override.get_shader_parameter("albedo_texture") == head_texture:
+					heads += 1
+	check(skin_surfaces > 0 and skinned == skin_surfaces, "each of Doc's %d skin surfaces wears his skin material (got %d)" % [skin_surfaces, skinned])
+	check(heads == 2, "both of his head's partitions have the race's HeadHumanOld.dds and his face map (got %d)" % heads)
 
 ## Every head-part, eye and hair mesh of Doc's has an EGM, so each carries
 ## FaceGenServer's morphed copy rather than NifServer's shared mesh.

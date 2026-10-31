@@ -14,6 +14,10 @@ const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
 ## Corpus-census fixture: this standalone KF has two sequences, proving why
 ## request_kf() returns AnimationLibrary rather than one Animation.
 const MULTI_SEQUENCE_KF := "meshes/characters/_male/idleanims/1stp_stooldynamicidle.kf"
+## Drives HeadAnims:0's morpher: BigAah (44 keys), Anger (17), Aah and others.
+const FACE_TRACK_KF := "meshes/characters/_male/idleanims/sitchaireata.kf"
+## Drives ##dgRubberBand:0's morpher (the weapon), no face.
+const RUBBER_BAND_KF := "meshes/characters/_male/1hpattackright.kf"
 ## 710 blocks / 2,111 built nodes, 12.8 ms per duplicate -- and an SCOL, so it
 ## is on the World Streamer's own path rather than a pathological outlier.
 const HEAVY_SCOL := "meshes/scol/villatest.nif"
@@ -218,6 +222,30 @@ func test_kf_delivery_and_cache() -> void:
 	check(_received_kf.size() == 1 and _received_kf[0] != null
 		and _received_kf[0].get_animation_list().size() == 2,
 		"multi-sequence KF returns both authored clips in one AnimationLibrary")
+	_received_kf.clear()
+
+	NifServer.purge_all()
+	_received_kf.clear()
+	NifServer.request_kf(FACE_TRACK_KF, self, _on_kf_result)
+	NifServer.request_kf(RUBBER_BAND_KF, self, _on_kf_result)
+	await _drain_kf(2)
+	var face_tracks := {}
+	var weapon_tracks := {}
+	for library: AnimationLibrary in _received_kf:
+		if library == null:
+			continue
+		var animation := library.get_animation(library.get_animation_list()[0])
+		if String(animation.get_meta("nif_sequence_name", "")) == "SpecialIdle_SitChairEatA":
+			face_tracks = animation.get_meta("nif_face_tracks", {})
+		else:
+			weapon_tracks = animation.get_meta("nif_face_tracks", {})
+	var big_aah: PackedFloat32Array = face_tracks.get("BigAah", PackedFloat32Array())
+	var big_aah_largest := 0.0
+	for i in range(1, big_aah.size(), 2):
+		big_aah_largest = maxf(big_aah_largest, big_aah[i])
+	check(face_tracks.has("Aah") and big_aah.size() == 88 and big_aah_largest > 0.1,
+		"an eating idle carries HeadAnims:0's morph keys as face tracks (BigAah's 44 keys up to %.2f)" % big_aah_largest)
+	check(weapon_tracks.is_empty(), "a weapon clip's rubber-band morpher is not a face track")
 	_received_kf.clear()
 
 	NifServer.purge_all()

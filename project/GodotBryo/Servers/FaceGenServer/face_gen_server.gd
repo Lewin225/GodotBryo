@@ -10,12 +10,32 @@ extends Node
 const SCALE_KEY_DIGITS := 6
 ## Metadata on every delivered mesh: the EGM path it was morphed with.
 const META_EGM_PATH := "face_gen_egm_path"
+## A shipped facemod: `<plugin>\<file-local form id>_0.dds` under this folder.
+const FACEMOD_FOLDER := "textures\\characters\\facemods\\"
+## RACE head part INDX 0, Head.
+const HEAD_PART_INDEX := 0
+
+const GameDataConfigScript := preload("res://game_data_config.gd")
+
+
+## A worker task's result, emitted on the main thread for a coroutine to await.
+class WorkerResult extends RefCounted:
+	signal finished(value)
+
+	var done := false
+	var value = null
+
+	func finish(result) -> void:
+		done = true
+		value = result
+		finished.emit(result)
 
 ## Every result is delivered from `_process`, never from inside
 ## `request_morph()`, so a callback always fires after the request returns.
 @export var deliveries_per_frame: int = 64
 
 var _archive_server: Node = null
+var _texture_server: Node = null
 var _shutting_down := false
 
 ## EGM path -> {"egm": EgmReader, "tri": TriReader or null, "tri_vertex_count": int,
@@ -28,7 +48,15 @@ var _base_waiters := {}
 var _morphed := {}
 ## Result key -> jobs waiting for one morph in flight.
 var _morph_waiters := {}
-## Jobs ready to call back: [{job, mesh}].
+## EGT path -> EgtReader, or null when the EGT is missing or does not load.
+var _egts := {}
+## EGT path -> WorkerResult of its load in flight.
+var _egt_loads := {}
+## Face map key -> WeakRef to a generated face map ImageTexture.
+var _face_maps := {}
+## Face map key -> WorkerResult of its generation in flight.
+var _face_map_builds := {}
+## Jobs ready to call back: [{job, result}], a mesh or a skin Dictionary.
 var _deliveries := []
 var _warned := {}
 
@@ -40,6 +68,9 @@ var _stats := {
 	"morph_count": 0,
 	"base_load_count": 0,
 	"owner_gone_count": 0,
+	"skin_request_count": 0,
+	"facemod_count": 0,
+	"face_map_build_count": 0,
 }
 
 
@@ -47,6 +78,7 @@ func _ready() -> void:
 	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")
 	if _archive_server == null:
 		push_error("FaceGenServer: ArchiveServer autoload not found; every request will deliver null")
+	_texture_server = get_tree().root.get_node_or_null("TextureServer")
 
 
 func _exit_tree() -> void:
@@ -133,10 +165,82 @@ static func geometry_coordinates(npc: NpcBase) -> Array[PackedFloat32Array]:
 	return [symmetric, asymmetric]
 
 
+## Calls `on_complete(skin: Dictionary)` once, on the main thread, with
+## `npc`'s FaceGen skin:
+## - "face_map": the head's offset map (Texture2D), or null. The NPC's shipped
+##   facemod where one exists, else one built from the race head's EGT and the
+##   NPC's FGTS, in the facemod's encoding (128 + offset / 2).
+## - "body_offset": the upper-body offset as a Color, in 8-bit levels / 255
+##   (signed): the race's upper-body EGT at the NPC's FGTS. Every shipped
+##   upper-body EGT is one value over all its texels, so one colour holds it.
+##   Black when the race names no body EGT.
+## The callback rule is request_morph's.
+func request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable) -> void:
+	_stats["skin_request_count"] += 1
+	if not _valid_callback(requesting_node, on_complete):
+		push_error("FaceGenServer: on_complete must be a method on `requesting_node`; skin request refused")
+		return
+	var job := {"owner": requesting_node, "cb": on_complete}
+	if _shutting_down or _archive_server == null or npc == null:
+		_queue_delivery(job, {"face_map": null, "body_offset": Color(0, 0, 0)})
+		return
+	_resolve_skin(job, npc)
+
+
+## `npc`'s FGTS: its race's for its gender plus its own, from the template when
+## the NPC takes its traits from one.
+static func texture_coordinates(npc: NpcBase) -> PackedFloat32Array:
+	var source := _trait_source(npc)
+	var symmetric := PackedFloat32Array()
+	if source.face_gen != null:
+		symmetric = source.face_gen.fgts.to_float32_array()
+	if source.race != null:
+		symmetric = _sum(symmetric, source.race.facegen_texture_symmetric(source.is_female()))
+	return symmetric
+
+
+## The shipped facemod path for `npc` (the NPC whose traits it takes), whether
+## or not the file exists.
+static func facemod_path_for(npc: NpcBase) -> String:
+	var source := _trait_source(npc)
+	return "%s%s\\%08X_0.dds" % [FACEMOD_FOLDER, GameDataConfigScript.ESM_FILE.to_lower(), source.form_id & 0xFFFFFF]
+
+
+## The head's EGT: the race head NIF's stem with `.egt`. Empty without a race
+## head part.
+static func head_egt_path_for(npc: NpcBase) -> String:
+	var source := _trait_source(npc)
+	if source.race == null:
+		return ""
+	for part in source.race.head_parts(source.is_female()):
+		if part.index == HEAD_PART_INDEX and not part.model_path.is_empty():
+			return egm_path_for(part.model_path, "").get_basename() + ".egt"
+	return ""
+
+
+## The race's upper-body EGT, under `meshes/`. Empty when the race names none.
+static func body_egt_path_for(npc: NpcBase) -> String:
+	var source := _trait_source(npc)
+	if source.race == null:
+		return ""
+	var path := source.race.body_egt_path(source.is_female())
+	if path.is_empty():
+		return ""
+	return egm_path_for(path, "").get_basename() + ".egt"
+
+
+static func _trait_source(npc: NpcBase) -> NpcBase:
+	var source := ActorBase.template_source(npc, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	if source == null:
+		return npc
+	return source
+
+
 func get_stats() -> Dictionary:
 	var stats := _stats.duplicate()
 	stats["bases_resident"] = _bases.size()
 	stats["morphed_entries"] = _morphed.size()
+	stats["egts_resident"] = _egts.size()
 	return stats
 
 
@@ -150,13 +254,15 @@ func reset_stats() -> void:
 func purge_all() -> void:
 	_bases.clear()
 	_morphed.clear()
+	_egts.clear()
+	_face_maps.clear()
 
 
 func _process(_delta: float) -> void:
 	var delivered := 0
 	while not _deliveries.is_empty() and delivered < deliveries_per_frame:
 		var delivery: Dictionary = _deliveries.pop_front()
-		_deliver(delivery["job"], delivery["mesh"])
+		_deliver(delivery["job"], delivery["result"])
 		delivered += 1
 
 
@@ -415,17 +521,124 @@ static func _blend_shape_arrays(arrays: Array, expressions: Array) -> Array:
 	return blend_shapes
 
 
-func _queue_delivery(job: Dictionary, mesh: ArrayMesh) -> void:
-	_deliveries.append({"job": job, "mesh": mesh})
+## Main thread, a coroutine: the facemod through TextureServer, else a face
+## map built from the head EGT; then the body offset; then queues delivery.
+func _resolve_skin(job: Dictionary, npc: NpcBase) -> void:
+	var coefficients := texture_coordinates(npc)
+	var face_map: Texture2D = null
+	if _texture_server != null:
+		face_map = await _texture_server.request(facemod_path_for(npc))
+	if face_map != null:
+		_stats["facemod_count"] += 1
+	else:
+		face_map = await _built_face_map(head_egt_path_for(npc), coefficients)
+	var body_offset := Color(0, 0, 0)
+	var body_egt := await _egt(body_egt_path_for(npc))
+	if body_egt != null:
+		body_offset = _mean_offset(body_egt, coefficients)
+	_queue_delivery(job, {"face_map": face_map, "body_offset": body_offset})
 
 
-func _deliver(job: Dictionary, mesh: ArrayMesh) -> void:
+## The face map for `egt_path` at `coefficients`, built on a worker once and
+## shared while anyone holds it; null when the EGT does not load.
+func _built_face_map(egt_path: String, coefficients: PackedFloat32Array) -> Texture2D:
+	var egt := await _egt(egt_path)
+	if egt == null:
+		return null
+	var parts := PackedStringArray([egt_path])
+	for value in coefficients:
+		parts.append(String.num(value, SCALE_KEY_DIGITS))
+	var key := ",".join(parts)
+	if _face_maps.has(key):
+		var cached := (_face_maps[key] as WeakRef).get_ref() as Texture2D
+		if cached != null:
+			return cached
+		_face_maps.erase(key)
+	var build: WorkerResult = _face_map_builds.get(key)
+	if build == null:
+		build = WorkerResult.new()
+		_face_map_builds[key] = build
+		WorkerThreadPool.add_task(_build_face_map_task.bind(egt, coefficients, build))
+	var image: Image = build.value if build.done else await build.finished
+	_face_map_builds.erase(key)
+	if _face_maps.has(key):
+		var built := (_face_maps[key] as WeakRef).get_ref() as Texture2D
+		if built != null:
+			return built
+	if image == null:
+		return null
+	var texture := ImageTexture.create_from_image(image)
+	_face_maps[key] = weakref(texture)
+	_stats["face_map_build_count"] += 1
+	return texture
+
+
+## Worker: the face map image, with mipmaps.
+static func _build_face_map_task(egt: EgtReader, coefficients: PackedFloat32Array, build: WorkerResult) -> void:
+	var image := egt.build_offset_image(coefficients)
+	if image != null:
+		image.generate_mipmaps()
+	build.finish.call_deferred(image)
+
+
+## The EGT at `egt_path`, read and parsed once on a worker; null when it is
+## missing or does not load.
+func _egt(egt_path: String) -> EgtReader:
+	if egt_path.is_empty():
+		return null
+	if _egts.has(egt_path):
+		return _egts[egt_path]
+	var loading: WorkerResult = _egt_loads.get(egt_path)
+	if loading == null:
+		loading = WorkerResult.new()
+		_egt_loads[egt_path] = loading
+		WorkerThreadPool.add_task(_load_egt_task.bind(egt_path, loading))
+	var egt: EgtReader = loading.value if loading.done else await loading.finished
+	if not _egts.has(egt_path):
+		_egts[egt_path] = egt
+		_egt_loads.erase(egt_path)
+	return egt
+
+
+## Worker: reads and parses one EGT.
+func _load_egt_task(egt_path: String, loading: WorkerResult) -> void:
+	var egt: EgtReader = null
+	var result: Dictionary = _archive_server.read(egt_path)
+	if bool(result["found"]):
+		var reader := EgtReader.new()
+		if reader.load(PackedByteArray(result["data"]), egt_path):
+			egt = reader
+		else:
+			_warn_once.bind(egt_path, "FaceGenServer: %s failed to load (%s)" % [egt_path, reader.get_last_error()]).call_deferred()
+	loading.finish.call_deferred(egt)
+
+
+## The mean texel offset of `egt` at `coefficients`, per channel, in 8-bit
+## levels / 255.
+static func _mean_offset(egt: EgtReader, coefficients: PackedFloat32Array) -> Color:
+	var offsets := egt.get_offsets(coefficients)
+	@warning_ignore("integer_division")
+	var texels := offsets.size() / 3
+	if texels == 0:
+		return Color(0, 0, 0)
+	var sums := [0.0, 0.0, 0.0]
+	for texel in texels:
+		for channel in 3:
+			sums[channel] += offsets[texel * 3 + channel]
+	return Color(sums[0] / texels / 255.0, sums[1] / texels / 255.0, sums[2] / texels / 255.0)
+
+
+func _queue_delivery(job: Dictionary, result) -> void:
+	_deliveries.append({"job": job, "result": result})
+
+
+func _deliver(job: Dictionary, result) -> void:
 	var owner_node = job.get("owner")
 	var cb: Callable = job.get("cb", Callable())
 	if owner_node == null or not is_instance_valid(owner_node) or not cb.is_valid():
 		_stats["owner_gone_count"] += 1
 		return
-	cb.call(mesh)
+	cb.call(result)
 
 
 func _warn_once(key: String, message: String) -> void:

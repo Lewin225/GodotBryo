@@ -2,7 +2,7 @@
 class_name ActorFacialPlayer
 extends Node
 
-## Sets the face's expression weights (Plans/Actors/faces.md). A child of the
+## Sets the face's expression weights (Plans/Completed Plans/Actors/faces.md). A child of the
 ## actor node (esm_actor_node.tscn), beside ActorHeadTracking; the actor node
 ## hands it the committed body (set_body).
 ##
@@ -23,9 +23,12 @@ extends Node
 ##   the first 16 channels, FaceGen's phonemes, as the TRI's phoneme weights,
 ##   at `lip_frames_per_second` from where the voice is heard
 ##   (DialogueLine.voice_seconds), blending between neighbouring frames.
-##   The other 17 channels (blinks, brows, looks, head turns) are not played.
-## Defaults are the game settings the GECK lists (fBlinkDelayMin and the rest;
-## not in FalloutNV.esm).
+##   The other 17 channels (blinks, brows, looks, head turns) are not played;
+## - the face tracks of the clip ActorAnimator is playing (eating, drinking,
+##   smoking and other idles; ActorAnimator.face_weights).
+## Each input sets its own weights every frame; a morph two inputs set takes
+## the larger. Defaults are the game settings the GECK lists (fBlinkDelayMin
+## and the rest; not in FalloutNV.esm).
 
 ## Emotion morph names by DialogueResponseCollection.Emotion; Neutral has none.
 const EMOTION_MORPHS := ["", "Anger", "Disgust", "Fear", "Sad", "Happy", "Surprise", "Pained"]
@@ -60,6 +63,14 @@ const LIP_PHONEMES := ["Aah", "BigAah", "BMP", "ChJSh", "DST", "Ee", "Eh", "FV",
 
 ## Weight name -> Array of [MeshInstance3D, blend shape index].
 var _targets := {}
+## Each input's weights this frame, weight name -> weight.
+var _blink_weights := {}
+var _emotion_weights := {}
+var _lip_weights := {}
+var _clip_weights := {}
+## The weight names some input set last frame, so one no input sets any more
+## goes back to 0.
+var _driven := {}
 ## Weight name -> the weight last set on its targets.
 var _applied := {}
 ## Seconds until the next blink starts.
@@ -96,6 +107,7 @@ func _exit_tree() -> void:
 func set_body(body: Node3D) -> void:
 	_targets.clear()
 	_applied.clear()
+	_driven = {}
 	if body == null:
 		return
 	for child in body.find_children("*", "MeshInstance3D", true, false):
@@ -146,9 +158,36 @@ func _process(delta: float) -> void:
 	_update_blink(delta)
 	_update_emotion(delta)
 	_update_lip()
+	_update_clip()
+	_apply_inputs()
+
+
+## Sets every weight an input sets, or set last frame, to the largest any input
+## sets now (0 when none does).
+func _apply_inputs() -> void:
+	var driven := {}
+	for weights: Dictionary in [_blink_weights, _emotion_weights, _lip_weights, _clip_weights]:
+		for weight_name: String in weights:
+			var name := _weight_name(weight_name)
+			driven[name] = maxf(driven.get(name, 0.0), weights[weight_name])
+	for name: String in _driven:
+		if not driven.has(name):
+			set_weight(name, 0.0)
+	for name: String in driven:
+		set_weight(name, driven[name])
+	_driven = driven
+
+
+func _update_clip() -> void:
+	var animator := get_node_or_null(^"../ActorAnimator") as ActorAnimator
+	if animator == null:
+		_clip_weights = {}
+		return
+	_clip_weights = animator.face_weights()
 
 
 func _update_blink(delta: float) -> void:
+	_blink_weights = {}
 	if _blink_elapsed < 0.0:
 		_blink_in -= delta
 		if _blink_in > 0.0:
@@ -163,7 +202,7 @@ func _update_blink(delta: float) -> void:
 		_blink_elapsed = -1.0
 		weight = 0.0
 	for morph in BLINK_MORPHS:
-		set_weight(morph, weight)
+		_blink_weights[morph] = weight
 
 
 ## The eyelids' weight `elapsed` seconds into a blink: closing, then opening.
@@ -178,16 +217,18 @@ func _next_blink_delay() -> float:
 
 
 func _update_emotion(delta: float) -> void:
+	_emotion_weights = {}
 	if _emotion_morph.is_empty():
 		return
 	var step := delta / maxf(emotion_blend_seconds, 0.001)
 	_emotion_weight = move_toward(_emotion_weight, _emotion_target, step)
-	set_weight(_emotion_morph, _emotion_weight)
+	_emotion_weights[_emotion_morph] = _emotion_weight
 	if _emotion_weight == 0.0 and _emotion_target == 0.0:
 		_emotion_morph = ""
 
 
 func _update_lip() -> void:
+	_lip_weights = {}
 	if _line == null:
 		return
 	var lip := _line.current_lip()
@@ -195,7 +236,6 @@ func _update_lip() -> void:
 		_lip = lip
 		_lip_frames = lip.get_frames() if lip != null else PackedFloat32Array()
 	if _lip == null or _lip.get_frame_count() == 0:
-		_set_phonemes_zero()
 		return
 	var last_frame := _lip.get_frame_count() - 1
 	var position := _line.voice_seconds() * lip_frames_per_second
@@ -206,12 +246,7 @@ func _update_lip() -> void:
 	var next_first := next_frame * _lip.get_channel_count()
 	for channel in LIP_PHONEMES.size():
 		var weight := lerpf(_lip_frames[first + channel], _lip_frames[next_first + channel], blend)
-		set_weight(LIP_PHONEMES[channel], weight)
-
-
-func _set_phonemes_zero() -> void:
-	for phoneme in LIP_PHONEMES:
-		set_weight(phoneme, 0.0)
+		_lip_weights[LIP_PHONEMES[channel]] = weight
 
 
 ## The actor started saying a response: shows its emotion and plays its lips.
@@ -240,12 +275,9 @@ func _on_line_finished(line: DialogueLine) -> void:
 		_line = null
 		_lip = null
 		_lip_frames = PackedFloat32Array()
-		_set_phonemes_zero()
 
 
 func _clear_emotion_now() -> void:
-	if not _emotion_morph.is_empty():
-		set_weight(_emotion_morph, 0.0)
 	_emotion_weight = 0.0
 
 

@@ -3,19 +3,34 @@ extends Node
 ## FaceGenServer: an NPC's head-part meshes come back with the race's plus the
 ## NPC's FGGS / FGGA applied through each shape's EGM, by callback, once per
 ## request. The census morphs every shape of every HAIR, HDPT and RACE head-part
-## NIF in FalloutNV.esm and reports which have no EGM that fits.
+## NIF in FalloutNV.esm and reports which have no EGM that fits. The skin: a
+## shipped facemod or a face map built from the head EGT, and the upper-body
+## EGT's offset, which is one value over its texels in every mode.
 
 const DOC_MITCHELL := 0x00104C0C
 const CAUCASIAN_OLD := 0x000042C3
 const HEAD := "Characters\\Head\\HeadHuman.NIF"
+## Own traits and FGTS, no shipped facemod.
+const PROSPECTOR_NO_FACEMOD := 0x0017AFDC
+## AfricanAmerican, with a facemod.
+const HEAVY_TROOPER_AA := 0x00179B09
+const UPPER_BODY_EGTS := [
+	"meshes/characters/_male/upperbodyhumanmale.egt",
+	"meshes/characters/_male/upperbodyhumanfemale.egt",
+	"meshes/characters/_male/upperbodychild.egt",
+	"meshes/characters/_male/upperbodychildfemale.egt",
+]
 
 signal tree_delivered
 signal mesh_delivered
+signal skin_delivered
 
 var failures := 0
 var _tree: Node3D = null
 var _mesh: ArrayMesh = null
 var _callback_count := 0
+var _skin := {}
+var _skin_count := 0
 
 
 func check(cond: bool, msg: String) -> void:
@@ -53,8 +68,87 @@ func _ready() -> void:
 	check((coordinates[1] as PackedFloat32Array).size() == 30, "FGGA has 30 coefficients")
 
 	await _check_head(server, doc)
+	_check_upper_body_egts()
+	await _check_skin(esm, server, doc)
 	await _census(esm, server, doc)
 	_finish()
+
+
+## Every upper-body EGT moves all its texels alike in every mode, so its offset
+## is one colour: within 2% (upperbodyhumanmale's mode 41 blue plane holds -63
+## on 1,017 texels and -64 on 7; every other plane is one value).
+func _check_upper_body_egts() -> void:
+	var archive := get_node("/root/ArchiveServer")
+	for path: String in UPPER_BODY_EGTS:
+		var result: Dictionary = archive.read(path)
+		var egt := EgtReader.new()
+		if not bool(result["found"]) or not egt.load(PackedByteArray(result["data"]), path):
+			check(false, "%s loads" % path)
+			continue
+		var uniform := true
+		for mode in egt.get_symmetric_mode_count():
+			var coefficients := PackedFloat32Array()
+			coefficients.resize(egt.get_symmetric_mode_count())
+			coefficients[mode] = 1.0
+			var offsets := egt.get_offsets(coefficients)
+			for i in offsets.size():
+				var first := offsets[i % 3]
+				if absf(offsets[i] - first) > absf(first) * 0.02:
+					uniform = false
+		check(uniform and egt.get_symmetric_mode_count() == 50,
+				"%s: 50 modes, each one value (within 2%%) over its %d x %d texels" % [path.get_file(), egt.get_rows(), egt.get_columns()])
+
+
+func _check_skin(esm: Node, server: Node, doc: NpcBase) -> void:
+	check(server.facemod_path_for(doc) == "textures\\characters\\facemods\\falloutnv.esm\\00104C0C_0.dds",
+			"Doc's facemod is <plugin>\\<form id>_0.dds")
+	check(server.head_egt_path_for(doc) == "meshes/characters/head/headhuman.egt", "Doc's head EGT is the race head's")
+	check(server.body_egt_path_for(doc) == "meshes/characters/_male/upperbodyhumanmale.egt",
+			"Doc's body EGT is the race's INDX 3 MODL")
+	var coefficients: PackedFloat32Array = server.texture_coordinates(doc)
+	check(coefficients.size() == 50 and is_equal_approx(coefficients[0],
+			doc.face_gen.fgts.to_float32_array()[0] + doc.race.facegen_texture_symmetric(false)[0]),
+			"FGTS is the race's plus the NPC's")
+
+	var stats_before: Dictionary = server.get_stats()
+	_skin_count = 0
+	server.request_skin(doc, self, _on_skin)
+	check(_skin_count == 0, "a skin is not delivered from inside request_skin")
+	await skin_delivered
+	var face_map := _skin.get("face_map") as Texture2D
+	check(face_map != null and face_map.get_width() == 256, "Doc's face map is his 256 x 256 facemod")
+	check(server.get_stats()["facemod_count"] == stats_before["facemod_count"] + 1, "it is the shipped facemod")
+
+	var prospector := esm.get_base(PROSPECTOR_NO_FACEMOD) as NpcBase
+	check(prospector != null, "NVProspectorMaleDEADSLCrater02 loads")
+	if prospector != null:
+		server.request_skin(prospector, self, _on_skin)
+		await skin_delivered
+		var built := _skin.get("face_map") as Texture2D
+		check(built != null and built.get_width() == 256 and built.get_height() == 256,
+				"an NPC without a facemod gets a 256 x 256 face map built from the head EGT")
+		check(server.get_stats()["face_map_build_count"] == stats_before["face_map_build_count"] + 1, "it is built once")
+		server.request_skin(prospector, self, _on_skin)
+		await skin_delivered
+		check(_skin.get("face_map") == built, "the same face comes back as the same face map")
+		if built != null:
+			var centre := built.get_image().get_pixel(128, 128)
+			print("       built face map centre %s" % centre)
+
+	var trooper := esm.get_base(HEAVY_TROOPER_AA) as NpcBase
+	check(trooper != null, "NCRHeavyTrooperAAM loads")
+	if trooper != null:
+		server.request_skin(trooper, self, _on_skin)
+		await skin_delivered
+		var offset: Color = _skin.get("body_offset", Color(0, 0, 0))
+		print("       AfricanAmerican body offset %.3f %.3f %.3f" % [offset.r, offset.g, offset.b])
+		check(offset.r < -0.2 and offset.g < -0.15, "an AfricanAmerican NPC's body is darkened by its body EGT")
+
+
+func _on_skin(skin: Dictionary) -> void:
+	_skin = skin
+	_skin_count += 1
+	skin_delivered.emit()
 
 
 func _check_head(server: Node, doc: NpcBase) -> void:

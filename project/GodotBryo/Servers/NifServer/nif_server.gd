@@ -16,7 +16,7 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 ## The raw-target AnimationLibrary schema. Bump when NifAnimationBuilder's
 ## Godot resource representation changes; old disk entries then cannot be
 ## mistaken for a library compiled under a different binding contract.
-const KF_CACHE_VERSION := "nifserver-kf-v1"
+const KF_CACHE_VERSION := "nifserver-kf-v2"
 const KF_CACHE_DIR := "user://nifserver_kf_cache"
 
 ## All editor-object classification and visibility belongs here. Keeping the
