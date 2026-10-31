@@ -31,8 +31,8 @@
 [ext_resource type="Script" uid="uid://dnblgqynq1t7l" path="res://addons/SunshineClouds2/SunshineClouds.gd" id="19_l1i01"]
 [ext_resource type="Script" uid="uid://bm7kppeppb6st" path="res://quests_debug_tab.gd" id="19_questsdebug"]
 [ext_resource type="NoiseTexture3D" uid="uid://bnck2kxeg5bkg" path="res://addons/SunshineClouds2/NoiseTextures/SmallScaleNoise.tres" id="20_r62pu"]
-[ext_resource type="Script" path="res://debug_monitors_label.gd" id="monitors_label"]
 [ext_resource type="Script" uid="uid://djusduuxf0voj" path="res://addons/SunshineClouds2/SunshineCloudsDriver.gd" id="32_dhpj7"]
+[ext_resource type="Script" uid="uid://3aerum15e3f6" path="res://debug_monitors_label.gd" id="monitors_label"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
 
@@ -65,23 +65,24 @@ auto_exposure_max_sensitivity = 400.0
 [sub_resource type="CompositorEffect" id="CompositorEffect_7knny"]
 resource_local_to_scene = false
 resource_name = ""
-enabled = true
+enabled = false
 effect_callback_type = 3
 access_resolved_color = true
 access_resolved_depth = true
 needs_motion_vectors = false
 needs_normal_roughness = false
 script = ExtResource("19_l1i01")
-clouds_coverage = 0.891
+clouds_coverage = 0.827
 clouds_density = 0.01
 clouds_anisotropy = 0.114
 cloud_ambient_tint = Color(0.4117647, 0.3882353, 0.34509805, 1)
 sampled_environment_fog_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
 ambient_occlusion_color = Color(0, 0, 0, 1)
-accumulation_decay = 0.93
 cloud_floor = 0.0
 cloud_ceiling = 3000.0
-max_step_count = 100.0
+cloud_shadow_steps = 1
+max_step_count = 50.0
+max_lighting_steps = 6.0
 lod_bias = 1.343
 height_gradient = ExtResource("14_082n1")
 extra_large_noise_patterns = ExtResource("13_7knny")
@@ -227,7 +228,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 script = SubResource("GDScript_dhpj7")
 
-[node name="ForceFinishButton" type="Button" parent="TransitionCoordinator/ColorRect"]
+[node name="ForceFinishButton" type="Button" parent="TransitionCoordinator/ColorRect" unique_id=2107018259]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -1978,7 +1979,7 @@ text = "cell: —"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="MonitorsLabel" type="Label" parent="DebugHud"]
+[node name="MonitorsLabel" type="Label" parent="DebugHud" unique_id=1369796855]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0

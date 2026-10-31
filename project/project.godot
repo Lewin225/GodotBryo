@@ -13,7 +13,6 @@ config_version=5
 config/name="GodotByro"
 run/main_scene="res://launcher.tscn"
 config/features=PackedStringArray("4.7")
-run/max_fps=120
 
 [autoload]
 
