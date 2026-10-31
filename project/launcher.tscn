@@ -67,6 +67,10 @@ text = "; Skips the Doc Mitchell tutorial intro and completes VCG01
 CompleteAllObjectives VCG01
 SetStage VCG01 200
 
+; Player identity
+player.SetName \"Courier\"
+player.SexChange Male
+
 ; SPECIAL attributes (40 points total)
 player.SetAV Strength 6
 player.SetAV Perception 5

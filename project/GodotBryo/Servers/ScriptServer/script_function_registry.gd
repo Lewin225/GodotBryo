@@ -456,6 +456,15 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_TEXT_EDIT)
 		return 0)
+	# `[Actor.]SetName Name` / `SetPlayerName Name`: sets the display name
+	# (FULL) of the actor's base record (e.g. the Player NPC_).
+	register(["SetName", "SetPlayerName"], func(a: Array, ctx: ScriptExecutionContext):
+		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+		if target != null and target.base != null and not a.is_empty():
+			target.base.full_name = str(a[0]).strip_edges()
+			target.base.mark_dirty()
+			return 1
+		return 0)
 	# `ShowLoveTesterMenuParams iPoints` opens the vigor tester's SPECIAL menu
 	# (1074, Love Tester): the player distributes iPoints SPECIAL points (40 is
 	# 5 in each and 5 to spend), per the GECK wiki through search summaries.
@@ -523,14 +532,18 @@ func _register_defaults() -> void:
 	# (ScriptServer.is_menu_open).
 	register("MenuMode", func(a: Array, _c):
 		return 1 if script_server != null and script_server.is_menu_open(int(_number(a, 0)) if not a.is_empty() else 0) else 0)
-	# `[Actor.]SexChange Male|Female [1]`: sets the ACBS Female flag of the
-	# actor's NPC_, which marks it dirty.
-	register("SexChange", func(a: Array, ctx: ScriptExecutionContext):
-		var npc := ctx.calling_reference.base as NpcBase if ctx.calling_reference != null else null
-		var female := _sex_arg(a, 0)
-		if npc == null or female < 0:
+	# `[Actor.]SexChange [Male|Female|0|1]`: sets or toggles the ACBS Female
+	# flag of the actor's NPC_, which marks it dirty.
+	register(["SexChange", "Sex", "SetSex"], func(a: Array, ctx: ScriptExecutionContext):
+		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+		var npc := target.base as NpcBase if target != null else null
+		if npc == null:
 			return 0
-		npc.set_female(female == 1)
+		var female := _sex_arg(a, 0)
+		if female < 0:
+			npc.set_female(not npc.is_female())
+		else:
+			npc.set_female(female == 1)
 		return 1)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
