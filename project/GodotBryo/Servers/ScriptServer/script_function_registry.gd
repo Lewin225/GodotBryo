@@ -288,13 +288,14 @@ func _register_defaults() -> void:
 	register("SetObjectiveCompleted", func(a: Array, _c):
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
-	# TODO: Delete "Caps001" hardcoded value
+	# TODO: Delete the "Caps001" placeholder once inventories hold real caps.
+	# Until then every reference reports 20000 caps, even after RemoveItem.
 	# Inventory of the calling reference (actor, creature or container). Items
 	# are named by base editor ID; a leveled list resolves when added.
 	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
-		if (str(a[0]).to_lower() == "caps001"):
+		if item != null and item.editor_id.to_lower() == "caps001":
 			return 20000
 		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
 	# `AddItem Item Count [HideMessage]`.
@@ -456,15 +457,6 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_TEXT_EDIT)
 		return 0)
-	# `[Actor.]SetName Name` / `SetPlayerName Name`: sets the display name
-	# (FULL) of the actor's base record (e.g. the Player NPC_).
-	register(["SetName", "SetPlayerName"], func(a: Array, ctx: ScriptExecutionContext):
-		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-		if target != null and target.base != null and not a.is_empty():
-			target.base.full_name = str(a[0]).strip_edges()
-			target.base.mark_dirty()
-			return 1
-		return 0)
 	# `ShowLoveTesterMenuParams iPoints` opens the vigor tester's SPECIAL menu
 	# (1074, Love Tester): the player distributes iPoints SPECIAL points (40 is
 	# 5 in each and 5 to spend), per the GECK wiki through search summaries.
@@ -481,48 +473,11 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_CHARGEN, {"count": int(_number(a, 0)) if a.size() > 0 else 3})
 		return 0)
-	# `IsPlayerTagSkill Skill`: 1 if the skill is tagged on the player.
-	register("IsPlayerTagSkill", func(a: Array, ctx: ScriptExecutionContext):
-		var target := ctx.player_reference if ctx.player_reference != null else ctx.calling_reference
-		if target == null or a.is_empty():
-			return 0
-		var code := _actor_value_code(a, 0)
-		var tags: Array = target.get_meta("tag_skills", [])
-		return 1 if tags.has(code) else 0)
 	# `ShowTraitMenu` opens the trait menu (1084, Character Creation Traits).
 	register("ShowTraitMenu", func(_a, _c):
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_TRAITS)
 		return 0)
-	# `[Actor.]AddPerk Perk [Rank]`: gives the perk/trait to the actor.
-	register("AddPerk", func(a: Array, ctx: ScriptExecutionContext):
-		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-		if target == null or a.is_empty():
-			return 0
-		var perk_name := str(a[0]).strip_edges()
-		var perks: Array = target.get_meta("perks", [])
-		if not perks.has(perk_name):
-			perks.append(perk_name)
-			target.set_meta("perks", perks)
-		return 1)
-	# `[Actor.]HasPerk Perk [Rank]`: 1 if the actor has the perk/trait.
-	register("HasPerk", func(a: Array, ctx: ScriptExecutionContext):
-		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-		if target == null or a.is_empty():
-			return 0
-		var perk_name := str(a[0]).strip_edges()
-		var perks: Array = target.get_meta("perks", [])
-		return 1 if perks.has(perk_name) else 0)
-	# `[Actor.]RemovePerk Perk`: removes the perk/trait from the actor.
-	register("RemovePerk", func(a: Array, ctx: ScriptExecutionContext):
-		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-		if target == null or a.is_empty():
-			return 0
-		var perk_name := str(a[0]).strip_edges()
-		var perks: Array = target.get_meta("perks", [])
-		perks.erase(perk_name)
-		target.set_meta("perks", perks)
-		return 1)
 	# `ShowRaceMenu` opens the race menu (1036).
 	register("ShowRaceMenu", func(_a: Array, _c):
 		if script_server != null:
@@ -534,16 +489,17 @@ func _register_defaults() -> void:
 		return 1 if script_server != null and script_server.is_menu_open(int(_number(a, 0)) if not a.is_empty() else 0) else 0)
 	# `[Actor.]SexChange [Male|Female|0|1]`: sets or toggles the ACBS Female
 	# flag of the actor's NPC_, which marks it dirty.
-	register(["SexChange", "Sex", "SetSex"], func(a: Array, ctx: ScriptExecutionContext):
-		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-		var npc := target.base as NpcBase if target != null else null
+	register("SexChange", func(a: Array, ctx: ScriptExecutionContext):
+		var npc := ctx.calling_reference.base as NpcBase if ctx.calling_reference != null else null
 		if npc == null:
 			return 0
+		if a.is_empty():
+			npc.set_female(not npc.is_female())
+			return 1
 		var female := _sex_arg(a, 0)
 		if female < 0:
-			npc.set_female(not npc.is_female())
-		else:
-			npc.set_female(female == 1)
+			return 0
+		npc.set_female(female == 1)
 		return 1)
 	# `GetInCell Cell`: the CELL itself, by editor ID.
 	register("GetInCell", func(a: Array, ctx: ScriptExecutionContext):
@@ -923,7 +879,6 @@ func _register_defaults() -> void:
 			return get_button_pressed_handler.call(ctx)
 		return -1)
 
-
 ## Numeric argument `index`, or 0 when absent or not a number.
 static func _number(args: Array, index: int) -> float:
 	if index < args.size() and (args[index] is int or args[index] is float):
@@ -1012,11 +967,9 @@ static func _remove_items(inventory: Inventory, base_form_id: int, count: int) -
 			removed += take
 	return removed
 
-## The calling reference's actor values, or the player's when called with no
-## explicit calling reference; null when neither is an actor.
+## The calling reference's actor values, or null when it is not an actor.
 static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:
-	var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
-	return target.get_actor_values() if target != null else null
+	return ctx.calling_reference.get_actor_values() if ctx.calling_reference != null else null
 
 ## `method` (get_current, get_base, get_permanent) of the actor value named by
 ## the first argument, on the calling actor; 0 for a non-actor.

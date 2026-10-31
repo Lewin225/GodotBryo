@@ -8,6 +8,7 @@ extends Node3D
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
 ## weather and sky, and the debug HUD.
 
+const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
 ## Script run when starting a new game: sets up VCG01 and moves the player to
 ## the bed in Doc Mitchell's house (reproducing VCG00 stage 0 / stage 100).
 const DEFAULT_STARTUP_SCRIPT := """SetStage VCG01 0
@@ -107,6 +108,14 @@ func _ready() -> void:
 	var script := startup_script if not startup_script.is_empty() else DEFAULT_STARTUP_SCRIPT
 	startup_script = ""
 	ScriptServer.run_result_script(script, player.possessed)
+	# MoveTo and COC only queue a move, hence the pending-move check. This
+	# relies on the player reference starting in no space (space 0), as
+	# EsmServer creates it; a loaded save would need another test.
+	if player.possessed == null or (player.possessed.current_space_form_id == 0 and ScriptServer.get_pending_move(player.possessed).is_empty()):
+		push_error("game.gd: startup script did not place the player in a cell")
+		var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		if start is Dictionary:
+			push_error("game.gd: " + String(start["error"]))
 
 func _on_entered_interior(cell_form_id: int) -> void:
 	_set_exterior_environment(false)

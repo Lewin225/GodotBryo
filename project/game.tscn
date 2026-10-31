@@ -151,8 +151,6 @@ func _on_show_background_on_tab_scren_toggled(toggled_on: bool) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
-[sub_resource type="Theme" id="Theme_7knny"]
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7knny"]
 content_margin_left = 4.0
 content_margin_top = 4.0
@@ -314,6 +312,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
+current_tab = 9
 drag_to_rearrange_enabled = true
 deselect_enabled = true
 tab_0/title = "Script Engine"
@@ -423,7 +422,6 @@ scroll_active = false
 [node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
 layout_mode = 2
 size_flags_vertical = 3
-theme = SubResource("Theme_7knny")
 theme_override_colors/font_readonly_color = Color(0.8745098, 0.8745098, 0.8745098, 1)
 theme_override_styles/read_only = SubResource("StyleBoxFlat_7knny")
 
@@ -1850,7 +1848,6 @@ metadata/_tab_index = 8
 metadata/_tab_name = "Time and Date"
 
 [node name="Editing" type="Control" parent="Debug Tools/TabContainer" unique_id=2147483010]
-visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("17_editingdebug")

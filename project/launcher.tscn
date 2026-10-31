@@ -67,8 +67,7 @@ text = "; Skips the Doc Mitchell tutorial intro and completes VCG01
 CompleteAllObjectives VCG01
 SetStage VCG01 200
 
-; Player identity
-player.SetName \"Courier\"
+; Player sex
 player.SexChange Male
 
 ; SPECIAL attributes (40 points total)
@@ -84,10 +83,6 @@ player.SetAV Luck 6
 player.ModAV Guns 15
 player.ModAV Lockpick 15
 player.ModAV Speech 15
-
-; Traits (perks)
-player.AddPerk FourEyes
-player.AddPerk WildWasteland
 
 ; Destination
 COC TestTraps"

@@ -4,7 +4,7 @@ extends Control
 ## (instances, usage, console) rather than its internal state.
 
 @onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Left/Instances
-@onready var _filter: LineEdit = get_node_or_null("Margin/VBox/VSplit/HSplit/Left/LineEdit") if has_node("Margin/VBox/VSplit/HSplit/Left/LineEdit") else get_node_or_null("Margin/VBox/VSplit/HSplit/Left/Filter")
+@onready var _filter: LineEdit = $Margin/VBox/VSplit/HSplit/Left/LineEdit
 @onready var _usage: RichTextLabel = $Margin/VBox/Usage
 @onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
 @onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/ScrollContainer/Locals
@@ -70,9 +70,8 @@ func _ready() -> void:
 	_line.gui_input.connect(_on_line_gui_input)
 	_line.text_changed.connect(_on_line_text_changed)
 
-	if _filter != null:
-		_filter.clear_button_enabled = true
-		_filter.text_changed.connect(func(_new_text: String) -> void: _refresh())
+	_filter.clear_button_enabled = true
+	_filter.text_changed.connect(func(_new_text: String) -> void: _refresh())
 
 	_instances_list.item_selected.connect(_select_instance)
 	_refresh()
@@ -319,23 +318,19 @@ func _refresh() -> void:
 	_instances = _engine.get_debug_instances()
 	_filtered_instances.clear()
 	_instances_list.clear()
-	var needle := _filter.text.strip_edges().to_lower() if _filter != null else ""
+	var needle := _filter.text.strip_edges().to_lower()
+	var raw_hex := needle.trim_prefix("0x")
 	for entry in _instances:
 		if not needle.is_empty():
 			var name_str := String(entry.get("name", "")).to_lower()
 			var script_str := String(entry.get("script_name", "")).to_lower()
-			var script_form_id: int = int(entry.get("script_form_id", 0))
-			var hex_str := "%08x" % script_form_id
-			var raw_hex := needle.trim_prefix("0x")
-			var id_match: bool = (not raw_hex.is_empty() and hex_str.contains(raw_hex)) or ("0x" + hex_str).contains(needle)
-			var quest = entry.get("quest")
-			if not id_match and quest != null and "form_id" in quest:
-				var q_hex := "%08x" % int(quest.form_id)
-				id_match = (not raw_hex.is_empty() and q_hex.contains(raw_hex)) or ("0x" + q_hex).contains(needle)
-			var ref = entry.get("reference")
-			if not id_match and ref != null and "base_form_id" in ref and ref.base_form_id != 0:
-				var r_hex := "%08x" % int(ref.base_form_id)
-				id_match = (not raw_hex.is_empty() and r_hex.contains(raw_hex)) or ("0x" + r_hex).contains(needle)
+			var quest: EsmBase = entry.get("quest") as EsmBase
+			var ref: EsmReference = entry.get("reference") as EsmReference
+			var id_match := (
+				_matches_form_id(int(entry.get("script_form_id", 0)), needle, raw_hex)
+				or (quest != null and _matches_form_id(quest.form_id, needle, raw_hex))
+				or (ref != null and _matches_form_id(ref.base_form_id, needle, raw_hex))
+			)
 			if not name_str.contains(needle) and not script_str.contains(needle) and not id_match:
 				continue
 		_filtered_instances.append(entry)
@@ -366,8 +361,7 @@ func _select_instance(index: int) -> void:
 func select_quest(quest: QuestBase) -> void:
 	_selected_key = quest
 	_selected_reference = null
-	if _filter != null and not _filter.text.is_empty():
-		_filter.text = ""
+	_filter.text = ""
 	_refresh()
 	_show_selected()
 
@@ -375,6 +369,15 @@ func select_quest(quest: QuestBase) -> void:
 ## An entry's identity: its reference, or its quest for a quest script.
 static func _entry_key(entry: Dictionary) -> Object:
 	return entry["reference"] if entry["reference"] != null else entry["quest"]
+
+
+## Whether a FormID's 8-digit hex contains the filter text: `raw_hex` is the
+## filter without its `0x` prefix, `needle` the whole filter. 0 never matches.
+static func _matches_form_id(form_id: int, needle: String, raw_hex: String) -> bool:
+	if form_id == 0:
+		return false
+	var hex_str := "%08x" % form_id
+	return (not raw_hex.is_empty() and hex_str.contains(raw_hex)) or ("0x" + hex_str).contains(needle)
 
 
 func _show_selected() -> void:
