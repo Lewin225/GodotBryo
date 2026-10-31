@@ -243,6 +243,37 @@ func _check_quests_tab(game_node: Node) -> void:
 	var selected: PackedInt32Array = engine_tab._instances_list.get_selected_items()
 	check(selected.size() == 1 and engine_tab._instances[selected[0]]["quest"] == vmq01 and engine_tab._source.text.contains("VMQ01"),
 			"and selects VMQ01's script, with its source")
+
+	# Test Script Engine instances filter LineEdit
+	check(engine_tab._filter != null, "Script Engine instances filter LineEdit is resolved")
+	var unfiltered_count: int = engine_tab._instances_list.item_count
+	engine_tab._filter.text = "VMQ01"
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 1,
+			"filtering by 'VMQ01' matches VMQ01 instance")
+	engine_tab._select_instance(0)
+	check(engine_tab._selected_key == vmq01, "selecting index 0 from filtered list selects the filtered quest")
+	engine_tab._filter.text = "NonExistentScriptNameXYZ"
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 0, "non-matching filter yields 0 instances")
+
+	# Search by script ID (hex formatted with 0x and partial)
+	var script_form_id: int = int(engine_tab._instances[0]["script_form_id"])
+	engine_tab._filter.text = "0x%08X" % script_form_id
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 1, "filtering by script ID with '0x' matches instance")
+	engine_tab._filter.text = "%06X" % (script_form_id & 0xFFFFFF)
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 1, "filtering by partial hex script ID matches instance")
+
+	# Test arbitrary partial hex like '0x005' handles references safely without crashing
+	engine_tab._filter.text = "0x005"
+	engine_tab._refresh()
+
+	engine_tab._filter.text = ""
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == unfiltered_count, "clearing filter restores all instances")
+
 	QuestServer.set_objective_displayed(vmq01, vmq01.objectives[0].index, false)
 	tabs.queue_free()
 

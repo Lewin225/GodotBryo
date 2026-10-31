@@ -3,10 +3,11 @@ extends Control
 ## Scene-authored runtime scripting workbench. Reads ScriptServer's debug API
 ## (instances, usage, console) rather than its internal state.
 
-@onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Instances
+@onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Left/Instances
+@onready var _filter: LineEdit = get_node_or_null("Margin/VBox/VSplit/HSplit/Left/LineEdit") if has_node("Margin/VBox/VSplit/HSplit/Left/LineEdit") else get_node_or_null("Margin/VBox/VSplit/HSplit/Left/Filter")
 @onready var _usage: RichTextLabel = $Margin/VBox/Usage
 @onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
-@onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Locals
+@onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/ScrollContainer/Locals
 @onready var _source: CodeEdit = $Margin/VBox/VSplit/HSplit/Right/Source
 @onready var _line: LineEdit = $Margin/VBox/ConsoleRow/Line
 @onready var _run: Button = $Margin/VBox/ConsoleRow/Run
@@ -17,6 +18,7 @@ extends Control
 
 var _engine: Node
 var _instances: Array = []
+var _filtered_instances: Array = []
 var _selected_reference: EsmReference = null
 ## The selected entry's reference or, for a quest script, its QuestBase.
 var _selected_key: Object = null
@@ -67,6 +69,10 @@ func _ready() -> void:
 	_line.text_submitted.connect(func(_text: String) -> void: _run_line())
 	_line.gui_input.connect(_on_line_gui_input)
 	_line.text_changed.connect(_on_line_text_changed)
+
+	if _filter != null:
+		_filter.clear_button_enabled = true
+		_filter.text_changed.connect(func(_new_text: String) -> void: _refresh())
 
 	_instances_list.item_selected.connect(_select_instance)
 	_refresh()
@@ -311,8 +317,28 @@ func _refresh() -> void:
 		_usage.text = "ScriptServer not found"
 		return
 	_instances = _engine.get_debug_instances()
+	_filtered_instances.clear()
 	_instances_list.clear()
+	var needle := _filter.text.strip_edges().to_lower() if _filter != null else ""
 	for entry in _instances:
+		if not needle.is_empty():
+			var name_str := String(entry.get("name", "")).to_lower()
+			var script_str := String(entry.get("script_name", "")).to_lower()
+			var script_form_id: int = int(entry.get("script_form_id", 0))
+			var hex_str := "%08x" % script_form_id
+			var raw_hex := needle.trim_prefix("0x")
+			var id_match: bool = (not raw_hex.is_empty() and hex_str.contains(raw_hex)) or ("0x" + hex_str).contains(needle)
+			var quest = entry.get("quest")
+			if not id_match and quest != null and "form_id" in quest:
+				var q_hex := "%08x" % int(quest.form_id)
+				id_match = (not raw_hex.is_empty() and q_hex.contains(raw_hex)) or ("0x" + q_hex).contains(needle)
+			var ref = entry.get("reference")
+			if not id_match and ref != null and "base_form_id" in ref and ref.base_form_id != 0:
+				var r_hex := "%08x" % int(ref.base_form_id)
+				id_match = (not raw_hex.is_empty() and r_hex.contains(raw_hex)) or ("0x" + r_hex).contains(needle)
+			if not name_str.contains(needle) and not script_str.contains(needle) and not id_match:
+				continue
+		_filtered_instances.append(entry)
 		var state := ""
 		if entry["quest"] != null:
 			state = "  (quest)" if entry["loaded"] else "  (quest, stopped)"
@@ -328,10 +354,11 @@ func _refresh() -> void:
 
 
 func _select_instance(index: int) -> void:
-	if index < 0 or index >= _instances.size():
+	if index < 0 or index >= _filtered_instances.size():
 		return
-	_selected_key = _entry_key(_instances[index])
-	_selected_reference = _instances[index]["reference"]
+	var entry: Dictionary = _filtered_instances[index]
+	_selected_key = _entry_key(entry)
+	_selected_reference = entry["reference"]
 	_show_selected()
 
 
@@ -339,6 +366,8 @@ func _select_instance(index: int) -> void:
 func select_quest(quest: QuestBase) -> void:
 	_selected_key = quest
 	_selected_reference = null
+	if _filter != null and not _filter.text.is_empty():
+		_filter.text = ""
 	_refresh()
 	_show_selected()
 
