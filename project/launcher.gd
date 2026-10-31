@@ -10,12 +10,15 @@ extends MarginContainer
 ## load it.
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
+const GameScript := preload("res://game.gd")
 const GAME_SCENE := "res://game.tscn"
 
 @onready var _data_label: Label = %DataLabel
 @onready var _status_label: Label = %StatusLabel
 @onready var _choose_button: Button = %ChooseButton
 @onready var _new_game_button: Button = %NewGameButton
+@onready var _custom_start_button: Button = %CustomStartButton
+@onready var _startup_script_edit: CodeEdit = %StartupScriptEdit
 @onready var _quit_button: Button = %QuitButton
 @onready var _esm_dialog: FileDialog = %EsmDialog
 
@@ -26,9 +29,12 @@ func _ready() -> void:
 	_loaded_data_dir = GameDataSettings.get_data_dir()
 	_choose_button.pressed.connect(_on_choose_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
+	_custom_start_button.pressed.connect(_on_custom_start_pressed)
 	_quit_button.pressed.connect(get_tree().quit)
 	_esm_dialog.file_selected.connect(_on_esm_selected)
 	_new_game_button.disabled = true
+	_custom_start_button.disabled = true
+	_startup_script_edit.editable = false
 	_show_configuration()
 	if _loaded_data_dir.is_empty():
 		return
@@ -54,6 +60,8 @@ func _show_configuration() -> void:
 func _on_esm_ready() -> void:
 	_status_label.text = "Ready."
 	_new_game_button.disabled = false
+	_custom_start_button.disabled = false
+	_startup_script_edit.editable = true
 
 
 func _on_esm_failed(message: String) -> void:
@@ -83,4 +91,14 @@ func _on_esm_selected(path: String) -> void:
 
 
 func _on_new_game_pressed() -> void:
+	GameScript.startup_script = ""
+	get_tree().change_scene_to_file(GAME_SCENE)
+
+
+func _on_custom_start_pressed() -> void:
+	var script := _startup_script_edit.text.strip_edges()
+	if script.is_empty():
+		_status_label.text = "Enter a startup script."
+		return
+	GameScript.startup_script = script
 	get_tree().change_scene_to_file(GAME_SCENE)
