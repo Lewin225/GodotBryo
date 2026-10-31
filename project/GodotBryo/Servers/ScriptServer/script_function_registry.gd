@@ -288,11 +288,14 @@ func _register_defaults() -> void:
 	register("SetObjectiveCompleted", func(a: Array, _c):
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
+	# TODO: Delete "Caps001" hardcoded value
 	# Inventory of the calling reference (actor, creature or container). Items
 	# are named by base editor ID; a leveled list resolves when added.
 	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
+		if (str(a[0]).to_lower() == "caps001"):
+			return 20000
 		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
 	# `AddItem Item Count [HideMessage]`.
 	register("AddItem", func(a: Array, ctx: ScriptExecutionContext):
@@ -469,11 +472,48 @@ func _register_defaults() -> void:
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_CHARGEN, {"count": int(_number(a, 0)) if a.size() > 0 else 3})
 		return 0)
+	# `IsPlayerTagSkill Skill`: 1 if the skill is tagged on the player.
+	register("IsPlayerTagSkill", func(a: Array, ctx: ScriptExecutionContext):
+		var target := ctx.player_reference if ctx.player_reference != null else ctx.calling_reference
+		if target == null or a.is_empty():
+			return 0
+		var code := _actor_value_code(a, 0)
+		var tags: Array = target.get_meta("tag_skills", [])
+		return 1 if tags.has(code) else 0)
 	# `ShowTraitMenu` opens the trait menu (1084, Character Creation Traits).
 	register("ShowTraitMenu", func(_a, _c):
 		if script_server != null:
 			script_server.open_menu(script_server.MENU_TRAITS)
 		return 0)
+	# `[Actor.]AddPerk Perk [Rank]`: gives the perk/trait to the actor.
+	register("AddPerk", func(a: Array, ctx: ScriptExecutionContext):
+		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+		if target == null or a.is_empty():
+			return 0
+		var perk_name := str(a[0]).strip_edges()
+		var perks: Array = target.get_meta("perks", [])
+		if not perks.has(perk_name):
+			perks.append(perk_name)
+			target.set_meta("perks", perks)
+		return 1)
+	# `[Actor.]HasPerk Perk [Rank]`: 1 if the actor has the perk/trait.
+	register("HasPerk", func(a: Array, ctx: ScriptExecutionContext):
+		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+		if target == null or a.is_empty():
+			return 0
+		var perk_name := str(a[0]).strip_edges()
+		var perks: Array = target.get_meta("perks", [])
+		return 1 if perks.has(perk_name) else 0)
+	# `[Actor.]RemovePerk Perk`: removes the perk/trait from the actor.
+	register("RemovePerk", func(a: Array, ctx: ScriptExecutionContext):
+		var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+		if target == null or a.is_empty():
+			return 0
+		var perk_name := str(a[0]).strip_edges()
+		var perks: Array = target.get_meta("perks", [])
+		perks.erase(perk_name)
+		target.set_meta("perks", perks)
+		return 1)
 	# `ShowRaceMenu` opens the race menu (1036).
 	register("ShowRaceMenu", func(_a: Array, _c):
 		if script_server != null:
@@ -870,6 +910,7 @@ func _register_defaults() -> void:
 			return get_button_pressed_handler.call(ctx)
 		return -1)
 
+
 ## Numeric argument `index`, or 0 when absent or not a number.
 static func _number(args: Array, index: int) -> float:
 	if index < args.size() and (args[index] is int or args[index] is float):
@@ -958,9 +999,11 @@ static func _remove_items(inventory: Inventory, base_form_id: int, count: int) -
 			removed += take
 	return removed
 
-## The calling reference's actor values, or null when it is not an actor.
+## The calling reference's actor values, or the player's when called with no
+## explicit calling reference; null when neither is an actor.
 static func _actor_values(ctx: ScriptExecutionContext) -> ActorValues:
-	return ctx.calling_reference.get_actor_values() if ctx.calling_reference != null else null
+	var target: EsmReference = ctx.calling_reference if ctx.calling_reference != null else ctx.player_reference
+	return target.get_actor_values() if target != null else null
 
 ## `method` (get_current, get_base, get_permanent) of the actor value named by
 ## the first argument, on the calling actor; 0 for a non-actor.

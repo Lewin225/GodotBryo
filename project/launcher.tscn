@@ -61,10 +61,31 @@ text = "Quit"
 
 [node name="StartupScriptEdit" type="CodeEdit" parent="Panel"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 110)
+custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
-text = "CompleteAllObjectives VCG01
+text = "; Skips the Doc Mitchell tutorial intro and completes VCG01
+CompleteAllObjectives VCG01
 SetStage VCG01 200
+
+; SPECIAL attributes (40 points total)
+player.SetAV Strength 6
+player.SetAV Perception 5
+player.SetAV Endurance 6
+player.SetAV Charisma 4
+player.SetAV Intelligence 7
+player.SetAV Agility 6
+player.SetAV Luck 6
+
+; Skills (tag skill bonuses: +15 each)
+player.ModAV Guns 15
+player.ModAV Lockpick 15
+player.ModAV Speech 15
+
+; Traits (perks)
+player.AddPerk FourEyes
+player.AddPerk WildWasteland
+
+; Destination
 COC TestTraps"
 placeholder_text = "Startup script (GECK / console commands)"
 gutters_draw_line_numbers = true
