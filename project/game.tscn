@@ -151,6 +151,22 @@ func _on_show_background_on_tab_scren_toggled(toggled_on: bool) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
+[sub_resource type="Theme" id="Theme_7knny"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7knny"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.101960786, 0.101960786, 0.101960786, 1)
+border_width_bottom = 2
+border_color = Color(0, 0, 0, 0.3)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 5
+
 [node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
@@ -298,7 +314,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_ggi80")
-current_tab = 9
 drag_to_rearrange_enabled = true
 deselect_enabled = true
 tab_0/title = "Script Engine"
@@ -365,10 +380,21 @@ layout_mode = 2
 
 [node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1298307156]
 layout_mode = 2
+split_offsets = PackedInt32Array(40)
+split_offset = 40
 
-[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=668789071]
-custom_minimum_size = Vector2(220, 0)
+[node name="Left" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=949132900]
+custom_minimum_size = Vector2(200, 0)
+custom_maximum_size = Vector2(800, -1)
 layout_mode = 2
+
+[node name="LineEdit" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=1376486747]
+layout_mode = 2
+placeholder_text = "Filter"
+
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=668789071]
+layout_mode = 2
+size_flags_vertical = 3
 
 [node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=1731338449]
 layout_mode = 2
@@ -381,9 +407,15 @@ bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=464048584]
-custom_minimum_size = Vector2(0, 70)
+[node name="ScrollContainer" type="ScrollContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1681806379]
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
+
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right/ScrollContainer" unique_id=464048584]
+custom_minimum_size = Vector2(200, 70)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
@@ -391,6 +423,9 @@ scroll_active = false
 [node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
 layout_mode = 2
 size_flags_vertical = 3
+theme = SubResource("Theme_7knny")
+theme_override_colors/font_readonly_color = Color(0.8745098, 0.8745098, 0.8745098, 1)
+theme_override_styles/read_only = SubResource("StyleBoxFlat_7knny")
 
 [node name="SuggestionsPanel" type="PanelContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=194857299]
 visible = false
@@ -1815,6 +1850,7 @@ metadata/_tab_index = 8
 metadata/_tab_name = "Time and Date"
 
 [node name="Editing" type="Control" parent="Debug Tools/TabContainer" unique_id=2147483010]
+visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 script = ExtResource("17_editingdebug")

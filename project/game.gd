@@ -2,18 +2,21 @@ extends Node3D
 
 ## The runtime entry point. Wires the scene's servers and nodes, gives the
 ## player controller the player's reference to possess, and starts the game by
-## moving that reference to START_MARKER_EDITOR_ID (or, without it,
-## DEFAULT_CELL_EDITOR_ID's COC marker).
+## running the startup script through ScriptServer.
 ##
 ## Loading follows the possessed reference (TransitionCoordinator). Game reacts
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
 ## weather and sky, and the debug HUD.
 
-const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
-## Where a new game puts the player: VCG00 stage 0 does
-## `player.moveto VCG01PlayerStartMarkerREF`, the bed in Doc Mitchell's house.
-const START_MARKER_EDITOR_ID := "VCG01PlayerStartMarkerREF"
+## Script run when starting a new game: sets up VCG01 and moves the player to
+## the bed in Doc Mitchell's house (reproducing VCG00 stage 0 / stage 100).
+const DEFAULT_STARTUP_SCRIPT := """SetStage VCG01 0
+SetActiveQuest VCG01
+player.MoveTo VCG01PlayerStartMarkerREF"""
 const GameDataConfigScript := preload("res://game_data_config.gd")
+
+## When non-empty, runs in ScriptServer on startup in place of DEFAULT_STARTUP_SCRIPT.
+static var startup_script := ""
 
 
 ## Scene wiring. Exported rather than looked up by $Path in _ready(): a node
@@ -101,21 +104,9 @@ func _ready() -> void:
 
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
-	# VCG00, the cemetery intro, is not played: its stage 0 moves the player to
-	# VCG01PlayerStartMarkerREF and its last stage (100) ends with
-	# `SetStage VCG01 0`, which starts Doc Mitchell's opening; both are done
-	# here. The player starts with VCG01 (Ain't That a Kick in the Head) as the
-	# active quest.
-	var vcg01 := EsmServer.find_quest_by_editor_id("VCG01")
-	QuestServer.set_stage(vcg01, 0)
-	QuestServer.active_quest = vcg01
-	var marker := EsmServer.find_reference_by_editor_id(START_MARKER_EDITOR_ID)
-	if marker != null and player.possessed != null:
-		ScriptServer.move_reference(player.possessed, marker.current_space_form_id, marker.position, marker.rotation)
-		return
-	var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
-	if start is Dictionary:
-		push_error("game.gd: " + String(start["error"]))
+	var script := startup_script if not startup_script.is_empty() else DEFAULT_STARTUP_SCRIPT
+	startup_script = ""
+	ScriptServer.run_result_script(script, player.possessed)
 
 func _on_entered_interior(cell_form_id: int) -> void:
 	_set_exterior_environment(false)
