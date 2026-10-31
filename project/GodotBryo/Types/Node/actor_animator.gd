@@ -5,7 +5,10 @@ extends Node
 ## Loads an actor's locomotion KFs, binds them to its skeleton and plays the
 ## clip that matches how its controller moves it (the actor node's `motion`). A child of the actor node (esm_actor_node.tscn). NifServer extracts
 ## and caches the KFs; this only retargets their tracks to this actor's
-## Skeleton3D. The AnimationPlayer it drives lives under the actor's Body, the
+## Skeleton3D. A locomotion clip is bound once per skeleton (its path below
+## Body and its bone names) and shared by every actor with that skeleton; an
+## idle clip is bound per actor, since it gains hold tracks from that actor's
+## pose. The AnimationPlayer it drives lives under the actor's Body, the
 ## root its track paths are relative to.
 ##
 ## `play_idle` plays an IDLE's KF instead of locomotion until `stop_idle`.
@@ -74,6 +77,15 @@ var _idle_from_locomotion := false
 ## handed over to an idle; empty while locomotion plays.
 var _locomotion_root_pose: Dictionary = {}
 
+## Locomotion KFs below each search path's locomotion folder, by that folder:
+## the same for every actor sharing the search path.
+static var _locomotion_paths: Dictionary = {}
+## Bound locomotion clips shared by every actor with the same skeleton:
+## raw Animation (NifServer's) -> {skeleton key -> bound Animation, or null when
+## no track names one of its bones}. Locomotion clips are not changed after
+## binding; idle clips are, so they are bound per actor and not kept here.
+static var _bound_clips: Dictionary = {}
+
 ## Finds every locomotion KF below `search_paths` (the base's animation search
 ## paths), requests them from NifServer, binds each to `skeleton` and plays the
 ## idle. The AnimationPlayer exists as soon as this is called, so the actor has
@@ -91,10 +103,9 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 		return
 	var paths := PackedStringArray()
 	for search_path in search_paths:
-		for path in archive.list_files_with_prefix(String(search_path) + LOCOMOTION_SUBDIRECTORY):
-			var canonical := String(path).replace("\\", "/").to_lower()
-			if canonical.ends_with(".kf") and not paths.has(canonical):
-				paths.append(canonical)
+		for path in _locomotion_kfs(archive, String(search_path) + LOCOMOTION_SUBDIRECTORY):
+			if not paths.has(path):
+				paths.append(path)
 	paths.sort()
 	if paths.is_empty():
 		load_failed.emit("no locomotion KFs found below the animation search paths")
@@ -115,6 +126,18 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 		nif_server.request_kf(path, self, _on_kf_library_delivered.bind(generation, path))
 	_requests_being_submitted = false
 	_schedule_binding()
+
+## The KFs below `folder`, canonical paths, listed once per folder.
+static func _locomotion_kfs(archive: Node, folder: String) -> PackedStringArray:
+	if _locomotion_paths.has(folder):
+		return _locomotion_paths[folder]
+	var paths := PackedStringArray()
+	for path in archive.list_files_with_prefix(folder):
+		var canonical := String(path).replace("\\", "/").to_lower()
+		if canonical.ends_with(".kf"):
+			paths.append(canonical)
+	_locomotion_paths[folder] = paths
+	return paths
 
 ## Plays `idle`'s KF in place of locomotion, its root tracks kept; emits
 ## idle_finished when a once-only clip ends. A null idle, or one without a KF,
@@ -443,12 +466,13 @@ func _ensure_player() -> AnimationPlayer:
 func _bind_library(library: AnimationLibrary, source_path: String, raw_library: AnimationLibrary) -> void:
 	var sequence_index := 0
 	for raw_name in raw_library.get_animation_list():
-		var animation := _bind_animation(raw_library.get_animation(raw_name))
+		var animation := _bind_shared_animation(raw_library.get_animation(raw_name))
 		if animation != null:
 			var clip_name := _clip_name(source_path, sequence_index)
 			while library.has_animation(clip_name):
 				clip_name += "_"
-			animation.set_meta("nif_source_path", source_path)
+			if not animation.has_meta("nif_source_path"):
+				animation.set_meta("nif_source_path", source_path)
 			library.add_animation(clip_name, animation)
 		sequence_index += 1
 
@@ -459,6 +483,28 @@ func _clip_name(source_path: String, sequence_index: int) -> String:
 	var clip_name := relative.replace("/", "__")
 	return clip_name if sequence_index == 0 else "%s__%d" % [clip_name, sequence_index]
 
+## `raw_animation` bound to this actor's skeleton with its root tracks off, the
+## copy every actor with the same skeleton shares; null as _bind_animation.
+func _bind_shared_animation(raw_animation: Animation) -> Animation:
+	if raw_animation == null:
+		return null
+	var key := _skeleton_key()
+	var bound: Dictionary = _bound_clips.get(raw_animation, {})
+	if bound.has(key):
+		return bound[key]
+	var animation := _bind_animation(raw_animation)
+	bound[key] = animation
+	_bound_clips[raw_animation] = bound
+	return animation
+
+## What a bound clip depends on: the skeleton's path below Body and its bone
+## names.
+func _skeleton_key() -> String:
+	var names := PackedStringArray()
+	for bone in _skeleton.get_bone_count():
+		names.append(_skeleton.get_bone_name(bone))
+	return "%s|%s" % [_body.get_path_to(_skeleton), "|".join(names)]
+
 ## A copy of `raw_animation` with its tracks retargeted to this actor's
 ## skeleton; null when no track names one of its bones. Root bone tracks are
 ## turned off unless `keep_root` (idles).
@@ -467,6 +513,7 @@ func _bind_animation(raw_animation: Animation, keep_root := false) -> Animation:
 		return null
 	var animation := raw_animation.duplicate(true) as Animation
 	var skeleton_path := _body.get_path_to(_skeleton)
+	var non_accum := NifNamesScript.escape("Bip01 NonAccum")
 	var tracks := 0
 	for track_index in animation.get_track_count():
 		var authored_target := String(animation.track_get_path(track_index))
@@ -475,7 +522,7 @@ func _bind_animation(raw_animation: Animation, keep_root := false) -> Animation:
 			continue
 		# Root motion must later drive the controller, not deform the in-place
 		# visual rig. The authored non-accumulation helper has the same role.
-		if not keep_root and (authored_target == "Bip01" or authored_target == NifNamesScript.escape("Bip01 NonAccum")):
+		if not keep_root and (authored_target == "Bip01" or authored_target == non_accum):
 			animation.track_set_enabled(track_index, false)
 			continue
 		animation.track_set_path(track_index, NodePath("%s:%s" % [skeleton_path, authored_target]))
