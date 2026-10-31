@@ -42,7 +42,7 @@ func _ready() -> void:
 	var delay: float = quests.get_script_delay(generic)
 	check(delay > 0.0, "Generic has a script delay (%.2f s)" % delay)
 	generic_vars.set_local("Addicted", 99)
-	quests._elapsed[generic.form_id] = 0.0
+	quests._next_run[generic.form_id] = quests._clock + delay
 	quests._process(delay * 0.5)
 	check(generic_vars.get_local("Addicted") == 99, "the quest script does not run before its delay")
 	quests._process(delay * 0.6)

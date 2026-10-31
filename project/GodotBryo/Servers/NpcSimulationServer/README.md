@@ -282,9 +282,14 @@ actor's script package.
 every member once per its period, `ceil(actors / (period * fps))` a frame:
 leased actors every `leased_sweep_seconds` (0.1 s; their `NpcController`
 moves them every frame toward the target this sets, and writes their position
-to the reference every 0.1 s and on arrival), unleased ones every
-`unleased_sweep_seconds` (1 s), and `LowLevelTravel` moves each unleased actor
-on its turn by the time since its last.
+to the reference every 0.1 s and on arrival), busy unleased ones (a move
+target, or a FOLLOW, TRAVEL or DIALOGUE package not yet completed) every
+`unleased_sweep_seconds` (1 s), and idle unleased ones every
+`evaluation_seconds` (10 s), each turn evaluating them, since their package
+only changes on evaluation. An actor is filed again after each run and each
+package change. `LowLevelTravel` moves each unleased actor on its turn by the
+time since its last. Outside Goodsprings about 57 of 3,400 off-screen actors were
+visited per physics tick, of which about one was moving.
 All route work runs on the server's own thread (`worker`,
 `simulation_worker.gd`), one job at a time, never on `WorkerThreadPool`: the
 thread keeps two queues and takes every on-screen job (an `NpcController`'s

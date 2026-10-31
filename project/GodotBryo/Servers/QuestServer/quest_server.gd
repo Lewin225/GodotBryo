@@ -14,7 +14,10 @@ signal active_quest_changed(quest: QuestBase)
 const DEFAULT_SCRIPT_DELAY := 5.0
 
 var _states: Dictionary = {} # QUST FormID -> QuestState
-var _elapsed: Dictionary = {} # QUST FormID -> seconds since its script last ran
+## Seconds of game time this server has processed; quest script runs are
+## scheduled against it.
+var _clock := 0.0
+var _next_run: Dictionary = {} # running QUST FormID -> _clock time its script runs next
 var _warned_objectives: Dictionary = {} # "QUST FormID:index" -> true, one warning each
 ## Items whose quest-item state a script set (SetQuestObject), by base FormID:
 ## base FormID -> bool. Items not listed use their authored record flag.
@@ -60,13 +63,13 @@ func start_quest(quest: EsmBase) -> void:
 	var state := get_quest_state(quest)
 	if state != null and not state.running:
 		state.running = true
-		_elapsed[quest.form_id] = 0.0
+		_next_run[quest.form_id] = _clock + get_script_delay(quest)
 
 func stop_quest(quest: EsmBase) -> void:
 	var state := get_quest_state(quest)
 	if state != null:
 		state.running = false
-		_elapsed.erase(quest.form_id)
+		_next_run.erase(quest.form_id)
 
 func is_running(quest: EsmBase) -> bool:
 	var state := get_quest_state(quest)
@@ -119,8 +122,12 @@ func get_script_delay(quest: EsmBase) -> float:
 
 func set_script_delay(quest: EsmBase, seconds: float) -> void:
 	var state := get_quest_state(quest)
-	if state != null:
-		state.script_delay = maxf(seconds, 0.0)
+	if state == null:
+		return
+	var old_delay := get_script_delay(quest)
+	state.script_delay = maxf(seconds, 0.0)
+	if _next_run.has(quest.form_id):
+		_next_run[quest.form_id] += get_script_delay(quest) - old_delay
 
 func get_stage(quest: EsmBase) -> int:
 	var state := get_quest_state(quest)
@@ -243,14 +250,13 @@ func _objective_state(quest: EsmBase, index: int) -> QuestState:
 
 ## Runs each running quest's script GameMode block once its delay has passed.
 func _process(delta: float) -> void:
-	for form_id: int in _elapsed.keys():
-		var state: QuestState = _states.get(form_id)
-		if state == null or not state.running:
+	_clock += delta
+	for form_id: int in _next_run.keys():
+		# A script run earlier in this loop may have stopped this quest.
+		if _next_run.get(form_id, INF) > _clock:
 			continue
-		_elapsed[form_id] += delta
-		if _elapsed[form_id] < get_script_delay(state.quest):
-			continue
-		_elapsed[form_id] = 0.0
+		var state: QuestState = _states[form_id]
+		_next_run[form_id] = _clock + get_script_delay(state.quest)
 		if ScriptServer.is_menu_mode():
 			ScriptServer.run_quest_block(state.quest, "MenuMode", ScriptServer.get_menu())
 		else:

@@ -13,11 +13,14 @@ extends Node
 ## set. An actor is evaluated on its sweep turn every `evaluation_seconds`, and
 ## at once on EvaluatePackage and when its script package changes.
 ##
-## Budget (README "Tick rates"): actors run in two round-robin sweeps, each
+## Budget (README "Tick rates"): actors run in three round-robin sweeps, each
 ## visiting every member once per its period however many there are: leased
-## actors every `leased_sweep_seconds` (10 times a second), the rest every
-## `unleased_sweep_seconds`, and LowLevelTravel moves each unleased actor on its
-## turn by the time since its last.
+## actors every `leased_sweep_seconds` (10 times a second); unleased actors
+## that are busy (a move target, or an implemented package not yet completed)
+## every `unleased_sweep_seconds`; and the other unleased actors, whose package
+## only changes when they are evaluated, every `evaluation_seconds`, each turn
+## evaluating them. LowLevelTravel moves each unleased actor on its turn by the
+## time since its last. An actor is filed again after each run and evaluation.
 ##
 ## Reaching a target in another space: NpcSimulationServer plans the sequence
 ## of load doors on its own thread (`request_door_sequence`, doors only), and
@@ -69,7 +72,7 @@ const RETARGET_FRACTION := 0.25
 	set(value):
 		leased_sweep_seconds = value
 		_leased.period = value
-## Every unleased actor with a package runs once per this many seconds.
+## Every busy unleased actor runs once per this many seconds.
 @export var unleased_sweep_seconds := 1.0:
 	set(value):
 		unleased_sweep_seconds = value
@@ -78,11 +81,16 @@ const RETARGET_FRACTION := 0.25
 ## seconds, unless the target changes space first.
 @export var plan_retry_seconds := 10.0
 ## Each actor's package is chosen again this often (GECK: about every 10 s).
-@export var evaluation_seconds := 10.0
+## Idle unleased actors run once per this many seconds.
+@export var evaluation_seconds := 10.0:
+	set(value):
+		evaluation_seconds = value
+		_unleased_idle.period = value
 
-## Leased and unleased actors with a package.
+## Leased actors, busy unleased actors and idle unleased actors.
 var _leased := Sweep.new(0.1)
 var _unleased := Sweep.new(1.0)
+var _unleased_idle := Sweep.new(10.0)
 ## ActorReference -> Time.get_ticks_msec() of its last run.
 var _last_run_msec: Dictionary = {}
 ## ActorReference -> its simulation_mode_changed handler.
@@ -105,11 +113,10 @@ var _seated_by_package: Dictionary = {}
 ## Messages already warned, once each.
 var _warned: Dictionary = {}
 
-var travel: LowLevelTravel:
-	get:
-		return get_parent().get_node_or_null(^"LowLevelTravel") as LowLevelTravel
+var travel: LowLevelTravel
 
 func _ready() -> void:
+	travel = get_parent().low_level_travel
 	get_parent().door_sequence_ready.connect(_on_door_sequence_ready)
 
 ## Has PackageRunner choose and run `actor`'s packages from now on.
@@ -132,6 +139,7 @@ func untrack(actor: ActorReference) -> void:
 	_drop_plan(actor)
 	_leased.remove(actor)
 	_unleased.remove(actor)
+	_unleased_idle.remove(actor)
 	_last_run_msec.erase(actor)
 	_next_evaluation_msec.erase(actor)
 	_travels.erase(actor)
@@ -202,9 +210,18 @@ func _physics_process(_delta: float) -> void:
 	for actor in _leased.take():
 		_run(actor)
 	for actor in _unleased.take():
-		var elapsed := _seconds_since_last_run(actor)
-		_run(actor)
-		travel.advance(actor, elapsed)
+		_run_unleased(actor)
+	for actor in _unleased_idle.take():
+		_next_evaluation_msec[actor] = 0
+		_run_unleased(actor)
+
+## One run of an unleased actor, then LowLevelTravel moves it by the time since
+## its last run.
+func _run_unleased(actor: ActorReference) -> void:
+	var elapsed := _seconds_since_last_run(actor)
+	_run(actor)
+	travel.advance(actor, elapsed)
+	_file(actor)
 
 ## One run of an actor's package, choosing it first when its evaluation is due.
 func _run(actor: ActorReference) -> void:
@@ -245,6 +262,7 @@ func _evaluate(actor: ActorReference) -> void:
 	actor.clear_move_target()
 	if chosen != null:
 		_begin_package(actor, chosen)
+	_file(actor)
 
 ## A package starts: a Location 1 of Near current location takes the actor's
 ## position now, and its On Begin runs.
@@ -533,14 +551,37 @@ func _target_1(actor: ActorReference, package: PackageBase) -> EsmReference:
 			return EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id)
 	return null
 
-## Files an actor in the leased or the unleased sweep.
+## Files an actor in the leased, the busy unleased or the idle unleased sweep.
 func _file(actor: ActorReference) -> void:
+	if not _mode_handlers.has(actor):
+		return
 	if actor.simulation_mode == ActorReference.SimulationMode.PHYSICAL_LEASED:
 		_unleased.remove(actor)
+		_unleased_idle.remove(actor)
 		_leased.add(actor)
 		return
 	_leased.remove(actor)
-	_unleased.add(actor)
+	if _is_busy(actor):
+		_unleased_idle.remove(actor)
+		_unleased.add(actor)
+		return
+	_unleased.remove(actor)
+	_unleased_idle.add(actor)
+
+## Whether `actor` has work between evaluations: a move target, or an
+## implemented package not yet completed.
+func _is_busy(actor: ActorReference) -> bool:
+	if actor.is_disabled():
+		return false
+	if actor.has_move_target:
+		return true
+	var package := actor.active_package
+	if package == null or actor.package_completed:
+		return false
+	match package.package_type:
+		PackageBase.PackageType.FOLLOW, PackageBase.PackageType.TRAVEL, PackageBase.PackageType.DIALOGUE:
+			return true
+	return false
 
 func _on_simulation_mode_changed(actor: ActorReference) -> void:
 	_last_run_msec[actor] = Time.get_ticks_msec()

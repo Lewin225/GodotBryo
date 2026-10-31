@@ -55,7 +55,8 @@ and is what a save stores for quests.
 
 **Running quests.** `begin_game()` starts every quest whose DATA flags mark it start
 game enabled (281 in FalloutNV.esm); `game.gd` calls it at startup. Each running quest's
-script `GameMode` block runs every `get_script_delay()` seconds, its `MenuMode` block for
+script `GameMode` block runs every `get_script_delay()` seconds of game time (each running
+quest keeps the time its script runs next, so a frame only compares those times), its `MenuMode` block for
 the open menu instead while the game is in menu mode (`ScriptServer.enter_menu`): the
 `SetQuestDelay` override, else the QUST DATA delay, else `DEFAULT_SCRIPT_DELAY` (5 s) when
 that is 0. That quest scripts keep their delay in menu mode, rather than running every
@@ -88,6 +89,10 @@ are parsed but not used.
 - Quest-level conditions (DialogueServer applies them to the quest's dialogue).
 - The subject of log entry conditions (the player here) is not verified.
 - The 5 s default delay is the engine's recalled default, not verified in play.
+- QUST DATA flag 0x10 (xEdit: Default Script Processing Delay) is not used; the delay is
+  DATA's float when above 0, else 5 s. In FalloutNV.esm 96 quests have the flag clear and a
+  delay of 0, and 25 have it set with a delay above 0, so the flag and the float disagree on
+  121 quests. Which one the engine follows is not verified.
 - Saving and loading quest state.
 
 ## Tests
