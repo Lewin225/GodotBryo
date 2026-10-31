@@ -59,7 +59,8 @@ const TEMPLATE_USE_SCRIPT := 0x200
 @export_custom(PROPERTY_HINT_FLAGS, "Traits:1,Stats:2,Factions:4,Actor Effect List:8,AI Data:16,AI Packages:32,Model/Animation:64,Base Data:128,Inventory:256,Script:512", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var template_flags: int = 0
 ## TPLT: the record parts come from: an NpcBase or LeveledNpcBase on an NPC_,
 ## a CreatureBase or LeveledCreatureBase on a CREA. Read; used by
-## template_source() (leveled lists are not followed).
+## template_source(), which continues into ActorReference.leveled_template at
+## a leveled list.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var template_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var template: EsmBase
 
@@ -147,15 +148,34 @@ const TEMPLATE_USE_SCRIPT := 0x200
 
 ## The actor record that supplies `record`'s part named by the template flag
 ## `flag`: `record` itself, or the template it takes that part from, followed
-## while each takes it from its template. A leveled-list template is not
-## followed.
-static func template_source(record: EsmBase, flag: int) -> ActorBase:
+## while each takes it from its template. At a leveled-list template the chain
+## continues into `leveled_choice` (ActorReference.template_source passes its
+## choice); without one it stops at the record naming the list.
+static func template_source(record: EsmBase, flag: int, leveled_choice: ActorBase = null) -> ActorBase:
 	var actor := record as ActorBase
 	for _depth in 8:
-		if actor == null or (actor.template_flags & flag) == 0 or not actor.template is ActorBase:
+		if actor == null or (actor.template_flags & flag) == 0:
 			return actor
-		actor = actor.template as ActorBase
+		if actor.template is ActorBase:
+			actor = actor.template as ActorBase
+		elif actor.template is LeveledActorBase and leveled_choice != null:
+			actor = leveled_choice
+			leveled_choice = null
+		else:
+			return actor
 	return actor
+
+## The first leveled list (LVLN, LVLC) `record`'s TPLT chain reaches, whatever
+## its template flags; null when it reaches none.
+static func leveled_list_in_chain(record: EsmBase) -> LeveledActorBase:
+	var actor := record as ActorBase
+	for _depth in 8:
+		if actor == null:
+			return null
+		if actor.template is LeveledActorBase:
+			return actor.template as LeveledActorBase
+		actor = actor.template as ActorBase
+	return null
 
 ## SPECIAL attribute `index`: 0 Strength through 6 Luck.
 func get_attribute(index: int) -> int:

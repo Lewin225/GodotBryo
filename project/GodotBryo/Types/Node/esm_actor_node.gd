@@ -76,6 +76,13 @@ const TORSO_CAP_LAST := 213
 var motion: ActorMotion = null
 
 var _active_record: ActorBase = null
+## Where the actor's look comes from: the template its base takes traits from
+## (race, gender, head parts, hair, eyes, FaceGen), or the base itself
+## (ActorBase.template_source with Use Traits). A template chain that ends at
+## a leveled list stops at the NPC_ that names it.
+var _trait_record: ActorBase = null
+## Where its skeleton and animations come from (Use Model/Animation).
+var _model_record: ActorBase = null
 
 ## Messages already warned, so a failure every actor of a kind shares is
 ## reported once rather than flooding the debugger.
@@ -213,6 +220,8 @@ func _reference_changed() -> void:
 	if animator != null:
 		animator.cancel()
 	_active_record = null
+	_trait_record = null
+	_model_record = null
 	if not _rehydrating_reference:
 		_load_requested = false
 	_humanoid_visual_built = false
@@ -278,14 +287,32 @@ func load_actor() -> void:
 	_queue_rehydrate_and_build()
 
 
+## The record supplying `reference_base`'s part named by `flag`, through the
+## reference's leveled-list choice when the reference is an actor.
+func _template_source(reference_base: ActorBase, flag: int) -> ActorBase:
+	if reference is ActorReference:
+		return (reference as ActorReference).template_source(flag)
+	return ActorBase.template_source(reference_base, flag)
+
+
+## The record supplying `reference_base`'s skeleton and animations
+## (ActorReference.model_source when the reference is an actor).
+func _model_source(reference_base: ActorBase) -> ActorBase:
+	if reference is ActorReference:
+		return (reference as ActorReference).model_source()
+	return ActorBase.template_source(reference_base, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+
+
 func _start_visual_load(reference_base: ActorBase) -> void:
 	_cancel_visual_load()
 	_load_generation += 1
 	_loading = true
 	equipment.forget_body()
 	_active_record = reference_base
-	_is_female = reference_base.is_female()
-	_requested_assets = _requested_asset_set(reference_base)
+	_trait_record = _template_source(reference_base, ActorBase.TEMPLATE_USE_TRAITS)
+	_model_record = _model_source(reference_base)
+	_is_female = _trait_record.is_female()
+	_requested_assets = _requested_asset_set()
 	_delivered_trees.clear()
 	_load_failures.clear()
 	# The staging root is used to hold nodes before they become visible
@@ -308,12 +335,12 @@ func _start_visual_load(reference_base: ActorBase) -> void:
 		nif_server.request(String(asset.path), self, _on_nif_delivered.bind(generation, String(asset_key)), false)
 
 
-## The NIFs this actor is assembled from: its MODL skeleton and the parts its
-## base lists (ActorBase.get_model_parts).
-func _requested_asset_set(record: ActorBase) -> Dictionary:
+## The NIFs this actor is assembled from: the model record's MODL skeleton and
+## the parts the trait record lists (ActorBase.get_model_parts).
+func _requested_asset_set() -> Dictionary:
 	var assets := {}
-	_add_requested_asset(assets, "skeleton", record.model_path, true, "skeleton")
-	for part in record.get_model_parts(_is_female):
+	_add_requested_asset(assets, "skeleton", _model_record.model_path, true, "skeleton")
+	for part in _trait_record.get_model_parts(_is_female):
 		var extra := part.duplicate()
 		for key in ["key", "path", "required", "kind"]:
 			extra.erase(key)
@@ -494,7 +521,7 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 ## fetched alongside and the body waits for it too.
 func _request_face_gen(body: Node3D, generation: int) -> void:
 	var face_gen_server := get_tree().root.get_node_or_null("FaceGenServer")
-	var npc := _active_record as NpcBase
+	var npc := _trait_record as NpcBase
 	_skin = {}
 	if face_gen_server == null or npc == null:
 		_commit_staged_body(body, generation)
@@ -611,11 +638,11 @@ func _track_hair_meshes(body: Node) -> void:
 ## Temporary: PPLighting will get a proper shader with per-instance properties
 ## (hair colour among them), which tints without copying the material.
 func _apply_hair_color(body: Node) -> void:
-	if body == null or not (_active_record is NpcBase):
+	if body == null or not (_trait_record is NpcBase):
 		return
 	# HCLR is authored Gamebryo-linear RGB, as XEMI's colour is (see
 	# _apply_external_emittance). albedo_color is sRGB-facing.
-	var hair_color := (_active_record as NpcBase).hair_color.linear_to_srgb()
+	var hair_color := (_trait_record as NpcBase).hair_color.linear_to_srgb()
 	for child in body.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := child as MeshInstance3D
 		if mesh_instance.mesh == null:
@@ -746,7 +773,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
 	equipment.set_body(body, skeleton, _is_female)
 	facial_player.set_body(body)
-	animator.load_locomotion(_active_record.animation_search_paths(), body, skeleton)
+	animator.load_locomotion(_model_record.animation_search_paths(), body, skeleton)
 	visual_load_completed.emit()
 
 
@@ -885,6 +912,8 @@ func unload_actor() -> void:
 	equipment.clear()
 	animator.cancel()
 	_active_record = null
+	_trait_record = null
+	_model_record = null
 	_is_female = false
 	hair_no_hat_meshes.clear()
 	hair_hat_meshes.clear()

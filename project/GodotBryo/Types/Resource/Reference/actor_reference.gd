@@ -20,6 +20,10 @@ signal simulation_mode_changed
 ## Run and the like) from it.
 signal active_package_changed(old_package: PackageBase, new_package: PackageBase)
 
+## The MODL the editor gives an NPC_ or CREA whose model comes from a leveled
+## list (638 NPC_ in FalloutNV.esm).
+const PLACEHOLDER_MODEL := "marker_creature.nif"
+
 @export_group("Placement")
 ## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm). Read; not
 ## used yet.
@@ -146,6 +150,12 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## Runtime state: what has changed from the base record's derived values.
 ## EsmServer creates it with the reference; otherwise created on first use.
 @export var actor_values: ActorValues
+## Runtime state with no ESM source: the NPC_ or CREA chosen from the leveled
+## list (LVLN, LVLC) in the base's template chain, chosen once on first use by
+## get_leveled_template() at the player's level, seeded from instance_id. Null
+## until chosen, and for an actor with no leveled list. Used by
+## template_source().
+@export var leveled_template: ActorBase
 @export_group("")
 
 ## Runtime state with no ESM source: the reference this actor is using
@@ -176,6 +186,69 @@ func clear_move_target() -> void:
 func reach_move_target() -> void:
 	has_move_target = false
 	move_target_reached.emit()
+
+## The actor record that supplies this actor's part named by the template flag
+## `flag` (ActorBase.TEMPLATE_USE_*): ActorBase.template_source() of its base,
+## continuing into the leveled list's choice when the chain reaches one.
+func template_source(flag: int) -> ActorBase:
+	return ActorBase.template_source(base, flag, get_leveled_template())
+
+## The record supplying this actor's skeleton and animations: its
+## Model/Animation template source, or, when that record's MODL is the editor's
+## placeholder marker_creature.nif, the leveled choice's Model/Animation source.
+## 44 placed actors in FalloutNV.esm reach a leveled list without taking
+## Model/Animation from it and keep the placeholder (40 take Traits from it, 4
+## take neither); taking the skeleton from the chosen actor is inferred, not
+## confirmed.
+func model_source() -> ActorBase:
+	var source := template_source(ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+	if source == null or not source.model_path.to_lower().ends_with(PLACEHOLDER_MODEL):
+		return source
+	var choice := get_leveled_template()
+	if choice == null:
+		return source
+	return ActorBase.template_source(choice, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+
+## model_source() for `reference` when it is an ActorReference, else
+## ActorBase.template_source() of its base for Model/Animation.
+static func model_source_of(reference: EsmReference) -> ActorBase:
+	if reference == null:
+		return null
+	if reference is ActorReference:
+		return (reference as ActorReference).model_source()
+	return ActorBase.template_source(reference.base, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+
+## template_source() for `reference` when it is an ActorReference, else
+## ActorBase.template_source() of its base; null for a null reference.
+static func template_source_of(reference: EsmReference, flag: int) -> ActorBase:
+	if reference == null:
+		return null
+	if reference is ActorReference:
+		return (reference as ActorReference).template_source(flag)
+	return ActorBase.template_source(reference.base, flag)
+
+## The actor chosen from the leveled list in the base's template chain
+## (`leveled_template`), choosing it on the first call; null when the chain has
+## no leveled list or it gives none.
+func get_leveled_template() -> ActorBase:
+	if leveled_template != null:
+		return leveled_template
+	var list := ActorBase.leveled_list_in_chain(base)
+	if list == null:
+		return null
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(instance_id)
+	leveled_template = LeveledActorResolver.resolve(list, _player_level(), rng)
+	return leveled_template
+
+func _player_level() -> int:
+	var server := get_esm_server()
+	if server == null or not server.is_ready():
+		return 1
+	var player: EsmReference = server.get_player_reference()
+	if player == null or player == self or player.get_actor_values() == null:
+		return 1
+	return player.get_actor_values().get_level()
 
 func get_actor_values() -> ActorValues:
 	if actor_values == null:

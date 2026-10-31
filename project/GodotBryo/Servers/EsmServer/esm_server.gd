@@ -751,7 +751,7 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		return
 	var items: Array[InitialItemCollection] = []
 	if owner_base is ActorBase:
-		var source := ActorBase.template_source(owner_base, ActorBase.TEMPLATE_USE_INVENTORY)
+		var source := ActorReference.template_source_of(reference, ActorBase.TEMPLATE_USE_INVENTORY)
 		items = source.items
 	else:
 		items = _initial_items({"subrecords": owner_base.raw_subrecords})
@@ -817,6 +817,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result.record_flags = int(raw.get("record_flags", 0))
 	if result is LeveledItemBase:
 		_populate_leveled_item(result as LeveledItemBase, raw)
+	elif result is LeveledActorBase:
+		_populate_leveled_actor(result as LeveledActorBase, raw)
 	elif result is QuestBase:
 		_populate_quest(result as QuestBase, raw)
 	elif result is PackageBase:
@@ -1421,6 +1423,26 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 				entry.owner_form_id = _u32(extra)
 			if extra.size() >= 12:
 				entry.health_percent = _f32(extra, 8)
+		result.entries.append(entry)
+
+## LVLN and LVLC: LVLD, LVLF and each 12-byte LVLO (level s16, 2 unused
+## bytes, FormID, count s16, 2 unused bytes).
+func _populate_leveled_actor(result: LeveledActorBase, raw: Dictionary) -> void:
+	result.chance_none = _u8(_subrecord(raw, "LVLD"))
+	result.flags = _u8(_subrecord(raw, "LVLF"))
+	result.entries.clear()
+	for sub: Dictionary in raw.get("subrecords", []):
+		if String(sub.get("type", "")) != "LVLO":
+			continue
+		var data: PackedByteArray = sub.get("data", PackedByteArray())
+		if data.size() < 12:
+			result.diagnostics.append("%s 0x%08X has a %d-byte LVLO" % [result.record_type, result.form_id, data.size()])
+			continue
+		var entry := LeveledActorEntryCollection.new()
+		entry.level = _i16(data)
+		entry.actor_form_id = _u32(data, 4)
+		entry.count = _i16(data, 8)
+		entry.actor = get_base(entry.actor_form_id)
 		result.entries.append(entry)
 
 ## IDLE: MODL, CTDA, ANAM (parent, previous) and DATA (xEdit's FNV layout;

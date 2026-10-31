@@ -180,7 +180,7 @@ func set_script_package_for_all(package: PackageBase) -> int:
 func choose_package(actor: ActorReference) -> PackageBase:
 	if actor.script_package != null:
 		return actor.script_package
-	var source := ActorBase.template_source(actor.base, TEMPLATE_USE_AI_PACKAGES)
+	var source := actor.template_source(TEMPLATE_USE_AI_PACKAGES)
 	if source == null:
 		return null
 	var hour := _game_hour()

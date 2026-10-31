@@ -38,10 +38,10 @@ func pick_for(actor: EsmReference) -> IdleBase:
 	_build()
 	return _pick_among(actor, _roots_by_folder.get(skeleton_folder(actor), []))
 
-## The folder of `actor`'s skeleton MODL (its base's, or its Model/Animation
-## template's), lowercase with a trailing backslash; "" without one.
+## The folder of `actor`'s skeleton MODL (ActorReference.model_source_of),
+## lowercase with a trailing backslash; "" without one.
 static func skeleton_folder(actor: EsmReference) -> String:
-	var base := ActorBase.template_source(actor.base if actor != null else null, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+	var base := ActorReference.model_source_of(actor)
 	if base == null or base.model_path.is_empty():
 		return ""
 	var path := base.model_path.to_lower().replace("/", "\\")

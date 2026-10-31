@@ -497,7 +497,7 @@ func _voice_type(speaker: EsmReference) -> EsmBase:
 	if speaker == null or speaker.base == null:
 		return null
 	if speaker.base is ActorBase:
-		return ActorBase.template_source(speaker.base, ActorBase.TEMPLATE_USE_TRAITS).voice_type
+		return ActorReference.template_source_of(speaker, ActorBase.TEMPLATE_USE_TRAITS).voice_type
 	var form_id: int = speaker.base.get("voice_type_form_id") if speaker.base.get("voice_type_form_id") != null else 0
 	return EsmServer.get_base(form_id) if form_id != 0 else null
 

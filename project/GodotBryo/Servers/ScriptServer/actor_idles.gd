@@ -114,7 +114,7 @@ func update_ambient(actor: ActorReference) -> void:
 ## Seconds between `actor`'s ambient idles: ambient_idle_seconds scaled by its
 ## energy level (NPC_ AIDT, from its AI Data template) over 50.
 func ambient_seconds(actor: ActorReference) -> float:
-	var base := ActorBase.template_source(actor.base, ActorBase.TEMPLATE_USE_AI_DATA)
+	var base := actor.template_source(ActorBase.TEMPLATE_USE_AI_DATA)
 	var energy := base.energy if base != null else 50
 	return maxf(DEFAULT_IDLE_WAIT_SECONDS, ambient_idle_seconds * energy / 50.0)
 

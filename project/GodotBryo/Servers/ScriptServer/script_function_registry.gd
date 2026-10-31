@@ -906,7 +906,7 @@ static func _inventory_of(ref: EsmReference) -> Inventory:
 static func _traits_of(reference: EsmReference) -> NpcBase:
 	if reference == null:
 		return null
-	return ActorBase.template_source(reference.base, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	return ActorReference.template_source_of(reference, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
 
 static func _base_arg(args: Array, index: int) -> EsmBase:
 	if index >= args.size():
@@ -921,7 +921,7 @@ static func _base_arg(args: Array, index: int) -> EsmBase:
 static func _actor_part(actor: EsmReference, template_flag: int) -> ActorBase:
 	if actor == null or not actor.base is ActorBase:
 		return null
-	return ActorBase.template_source(actor.base, template_flag)
+	return ActorReference.template_source_of(actor, template_flag)
 
 ## `actor`'s authored rank in `faction` (FactionSubrecord.rank), or -1 when it
 ## is not a member. A negative authored rank also reads as not a member.
