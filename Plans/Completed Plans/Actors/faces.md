@@ -185,7 +185,7 @@ page (facegen.com/dl/sdk/doc/manual/fileformats.html) and every shipped file mat
   ship (`m<race>_<npc>_0.dds`): an NPC's FGTS on races other than its own, for 18 NPCs, nearly
   all NCR Rangers (`vForlornHopeNCRRanger*`, `vHDRanger*`, Charlie, Jackson, Ghost) with one
   file per human race, and five Primm and Gomorrah NPCs that take traits from a leveled list
-  with one AfricanAmerican file. See [`templated_npcs.md`](../../Actors/templated_npcs.md).
+  with one AfricanAmerican file. See [`templated_npcs.md`](templated_npcs.md).
 - FalloutNV.esm NPC_ by facemod:
 
   | | facemod | none |

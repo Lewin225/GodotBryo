@@ -2,7 +2,7 @@
 
 Placed actors whose NPC_ takes its traits from a template (ACBS Traits flag + TPLT) render with
 the template's race, sex, hair, eyes and head parts, including templates that are leveled lists
-(LVLN). Follow-on to [`Completed Plans/Actors/stage_d.md`](../Completed%20Plans/Actors/stage_d.md).
+(LVLN). Follow-on to [`stage_d.md`](stage_d.md).
 
 ## Facts
 
@@ -75,7 +75,8 @@ one when chosen again, and a skeleton other than the placeholder; the first one
 - XLCM's value-to-modifier mapping and scales are inferred, not confirmed in game.
 - Zone level rules (minimum, Match PC Below Minimum Level) are inferred, not confirmed in game.
 - Choices are made on first use, which is when EsmServer creates the reference (its inventory
-  comes from the Inventory template), so zones resolve at the player's level then. Choosing again on cell reset, and zone resets (Never
-  Resets), wait for cell reset.
+  comes from the Inventory template), so zones resolve at the player's level then. Choosing
+  again on cell reset, and zone resets (Never Resets), wait for cell reset
+  ([`reference_persistence.md`](../../Saving/reference_persistence.md)).
 - Lists with nothing at or below the level: taking the lowest entries is our choice.
 - The 44 placeholder actors' skeletons.

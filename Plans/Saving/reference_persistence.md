@@ -15,5 +15,9 @@ state across sessions. Follow-on to
 
 - The save format, and what it holds beyond dirty references (quest state, globals, the
   simulation server's actor state).
+- Cell reset: placed actors choose from their leveled list again, and encounter zones without
+  Never Resets fix their level again (`EncounterZoneBase.resolved_level`,
+  `ActorReference.leveled_template`; [`templated_npcs.md`](../Completed%20Plans/Actors/templated_npcs.md)).
+  Both are runtime fields that a save keeps.
 - Saving bases whose resolved links form a cycle: `ResourceSaver` reports cyclic resource
   inclusion (`Completed Plans/Actors/actors.md`, Unverified).

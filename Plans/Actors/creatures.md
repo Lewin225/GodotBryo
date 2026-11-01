@@ -14,8 +14,17 @@ back until the actor refactor.
   not used yet. KFFZ (99 CREA, 0 NPC_) is read into `ActorBase.animations`; not used yet.
 - The actor node asks the base for its parts list; `CreatureBase` lists none, so a creature
   builds its skeleton and nothing else (`tests/test_actor_node`, Rex, CREA 0x118E71).
+- 2,999 placed ACRE in FalloutNV.esm, every one naming a CREA; 512 Initially Disabled; 1,887
+  reach a leveled list (LVLC) through TPLT (`acre_census.py` scan).
 - `EsmServer.get_all_placed_actor_references()`, NpcSimulationServer's seed list, comes from
   `EsmReader.get_all_placed_npc_actors()`: ACHR only.
+- Both streamers have a CREA spawn flag; `game.tscn` sets theirs to REFR and ACHR only.
+- `CreatureBase` names no animation folders (`animation_search_paths()` is ActorBase's empty
+  one), so a creature loads no clips.
+- Leveled templates and encounter zones work on `ActorReference`: a creature whose TPLT chain
+  reaches an LVLC takes its choice through `ActorReference.template_source()` and
+  `model_source()` (see [`templated_npcs.md`](../Completed%20Plans/Actors/templated_npcs.md)).
+  The streamers skip disabled actors, creatures included.
 - Package processing, furniture (`ScriptServer.begin_use`), dialogue and look work on
   `ActorReference` and do not branch on NPC versus creature.
 - `IdleTree` picks general idles by the actor's skeleton; matching a creature's skeleton to its
@@ -27,9 +36,10 @@ back until the actor refactor.
    actor node builds them on the skeleton. Gate: Rex renders.
 2. **Animation.** The creature's KFs (its skeleton folder and KFFZ) through `ActorAnimator`.
    Gate: Rex idles and walks.
-3. **Seeding.** The seed list widened from ACHR to ACRE; creatures virtual and local as NPCs
-   are. Gate: a Goodsprings creature leaving the loaded area continues virtually and returns
-   where the server put it.
+3. **Seeding.** The seed list widened from ACHR to ACRE, and the streamers' CREA flag turned
+   on in `game.tscn`; creatures virtual and local as NPCs are. Gate: a Goodsprings creature
+   leaving the loaded area continues virtually and returns where the server put it, and
+   Vault 3's leveled creatures get a choice.
 4. **Packages and furniture.** A Goodsprings creature runs its packages; creature furniture
    idles chosen by skeleton.
 
