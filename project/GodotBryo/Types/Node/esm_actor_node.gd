@@ -182,6 +182,10 @@ func _ready() -> void:
 	equipment.committed.connect(_on_equipment_committed)
 	equipment.watch(reference as ActorReference)
 	apply_process_thread_group()
+	if not Engine.is_editor_hint():
+		var debug_label := ActorDebugLabel.new()
+		debug_label.name = "ActorDebugLabel"
+		add_child(debug_label)
 	_queue_rehydrate_and_build()
 
 

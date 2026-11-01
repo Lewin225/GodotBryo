@@ -279,4 +279,20 @@ func _update_cell_hud(cell_form_id: int) -> void:
 	var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
 	if not grid.is_empty():
 		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
-	cell_label.text = "cell: " + label
+	cell_label.text = "cell: " + label + "\nzone: " + _zone_hud_text(cell_form_id)
+
+## The cell's XEZN encounter zone for the HUD: its EditorID, resolved level
+## and minimum level, or "none".
+func _zone_hud_text(cell_form_id: int) -> String:
+	var zone: EncounterZoneBase = EsmServer.encounter_zone_for_cell(cell_form_id)
+	if zone == null:
+		return "none"
+	var level := str(zone.resolved_level) if zone.resolved_level > 0 else "unset"
+	return "%s level %s, min %d" % [zone.editor_id, level, zone.minimum_level]
+
+## F4 shows or hides every actor's ActorDebugLabel.
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo or key.keycode != KEY_F4:
+		return
+	ActorDebugLabel.set_shown(not ActorDebugLabel.shown)

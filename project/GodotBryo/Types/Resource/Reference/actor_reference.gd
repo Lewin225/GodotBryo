@@ -161,10 +161,12 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 @export var actor_values: ActorValues
 ## Runtime state with no ESM source: the NPC_ or CREA chosen from the leveled
 ## list (LVLN, LVLC) in the base's template chain, chosen once on first use by
-## get_leveled_template() at the player's level, seeded from instance_id. Null
-## until chosen, and for an actor with no leveled list. Used by
-## template_source().
+## get_leveled_template(). Null until chosen, and for an actor with no leveled
+## list. Used by template_source().
 @export var leveled_template: ActorBase
+## Runtime state with no ESM source: the level `leveled_template` was chosen
+## at, after the XLCM scale; 0 until chosen. Shown by ActorDebugLabel.
+@export var leveled_template_level: int = 0
 @export_group("")
 
 ## Runtime state with no ESM source: the reference this actor is using
@@ -252,13 +254,14 @@ func get_leveled_template() -> ActorBase:
 	var list := ActorBase.leveled_list_in_chain(base)
 	if list == null:
 		return null
-	var zone := _encounter_zone()
+	var zone := get_encounter_zone()
 	var level := _player_level()
 	if zone != null:
 		level = zone.resolve_level(level)
 	var rng := RandomNumberGenerator.new()
 	if level_modifier == LEVEL_MODIFIER_NONE:
 		rng.seed = hash(instance_id)
+		leveled_template_level = level
 		leveled_template = LeveledActorResolver.resolve(list, level, rng)
 		return leveled_template
 	var scaled := maxi(roundi(level * LEVEL_MODIFIER_SCALES[level_modifier]), 1)
@@ -267,12 +270,13 @@ func get_leveled_template() -> ActorBase:
 	var mode := LeveledActorResolver.Mode.ALL_AT_OR_BELOW
 	if level_modifier != LEVEL_MODIFIER_EASY:
 		mode = LeveledActorResolver.Mode.CLOSEST
+	leveled_template_level = scaled
 	leveled_template = LeveledActorResolver.resolve(list, scaled, rng, mode)
 	return leveled_template
 
 ## The actor's own encounter zone, else its cell's (_cell_form_id); null
 ## without one.
-func _encounter_zone() -> EncounterZoneBase:
+func get_encounter_zone() -> EncounterZoneBase:
 	if encounter_zone != null:
 		return encounter_zone
 	var server := get_esm_server()
