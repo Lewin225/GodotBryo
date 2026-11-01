@@ -68,6 +68,9 @@ func _enter_tree() -> void:
 	terrain_streamer.configure(_shared_esm)
 
 func _ready() -> void:
+	var issue_reporter := IssueReporter.new()
+	issue_reporter.name = "IssueReporter"
+	add_child(issue_reporter)
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.

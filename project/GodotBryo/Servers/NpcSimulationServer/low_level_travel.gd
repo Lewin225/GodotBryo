@@ -79,6 +79,16 @@ func advance(actor: ActorReference, elapsed: float) -> void:
 
 ## Drops `actor`'s route, cancelling a request still on the simulation
 ## thread.
+## The waypoints `actor` has left to walk, from the one it is heading for;
+## empty while its route is being found or when it has none. Used by the
+## Simulation debug tab.
+func get_remaining_waypoints(actor: ActorReference) -> PackedVector3Array:
+	var route: Dictionary = _routes.get(actor, {})
+	if route.is_empty():
+		return PackedVector3Array()
+	var waypoints: PackedVector3Array = route["waypoints"]
+	return waypoints.slice(int(route["index"]))
+
 func forget(actor: ActorReference) -> void:
 	var route: Dictionary = _routes.get(actor, {})
 	if not route.is_empty() and _actors_by_request.has(route["request_id"]):
