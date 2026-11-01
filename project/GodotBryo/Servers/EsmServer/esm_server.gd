@@ -6,6 +6,10 @@ signal failed(message: String)
 ## A reference's current_cell_form_id changed because its space or position
 ## changed. Not emitted while a reference is being constructed.
 signal reference_cell_changed(reference: EsmReference, old_cell_form_id: int, new_cell_form_id: int)
+## A reference's own enabled state changed (Enable, Disable). References whose
+## enable parent chain includes it change with it
+## (EsmReference.follows_enable_state_of).
+signal reference_enable_state_changed(reference: EsmReference)
 
 ## Width of one exterior grid CELL in the unit of EsmReference.position:
 ## 4096 Gamebryo units at 70 units per metre (native/src/common/units.h).

@@ -19,7 +19,10 @@ triangles, and routes between them.
 - **Dependencies** — `EsmServer` + `NavmeshReader` (native)
 - **Disabled actors** — nothing here moves actors yet. A disabled actor
   (`EsmReference.is_disabled()`) is frozen: no AI packages, combat or schedules,
-  and no travel while virtual. Script moves (`MoveTo`) still move it.
+  and no travel while virtual. Script moves (`MoveTo`) still move it. The
+  streamers do not physicalise a disabled actor, so it stays LOW_LEVEL here;
+  enabling it physicalises it if its CELL is loaded, and disabling it frees
+  its node, whose controller hands the lease back.
 
 An earlier prototype (`npc_simulation_server.gd`) indexed actors by raw authored
 position with no ground truth and no routing. It was deleted once this superseded

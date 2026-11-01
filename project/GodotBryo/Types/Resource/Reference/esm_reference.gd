@@ -179,6 +179,19 @@ func set_disabled(value: bool) -> void:
 	disabled = value
 	mark_dirty()
 	enable_state_changed.emit()
+	var server := get_esm_server()
+	if server != null:
+		server.reference_enable_state_changed.emit(self)
+
+## Whether this reference's enabled state comes from `other`: it is `other`,
+## or `other` is in its enable parent chain.
+func follows_enable_state_of(other: EsmReference) -> bool:
+	var link: EsmReference = self
+	while link != null:
+		if link == other:
+			return true
+		link = link.get_enable_parent()
+	return false
 
 ## SwapTexture: the NIF block `block_name` shows `texture_path` (relative to
 ## textures\, no extension) in place of its diffuse texture.

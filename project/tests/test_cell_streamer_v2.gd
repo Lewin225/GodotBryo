@@ -82,6 +82,7 @@ func _ready() -> void:
 		check(false, "Doc Mitchell's house contains a typed teleport door fixture")
 
 	await _check_references_follow_moves(streamer, esm_server, int(doc_house.form_id))
+	await _check_disabled_actors(esm_server)
 	first_current = streamer._current
 
 	# A synthetic collision shape exercises the exact late-NIF callback hook:
@@ -149,10 +150,10 @@ func _check_references_follow_moves(streamer: CellStreamerV2, esm_server, doc_ho
 	var saloon := int(esm_server.reader.find_cell_by_editor_id("GSProspectorSaloonInterior").get("form_id", 0))
 	var visitor: EsmReference = null
 	for reference in esm_server.get_references_in_cell(saloon):
-		if reference is ActorReference:
+		if reference is NpcReference and not reference.is_disabled():
 			visitor = reference
 			break
-	check(visitor != null, "GSProspectorSaloonInterior has an actor")
+	check(visitor != null, "GSProspectorSaloonInterior has an enabled NPC")
 	if visitor != null:
 		var visitor_home := visitor.position
 		script_server.move_reference(visitor, doc_house, home + Vector3(0, 1, 0), visitor.rotation)
@@ -168,3 +169,24 @@ func _check_references_follow_moves(streamer: CellStreamerV2, esm_server, doc_ho
 	var reloaded := EsmNode.node_for(doc)
 	check(reloaded != null and reloaded.get_parent() == streamer._current, "reloading the CELL physicalises its references again")
 	check(esm_server.get_references_in_cell(doc_house).count(doc) == 1, "a reference that left and returned is listed once")
+
+## A disabled actor in the loaded CELL has no node and stays with
+## NpcSimulationServer; enabling it physicalises it, disabling it again frees
+## the node and hands it back.
+func _check_disabled_actors(esm_server) -> void:
+	var doc: ActorReference = esm_server.find_reference_by_editor_id("DocMitchellREF")
+	doc.set_disabled(true)
+	await get_tree().process_frame
+	check(EsmNode.node_for(doc) == null and doc.simulation_mode == ActorReference.SimulationMode.LOW_LEVEL,
+			"disabling Doc Mitchell frees his node and hands him back to NpcSimulationServer")
+	var script_server = get_node("/root/ScriptServer")
+	var home := doc.position
+	script_server.move_reference(doc, doc.current_space_form_id, home + Vector3(1, 0, 0), doc.rotation)
+	script_server.apply_pending_moves()
+	await get_tree().process_frame
+	check(EsmNode.node_for(doc) == null, "moved while disabled, he still has no node")
+	doc.set_disabled(false)
+	var node := EsmNode.node_for(doc)
+	check(node != null and node.visible, "enabled, he is physicalised where he was moved to")
+	script_server.move_reference(doc, doc.current_space_form_id, home, doc.rotation)
+	script_server.apply_pending_moves()

@@ -258,6 +258,21 @@ func _on_reference_arrived(reference: EsmReference) -> void:
 	if EsmNode.node_for(reference) == null and _should_spawn(reference):
 		_physicaliser.physicalise(reference, _current, EsmNode.VisualDetail.FULL)
 
+## Physicalises the current CELL's actors that `changed` has just enabled, and
+## frees the nodes of those it has disabled; a freed actor's controller hands
+## it back to NpcSimulationServer as it leaves the tree.
+func _on_reference_enable_state_changed(changed: EsmReference) -> void:
+	for reference in _current_refs:
+		if not reference is ActorReference or not reference.follows_enable_state_of(changed):
+			continue
+		var node := EsmNode.node_for(reference)
+		if reference.is_disabled():
+			if node != null and is_ancestor_of(node):
+				node.get_parent().remove_child(node)
+				node.queue_free()
+		else:
+			_on_reference_arrived(reference)
+
 ## Tells ScriptServer the current CELL's references are loaded (their
 ## GameMode/OnLoad blocks run) or not.
 func _set_scripts_loaded(references: Array[EsmReference], loaded: bool) -> void:
@@ -282,6 +297,10 @@ func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
 	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
+	# A disabled actor stays with NpcSimulationServer until it is enabled
+	# (_on_reference_enable_state_changed).
+	if reference is ActorReference and reference.is_disabled():
+		return false
 	if reference is NpcReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
@@ -296,6 +315,8 @@ func _resolve_esm_server() -> bool:
 	esm_server = root.get_node_or_null("EsmServer") if root != null else null
 	if esm_server != null and not esm_server.reference_cell_changed.is_connected(_on_reference_cell_changed):
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
+	if esm_server != null and not esm_server.reference_enable_state_changed.is_connected(_on_reference_enable_state_changed):
+		esm_server.reference_enable_state_changed.connect(_on_reference_enable_state_changed)
 	return esm_server != null
 
 

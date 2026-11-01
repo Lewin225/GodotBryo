@@ -200,6 +200,8 @@ func _resolve_esm_server() -> bool:
 	esm_server = root.get_node_or_null("EsmServer") if root != null else null
 	if esm_server != null and not esm_server.reference_cell_changed.is_connected(_on_reference_cell_changed):
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
+	if esm_server != null and not esm_server.reference_enable_state_changed.is_connected(_on_reference_enable_state_changed):
+		esm_server.reference_enable_state_changed.connect(_on_reference_enable_state_changed)
 	return esm_server != null
 
 
@@ -563,6 +565,10 @@ func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
 	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
+	# A disabled actor stays with NpcSimulationServer until it is enabled
+	# (_on_reference_enable_state_changed).
+	if reference is ActorReference and reference.is_disabled():
+		return false
 	if reference is NpcReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
@@ -659,6 +665,24 @@ func _on_reference_arrived(reference: EsmReference) -> void:
 	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL)) as EsmNode.VisualDetail
 	if EsmNode.node_for(reference) == null and _should_physicalise(reference, detail):
 		_physicaliser.physicalise(reference, root, detail)
+
+## Physicalises resident tiles' actors that `changed` has just enabled, and
+## frees the nodes of those it has disabled; a freed actor's controller hands
+## it back to NpcSimulationServer as it leaves the tree.
+func _on_reference_enable_state_changed(changed: EsmReference) -> void:
+	if not is_active():
+		return
+	for root: Node3D in _resident.values():
+		for reference in root.get_meta("references", []):
+			if not reference is ActorReference or not reference.follows_enable_state_of(changed):
+				continue
+			var node := EsmNode.node_for(reference)
+			if reference.is_disabled():
+				if node != null and is_ancestor_of(node):
+					node.get_parent().remove_child(node)
+					node.queue_free()
+			else:
+				_on_reference_arrived(reference)
 
 ## Whether this streamer holds `reference` in a loaded CELL: a resident tile
 ## at full detail while not paused.
