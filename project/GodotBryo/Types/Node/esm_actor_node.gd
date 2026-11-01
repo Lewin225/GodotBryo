@@ -835,7 +835,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
 	equipment.set_body(body, skeleton, _is_female)
 	facial_player.set_body(body)
-	animator.load_locomotion(_model_record.animation_search_paths(), body, skeleton)
+	animator.load_locomotion(_model_record.animation_search_paths(), body, skeleton, _model_record is CreatureBase)
 	visual_load_completed.emit()
 
 

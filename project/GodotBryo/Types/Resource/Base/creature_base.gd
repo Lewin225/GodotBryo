@@ -66,6 +66,14 @@ func _validate_property(property: Dictionary) -> void:
 	if property.name == "acbs_flags":
 		property.hint_string = ACBS_FLAG_NAMES
 
+## Its skeleton's folder below meshes/, where its KFs are; the actor node's
+## animator takes its locomotion from there (ActorAnimator).
+func animation_search_paths() -> PackedStringArray:
+	if model_path.is_empty():
+		return PackedStringArray()
+	var folder := model_path.replace("\\", "/").get_base_dir().to_lower()
+	return PackedStringArray(["meshes/%s/" % folder])
+
 ## NIFZ's body parts, for the actor node. Optional: 18 of the 276 distinct
 ## skeleton and part pairs in FalloutNV.esm name a file no archive ships, and
 ## a creature builds without them. A templated creature's parts are its

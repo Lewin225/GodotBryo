@@ -289,7 +289,9 @@ func _check_templated(esm_server) -> void:
 	controller.queue_free()
 
 ## A creature gets the same controller and actor node, and Rex (CREA 0x118E71)
-## builds his skeleton and his NIFZ body parts on it.
+## builds his skeleton and his NIFZ body parts on it, and plays his folder's
+## clips: the dog has no mtleft, mtright or mtbackward, only the misspelt
+## mtbackrward.
 func _check_creature(esm_server) -> void:
 	var rex: EsmReference = esm_server.create_reference_for_base(0x118E71)
 	var controller := EsmReferencePhysicaliser.new().physicalise(rex, self) as NpcController
@@ -298,11 +300,13 @@ func _check_creature(esm_server) -> void:
 		return
 	var node := controller.actor
 	var finished := [false]
+	var clips := [-1]
 	node.visual_load_completed.connect(func() -> void: finished[0] = true)
 	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
-	for frame in 600:
+	node.animation_load_completed.connect(func(count: int) -> void: clips[0] = count)
+	for frame in 900:
 		await get_tree().process_frame
-		if finished[0]:
+		if finished[0] and clips[0] != -1:
 			break
 	var body := node.get_node_or_null("Body")
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
@@ -321,7 +325,36 @@ func _check_creature(esm_server) -> void:
 			missing.append(path)
 	check(node.is_visual_built() and not parts.is_empty() and missing.is_empty() and skinned > 0,
 			"Rex builds his %d NIFZ parts, skinned to the skeleton (%d skinned meshes; missing %s)" % [parts.size(), skinned, missing])
+	var player := body.get_node_or_null(NodePath(ActorAnimator.PLAYER_NODE_NAME)) as AnimationPlayer if body != null else null
+	check(clips[0] > 0 and player != null and _playing_file(player) == "mtidle.kf",
+			"Rex loads %d clips from Creatures\\Dog and idles on mtidle.kf (%s)" % [clips[0], _playing_file(player)])
+	if player != null:
+		var motion := ActorMotion.new()
+		node.motion = motion
+		var cases := [
+			[Vector3(0.0, 0.0, -1.2), 0.0, false, "mtforward.kf"],
+			[Vector3(0.0, 0.0, -3.0), 0.0, true, "mtfastforward.kf"],
+			[Vector3(0.0, 0.0, 1.2), 0.0, false, "mtbackrward.kf"],
+			[Vector3(-1.2, 0.0, 0.0), 0.0, false, "mtforward.kf"],
+			[Vector3.ZERO, 2.0, false, "mtturnleft.kf"],
+			[Vector3.ZERO, 0.0, false, "mtidle.kf"],
+		]
+		for case in cases:
+			motion.velocity = case[0]
+			motion.turn_rate = case[1]
+			motion.running = case[2]
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			check(_playing_file(player) == case[3], "Rex with velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], _playing_file(player)])
+		node.motion = null
 	controller.queue_free()
+
+
+## The KF file the player's current clip came from.
+func _playing_file(player: AnimationPlayer) -> String:
+	if player == null or player.current_animation.is_empty():
+		return ""
+	return String(player.get_animation(player.current_animation).get_meta("nif_source_path", "")).get_file()
 
 
 ## Every placed actor whose template chain reaches a leveled list gets an actor

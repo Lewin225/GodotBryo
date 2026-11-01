@@ -30,8 +30,11 @@ back until the actor refactor.
 - `EsmServer.get_all_placed_actor_references()`, NpcSimulationServer's seed list, comes from
   `EsmReader.get_all_placed_npc_actors()`: ACHR only.
 - Both streamers have a CREA spawn flag; `game.tscn` sets theirs to REFR and ACHR only.
-- `CreatureBase` names no animation folders (`animation_search_paths()` is ActorBase's empty
-  one), so a creature loads no clips.
+- Creature KFs sit in the skeleton's folder: 753 directly in it, 194 in `locomotion/`, 421 in
+  `idleanims/`, 57 in `specialanims/`. Of the 43 CREA skeleton folders, 12 have no
+  `mtforward`, 18 no `mtbackward`, 23 no `mtleft`/`mtright`; turrets, ravens, Mr House, the
+  spore plant and the penthouse computer have only `mtidle`; the dog's backward clip is
+  `mtbackrward.kf`.
 - Leveled templates and encounter zones work on `ActorReference`: a creature whose TPLT chain
   reaches an LVLC takes its choice through `ActorReference.template_source()` and
   `model_source()` (see [`templated_npcs.md`](../Completed%20Plans/Actors/templated_npcs.md)).
@@ -53,7 +56,15 @@ back until the actor refactor.
    non-bone skeleton node makes it a bone. The only parts left without a mesh are the files
    no archive ships and parts with no mesh at all (laser emitters, the securitron smoke trail).
 2. **Animation.** The creature's KFs (its skeleton folder and KFFZ) through `ActorAnimator`.
-   Gate: Rex idles and walks.
+   Gate: Rex idles and walks. Done for locomotion: `CreatureBase.animation_search_paths()` is
+   the skeleton folder; the animator loads the KFs directly in it and in its `locomotion/` and
+   picks clips by file name, falling back to the nearest the creature has
+   (`ActorAnimator.creature_locomotion_candidates`). Rex idles, walks, runs, turns and backs
+   up on the misspelt `mtbackrward.kf`. Of the 169 distinct builds, 167 idle on their own
+   `mtidle`; the mini sentry turret's `mtidle.kf` animates only `Bip01 NonAccum`, which
+   locomotion turns off, and `LegionCreature` (on the human skeleton, placed nowhere, in no
+   list) loads every KF at the top of `characters\_male\`. KFFZ's files (all 1,663 names
+   in `specialanims/`) and `idleanims/` belong to idles and combat, not here.
 3. **Seeding.** The seed list widened from ACHR to ACRE, and the streamers' CREA flag turned
    on in `game.tscn`; creatures virtual and local as NPCs are. Gate: a Goodsprings creature
    leaving the loaded area continues virtually and returns where the server put it, and
