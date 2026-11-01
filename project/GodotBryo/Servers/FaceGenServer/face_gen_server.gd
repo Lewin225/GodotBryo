@@ -167,15 +167,19 @@ static func geometry_coordinates(npc: NpcBase) -> Array[PackedFloat32Array]:
 
 ## Calls `on_complete(skin: Dictionary)` once, on the main thread, with
 ## `npc`'s FaceGen skin:
-## - "face_map": the head's offset map (Texture2D), or null. The NPC's shipped
-##   facemod where one exists, else one built from the race head's EGT and the
+## - "face_map": the head's offset map (Texture2D), or null. The shipped
+##   facemod for `placed_npc` on the race `npc`'s traits give it
+##   (race_facemod_path_for) where `placed_npc` is given and one exists, else
+##   `npc`'s shipped facemod, else one built from the race head's EGT and the
 ##   NPC's FGTS, in the facemod's encoding (128 + offset / 2).
+## `placed_npc` is the placed reference's own NPC_ when `npc` is the record its
+## traits come from (a template or a leveled-list choice).
 ## - "body_offset": the upper-body offset as a Color, in 8-bit levels / 255
 ##   (signed): the race's upper-body EGT at the NPC's FGTS. Every shipped
 ##   upper-body EGT is one value over all its texels, so one colour holds it.
 ##   Black when the race names no body EGT.
 ## The callback rule is request_morph's.
-func request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable) -> void:
+func request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable, placed_npc: NpcBase = null) -> void:
 	_stats["skin_request_count"] += 1
 	if not _valid_callback(requesting_node, on_complete):
 		push_error("FaceGenServer: on_complete must be a method on `requesting_node`; skin request refused")
@@ -184,7 +188,7 @@ func request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable) ->
 	if _shutting_down or _archive_server == null or npc == null:
 		_queue_delivery(job, {"face_map": null, "body_offset": Color(0, 0, 0)})
 		return
-	_resolve_skin(job, npc)
+	_resolve_skin(job, npc, placed_npc)
 
 
 ## `npc`'s FGTS: its race's for its gender plus its own, from the template when
@@ -204,6 +208,19 @@ static func texture_coordinates(npc: NpcBase) -> PackedFloat32Array:
 static func facemod_path_for(npc: NpcBase) -> String:
 	var source := _trait_source(npc)
 	return "%s%s\\%08X_0.dds" % [FACEMOD_FOLDER, GameDataConfigScript.ESM_FILE.to_lower(), source.form_id & 0xFFFFFF]
+
+
+## The shipped facemod for `placed_npc`'s face on the race `npc`'s traits give
+## it, whether or not the file exists: `<m|f><race form id>_<placed form id>_0.dds`,
+## both IDs as 8 hex digits. 60 ship in Fallout - Textures.bsa, for 17 NPC_:
+## four that take traits from a template or leveled list (one file each),
+## and NCR Rangers and their templates (one file per human race).
+static func race_facemod_path_for(npc: NpcBase, placed_npc: NpcBase) -> String:
+	var source := _trait_source(npc)
+	if source.race == null or placed_npc == null:
+		return ""
+	var sex := "f" if source.is_female() else "m"
+	return "%s%s\\%s%08X_%08X_0.dds" % [FACEMOD_FOLDER, GameDataConfigScript.ESM_FILE.to_lower(), sex, source.race.form_id, placed_npc.form_id]
 
 
 ## The head's EGT: the race head NIF's stem with `.egt`. Empty without a race
@@ -523,10 +540,13 @@ static func _blend_shape_arrays(arrays: Array, expressions: Array) -> Array:
 
 ## Main thread, a coroutine: the facemod through TextureServer, else a face
 ## map built from the head EGT; then the body offset; then queues delivery.
-func _resolve_skin(job: Dictionary, npc: NpcBase) -> void:
+func _resolve_skin(job: Dictionary, npc: NpcBase, placed_npc: NpcBase) -> void:
 	var coefficients := texture_coordinates(npc)
 	var face_map: Texture2D = null
-	if _texture_server != null:
+	var race_facemod := race_facemod_path_for(npc, placed_npc)
+	if _texture_server != null and not race_facemod.is_empty() and _archive_server.contains(race_facemod):
+		face_map = await _texture_server.request(race_facemod)
+	if _texture_server != null and face_map == null:
 		face_map = await _texture_server.request(facemod_path_for(npc))
 	if face_map != null:
 		_stats["facemod_count"] += 1

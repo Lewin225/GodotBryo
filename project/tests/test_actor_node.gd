@@ -336,6 +336,21 @@ func _check_leveled(esm_server) -> void:
 	check(not leveled.is_empty() and chosen == leveled.size(), "every leveled actor gets an actor from its list (%d of %d)" % [chosen, leveled.size()])
 	check(repeatable == chosen, "choosing again gives the same actor (%d of %d)" % [repeatable, chosen])
 	check(with_skeleton == chosen, "each takes a skeleton other than marker_creature.nif (%d of %d)" % [with_skeleton, chosen])
+	var by_space := {}
+	var modified := 0
+	var differing := 0
+	for actor in leveled:
+		if actor.level_modifier == ActorReference.LEVEL_MODIFIER_NONE:
+			continue
+		modified += 1
+		var zone: EncounterZoneBase = actor.encounter_zone if actor.encounter_zone != null else esm_server.encounter_zone_for_cell(actor.current_cell_form_id)
+		var space: int = zone.form_id if zone != null else actor.current_cell_form_id
+		var key := [space, actor.level_modifier, ActorBase.leveled_list_in_chain(actor.base).form_id]
+		if by_space.has(key) and by_space[key] != actor.get_leveled_template():
+			differing += 1
+		by_space[key] = actor.get_leveled_template()
+	check(modified > 0 and differing == 0,
+			"actors with the same XLCM and list in one space are the same actor (%d with XLCM, %d differ)" % [modified, differing])
 	var npc: ActorReference = null
 	for actor in leveled:
 		if actor.base is NpcBase:

@@ -23,12 +23,21 @@ signal active_package_changed(old_package: PackageBase, new_package: PackageBase
 ## The MODL the editor gives an NPC_ or CREA whose model comes from a leveled
 ## list (638 NPC_ in FalloutNV.esm).
 const PLACEHOLDER_MODEL := "marker_creature.nif"
+## level_modifier without XLCM.
+const LEVEL_MODIFIER_NONE := -1
+const LEVEL_MODIFIER_EASY := 0
+## The fraction of the space's level each XLCM value chooses at, Easy to Boss
+## (GECK: 50%, 75%, 125%, 200%).
+const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 
 @export_group("Placement")
-## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm). Read; not
-## used yet.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var level_modifier: int = 0
-## XEZN: the encounter zone (5 ACHR, 11 ACRE). Read; not used yet.
+## XLCM: Level Modifier (s32; 178 ACHR, 119 ACRE in FalloutNV.esm, values 0
+## to 3), LEVEL_MODIFIER_NONE without one. Read; used by get_leveled_template().
+## 0-3 read as Easy, Medium, Hard and Boss is inferred: the GECK names those
+## four besides None, and the data carries no other values.
+@export_enum("None:-1", "Easy:0", "Medium:1", "Hard:2", "Boss:3") var level_modifier: int = LEVEL_MODIFIER_NONE
+## XEZN: the encounter zone (5 ACHR, 11 ACRE). Read; used by
+## get_leveled_template() before the cell's zone.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var encounter_zone_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EncounterZoneBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var encounter_zone: EncounterZoneBase
 ## XMRC: the placed container holding this actor's merchant inventory (76
@@ -230,16 +239,56 @@ static func template_source_of(reference: EsmReference, flag: int) -> ActorBase:
 ## The actor chosen from the leveled list in the base's template chain
 ## (`leveled_template`), choosing it on the first call; null when the chain has
 ## no leveled list or it gives none.
+##
+## The level chosen at is the space's: the encounter zone's (XEZN, else the
+## current cell's) resolved level, or the player's without a zone. Without
+## XLCM the list's own LVLF rules apply at that level, seeded from instance_id.
+## With XLCM the level is scaled by LEVEL_MODIFIER_SCALES; Easy takes any entry
+## at or below it, the others only the closest, and the choice is seeded from
+## the space, modifier and list, so every such actor in a space is the same.
 func get_leveled_template() -> ActorBase:
 	if leveled_template != null:
 		return leveled_template
 	var list := ActorBase.leveled_list_in_chain(base)
 	if list == null:
 		return null
+	var zone := _encounter_zone()
+	var level := _player_level()
+	if zone != null:
+		level = zone.resolve_level(level)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(instance_id)
-	leveled_template = LeveledActorResolver.resolve(list, _player_level(), rng)
+	if level_modifier == LEVEL_MODIFIER_NONE:
+		rng.seed = hash(instance_id)
+		leveled_template = LeveledActorResolver.resolve(list, level, rng)
+		return leveled_template
+	var scaled := maxi(roundi(level * LEVEL_MODIFIER_SCALES[level_modifier]), 1)
+	var space := zone.form_id if zone != null else _cell_form_id()
+	rng.seed = hash([space, level_modifier, list.form_id])
+	var mode := LeveledActorResolver.Mode.ALL_AT_OR_BELOW
+	if level_modifier != LEVEL_MODIFIER_EASY:
+		mode = LeveledActorResolver.Mode.CLOSEST
+	leveled_template = LeveledActorResolver.resolve(list, scaled, rng, mode)
 	return leveled_template
+
+## The actor's own encounter zone, else its cell's (_cell_form_id); null
+## without one.
+func _encounter_zone() -> EncounterZoneBase:
+	if encounter_zone != null:
+		return encounter_zone
+	var server := get_esm_server()
+	if server == null or not server.is_ready():
+		return null
+	return server.encounter_zone_for_cell(_cell_form_id())
+
+## current_cell_form_id, or the cell at the actor's space and position before
+## it is set; 0 without a space or server.
+func _cell_form_id() -> int:
+	if current_cell_form_id != 0:
+		return current_cell_form_id
+	var server := get_esm_server()
+	if server == null or current_space_form_id == 0:
+		return 0
+	return server.cell_at(current_space_form_id, position)
 
 func _player_level() -> int:
 	var server := get_esm_server()

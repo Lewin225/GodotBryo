@@ -17,10 +17,12 @@ FaceGenServer.request_morph(mesh: ArrayMesh, model_path: String, shape_name: Str
 		requesting_node: Node, on_complete: Callable) -> void   # on_complete(mesh: ArrayMesh)
 FaceGenServer.egm_path_for(model_path, shape_name) -> String          # static
 FaceGenServer.geometry_coordinates(npc) -> Array[PackedFloat32Array]  # static: [FGGS, FGGA]
-FaceGenServer.request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable) -> void
+FaceGenServer.request_skin(npc: NpcBase, requesting_node: Node, on_complete: Callable,
+		placed_npc: NpcBase = null) -> void
 		# on_complete(skin: Dictionary): {"face_map": Texture2D or null, "body_offset": Color}
 FaceGenServer.texture_coordinates(npc) -> PackedFloat32Array        # static: FGTS
-FaceGenServer.facemod_path_for(npc) · head_egt_path_for(npc) · body_egt_path_for(npc)  # static
+FaceGenServer.facemod_path_for(npc) · race_facemod_path_for(npc, placed_npc)  # static
+FaceGenServer.head_egt_path_for(npc) · body_egt_path_for(npc)                   # static
 FaceGenServer.get_stats() -> Dictionary  ·  reset_stats()  ·  purge_all()
 ```
 
@@ -60,8 +62,10 @@ must not modify it.
 thread. `deliveries_per_frame` caps the callbacks made in one frame.
 
 **The skin.** FGTS is the race's for the NPC's gender plus the NPC's own, from the template when the
-NPC takes its traits from one. The face map is the NPC's shipped facemod
-(`textures\characters\facemods\falloutnv.esm\<form id>_0.dds`, through TextureServer), else one
+NPC takes its traits from one. The face map is, first, the placed NPC's facemod on the race its
+traits give it (`<m|f><race form id>_<placed NPC form id>_0.dds`, both 8 hex digits) when the
+caller passes `placed_npc` and the file exists; then the NPC's shipped facemod
+(`textures\characters\facemods\falloutnv.esm\<form id>_0.dds`, through TextureServer); else one
 built on a worker from the race head's EGT (`<head NIF stem>.egt`): each texel 128 + offset / 2,
 the facemods' encoding (they fit 126.3 + 0.46 x offset). Built maps are cached by (EGT,
 coefficients), held weakly, like morphed meshes. The body offset is the race's upper-body EGT
@@ -74,8 +78,6 @@ divided by 255 and signed. How the actor combines them with the skin texture is
 
 - Expression weights (the actor's facial player).
 - Headgear: `ActorEquipment` attaches it without asking for a morph yet.
-- The `M<race>_<npc>_0.dds` / `F<race>_<npc>_0.dds` facemods (an NPC's face on another race; 60
-  files, for templated and leveled NPCs).
 
 ## Tests
 

@@ -119,6 +119,20 @@ func _check_skin(esm: Node, server: Node, doc: NpcBase) -> void:
 	check(face_map != null and face_map.get_width() == 256, "Doc's face map is his 256 x 256 facemod")
 	check(server.get_stats()["facemod_count"] == stats_before["facemod_count"] + 1, "it is the shipped facemod")
 
+	var guard := esm.find_base_by_editor_id("vForlornHopeNCRRangerGuard01") as NpcBase
+	check(guard != null and guard.race != null, "vForlornHopeNCRRangerGuard01 loads")
+	if guard != null and guard.race != null:
+		var race_path: String = server.race_facemod_path_for(guard, guard)
+		var expected := "textures\\characters\\facemods\\falloutnv.esm\\m%08X_%08X_0.dds" % [guard.race.form_id, guard.form_id]
+		check(race_path == expected and ArchiveServer.contains(race_path),
+				"the ranger's facemod on its own race is m<race>_<npc>_0.dds and ships (%s)" % race_path)
+		var before := int(server.get_stats()["facemod_count"])
+		server.request_skin(guard, self, _on_skin, guard)
+		await skin_delivered
+		var race_face := _skin.get("face_map") as Texture2D
+		check(race_face != null and server.get_stats()["facemod_count"] == before + 1,
+				"request_skin with the placed NPC uses that facemod")
+
 	var prospector := esm.get_base(PROSPECTOR_NO_FACEMOD) as NpcBase
 	check(prospector != null, "NVProspectorMaleDEADSLCrater02 loads")
 	if prospector != null:

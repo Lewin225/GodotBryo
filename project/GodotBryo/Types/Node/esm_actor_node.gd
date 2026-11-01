@@ -528,7 +528,8 @@ func _request_face_gen(body: Node3D, generation: int) -> void:
 		return
 	var targets := _face_gen_targets(body)
 	_pending_face_gen = targets.size() + 1
-	face_gen_server.request_skin(npc, self, _on_skin_delivered.bind(npc, body, generation))
+	var placed_npc := reference.base as NpcBase if reference != null else null
+	face_gen_server.request_skin(npc, self, _on_skin_delivered.bind(npc, body, generation), placed_npc)
 	for mesh_instance in targets:
 		var model_path := String(mesh_instance.get_meta("gamebryo_model_path", ""))
 		var shape_name := String(mesh_instance.get_meta("nif_dismember_source_shape", mesh_instance.get_meta("nif_name", "")))
@@ -549,17 +550,21 @@ func _face_gen_targets(body: Node3D) -> Array[MeshInstance3D]:
 	return targets
 
 
-func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance: MeshInstance3D, body: Node3D, generation: int) -> void:
+## `mesh_instance` and `body` are untyped: a cancelled load frees them before
+## FaceGenServer answers, and a freed object cannot be passed to a typed
+## parameter.
+func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance, body, generation: int) -> void:
 	if generation != _load_generation or not _loading or not is_instance_valid(body):
 		return
 	if mesh != null and is_instance_valid(mesh_instance):
-		mesh_instance.mesh = mesh
-	_face_gen_part_done(body, generation)
+		(mesh_instance as MeshInstance3D).mesh = mesh
+	_face_gen_part_done(body as Node3D, generation)
 
 
 ## FaceGenServer's skin has come: loads the race's skin textures before the
 ## body is committed.
-func _on_skin_delivered(skin: Dictionary, npc: NpcBase, body: Node3D, generation: int) -> void:
+## `body` is untyped for the reason _on_face_gen_delivered gives.
+func _on_skin_delivered(skin: Dictionary, npc: NpcBase, body, generation: int) -> void:
 	if generation != _load_generation or not _loading or not is_instance_valid(body):
 		return
 	var textures := {}
@@ -577,7 +582,7 @@ func _on_skin_delivered(skin: Dictionary, npc: NpcBase, body: Node3D, generation
 		return
 	_skin = skin.duplicate()
 	_skin["textures"] = textures
-	_face_gen_part_done(body, generation)
+	_face_gen_part_done(body as Node3D, generation)
 
 
 func _face_gen_part_done(body: Node3D, generation: int) -> void:

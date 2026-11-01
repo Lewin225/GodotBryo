@@ -28,11 +28,18 @@ the template's race, sex, hair, eyes and head parts, including templates that ar
 - 1,852 placed actors reach a leveled list in their TPLT chain. 44 of them do not take
   Model/Animation from it and keep `marker_creature.nif` (40 take Traits from it, 4 take neither:
   `BoomerMessAAF` ×2, `BoomerMessCM`, `vGOMReceptionist`).
-- 60 facemods named `m<race>_<npc>_0.dds` / `f<race>_<npc>_0.dds` ship (FalloutNV.exe's
-  `M%08X_%08X_%i` / `F%08X_%08X_%i` patterns): an NPC's face on another race, for 18 NPCs,
-  mostly NCR Rangers templated on `vForlornHopeNCRRanger*TEMPLATE` / `vHDRangerKimballGuardTEMPLATE`
-  (one per human race), and five NPCs that take traits from a leveled list (one AfricanAmerican
-  file each). FaceGenServer only looks for `<npc>_0.dds` (`Completed Plans/Actors/faces.md`).
+- 60 facemods named `m<race>_<npc>_0.dds` / `f<race>_<npc>_0.dds` ship in Fallout - Textures.bsa
+  (FalloutNV.exe's `M%08X_%08X_%i` / `F%08X_%08X_%i` patterns), for 17 NPC_. The NPC is the
+  placed actor's own NPC_, the race one its traits can give it: one AfricanAmerican file each for
+  four that take traits from a template or leveled list (`PrimmNCRPatrolMcGee`,
+  `PrimmNCRPatrol`, `PrimmNCRDeputyRanger`, `vGOMReceptionist`), and one per human race for
+  `vMORangerGhost` and NCR Rangers and their templates (`vForlornHopeNCRRanger*`,
+  `vHDRangerKimballGuardTEMPLATE`, `VHDRangerOliverGuard`, `CharlieInteriorRanger`,
+  `vMORangerJackson`), whose races are their own.
+- ECZN: 17 records. DATA Minimum Level 0 to 22; Never Resets on 11. XEZN on 5 ACHR and 11 ACRE,
+  and on CELLs. Of the 3,739 placed ACHR and ACRE whose chain reaches a leveled list, 16 name a
+  zone themselves, 899 are in a cell that does (625 in `HooverDamZone`), 2,824 have none. 275 of
+  them carry XLCM (0 / 1 / 2 / 3 on 75 / 121 / 76 / 3); 22 actors that reach no list carry it too.
 
 ## Shape
 
@@ -41,13 +48,21 @@ the template's race, sex, hair, eyes and head parts, including templates that ar
 - `LeveledActorResolver.resolve(list, level, rng)` takes the entries at or below the level, only
   those at the highest such level unless LVLF 0x01, and picks one at random, following nested
   lists. A list with nothing at or below the level takes its lowest-level entries.
-- `ActorReference.get_leveled_template()` chooses once, at the player's level, seeded from
-  `instance_id`, into `leveled_template`.
+- `ActorReference.get_leveled_template()` chooses once into `leveled_template`, on first use, at
+  the space's level: the actor's XEZN zone, else its cell's (`EsmServer.encounter_zone_for_cell`),
+  whose level `EncounterZoneBase.resolve_level` fixes on first use (the player's, raised to the
+  minimum unless Match PC Below Minimum Level); the player's level without a zone. Without XLCM
+  the list's LVLF rules apply, seeded from `instance_id`. With XLCM (0-3 read as Easy, Medium,
+  Hard, Boss) the level is scaled (0.5, 0.75, 1.25, 2.0); Easy takes any entry at or below it,
+  the others only the closest, and the choice is seeded from space, modifier and list, so those
+  actors in one space are the same.
 - `ActorBase.template_source(record, flag, leveled_choice)` continues into the choice at a
   leveled list; `ActorReference.template_source(flag)` passes it. Stats, inventory, packages,
   idles, voice type, script functions and the actor node go through it.
 - `ActorReference.model_source()`: the Model/Animation source, or the leveled choice's when that
   is the `marker_creature.nif` placeholder (the 44 above; inferred).
+- `FaceGenServer.request_skin(npc, ..., placed_npc)`: the face map is `placed_npc`'s facemod on
+  the race of `npc` (the trait source) when that file ships, before `npc`'s own.
 
 ## Build
 
@@ -57,11 +72,10 @@ one when chosen again, and a skeleton other than the placeholder; the first one
 
 ## Open
 
-- The level used, and whether the encounter zone (XEZN on 5 ACHR, or the cell's zone) and XLCM
-  (178 ACHR) change it. Encounter zones are not resolved per cell yet.
-- What LVLF's flags do.
-- Choosing again on cell reset, once cell reset exists.
+- XLCM's value-to-modifier mapping and scales are inferred, not confirmed in game.
+- Zone level rules (minimum, Match PC Below Minimum Level) are inferred, not confirmed in game.
+- Choices are made on first use, which is when EsmServer creates the reference (its inventory
+  comes from the Inventory template), so zones resolve at the player's level then. Choosing again on cell reset, and zone resets (Never
+  Resets), wait for cell reset.
 - Lists with nothing at or below the level: taking the lowest entries is our choice.
 - The 44 placeholder actors' skeletons.
-- Facemods for a leveled choice (`m<race>_<npc>_0.dds`): FaceGenServer looks up the chosen NPC's
-  own.

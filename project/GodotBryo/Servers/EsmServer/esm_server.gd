@@ -44,6 +44,8 @@ const TYPE_TO_REFERENCE := {
 
 var reader
 var _cache: Dictionary = {}
+## CELL form ID -> its XEZN EncounterZoneBase, or null (encounter_zone_for_cell).
+var _cell_encounter_zones: Dictionary = {}
 # Authored placed references (REFR, ACHR, and ACRE) have stable identities
 # for the lifetime of this server. Save loading must inject/replace its restored
 # authored reference state here, rather than constructing parallel Resources.
@@ -380,6 +382,18 @@ func get_game_setting(editor_id: String) -> Variant:
 	return value
 
 ## The CELL that files a placed REFR/ACHR/ACRE, or 0. In-memory lookup.
+## The encounter zone CELL `cell_form_id` names in XEZN; null without one
+## (899 of the placed actors that reach a leveled list are in such a cell).
+func encounter_zone_for_cell(cell_form_id: int) -> EncounterZoneBase:
+	if cell_form_id == 0 or reader == null:
+		return null
+	if _cell_encounter_zones.has(cell_form_id):
+		return _cell_encounter_zones[cell_form_id]
+	var raw: Dictionary = reader.get_record_data(cell_form_id)
+	var zone := get_base(_u32(_subrecord(raw, "XEZN"))) as EncounterZoneBase
+	_cell_encounter_zones[cell_form_id] = zone
+	return zone
+
 func get_filing_cell_form_id(refr_form_id: int) -> int:
 	var i := _placed_reference_ids.bsearch(refr_form_id)
 	if i < _placed_reference_ids.size() and _placed_reference_ids[i] == refr_form_id:
@@ -644,13 +658,15 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	result.primitive_type = int(placement.get("primitive_type", 0)) as EsmReference.PrimitiveType
 	result.primitive_bounds = placement.get("primitive_bounds", Vector3.ZERO)
 	result.primitive_color = placement.get("primitive_color", Color(0, 0, 0, 0))
-	_populate_reference_inventory(result)
-	_populate_actor_values(result)
+	# An actor's XLCM and XEZN are read before its inventory and actor values,
+	# which choose from a leveled template at the level they give.
 	if result is ActorReference:
 		var actor: ActorReference = result
 		actor.spawn_cell_form_id = cell_id
 		actor.simulation_mode = ActorReference.SimulationMode.LOW_LEVEL
 		_populate_actor_reference(actor, reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {})
+	_populate_reference_inventory(result)
+	_populate_actor_values(result)
 	if result is DoorReference:
 		var door_ref: DoorReference = result
 		var ref_raw: Dictionary = reader.get_record_data(int(placement.get("refr_form_id", 0))) if reader != null else {}
@@ -819,6 +835,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		_populate_leveled_item(result as LeveledItemBase, raw)
 	elif result is LeveledActorBase:
 		_populate_leveled_actor(result as LeveledActorBase, raw)
+	elif result is EncounterZoneBase:
+		_populate_encounter_zone(result as EncounterZoneBase, raw)
 	elif result is QuestBase:
 		_populate_quest(result as QuestBase, raw)
 	elif result is PackageBase:
@@ -1425,6 +1443,16 @@ func _populate_leveled_item(result: LeveledItemBase, raw: Dictionary) -> void:
 				entry.health_percent = _f32(extra, 8)
 		result.entries.append(entry)
 
+## ECZN DATA: Owner, Rank (s8), Minimum Level (s8), Flags, 1 unused byte.
+func _populate_encounter_zone(result: EncounterZoneBase, raw: Dictionary) -> void:
+	var data := _subrecord(raw, "DATA")
+	if data.size() < 7:
+		return
+	result.owner_form_id = _u32(data)
+	result.rank = _i8(data, 4)
+	result.minimum_level = _i8(data, 5)
+	result.flags = _u8(data, 6)
+
 ## LVLN and LVLC: LVLD, LVLF and each 12-byte LVLO (level s16, 2 unused
 ## bytes, FormID, count s16, 2 unused bytes).
 func _populate_leveled_actor(result: LeveledActorBase, raw: Dictionary) -> void:
@@ -1741,7 +1769,9 @@ func _populate_package_event_subrecord(event: PackageEventCollection, tag: Strin
 ## An ACHR or ACRE's own subrecords beyond the placement: XLCM, XEZN, XMRC,
 ## ragdoll data, XATO, XAPD, XIBS, and on ACRE XOWN.
 func _populate_actor_reference(actor: ActorReference, raw: Dictionary) -> void:
-	actor.level_modifier = _i32(_subrecord(raw, "XLCM"))
+	actor.level_modifier = ActorReference.LEVEL_MODIFIER_NONE
+	if _subrecord_present(raw, "XLCM"):
+		actor.level_modifier = _i32(_subrecord(raw, "XLCM"))
 	actor.encounter_zone_form_id = _u32(_subrecord(raw, "XEZN"))
 	actor.encounter_zone = get_base(actor.encounter_zone_form_id) as EncounterZoneBase
 	actor.merchant_container_form_id = _u32(_subrecord(raw, "XMRC"))
