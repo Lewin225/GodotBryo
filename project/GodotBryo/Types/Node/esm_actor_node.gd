@@ -344,7 +344,10 @@ func _start_visual_load(reference_base: ActorBase) -> void:
 func _requested_asset_set() -> Dictionary:
 	var assets := {}
 	_add_requested_asset(assets, "skeleton", _model_record.model_path, true, "skeleton")
-	for part in _trait_record.get_model_parts(_is_female):
+	# An NPC's parts come from its race (traits); a creature's NIFZ parts are
+	# part of its model, like its skeleton.
+	var parts_record := _model_record if _model_record is CreatureBase else _trait_record
+	for part in parts_record.get_model_parts(_is_female):
 		var extra := part.duplicate()
 		for key in ["key", "path", "required", "kind"]:
 			extra.erase(key)
@@ -407,7 +410,11 @@ func _assemble_staged_body(generation: int) -> void:
 		return
 	var skeleton := skeleton_tree.find_child("Skeleton3D", true, false) as Skeleton3D
 	if skeleton == null:
-		_finish_visual_load(false, "skeleton NIF contains no Skeleton3D")
+		# A skeleton NIF that declares no bones of its own; its parts name its
+		# nodes as bones.
+		skeleton = skinning.build_skeleton_from_nodes(skeleton_tree)
+	if skeleton == null:
+		_finish_visual_load(false, "skeleton NIF contains no Skeleton3D and no nodes")
 		return
 
 	# Construct a root node
@@ -431,14 +438,35 @@ func _assemble_staged_body(generation: int) -> void:
 		if String(asset.get("kind", "")) != "body":
 			continue
 		var part_tree := _delivered_trees.get(asset_key) as Node3D
+		var required := bool(asset.get("required", true))
 		if part_tree == null:
-			_finish_visual_load(false, "required body tree is missing: " + String(asset.get("path", "")))
-			return
-		_move_tree(part_tree, nude_body, "BodyPart_%s" % String(asset_key).validate_node_name())
+			if required:
+				_finish_visual_load(false, "required body tree is missing: " + String(asset.get("path", "")))
+				return
+			_warn_once("EsmActorNode: optional body part is missing: " + String(asset.get("path", "")))
+			continue
+		var part_name := "BodyPart_%s" % String(asset_key).validate_node_name()
+		if not skinning.tree_has_skin(part_tree):
+			# A rigid part hangs from the skeleton node its root's Prn names.
+			if not _attach_rigid_part(part_tree, skeleton, skeleton_tree, part_name):
+				_warn_once("EsmActorNode: rigid body part has no Prn bone in the skeleton: " + String(asset.get("path", "")))
+				part_tree.queue_free()
+				if required:
+					_finish_visual_load(false, "rigid body part has no Prn bone: " + String(asset.get("path", "")))
+					return
+				continue
+			_tag_nude_body_meshes(part_tree, asset)
+			continue
+		skinning.add_part_bones(part_tree, skeleton)
+		_move_tree(part_tree, nude_body, part_name)
 		skinning.compact_external_skin_part(part_tree)
 		if not skinning.bind_external_skins(part_tree, skeleton):
-			_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
-			return
+			if required:
+				_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
+				return
+			_warn_once("EsmActorNode: optional body part has unresolved skeleton binds: " + String(asset.get("path", "")))
+			part_tree.queue_free()
+			continue
 		_tag_nude_body_meshes(part_tree, asset)
 
 	# Attach the head and setup it's face/eyes/teeth/hair
@@ -593,6 +621,31 @@ func _face_gen_part_done(body: Node3D, generation: int) -> void:
 	_pending_face_gen -= 1
 	if _pending_face_gen == 0:
 		_commit_staged_body(body, generation)
+
+
+## Puts an unskinned part under a BoneAttachment3D on the bone named by the
+## first Prn NiStringExtraData in its tree, in that bone's space (its
+## NifRoot conversion is dropped, as for attached head parts). A Prn naming a
+## node of the skeleton NIF that is not a bone makes it one. False when no
+## node carries a Prn or neither has such a node.
+func _attach_rigid_part(tree: Node3D, skeleton: Skeleton3D, skeleton_tree: Node3D, part_name: String) -> bool:
+	var bone_name := ""
+	for node: Node in [tree] + tree.find_children("*", "Node3D", true, false):
+		var strings: Dictionary = node.get_meta("nif_string_extra_data", {})
+		if strings.has("Prn"):
+			bone_name = NifNames.escape(String(strings["Prn"]))
+			break
+	if bone_name.is_empty():
+		return false
+	if skeleton.find_bone(bone_name) == -1 and skinning.add_skeleton_node_bone(skeleton_tree, skeleton, NifNames.unescape(bone_name)) == -1:
+		return false
+	var attachment := BoneAttachment3D.new()
+	attachment.name = "Attach_%s" % part_name
+	attachment.bone_name = bone_name
+	skeleton.add_child(attachment)
+	_move_tree(tree, attachment, part_name)
+	tree.transform = Transform3D.IDENTITY
+	return true
 
 
 func _create_facial_attachment(skeleton: Skeleton3D) -> BoneAttachment3D:

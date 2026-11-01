@@ -251,9 +251,6 @@ func _measure(node: Node, animation_clips: int) -> Dictionary:
 			counts["facial_attached_meshes"] += 1
 	return counts
 
-## A creature gets the same controller and actor node. CreatureBase lists no model parts until the
-## actors plan's stage J, so Rex (CREA 0x118E71) builds his skeleton and
-## nothing else.
 ## VMcCarranNCRTrooperMonorail1 takes its traits from NCRTrooperCF but carries
 ## its own, different HNAM and HCLR: the actor is built with the template's
 ## hair and hair colour.
@@ -291,6 +288,8 @@ func _check_templated(esm_server) -> void:
 	check(hair_tinted > 0, "its hair has the template's HCLR")
 	controller.queue_free()
 
+## A creature gets the same controller and actor node, and Rex (CREA 0x118E71)
+## builds his skeleton and his NIFZ body parts on it.
 func _check_creature(esm_server) -> void:
 	var rex: EsmReference = esm_server.create_reference_for_base(0x118E71)
 	var controller := EsmReferencePhysicaliser.new().physicalise(rex, self) as NpcController
@@ -308,6 +307,20 @@ func _check_creature(esm_server) -> void:
 	var body := node.get_node_or_null("Body")
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
 	check(skeleton != null and skeleton.get_bone_count() > 0, "Rex's skeleton is built (%d bones)" % (skeleton.get_bone_count() if skeleton != null else 0))
+	var parts := (rex.base as CreatureBase).model_list_paths
+	var built_paths := {}
+	var skinned := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		built_paths[String(mesh_instance.get_meta("gamebryo_model_path", ""))] = true
+		if mesh_instance.skin != null:
+			skinned += 1
+	var missing: Array[String] = []
+	for path in parts:
+		if not built_paths.has(path):
+			missing.append(path)
+	check(node.is_visual_built() and not parts.is_empty() and missing.is_empty() and skinned > 0,
+			"Rex builds his %d NIFZ parts, skinned to the skeleton (%d skinned meshes; missing %s)" % [parts.size(), skinned, missing])
 	controller.queue_free()
 
 

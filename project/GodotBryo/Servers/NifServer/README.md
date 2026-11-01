@@ -158,6 +158,7 @@ work, and NifServer offers no entry point for it.
 | `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
 | `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
+| `NiStringExtraData` on a node | its string as `nif_extra_NiStringExtraData` (the last one when there are several), and every one by block name in the `nif_string_extra_data` dictionary (`{"Prn": "Bip01 Head"}`) |
 | `BSFurnitureMarker` positions | a `Marker3D` per position under the owning node, in file order (`FurnitureMarker0`, ...): its offset as the position (metres, like every position), the raw orientation (thousandths of a radian) and both posRef bytes in metadata, uninterpreted |
 
 **Shader flags.** `NifSource.get_nodes()` exposes the two raw FO3/FNV

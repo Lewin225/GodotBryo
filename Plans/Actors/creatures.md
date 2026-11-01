@@ -12,8 +12,19 @@ back until the actor refactor.
   folder, through `TPLT` when templated.
 - `CreatureBase` reads NIFZ into `model_list` and `model_list_paths` (MODL's folder joined);
   not used yet. KFFZ (99 CREA, 0 NPC_) is read into `ActorBase.animations`; not used yet.
-- The actor node asks the base for its parts list; `CreatureBase` lists none, so a creature
-  builds its skeleton and nothing else (`tests/test_actor_node`, Rex, CREA 0x118E71).
+- NIFZ parts against their skeleton, every CREA through its Model/Animation template
+  (`_diag/diag_creature_parts`): 1,059 creatures, 276 distinct skeleton and part pairs.
+  - 138 skinned, every bind a bone of the skeleton's Skeleton3D.
+  - 57 unskinned, a `Prn` NiStringExtraData on the part naming a skeleton bone (Rex's eyes).
+  - 4 unskinned, `Prn` naming a node of the skeleton NIF that is not in its Skeleton3D
+    (`Bip01 L Finger1` on the sentry bot, `DomeRoot` on the robobrain).
+  - 6 skinned with binds the skeleton lacks, every one a node in the part itself: the
+    brahmin lamp's pole, the Cazador's wings, the sentry bot's `Bip01 R Finger2`.
+  - 53 on a skeleton NIF that NifServer returns without a Skeleton3D (Mister Gutsy and Handy,
+    eyebots, the penthouse computer): 21 unskinned with a `Prn` naming a node of it, 32
+    skinned.
+  - 18 name a file no archive ships (`DLC03*`, `BrahminWater.nif`, `MMM_ghoulvariant_v1.nif`).
+  - Every unskinned part carries a `Prn`.
 - 2,999 placed ACRE in FalloutNV.esm, every one naming a CREA; 512 Initially Disabled; 1,887
   reach a leveled list (LVLC) through TPLT (`acre_census.py` scan).
 - `EsmServer.get_all_placed_actor_references()`, NpcSimulationServer's seed list, comes from
@@ -32,8 +43,15 @@ back until the actor refactor.
 
 ## Build order
 
-1. **Parts.** `CreatureBase` lists its NIFZ parts (through the template when templated); the
-   actor node builds them on the skeleton. Gate: Rex renders.
+1. **Parts.** `CreatureBase` lists its NIFZ parts (through the template when templated), all
+   optional; the actor node skins skinned parts to the skeleton and hangs unskinned ones from
+   their `Prn` bone. Gate: Rex renders. Done: his body, skull cap and eyes build, and one CREA
+   for each of the 169 distinct skeleton and parts combinations builds
+   (`_diag/diag_creature_builds`). The actor node composes what the files declare only
+   together (`ActorSkinning`): a skeleton NIF with no declared bones becomes a Skeleton3D of
+   its nodes, a part's own bones join the skeleton under their parent, and a `Prn` naming a
+   non-bone skeleton node makes it a bone. The only parts left without a mesh are the files
+   no archive ships and parts with no mesh at all (laser emitters, the securitron smoke trail).
 2. **Animation.** The creature's KFs (its skeleton folder and KFFZ) through `ActorAnimator`.
    Gate: Rex idles and walks.
 3. **Seeding.** The seed list widened from ACHR to ACRE, and the streamers' CREA flag turned
