@@ -230,8 +230,8 @@ func _preview_selected_list() -> void:
 	var level := int(preview_level.value) if preview_level != null else 1
 	for run in runs:
 		for item in resolver.resolve(base as LeveledItemBase, level, {"seed": base.form_id + run}):
-			if item == null or item.item_reference == null or item.item_reference.base == null: continue
-			var item_base: EsmBase = item.item_reference.base
+			if item == null or item.base == null: continue
+			var item_base: EsmBase = item.base
 			var row := {"record_type": item_base.record_type, "form_id": item_base.form_id, "full_name": item_base.full_name, "editor_id": item_base.editor_id}
 			row["display_name"] = item_base.full_name if not item_base.full_name.is_empty() else item_base.editor_id
 			var card := CardScript.new()

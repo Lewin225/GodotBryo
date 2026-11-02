@@ -81,6 +81,12 @@ var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 var _relocated_by_cell: Dictionary = {}
 var _relocated: Dictionary = {} # EsmReference -> current CELL
 var _player_reference: NpcReference = null
+## References with no ESM record, by `runtime:` instance_id. Filled by
+## create_runtime_reference() and by save loading; the only place
+## get_reference() looks for a runtime id.
+var _runtime_references: Dictionary = {}
+## The number the next runtime reference's instance_id ends with.
+var _next_runtime_number := 1
 
 ## FormID of the Player NPC_ record. The player's own placed reference
 ## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
@@ -309,6 +315,8 @@ func get_reference(instance_id: String) -> EsmReference:
 		return _game_session.get_reference(instance_id)
 	if instance_id == PLAYER_INSTANCE_ID:
 		return get_player_reference()
+	if instance_id.begins_with("runtime:"):
+		return _runtime_references.get(instance_id)
 	if reader == null or not instance_id.begins_with("authored:"):
 		if reader == null or not instance_id.begins_with("base:"):
 			return null
@@ -425,19 +433,35 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	_populate_reference_inventory(result)
 	_populate_actor_values(result)
 	_populate_terminal_lock(result)
+	# Building it ran the setters that mark a change; it matches its base.
+	result.dirty = false
 	return result
 
-## Creates a typed item reference for Inventory.restore_state(). Unlike a
-## world reference it has no placement; its mutable item state is restored by
-## Inventory from the save payload.
-func create_inventory_item_reference(base_form_id: int, instance_id: String = "") -> EsmReference:
+## A new reference to `base_form_id` with no ESM record, named
+## `runtime:<base FormID>:<number>` from one counter, and held in the runtime
+## table until release_runtime_reference(). Unplaced (space 0). Null when the
+## base does not exist.
+func create_runtime_reference(base_form_id: int) -> EsmReference:
 	var base := get_base(base_form_id)
 	if base == null:
 		return null
-	var result := _create_inventory_item_reference(base, base_form_id, 0)
-	if result != null and not instance_id.is_empty():
-		result.instance_id = instance_id
+	var script_name := String(TYPE_TO_REFERENCE.get(base.record_type, "EsmReference"))
+	var script := _resource_script(script_name)
+	if script == null:
+		return null
+	var result: EsmReference = script.new()
+	result.base_form_id = base_form_id
+	result.base = base
+	result.instance_id = "runtime:%08X:%d" % [base_form_id, _next_runtime_number]
+	_next_runtime_number += 1
+	_runtime_references[result.instance_id] = result
 	return result
+
+## Drops a runtime reference from the runtime table, for one used up or
+## deleted, so get_reference() no longer finds it and a save leaves it out.
+func release_runtime_reference(reference: EsmReference) -> void:
+	if reference != null:
+		_runtime_references.erase(reference.instance_id)
 
 ## The references currently in a CELL: those filed in it that have not moved
 ## to another CELL, and those that have moved into it.
@@ -711,6 +735,8 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 			or result is ActivatorReference or result is DoorReference or result is LightReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
 	_populate_terminal_lock(result)
+	# Building it ran the setters that mark a change; it matches the ESM.
+	result.dirty = false
 	_authored_reference_cache[id] = result
 	return result
 
@@ -743,12 +769,7 @@ func add_inventory_items(holder: EsmReference, item_base: EsmBase, count: int) -
 				if inventory.add_inventory_item(resolved):
 					added += resolved.count
 		return added
-	var item_reference := _create_inventory_item_reference(item_base, item_base.form_id, inventory.items.size())
-	if item_reference == null:
-		return 0
-	var item := InventoryItem.new()
-	item.item_reference = item_reference
-	item.count = count
+	var item := InventoryItem.make_stack(item_base, count)
 	return count if inventory.add_inventory_item(item) else 0
 
 ## The level leveled lists resolve at for `holder`: an actor's level, else 1.
@@ -757,10 +778,10 @@ static func _holder_level(holder: EsmReference) -> int:
 	return values.get_level() if values != null else 1
 
 ## An owner's Items (ActorBase.items, following the Inventory template flag;
-## a container's CNTO) are the authored seed for its inventory. Each COED's
-## owner and condition carry to the item. The live inventory is kept on the
-## owner reference as typed item references and is not rebuilt from the base
-## after the reference has been created.
+## a container's CNTO) are the authored seed for its inventory, as stacks.
+## Each COED's owner and condition carry to the stack. The live inventory is
+## kept on the owner reference and is not rebuilt from the base after the
+## reference has been created.
 func _populate_reference_inventory(reference: EsmReference) -> void:
 	if not (reference is ActorReference or reference is ContainerReference):
 		return
@@ -783,39 +804,21 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		if entry.item is LeveledItemBase:
 			var resolved := resolver.resolve(entry.item as LeveledItemBase, level, {"seed": owner_base.form_id ^ item_index})
 			for resolved_item in resolved:
-				resolved_item.instance_id = "inventory:%08X:%d" % [resolved_item.item_reference.base_form_id, item_index]
 				if count > 1:
 					resolved_item.count *= count
 				reference.contents.add_inventory_item(resolved_item)
 				item_index += 1
 			continue
-		var item_reference := _create_inventory_item_reference(entry.item, entry.item_form_id, item_index)
-		if item_reference == null or count <= 0:
+		if entry.item == null or count <= 0:
 			item_index += 1
 			continue
-		var item := InventoryItem.new()
-		item.item_reference = item_reference
-		item.count = count
-		item.instance_id = "inventory:%08X:%d" % [entry.item_form_id, item_index]
+		var item := InventoryItem.make_stack(entry.item, count)
 		item.owner_form_id = entry.owner_form_id
 		item.health_percent = entry.condition
 		inventory.add_item(item)
 		item_index += 1
 	if reference is NpcReference:
 		inventory.equip_default_armor()
-
-func _create_inventory_item_reference(item_base: EsmBase, form_id: int, index: int) -> EsmReference:
-	if item_base == null:
-		return null
-	var script_name := String(TYPE_TO_REFERENCE.get(item_base.record_type, "EsmReference"))
-	var script := _resource_script(script_name)
-	if script == null:
-		return null
-	var result: EsmReference = script.new()
-	result.base_form_id = form_id
-	result.base = item_base
-	result.instance_id = "inventory-ref:%08X:%d" % [form_id, index]
-	return result
 
 func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result._rehydrating = true

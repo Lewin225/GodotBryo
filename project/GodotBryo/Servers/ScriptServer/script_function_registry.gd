@@ -341,7 +341,7 @@ func _register_defaults() -> void:
 		if inventory == null or item == null:
 			return 0
 		for owned in inventory.get_equipped_items():
-			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+			if owned.base_form_id == item.form_id:
 				inventory.unequip_item(owned)
 		return 1)
 	register("GetEquipped", func(a: Array, ctx: ScriptExecutionContext):
@@ -350,7 +350,7 @@ func _register_defaults() -> void:
 		if inventory == null or item == null:
 			return 0
 		for owned in inventory.get_equipped_items():
-			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+			if owned.base_form_id == item.form_id:
 				return 1
 		return 0)
 
@@ -941,7 +941,7 @@ static func _dialogue_server() -> Node:
 ## The first inventory item of a base, or null.
 static func _first_item(inventory: Inventory, base_form_id: int) -> InventoryItem:
 	for item in inventory.get_items():
-		if item.item_reference != null and item.item_reference.base_form_id == base_form_id:
+		if item.base_form_id == base_form_id:
 			return item
 	return null
 
@@ -951,7 +951,7 @@ static func _remove_items(inventory: Inventory, base_form_id: int, count: int) -
 	for item in inventory.get_items():
 		if removed >= count:
 			break
-		if item.item_reference == null or item.item_reference.base_form_id != base_form_id:
+		if item.base_form_id != base_form_id:
 			continue
 		var take := mini(item.count, count - removed)
 		if inventory.remove_inventory_item(item, take):

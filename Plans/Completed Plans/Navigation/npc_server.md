@@ -3,7 +3,7 @@
 **Status: complete.** The server seeds in the running game (`game.gd`), simulates checked-in
 actors' packages over the door graph, and hands actors to and from `NpcController` by check-out
 and check-in. Left as follow-ons: saving and restoring dirty references
-(`Plans/Saving/reference_persistence.md`), DOOR FNAM Minimal Use in portal choice, exterior
+(`Plans/Saving/save_load.md`), DOOR FNAM Minimal Use in portal choice, exterior
 blockers for off-screen travel, and interior NAVM sampling for in-space routes (all under "Not
 now" below).
 

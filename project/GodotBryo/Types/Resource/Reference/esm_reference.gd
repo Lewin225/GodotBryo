@@ -31,8 +31,10 @@ const ENABLE_PARENT_POP_IN := 0x02
 @export var base_form_id: int = 0
 ## Not an ESM field: the reference's identity in EsmServer's index.
 ## `authored:<FormID>` for a placed REFR/ACHR/ACRE (its record header FormID),
-## `player`, `base:<FormID>` for one created from a base, `inventory:...` for
-## a carried item. Set; used by get_reference(), saves and the debug tools.
+## `player`, `base:<FormID>` for one created from a base, and
+## `runtime:<base FormID>:<number>` for one with no ESM record (an item given its
+## own state, a placed-at-me object), which keeps it for the whole playthrough.
+## Set; used by get_reference(), saves and the debug tools.
 @export var instance_id: String = ""
 ## Not an ESM field: the space containing this reference, the WRLD for an
 ## exterior position or the CELL for an interior one, from the CELL that files
@@ -41,18 +43,26 @@ const ENABLE_PARENT_POP_IN := 0x02
 @export var current_space_form_id: int = 0:
 	set(value):
 		current_space_form_id = value
+		mark_dirty()
 		_refresh_cell()
 ## DATA position, converted to metres, Gamebryo Z-up axes. Read; used for
 ## placement and to derive the cell. Movement writes it at runtime.
 @export var position: Vector3 = Vector3.ZERO:
 	set(value):
 		position = value
+		mark_dirty()
 		_refresh_cell()
 ## DATA rotation: radians about X, Y, Z, Gamebryo axes. Read; used for
 ## placement.
-@export var rotation: Vector3 = Vector3.ZERO
+@export var rotation: Vector3 = Vector3.ZERO:
+	set(value):
+		rotation = value
+		mark_dirty()
 ## XSCL: the scale; 1.0 when absent. Read; used for placement.
-@export var scale: float = 1.0
+@export var scale: float = 1.0:
+	set(value):
+		scale = value
+		mark_dirty()
 ## Record header flag 0x8000 (Visible When Distant). Read; used by
 ## WorldStreamerV2's distant-object policy. It is authored placement
 ## data, not a request to load the companion model: WorldStreamer owns that
@@ -99,12 +109,22 @@ const ENABLE_PARENT_POP_IN := 0x02
 ## Not an ESM field: this reference's object script state (locals), created
 ## by ScriptServer the first time the script runs or a variable is written.
 ## Null when the base has no script or it has not run yet. Saved.
-@export var script_instance: ScriptInstance
+@export var script_instance: ScriptInstance:
+	set(value):
+		if script_instance != null and script_instance.changed.is_connected(mark_dirty):
+			script_instance.changed.disconnect(mark_dirty)
+		script_instance = value
+		if script_instance != null:
+			script_instance.changed.connect(mark_dirty)
+		mark_dirty()
 
 ## Not an ESM field: set by MarkForDelete. The streamers do not spawn a marked
 ## reference again; its current node, if any, stays until its CELL unloads.
 ## Saved.
-@export var marked_for_delete: bool = false
+@export var marked_for_delete: bool = false:
+	set(value):
+		marked_for_delete = value
+		mark_dirty()
 
 ## Not an ESM field: whether Disable has hidden this reference; starts as
 ## `initially_disabled`. Set by set_disabled() (Enable, Disable); ignored while
@@ -182,6 +202,17 @@ func set_disabled(value: bool) -> void:
 	var server := get_esm_server()
 	if server != null:
 		server.reference_enable_state_changed.emit(self)
+
+## Marks this reference dirty whenever `inventory` changes. For the `contents`
+## setters of the references that hold one.
+func _watch_inventory(inventory: Inventory) -> void:
+	if inventory != null and not inventory.inventory_changed.is_connected(mark_dirty):
+		inventory.inventory_changed.connect(mark_dirty)
+
+## Stops _watch_inventory() for an inventory being replaced.
+func _unwatch_inventory(inventory: Inventory) -> void:
+	if inventory != null and inventory.inventory_changed.is_connected(mark_dirty):
+		inventory.inventory_changed.disconnect(mark_dirty)
 
 ## Whether this reference's enabled state comes from `other`: it is `other`,
 ## or `other` is in its enable parent chain.

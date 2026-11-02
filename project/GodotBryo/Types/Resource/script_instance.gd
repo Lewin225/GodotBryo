@@ -4,7 +4,8 @@ extends Resource
 
 ## The persistent state of one reference's object script: which SCPT runs and
 ## its local variables. Lives on the EsmReference, so it persists whether or
-## not the reference is loaded and is saved with it.
+## not the reference is loaded and is saved with it. set_local() emits
+## `changed`, which marks the reference dirty.
 
 ## SCPT FormID of the script this instance runs.
 @export var script_form_id: int = 0
@@ -29,6 +30,7 @@ func set_local(name: String, value: Variant) -> void:
 		locals[name.to_lower()] = {"ref": (value as EsmReference).instance_id}
 	else:
 		locals[name.to_lower()] = value
+	emit_changed()
 
 func has_local(name: String) -> bool:
 	return locals.has(name.to_lower())

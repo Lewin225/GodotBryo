@@ -41,7 +41,7 @@ func _ready() -> void:
 			_check(reference.contents is Inventory, "an NpcReference owns a typed Inventory")
 			if reference.contents is Inventory:
 				for item in (reference.contents as Inventory).get_items():
-					_check(item is InventoryItem and item.item_reference is EsmReference, "Actor inventory contains InventoryItem-wrapped references")
+					_check(item is InventoryItem and item.item_reference == null and item.base != null, "Actor inventory starts as stacks of resolved bases")
 					break
 			_check(actor_base != null and actor_base.race != null, "NPC Base resolves typed Race Base")
 			_check(actor_base == null or actor_base.race == server.get_base(actor_base.race_form_id), "NPC Race Base is the shared cached instance")
@@ -72,6 +72,7 @@ func _ready() -> void:
 	_check_package_bases(server, index)
 	_check_typed_container_inventory(server, index)
 	_check_inventory_contract(server)
+	_check_dirty_marking(server, index)
 	_check_armor_slot_conflicts()
 	_check_armor_fields(server)
 	_check_hair_and_head_part_fields(server, index)
@@ -557,7 +558,7 @@ func _check_seeded_item_condition(server, index: Array) -> void:
 		var reference: EsmReference = server.create_reference_for_base(npc.form_id)
 		var carried := false
 		for item: InventoryItem in reference.contents.get_items():
-			var same_item := item.item_reference != null and item.item_reference.base_form_id == entry.item_form_id
+			var same_item := item.base_form_id == entry.item_form_id
 			if same_item and is_equal_approx(item.health_percent, entry.condition):
 				carried = true
 		_check(carried, "%s's inventory item %s carries COED condition %.2f" % [npc.editor_id, entry.item.editor_id, entry.condition])
@@ -904,29 +905,66 @@ func _check_typed_container_inventory(server, index: Array) -> void:
 		_check(reference.contents is Inventory, "ContainerReference owns a typed Inventory")
 		if reference.contents is Inventory:
 			for item in (reference.contents as Inventory).get_items():
-				_check(item is InventoryItem and item.item_reference is EsmReference, "Container inventory contains InventoryItem-wrapped references")
+				_check(item is InventoryItem and item.item_reference == null and item.base != null, "Container inventory starts as stacks of resolved bases")
 				break
 		return
 	_check(false, "a real container reference is available for typed inventory validation")
 
+## A reference is clean when EsmServer has built it, and becomes dirty when a
+## saved field, its inventory, its actor values or its script locals change.
+func _check_dirty_marking(server, index: Array) -> void:
+	var container: ContainerReference = null
+	var actor: ActorReference = null
+	var disabled_actor: ActorReference = null
+	for row in index:
+		var record_type := String(row.get("record_type", ""))
+		if record_type != "REFR" and record_type != "ACHR":
+			continue
+		var id := "authored:%08X" % int(row.get("form_id", 0))
+		var reference: EsmReference = server.get_reference(id)
+		if container == null and reference is ContainerReference and not reference.dirty:
+			container = reference
+		elif reference is ActorReference and not reference.dirty:
+			if reference.initially_disabled and disabled_actor == null:
+				disabled_actor = reference
+			elif not reference.initially_disabled and actor == null:
+				actor = reference
+		if container != null and actor != null and disabled_actor != null:
+			break
+	_check(container != null and actor != null and disabled_actor != null, "built references start clean")
+	if container == null or actor == null or disabled_actor == null:
+		return
+	container.contents.add_item(server.find_base_by_editor_id("Stimpak").form_id)
+	_check(container.dirty, "a container whose inventory changes is dirty")
+	actor.position += Vector3(1, 0, 0)
+	_check(actor.dirty, "an actor that moves is dirty")
+	_check(not disabled_actor.dirty, "an initially disabled actor nothing has touched stays clean")
+	disabled_actor.get_actor_values().damage_value(ActorValue.HEALTH, 1.0)
+	_check(disabled_actor.dirty, "an actor whose actor values change is dirty")
+
 func _check_inventory_contract(server) -> void:
 	var inventory := Inventory.new()
-	var item_reference: EsmReference = server.create_inventory_item_reference(0x000E3778, "test-weapon")
+	var stimpak: EsmBase = server.find_base_by_editor_id("Stimpak")
+	var stack := InventoryItem.make_stack(stimpak, 5)
+	_check(inventory.add_inventory_item(stack), "Inventory accepts a stack")
+	var item_reference: EsmReference = server.create_runtime_reference(0x000E3778)
+	_check(item_reference != null and item_reference.instance_id.begins_with("runtime:000E3778:"), "a runtime reference is named runtime:<base>:<number>")
+	_check(server.get_reference(item_reference.instance_id) == item_reference, "get_reference finds a runtime reference")
 	var item := InventoryItem.new()
 	item.item_reference = item_reference
-	item.count = 2
-	item.instance_id = "test-item"
-	_check(inventory.add_inventory_item(item), "Inventory accepts a typed InventoryItem")
-	_check(inventory.get_item_count(0x000E3778) == 2, "Inventory counts wrapped typed items")
-	_check(inventory.set_equipped("test-item", true), "Inventory stores equipped state on InventoryItem")
+	item.count = 1
+	_check(item.base_form_id == 0x000E3778 and item.base == item_reference.base, "a reference entry takes its reference's base")
+	_check(inventory.add_inventory_item(item), "Inventory accepts a reference entry")
+	_check(inventory.get_item_count(0x000E3778) == 1 and inventory.get_item_count(stimpak.form_id) == 5, "Inventory counts stacks and references by base")
+	_check(inventory.equip_item(item), "Inventory stores equipped state on InventoryItem")
 	_check(inventory.get_equipped_items().size() == 1, "Inventory returns equipped InventoryItems")
 	var saved := inventory.serialize_state()
 	var restored := Inventory.new()
-	var factory := func(form_id: int, instance_id: String) -> EsmReference:
-		return server.create_inventory_item_reference(form_id, instance_id)
-	_check(restored.restore_state(saved, factory), "Inventory restores typed item state")
-	_check(restored.get_item_count(0x000E3778) == 2, "Inventory restore preserves count")
-	_check(restored.get_equipped_items().size() == 1, "Inventory restore preserves equipped state")
+	_check(restored.restore_state(saved, server.get_reference), "Inventory restores stacks and reference entries")
+	_check(restored.get_item_count(0x000E3778) == 1 and restored.get_item_count(stimpak.form_id) == 5, "Inventory restore preserves counts")
+	_check(restored.get_equipped_items().size() == 1 and restored.get_equipped_items()[0].item_reference == item_reference, "Inventory restore resolves the same reference by its id")
+	server.release_runtime_reference(item_reference)
+	_check(server.get_reference(item_reference.instance_id) == null, "a released runtime reference is no longer found")
 
 ## ARMO DATA, DNAM, BMDT and ETYP on authored armour: the combat armour's
 ## value, weight and DT; a DR in hundredths; a power armour helmet whose DNAM
@@ -1086,13 +1124,10 @@ func _check_armor_slot_conflicts() -> void:
 	var inventory := Inventory.new()
 	var first := InventoryItem.new()
 	first.item_reference = first_ref
-	first.instance_id = "first"
 	var second := InventoryItem.new()
 	second.item_reference = second_ref
-	second.instance_id = "second"
 	var legs := InventoryItem.new()
 	legs.item_reference = legs_ref
-	legs.instance_id = "legs"
 	inventory.add_inventory_item(first)
 	inventory.add_inventory_item(second)
 	inventory.add_inventory_item(legs)
