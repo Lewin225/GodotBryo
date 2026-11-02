@@ -361,19 +361,26 @@ float sample_scalar(const std::vector<ScalarKey> &keys, float time) {
 	return keys.back().value;
 }
 
-// Composition order is X, Y, Z -- matching Godot's EULER_ORDER_XYZ, which is
-// what the existing animation path already feeds these curves through.
+// q = qz * qy * qx: X applied first, then Y, then Z, in the same frame as the
+// node rotations (nif_source_gd.cpp's Basis). Over the creature KFs, a track's
+// first key composed this way lies within 5 degrees of its bone's skeleton.nif
+// rest for 3,967 of the 3,975 tracks that lie that close under any order or
+// sign; qx * qy * qz matches 1,819.
 void euler_xyz_to_quat(float x, float y, float z, float out[4]) {
 	const float hx = x * 0.5f, hy = y * 0.5f, hz = z * 0.5f;
 	const float cx = std::cos(hx), sx = std::sin(hx);
 	const float cy = std::cos(hy), sy = std::sin(hy);
 	const float cz = std::cos(hz), sz = std::sin(hz);
-	// q = qx * qy * qz, each a unit axis rotation.
-	const float xy_w = cx * cy, xy_x = sx * cy, xy_y = cx * sy, xy_z = -sx * sy;
-	out[3] = xy_w * cz - xy_z * sz; // w
-	out[0] = xy_x * cz + xy_y * sz; // x
-	out[1] = xy_y * cz - xy_x * sz; // y
-	out[2] = xy_w * sz + xy_z * cz; // z
+	// zy = qz * qy.
+	const float zy_w = cz * cy;
+	const float zy_x = -sz * sy;
+	const float zy_y = cz * sy;
+	const float zy_z = sz * cy;
+	// q = zy * qx.
+	out[3] = zy_w * cx - zy_x * sx; // w
+	out[0] = zy_w * sx + zy_x * cx; // x
+	out[1] = zy_y * cx + zy_z * sx; // y
+	out[2] = zy_z * cx - zy_y * sx; // z
 }
 
 // --- B-spline sampling ------------------------------------------------------

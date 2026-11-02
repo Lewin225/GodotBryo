@@ -44,7 +44,8 @@ const ACBS_FLAG_NAMES := "Biped:1,Essential:2,Weapon & Shield?:4,Respawn:8,Swims
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "BodyPartDataBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var body_part_data: BodyPartDataBase
 ## TNAM: Turning Speed. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var turning_speed: float = 0.0
-## BNAM: Base Scale. Read; not used yet.
+## BNAM: Base Scale. Read; used through get_body_scale by EsmActorNode, from the
+## Model/Animation template source.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base_scale: float = 1.0
 ## WNAM: Foot Weight. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var foot_weight: float = 0.0
@@ -68,6 +69,10 @@ func _validate_property(property: Dictionary) -> void:
 
 ## Its skeleton's folder below meshes/, where its KFs are; the actor node's
 ## animator takes its locomotion from there (ActorAnimator).
+## BNAM.
+func get_body_scale(_female: bool) -> float:
+	return base_scale
+
 func animation_search_paths() -> PackedStringArray:
 	if model_path.is_empty():
 		return PackedStringArray()

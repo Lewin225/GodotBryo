@@ -33,12 +33,11 @@ fill_to = Vector2(0.9230769, 0.16239317)
 [sub_resource type="LabelSettings" id="LabelSettings_yw30f"]
 font_size = 32
 
-[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera", "camera_mount", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "special_menu", "tag_skills_menu", "trait_menu", "dialogue_session")]
+[node name="Character" type="CharacterBody3D" unique_id=1007875956 node_paths=PackedStringArray("collision_shape", "camera_mount", "interact_ray", "message_box", "terminal_session", "unlock_session", "quest_notice", "subtitle", "name_menu", "race_menu", "special_menu", "tag_skills_menu", "trait_menu", "dialogue_session")]
 script = ExtResource("1_controller")
 mouse_sensitivity = 0.002
 camera_aim_smooth_speed = 5.0
 collision_shape = NodePath("CollisionShape3D")
-camera = NodePath("Camera3D")
 camera_mount = NodePath("Camera_Mount")
 interact_ray = NodePath("Camera3D/InteractRay")
 message_box = NodePath("MessageBox")
@@ -64,8 +63,9 @@ shape = SubResource("CapsuleShape3D_player")
 [node name="EsmActorNode" parent="." unique_id=123295044 instance=ExtResource("2_qjkh3")]
 possessed_first_person = true
 
-[node name="Camera3D" type="Camera3D" parent="." unique_id=1676192724]
+[node name="Camera3D" type="Camera3D" parent="." unique_id=611636034]
 current = true
+fov = 111.3
 far = 6000.0
 
 [node name="InteractRay" type="RayCast3D" parent="Camera3D" unique_id=76512398]
@@ -74,6 +74,7 @@ script = ExtResource("4_interactray")
 
 [node name="SpotLight3D" type="SpotLight3D" parent="Camera3D" unique_id=880402807]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32488638, -0.60089016, -0.14551902)
+visible = false
 light_color = Color(0.9395503, 0.79728204, 0.45056558, 1)
 light_energy = 2.0
 light_volumetric_fog_energy = 2.0
@@ -83,7 +84,7 @@ spot_range = 20.0
 spot_angle = 37.76
 
 [node name="ReflectionProbe" type="ReflectionProbe" parent="Camera3D" unique_id=584686752]
-update_mode = 1
+visible = false
 max_distance = 100.0
 size = Vector3(50, 50, 50)
 ambient_mode = 0

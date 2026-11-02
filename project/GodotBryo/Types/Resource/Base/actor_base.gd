@@ -196,9 +196,22 @@ func get_attribute(index: int) -> int:
 func get_model_parts(_female: bool) -> Array[Dictionary]:
 	return []
 
+## Activating an actor: the player starts a conversation with it (GREETING).
+## Another activator does nothing, and so does an actor with no GREETING INFO
+## for the player.
+func activate(ref: EsmReference, activator: EsmReference) -> void:
+	if ref == null or activator == null or activator != ScriptServer.player_reference:
+		return
+	DialogueServer.start_conversation(ref, activator)
+
 ## Whether the actor uses its female models; an ActorBase is not female.
 func is_female() -> bool:
 	return false
+
+## The scale of the actor's body, for the actor node; 1 here. NpcBase and
+## CreatureBase supply theirs.
+func get_body_scale(_female: bool) -> float:
+	return 1.0
 
 ## Where the actor's animation KFs are found, for the actor node; none here.
 func animation_search_paths() -> PackedStringArray:

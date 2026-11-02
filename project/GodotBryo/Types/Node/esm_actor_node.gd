@@ -299,6 +299,14 @@ func _template_source(reference_base: ActorBase, flag: int) -> ActorBase:
 	return ActorBase.template_source(reference_base, flag)
 
 
+## A creature's scale comes with its model (Model/Animation template), an
+## NPC's with its race (Traits template).
+func _body_scale() -> float:
+	if _model_record is CreatureBase:
+		return _model_record.get_body_scale(_is_female)
+	return _trait_record.get_body_scale(_is_female)
+
+
 ## The record supplying `reference_base`'s skeleton and animations
 ## (ActorReference.model_source when the reference is an actor).
 func _model_source(reference_base: ActorBase) -> ActorBase:
@@ -421,6 +429,7 @@ func _assemble_staged_body(generation: int) -> void:
 	var body := Node3D.new()
 	body.name = BODY_NODE_NAME
 	body.visible = false
+	body.scale = Vector3.ONE * _body_scale()
 	_staging_root.add_child(body)
 
 	#Attach the returned skeleton to the body node, 99% it's _male/skeleton.nif
@@ -624,8 +633,8 @@ func _face_gen_part_done(body: Node3D, generation: int) -> void:
 
 
 ## Puts an unskinned part under a BoneAttachment3D on the bone named by the
-## first Prn NiStringExtraData in its tree, in that bone's space (its
-## NifRoot conversion is dropped, as for attached head parts). A Prn naming a
+## first Prn NiStringExtraData in its tree, in that bone's space through its
+## file root's transform (its NifRoot conversion is dropped). A Prn naming a
 ## node of the skeleton NIF that is not a bone makes it one. False when no
 ## node carries a Prn or neither has such a node.
 func _attach_rigid_part(tree: Node3D, skeleton: Skeleton3D, skeleton_tree: Node3D, part_name: String) -> bool:
@@ -645,6 +654,12 @@ func _attach_rigid_part(tree: Node3D, skeleton: Skeleton3D, skeleton_tree: Node3
 	skeleton.add_child(attachment)
 	_move_tree(tree, attachment, part_name)
 	tree.transform = Transform3D.IDENTITY
+	# The part's file root places it in the bone's space (the dog's eyes match
+	# the skeleton's Bip01 Head2 Eyeleds, the protectron's dome its DomeRoot),
+	# so the transform NifTreeBuilder suppresses is put back.
+	for node: Node in [tree] + tree.find_children("*", "Node3D", true, false):
+		if node.has_meta("nif_suppressed_file_root_transform"):
+			(node as Node3D).transform = node.get_meta("nif_suppressed_file_root_transform")
 	return true
 
 

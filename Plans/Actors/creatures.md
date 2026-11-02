@@ -28,13 +28,22 @@ back until the actor refactor.
 - 2,999 placed ACRE in FalloutNV.esm, every one naming a CREA; 512 Initially Disabled; 1,887
   reach a leveled list (LVLC) through TPLT (`acre_census.py` scan).
 - `EsmServer.get_all_placed_actor_references()`, NpcSimulationServer's seed list, comes from
-  `EsmReader.get_all_placed_npc_actors()`: ACHR only.
-- Both streamers have a CREA spawn flag; `game.tscn` sets theirs to REFR and ACHR only.
+  `EsmReader.get_all_placed_actors()`: ACHR and ACRE, 6,385 actors.
+- Both streamers have a CREA spawn flag, on in `game.tscn`.
 - Creature KFs sit in the skeleton's folder: 753 directly in it, 194 in `locomotion/`, 421 in
   `idleanims/`, 57 in `specialanims/`. Of the 43 CREA skeleton folders, 12 have no
   `mtforward`, 18 no `mtbackward`, 23 no `mtleft`/`mtright`; turrets, ravens, Mr House, the
   spore plant and the penthouse computer have only `mtidle`; the dog's backward clip is
   `mtbackrward.kf`.
+- Creature KFs rotate many bones with XYZ (Euler) keys: 7,464 tracks on a skeleton bone. A
+  track's angles compose as qz * qy * qx (X first) in the node rotations' frame: its first key
+  then lies within 5 degrees of the bone's `skeleton.nif` rest for 3,967 of the 3,975 tracks
+  that lie that close under any order or sign. Composed otherwise, jaws and the brahmin's udder
+  (`Bip01 Sack`) turned half a turn away.
+- CREA BNAM (base scale) is 1 on 1,178 of 1,578 CREA and ranges from 0.1 to 1.7. NPC_ NAM6
+  (height) is 0 on 2,601 of 3,816 NPC_, taken as 1; the four child races' RACE height is 0.8,
+  and they use the adult meshes.
+- 242 placed creatures, nearly all robots, have a GREETING INFO for the player at game start.
 - Leveled templates and encounter zones work on `ActorReference`: a creature whose TPLT chain
   reaches an LVLC takes its choice through `ActorReference.template_source()` and
   `model_source()` (see [`templated_npcs.md`](../Completed%20Plans/Actors/templated_npcs.md)).
@@ -69,6 +78,8 @@ back until the actor refactor.
    on in `game.tscn`; creatures virtual and local as NPCs are. Gate: a Goodsprings creature
    leaving the loaded area continues virtually and returns where the server put it, and
    Vault 3's leveled creatures get a choice.
+   Done in code: the seed list and both streamers take ACRE. Vault 3's fire geckos and the
+   Vault 34 guards get leveled choices (`_diag/diag_vault3_choices`). Not yet checked in game.
 4. **Packages and furniture.** A Goodsprings creature runs its packages; creature furniture
    idles chosen by skeleton.
 

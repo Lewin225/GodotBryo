@@ -465,7 +465,7 @@ func _on_reference_cell_changed(reference: EsmReference, old_cell_form_id: int, 
 	_relocated_by_cell[new_cell_form_id][reference] = true
 	_relocated[reference] = new_cell_form_id
 
-## Every authored ACHR represented by an ActorReference, regardless of which
+## Every authored ACHR and ACRE represented by an ActorReference, regardless of which
 ## CELL/worldspace callers are currently loading. The returned objects are the
 ## canonical authored-reference cache instances.
 func get_all_placed_actor_references() -> Array[ActorReference]:
@@ -480,7 +480,7 @@ func get_all_placed_actor_references() -> Array[ActorReference]:
 			result.append(reference)
 	return result
 
-## Stable authored IDs for all placed NPC ACHRs. This deliberately does no
+## Stable authored IDs for all placed ACHRs and ACREs. This deliberately does no
 ## Resource construction, so a data-only consumer can resolve the canonical
 ## references incrementally without depending on streamer residency.
 func get_all_placed_actor_instance_ids() -> PackedStringArray:
@@ -563,10 +563,10 @@ func get_authored_placement(reference: EsmReference) -> Dictionary:
 func _get_placed_actor_placements() -> Array:
 	if not _placed_actor_placements.is_empty() or reader == null:
 		return _placed_actor_placements
-	if not reader.has_method("get_all_placed_npc_actors"):
-		push_error("EsmServer requires a rebuilt EsmReader for placed NPC census")
+	if not reader.has_method("get_all_placed_actors"):
+		push_error("EsmServer requires a rebuilt EsmReader for the placed actor census")
 		return _placed_actor_placements
-	_placed_actor_placements = reader.get_all_placed_npc_actors()
+	_placed_actor_placements = reader.get_all_placed_actors()
 	return _placed_actor_placements
 
 func _get_xtel_door_placements() -> Array:

@@ -42,7 +42,7 @@ EsmServer.create_reference_for_base(base_form_id) -> EsmReference
 EsmServer.create_inventory_item_reference(base_form_id, instance_id := "") -> EsmReference
 EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]   # currently in it
 EsmServer.is_relocated(reference) -> bool
-EsmServer.get_all_placed_actor_references() -> Array[ActorReference]   # ACHR only, for now
+EsmServer.get_all_placed_actor_references() -> Array[ActorReference]   # ACHR and ACRE
 EsmServer.get_all_xtel_door_references() -> Array[DoorReference]
 EsmServer.get_space_form_id_for_cell(cell_form_id) -> int
 EsmServer.get_space_form_id_for_reference(instance_id) -> int

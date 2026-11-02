@@ -64,45 +64,6 @@ dof_blur_amount = 0.02
 auto_exposure_min_sensitivity = 200.0
 auto_exposure_max_sensitivity = 400.0
 
-[sub_resource type="CompositorEffect" id="CompositorEffect_7knny"]
-resource_local_to_scene = false
-resource_name = ""
-enabled = false
-effect_callback_type = 3
-access_resolved_color = true
-access_resolved_depth = true
-needs_motion_vectors = false
-needs_normal_roughness = false
-script = ExtResource("19_l1i01")
-clouds_coverage = 0.827
-clouds_density = 0.01
-clouds_anisotropy = 0.114
-cloud_ambient_tint = Color(0.4117647, 0.3882353, 0.34509805, 1)
-sampled_environment_fog_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
-ambient_occlusion_color = Color(0, 0, 0, 1)
-cloud_floor = 0.0
-cloud_ceiling = 3000.0
-cloud_shadow_steps = 1
-max_step_count = 50.0
-max_lighting_steps = 6.0
-lod_bias = 1.343
-height_gradient = ExtResource("14_082n1")
-extra_large_noise_patterns = ExtResource("13_7knny")
-large_scale_noise = ExtResource("15_xex6t")
-medium_scale_noise = ExtResource("16_aa0lp")
-small_scale_noise = ExtResource("20_r62pu")
-curl_noise = ExtResource("12_dhpj7")
-blur_power = 0.0
-blur_passes = 1
-pre_pass_compute_shader = ExtResource("18_4v2jo")
-compute_shader = ExtResource("11_xfvwf")
-post_pass_compute_shader = ExtResource("17_iu0sx")
-wind_direction = Vector3(1, 0, 1)
-directional_lights_data = Array[Vector4]([Vector4(-0.3535534, 0.7071068, 0.61237246, 12), Vector4(1, 1, 1, 0.6)])
-
-[sub_resource type="Compositor" id="Compositor_082n1"]
-compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_7knny")])
-
 [sub_resource type="GDScript" id="GDScript_yryqu"]
 script/source = "extends Control
 
@@ -153,6 +114,42 @@ func _on_show_background_on_tab_scren_toggled(toggled_on: bool) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
+[sub_resource type="CompositorEffect" id="CompositorEffect_7knny"]
+resource_local_to_scene = false
+resource_name = ""
+enabled = false
+effect_callback_type = 3
+access_resolved_color = true
+access_resolved_depth = true
+needs_motion_vectors = false
+needs_normal_roughness = false
+script = ExtResource("19_l1i01")
+clouds_coverage = 0.827
+clouds_density = 0.01
+clouds_anisotropy = 0.114
+cloud_ambient_tint = Color(0.4117647, 0.3882353, 0.34509805, 1)
+sampled_environment_fog_color = Color(0.7058824, 0.7137255, 0.76862746, 1)
+ambient_occlusion_color = Color(0, 0, 0, 1)
+cloud_floor = 0.0
+cloud_ceiling = 3000.0
+cloud_shadow_steps = 1
+max_step_count = 50.0
+max_lighting_steps = 6.0
+lod_bias = 1.343
+height_gradient = ExtResource("14_082n1")
+extra_large_noise_patterns = ExtResource("13_7knny")
+large_scale_noise = ExtResource("15_xex6t")
+medium_scale_noise = ExtResource("16_aa0lp")
+small_scale_noise = ExtResource("20_r62pu")
+curl_noise = ExtResource("12_dhpj7")
+blur_power = 0.0
+blur_passes = 1
+pre_pass_compute_shader = ExtResource("18_4v2jo")
+compute_shader = ExtResource("11_xfvwf")
+post_pass_compute_shader = ExtResource("17_iu0sx")
+wind_direction = Vector3(1, 0, 1)
+directional_lights_data = Array[Vector4]([Vector4(-0.3535534, 0.7071068, 0.61237246, 12), Vector4(1, 1, 1, 0.6)])
+
 [node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
@@ -172,13 +169,13 @@ process_priority = 99
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")
-spawn_reference_types = 3
+spawn_reference_types = 7
 
 [node name="WorldStreamerV2" type="Node3D" parent="." unique_id=117832712]
 script = ExtResource("4_worldstreamer")
 load_radius = 3.0
 lod_load_radius = 20.0
-spawn_reference_types = 3
+spawn_reference_types = 7
 
 [node name="TerrainStreamer" type="Node3D" parent="." unique_id=842013845]
 script = ExtResource("4_terrainstreamer")
@@ -266,7 +263,6 @@ directional_shadow_max_distance = 256.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
-compositor = SubResource("Compositor_082n1")
 
 [node name="Debug Tools" type="Control" parent="." unique_id=1820856525]
 layout_mode = 3
@@ -276,7 +272,7 @@ anchor_bottom = 1.0
 offset_left = 19.0
 offset_top = 21.0
 offset_right = -27.0
-offset_bottom = -28.0
+offset_bottom = -130.0
 grow_horizontal = 2
 grow_vertical = 2
 script = SubResource("GDScript_yryqu")

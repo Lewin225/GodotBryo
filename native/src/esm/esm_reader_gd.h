@@ -81,11 +81,11 @@ public:
 	// EsmFile::get_cell_actors(). "base_type" will be "NPC_" or "CREA".
 	Array get_cell_actors(int64_t cell_form_id) const;
 
-	// Every placed NPC ACHR in the opened ESM, each with the usual actor
+	// Every placed ACHR and ACRE in the opened ESM, each with the usual actor
 	// placement fields plus "cell_form_id" for its direct owner. This is a
 	// single census over CELL child groups, avoiding one whole-file owner walk
 	// per actor for global data-only consumers.
-	Array get_all_placed_npc_actors() const;
+	Array get_all_placed_actors() const;
 
 	// Every placed DOOR REFR with XTEL in the opened ESM, each with its direct
 	// owning "cell_form_id". This is relationship data only; it creates no

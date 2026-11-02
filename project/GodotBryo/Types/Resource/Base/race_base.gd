@@ -26,6 +26,8 @@ var eyes_form_ids: Array[int] = []
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "HairBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_default_hair: HairBase
 var male_voice_form_id: int = 0
 var female_voice_form_id: int = 0
+## DATA offsets 16 and 20: the male and female heights; 1 on every race but the
+## four child races (0.8). Read; used by NpcBase.get_body_scale.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_height: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var female_height: float = 0.0
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var male_weight: float = 0.0

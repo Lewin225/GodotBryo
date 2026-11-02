@@ -436,7 +436,12 @@ func _ready() -> void:
 	# --- async route, the shape real callers use ---
 	var request_id: int = simulation.request_route(biggest_space, from_info["center"], to_info["center"])
 	_check(request_id > 0, "async route returns a request id")
+	# Seeded actors request routes too, so other results can arrive first.
 	var async_result: Array = await simulation.route_ready
+	var other_results := 0
+	while int(async_result[0]) != request_id and other_results < 1000:
+		other_results += 1
+		async_result = await simulation.route_ready
 	_check(int(async_result[0]) == request_id, "async route reports its own request id")
 	_check(bool((async_result[1] as Dictionary).get("found", false)), "async route found the same route off-thread")
 

@@ -89,7 +89,8 @@ var eyes_form_id: int = 0
 ## Read. FGGS and FGGA used by FaceGenServer to shape the head parts, eyes and
 ## hair EsmActorNode builds; FGTS not used yet.
 var face_gen: FaceGenData
-## NAM6: Height. Read; not used yet.
+## NAM6: Height. Read; 0 (on 2,601 of 3,816 NPC_, the player and Doc Mitchell
+## among them) is taken as 1. Used through get_body_scale by EsmActorNode.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var height: float = 1.0
 ## NAM7: Weight. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var weight: float = 0.0
@@ -131,12 +132,15 @@ func _validate_property(property: Dictionary) -> void:
 	if property.name == "acbs_flags":
 		property.hint_string = ACBS_FLAG_NAMES
 
-## Activating an NPC: the player starts a conversation with it (GREETING).
-## Another activator does nothing.
-func activate(ref: EsmReference, activator: EsmReference) -> void:
-	if ref == null or activator == null or activator != ScriptServer.player_reference:
-		return
-	DialogueServer.start_conversation(ref, activator)
+## The race's height for the sex (RACE DATA; 0.8 for the child races, which
+## use the adult meshes) times NAM6, an unset 0 counting as 1.
+func get_body_scale(female: bool) -> float:
+	var scale := height if height > 0.0 else 1.0
+	if race != null:
+		var race_height := race.female_height if female else race.male_height
+		if race_height > 0.0:
+			scale *= race_height
+	return scale
 
 ## Whether this record's ACBS flags it Female. A template supplying traits is
 ## not followed. Used by EsmActorNode (body parts, biped models) and
