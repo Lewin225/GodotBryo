@@ -79,7 +79,9 @@ back until the actor refactor.
    leaving the loaded area continues virtually and returns where the server put it, and
    Vault 3's leveled creatures get a choice.
    Done in code: the seed list and both streamers take ACRE. Vault 3's fire geckos and the
-   Vault 34 guards get leveled choices (`_diag/diag_vault3_choices`). Not yet checked in game.
+   Vault 34 guards get leveled choices (`_diag/diag_vault3_choices`). Checked in game: Rex, moved
+   to the player, travels back to the King in Freeside both loaded and virtual; Vault 19b spawns its six leveled
+   fire geckos (2 melee, 4 ranged), as the diag predicts.
 4. **Packages and furniture.** A Goodsprings creature runs its packages; creature furniture
    idles chosen by skeleton.
 
