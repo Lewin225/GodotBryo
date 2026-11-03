@@ -3,14 +3,16 @@
 An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day). It also works as a asset browser and exporter via an included godot editor plugin
 
 What's working - in short.
-- Actors(NPC/Creatures) - Will render, execute packages and simulate/navigate anywhere in the world
-- Performance : 3080ti+9800x3d returns 300 fps in the open world at 1080p. optimisation target is 500, so running with vsync should give a quiet gpu. m4pro macbook managed 70fps @ 3024 x 1964
-- Load Time : Fully threaded esm load and decode, promise based streaming, boot to new game start is about 4 seconds on an nvme drive
-- Interactions : Dialog(+Most dialog conditions), Quests(Functional, but dialog quests only), All Spaces(-except for the strip terrain, bugged)
-- Transitions : Instant swap between exterior and interior spaces, interior to interior near instant, world to world is fast, but could be better
-- Stutter : Very minimal(but only tested on an nvme) Profiled every major update with tracy(cpu) and nvidia insight(gpu)
+- **Actors**(NPC/Creatures) - Will render, execute packages and simulate/navigate anywhere in the world
+- **Performance** : 3080ti+9800x3d returns 300 fps in the open world at 1080p. optimisation target is 500, so running with vsync should give a quiet gpu. m4pro macbook managed 70fps @ 3024 x 1964
+- **Load Time** : Fully threaded esm load and decode, promise based streaming, boot to new game start is about 4 seconds on an nvme drive
+- **Interactions** : Dialog(+Most dialog conditions), Quests(Functional, but dialog quests only), All Spaces(-except for the strip terrain, bugged)
+- **Transitions** : Instant swap between exterior and interior spaces, interior to interior near instant, world to world is fast, but could be better
+- **Stutter** : Very minimal(but only tested on an nvme) Profiled every major update with tracy(cpu) and nvidia insight(gpu). I hunt this frequently because I hate it
 
-This is NOT a 1:1 engine remake, i'm modernising a lot of the game (coop / vr, vulkan pbr renderer, procedural and upscaled animations, player feel, weapon handling, npc behaviours, full threading ect..) 
+---
+
+**This is NOT a 1:1 engine remake** - I’m modernising the game feel (coop / vr, vulkan pbr renderer, procedural and upscaled animations, player feel, weapon handling, npc behaviours, full threading ect..) 
 
 There are some open 1:1 projects here, if you're looking for that
  * https://github.com/LootJunkieAzza/NVForever
