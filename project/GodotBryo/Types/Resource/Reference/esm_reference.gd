@@ -106,8 +106,9 @@ const ENABLE_PARENT_POP_IN := 0x02
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var primitive_color: Color = Color(0, 0, 0, 0)
 ## Not an ESM field: the CELL containing this reference, derived from
 ## current_space_form_id and position by EsmServer.cell_at(). Written only by
-## _refresh_cell(); used by the streamers, NpcSimulationServer and Game.
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY) var current_cell_form_id: int = 0
+## _refresh_cell(); used by the streamers, NpcSimulationServer and Game. Not
+## saved: loading derives it from the space and position.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var current_cell_form_id: int = 0
 
 ## Not an ESM field: this reference's object script state (locals), created
 ## by ScriptServer the first time the script runs or a variable is written.

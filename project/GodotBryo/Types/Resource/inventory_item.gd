@@ -47,3 +47,13 @@ static func make_stack(item_base: EsmBase, item_count: int) -> InventoryItem:
 	item.base_form_id = item_base.form_id if item_base != null else 0
 	item.count = item_count
 	return item
+
+
+## After SaveFields.read(): a stack resolves its base from base_form_id (a
+## reference entry took its base from item_reference).
+func _after_fields_read() -> void:
+	if item_reference != null:
+		return
+	var server := EsmReference.get_esm_server()
+	if server != null:
+		base = server.get_base(base_form_id)

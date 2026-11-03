@@ -16,7 +16,7 @@ extends Resource
 ## Current stage; 0 before any SetStage.
 @export var stage: int = 0
 ## Stages set so far, as {stage: true}.
-@export var stages_done: Dictionary = {}
+@export var stages_done: Dictionary[int, bool] = {}
 ## Whether the quest is running: its script's GameMode block runs every
 ## script_delay seconds.
 @export var running: bool = false

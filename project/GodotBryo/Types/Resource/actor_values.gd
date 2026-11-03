@@ -10,11 +10,11 @@ extends Resource
 ## DamageAV and RestoreAV the damage modifier, which is never above 0.
 
 ## Base values set by SetAV, by code. They replace the derived base.
-@export var base_overrides: Dictionary = {}
+@export var base_overrides: Dictionary[int, float] = {}
 ## Permanent modifiers (ModAV, ForceAV), by code.
-@export var permanent: Dictionary = {}
+@export var permanent: Dictionary[int, float] = {}
 ## Damage modifiers (DamageAV, RestoreAV), by code; always <= 0.
-@export var damage: Dictionary = {}
+@export var damage: Dictionary[int, float] = {}
 
 ## Every actor value's current value by script name, for inspection. Not
 ## saved.

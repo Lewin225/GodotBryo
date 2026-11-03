@@ -223,3 +223,11 @@ func _get_base(form_id: int) -> EsmBase:
 	if server == null:
 		return null
 	return server.get_base(form_id)
+
+## After SaveFields.read() has replaced `items`: listens to each item, as
+## add_inventory_item() does, and reports the change.
+func _after_fields_read() -> void:
+	for item in items:
+		if item != null:
+			_connect_item(item)
+	inventory_changed.emit()

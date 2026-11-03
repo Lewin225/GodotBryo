@@ -12,7 +12,7 @@ extends Resource
 ## Local variables, keyed by lowercased name. Values are int or float; a `ref`
 ## local holding a reference is stored as {"ref": instance_id} so a saved
 ## instance never embeds another reference.
-@export var locals: Dictionary = {}
+@export var locals: Dictionary[String, Variant] = {}
 
 ## ScriptServer.clock when this script last ran; -1 before its first run.
 ## Runtime only: GetSecondsPassed measures from it.

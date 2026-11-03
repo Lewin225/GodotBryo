@@ -108,8 +108,10 @@ out.
   the base, the cell), which the loader ignores.
 - A save is written to a new folder and renamed into place, so a failed save leaves the old one.
 - Not Godot resources: loading a `.tres`/`.res` can load and run scripts, builds an object per
-  field and runs every setter. The reader builds only plain values (`JSON.to_native` without
-  objects, or our own parser; decided at step 3).
+  field and runs every setter. Files are plain JSON (`JSON.stringify`, `JSON.parse_string`, which
+  builds only plain values). `JSON.from_native` was rejected: it prefixes every key and value
+  with its type and flattens dictionaries, which defeats editing by hand. Types come back from
+  each property's declared type (`SaveFields`), never from the file.
 - Two ways to store saves, chosen by the player:
   - **Full** (the default): every save is a complete folder.
   - **Git**, offered only when git is installed: the saves folder is a git repository and each
@@ -159,9 +161,12 @@ out.
   `base_form_id` are the entry's key and are not repeated in it.
 - A value is written by its type:
   - an `EsmBase` as its FormID, an `EsmReference` as its instance_id, null as null;
-  - `Inventory` through `serialize_state()`;
-  - any other Resource (`ActorValues`, `ScriptInstance`, `QuestState`) as a Dictionary of its
-    own storage fields, by the same rule;
+  - any other Resource (`Inventory`, `InventoryItem`, `ActorValues`, `ScriptInstance`,
+    `QuestState`) as a Dictionary of its own storage fields, by the same rule;
+  - an int named `*_form_id` as `<file>:<local id>`, a `Vector3` as `[x, y, z]`;
+  - a Dictionary with string keys, read back as its typed key and value types (`ActorValues`
+    keyed by actor value name; a number in an untyped slot, a script local, as a float, as the
+    interpreter uses it);
   - anything else as itself.
 - On load the property's declared class decides how a value is read back: a FormID resolves
   through `EsmServer.get_base()`, an instance_id through `get_reference()`, a Dictionary into a
@@ -314,17 +319,25 @@ out.
    counter; `InventoryItem` as a stack or a reference, readers on the item's base; ESM-read
    reference fields without `STORAGE`; dirty marked at the setters and cleared after building.
    Checked by `tests/test_esm_server` (`_check_inventory_contract`, `_check_dirty_marking`).
-2. **File-relative ids.** Done in code, not committed. Only EsmServer builds or parses an
+2. **File-relative ids.** Done. Only EsmServer builds or parses an
    instance_id (`instance_id_for_form_id`, `form_id_for_instance_id`, `file_for_form_id`,
    `get_reference_by_form_id`, `load_order`); the code and tests that built `authored:%08X`
    ask it by FormID. `base:` and `runtime:` ids take the same form; `player` is unchanged.
    Diag scripts still build `authored:` ids and are left to break. Every test passes except
    `test_head_tracking` (2 failures, the same on `master`) and `test_script_corpus_survey`
    (no result within 300 s).
-3. **Field writer and reader.** One helper that writes a resource's storage fields to plain
-   values and reads them back, by the rules above. Gate: for a Goodsprings NPC, a container, a
-   door and a runtime weapon, write, read into a fresh instance of the same class, write again,
-   and the two Dictionaries are equal; `bytes_to_var()` of the result holds no Object.
+3. **Field writer and reader.** Done. `SaveFields`
+   (`GodotBryo/Servers/SaveServer/save_fields.gd`); `_after_fields_read()` on `Inventory` and
+   `InventoryItem`; `level_modifier`, `current_cell_form_id`, `simulation_mode`, `is_moving`,
+   `is_running` and `is_sneaking` lose `STORAGE`, `using` and `using_marker` gain it;
+   `ActorValues`' dictionaries, `QuestState.stages_done` and `ScriptInstance.locals` are typed.
+   Plain `var` left on references: `texture_swaps` (loading a save reverts SwapTexture),
+   `used_by` and `FurnitureReference.occupants` (rebuilt from actors' `using`). Checked by
+   `tests/test_save_fields`. `Inventory.serialize_state()`/`restore_state()` are no longer
+   the save's path; removed at step 4 once nothing calls them. Gate (met): Doc Mitchell, a
+   container, a door, a runtime weapon and a QuestState, changed, written, sent through JSON
+   text, read into a fresh instance and written again, match; the output holds no Object. Nothing
+   in play makes a runtime reference yet; the test creates its weapon directly.
 4. **Sections.** `save_state()`/`load_state()` on EsmServer (with the overlay), QuestServer,
    ScriptServer and DialogueServer. EsmServer is not instanced again (that reloads the ESM): its
    test clears its reference caches and runtime table, loads the overlay, and builds the saved

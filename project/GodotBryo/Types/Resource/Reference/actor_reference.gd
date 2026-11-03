@@ -35,7 +35,7 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 ## to 3), LEVEL_MODIFIER_NONE without one. Read; used by get_leveled_template().
 ## 0-3 read as Easy, Medium, Hard and Boss is inferred: the GECK names those
 ## four besides None, and the data carries no other values.
-@export_enum("None:-1", "Easy:0", "Medium:1", "Hard:2", "Boss:3") var level_modifier: int = LEVEL_MODIFIER_NONE
+@export_custom(PROPERTY_HINT_ENUM, "None:-1,Easy:0,Medium:1,Hard:2,Boss:3", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var level_modifier: int = LEVEL_MODIFIER_NONE
 ## XEZN: the encounter zone (5 ACHR, 11 ACRE). Read; used by
 ## get_leveled_template() before the cell's zone.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var encounter_zone_form_id: int = 0
@@ -84,8 +84,9 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var spawn_cell_form_id: int = 0
 ## Runtime state with no ESM source: who moves the actor. LOW_LEVEL:
 ## NpcSimulationServer; PHYSICAL_LEASED: its NpcController (or the player's
-## PlayerController), which writes `position` and `rotation`.
-@export var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL:
+## PlayerController), which writes `position` and `rotation`. Not saved: a
+## loaded actor starts LOW_LEVEL and is leased again.
+@export_custom(PROPERTY_HINT_ENUM, "Low Level,Physical Leased", PROPERTY_USAGE_EDITOR) var simulation_mode: SimulationMode = SimulationMode.LOW_LEVEL:
 	set(value):
 		if simulation_mode == value:
 			return
@@ -161,22 +162,24 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 ## Runtime state with no ESM source: the actor is moving (walking, running or
 ## sneaking along). Set by the controller driving it (PlayerController,
 ## NpcController) each physics frame; false while no controller drives it.
-## Read by the condition function IsMoving, and so by the idle tree.
-@export var is_moving: bool = false:
+## Read by the condition function IsMoving, and so by the idle tree. Not saved:
+## the controller sets it again.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR) var is_moving: bool = false:
 	set(value):
 		is_moving = value
 		mark_dirty()
 ## Runtime state with no ESM source: the actor moves at a run. Set by the
 ## controller driving it: the player's sprint or always-run, an NPC's package
-## Always Run. Read by IsRunning.
-@export var is_running: bool = false:
+## Always Run. Read by IsRunning. Not saved: the controller sets it again.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR) var is_running: bool = false:
 	set(value):
 		is_running = value
 		mark_dirty()
 ## Runtime state with no ESM source: the actor is sneaking. Set by the
 ## controller driving it: the player's crouch, an NPC's package Always Sneak
-## (until combat and AI set it). Read by IsSneaking.
-@export var is_sneaking: bool = false:
+## (until combat and AI set it). Read by IsSneaking. Not saved: the controller
+## sets it again.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR) var is_sneaking: bool = false:
 	set(value):
 		is_sneaking = value
 		mark_dirty()
@@ -219,11 +222,12 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 
 ## Runtime state with no ESM source: the reference this actor is using
 ## (terminal, container, furniture, a door it is lockpicking), or null. One at
-## a time. Set only by ScriptServer.begin_use / end_use; not saved.
-var using: EsmReference = null
+## a time. Set only by ScriptServer.begin_use / end_use. Saved (as its
+## instance_id) so a seated actor loads seated, with `using_marker`.
+@export_storage var using: EsmReference = null
 ## Runtime state: the furniture marker index occupied while using furniture,
-## else -1.
-var using_marker: int = -1
+## else -1. Saved with `using`.
+@export_storage var using_marker: int = -1
 
 ## XMRC's placed container, built on demand; null when there is none.
 func get_merchant_container() -> EsmReference:
