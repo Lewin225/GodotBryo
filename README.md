@@ -1,8 +1,14 @@
 # GodotBryo
 
-An attempt at a from-scratch [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
+An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
 
-Rather the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the godot renderer, gamebryo is g o n e
+This is NOT a 1:1 engine remake, i'm modernising a lot of the game (coop / vr, vulkan pbr renderer, procedural and upscaled animations, player feel, weapon handling, npc behaviours, full threading ect..) 
+
+There are some open 1:1 projects here, if you're looking for that
+ * https://github.com/LootJunkieAzza/NVForever
+ * https://openmw.org/ (Morrowind, but they're working on new vegas in a branch)
+
+Rather than the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the godot renderer, gamebryo is g o n e. This means you can yoink the project's components into your own godot project for whatever devious plan you might have
 
 ```
 [1]*OpenMW's source was read to help answer a few questions that the geck
