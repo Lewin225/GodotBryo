@@ -539,13 +539,14 @@ func save_state() -> Dictionary:
 ## clear_game_state()): dirty bases first, then the runtime references, then
 ## the reference entries, held until each reference is built. References whose
 ## saved cell is not their filing cell are built now, so the cells they moved
-## to list them.
-func load_state(state: Dictionary) -> void:
+## to list them. A base or runtime reference whose record is not in the load
+## order is dropped and listed in `report`.
+func load_state(state: Dictionary, report: Array = []) -> void:
 	var bases: Dictionary = state.get("bases", {})
 	for text: String in bases:
 		var base := get_base(form_id_for_instance_id(text))
 		if base == null:
-			push_warning("EsmServer: saved base %s is not in the load order; dropped" % text)
+			report.append("dropped base %s: not in the load order" % text)
 			continue
 		SaveFields.read_named(base, bases[text])
 		for field: String in bases[text]:
@@ -558,7 +559,7 @@ func load_state(state: Dictionary) -> void:
 		var base_form_id := form_id_for_instance_id(String(runtime_entries[id].get("base_form_id", "")))
 		var reference := _new_unplaced_reference(base_form_id)
 		if reference == null:
-			push_warning("EsmServer: saved runtime reference %s has no base in the load order; dropped" % id)
+			report.append("dropped runtime reference %s: its base is not in the load order" % id)
 			continue
 		reference.instance_id = StringName(id)
 		_runtime_references[reference.instance_id] = reference

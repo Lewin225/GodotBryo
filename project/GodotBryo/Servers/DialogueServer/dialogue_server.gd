@@ -553,7 +553,8 @@ func save_state() -> Dictionary:
 	return {"said": said, "talked_to_player": talked, "added_topics": topics}
 
 ## Replaces the dialogue state with a save_state() result, after reset().
-func load_state(state: Dictionary) -> void:
+## Lines and topics whose record is not in the load order are dropped.
+func load_state(state: Dictionary, report: Array = []) -> void:
 	reset()
 	var said: Dictionary = state.get("said", {})
 	for speaker_id: String in said:

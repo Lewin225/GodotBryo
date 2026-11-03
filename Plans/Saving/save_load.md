@@ -338,7 +338,7 @@ out.
    container, a door, a runtime weapon and a QuestState, changed, written, sent through JSON
    text, read into a fresh instance and written again, match; the output holds no Object. Nothing
    in play makes a runtime reference yet; the test creates its weapon directly.
-4. **Sections.** Done in code, not committed. EsmServer (`save_state`, `load_state`,
+4. **Sections.** Done. EsmServer (`save_state`, `load_state`,
    `clear_game_state`, entries applied as each reference is built), QuestServer (states, clock,
    next runs, `_quest_objects`, active quest), ScriptServer (globals, clock, disabled controls)
    and DialogueServer (flagged lines said, talked to the player, added topics; `mark_said` now
@@ -364,7 +364,15 @@ out.
    equal. Measure
    size, save time and read time, after one Goodsprings save and after a long session (hours of
    simulated travel at high speed scale), against a target set from the first measurement.
-5. **SaveServer and files.** SaveServer, the `SaveBackend` interface, the schema README, and the
+5. **SaveServer and files.** Done. `GodotBryo/Servers/SaveServer/`:
+   `save_server.gd` (save, read_save with the header check, apply_state, refusals: a
+   conversation, a queued move, and `save_refusals` the game adds), `save_backend.gd`,
+   `json_folder_backend.gd`, and `README.md` (the schema). Owners' `load_state()` take a
+   `report` Array and list what they drop there. Autoloaded as `SaveServer`
+   (`project.godot`). Checked by `tests/test_save_server` (folder layout, read back equal,
+   applied and built again equal, a changed master warns, a missing master refuses, two saves
+   around a quest stage differ only in `quest_server.json` and `header.json`, refused while a
+   move is queued). SaveServer, the `SaveBackend` interface, the schema README, and the
    JSON folder backend: write a save folder, rename it into place, read it back; the header and
    its master check. Gate: a save naming a missing master is refused; one from a changed master loads with a
    warning and a report of dropped entries; two saves a minute apart in one cell differ only in

@@ -66,8 +66,8 @@ func save_state() -> Dictionary:
 	}
 
 ## Replaces all quest state with a save_state() result. A quest not in the
-## load order is dropped with a warning.
-func load_state(state: Dictionary) -> void:
+## load order is dropped and listed in `report`.
+func load_state(state: Dictionary, report: Array = []) -> void:
 	_states.clear()
 	_next_run.clear()
 	_quest_objects.clear()
@@ -75,7 +75,7 @@ func load_state(state: Dictionary) -> void:
 	for text: String in states:
 		var quest := EsmServer.get_base(EsmServer.form_id_for_instance_id(text)) as QuestBase
 		if quest == null:
-			push_warning("QuestServer: saved quest %s is not in the load order; dropped" % text)
+			report.append("dropped quest %s: not in the load order" % text)
 			continue
 		var quest_state := QuestState.new()
 		quest_state.quest_form_id = quest.form_id

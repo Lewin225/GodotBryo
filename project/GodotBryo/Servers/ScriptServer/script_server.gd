@@ -132,13 +132,14 @@ func save_state() -> Dictionary:
 
 ## Replaces the script state with a save_state() result. Globals go through
 ## set_global(), which reads each one's type from the ESM, so short and long
-## globals are ints again.
-func load_state(state: Dictionary) -> void:
+## globals are ints again. A global the ESM lacks is dropped and listed in
+## `report`.
+func load_state(state: Dictionary, report: Array = []) -> void:
 	globals = GlobalVariables.new()
 	var saved_globals: Dictionary = state.get("globals", {})
 	for name: String in saved_globals:
 		if not globals.set_global(name, saved_globals[name]):
-			push_warning("ScriptServer: saved global %s is not in the ESM; dropped" % name)
+			report.append("dropped global %s: not in the ESM" % name)
 	clock = float(state.get("clock", 0.0))
 	_set_disabled_player_controls(int(state.get("disabled_player_controls", 0)))
 
@@ -357,6 +358,10 @@ func move_reference(reference: EsmReference, space_form_id: int, position: Vecto
 	if reference == null:
 		return
 	_pending_moves[reference] = {"space_form_id": space_form_id, "position": position, "rotation": rotation}
+
+## Whether any move is queued; SaveServer refuses to save while one is.
+func has_pending_moves() -> bool:
+	return not _pending_moves.is_empty()
 
 ## The queued move for `reference`, or an empty Dictionary.
 func get_pending_move(reference: EsmReference) -> Dictionary:
