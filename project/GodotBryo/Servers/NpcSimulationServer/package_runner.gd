@@ -400,7 +400,7 @@ func _location(actor: ActorReference, package: PackageBase, index: int) -> Dicti
 		PackageBase.LocationType.NEAR_LINKED_REFERENCE:
 			if actor.linked_reference_form_id == 0:
 				return {}
-			return _reference_destination(EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id))
+			return _reference_destination(EsmServer.get_reference_by_form_id(actor.linked_reference_form_id))
 		PackageBase.LocationType.NEAR_EDITOR_LOCATION:
 			return EsmServer.get_authored_placement(actor)
 		PackageBase.LocationType.NEAR_CURRENT_LOCATION:
@@ -544,11 +544,11 @@ func _target_1(actor: ActorReference, package: PackageBase) -> EsmReference:
 		PackageBase.TargetType.SPECIFIC_REFERENCE:
 			if package.target_1_form_id == PackageBase.PLAYER_REFERENCE_FORM_ID:
 				return ScriptServer.player_reference
-			return EsmServer.get_reference("authored:%08X" % package.target_1_form_id)
+			return EsmServer.get_reference_by_form_id(package.target_1_form_id)
 		PackageBase.TargetType.LINKED_REFERENCE:
 			if actor.linked_reference_form_id == 0:
 				return null
-			return EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id)
+			return EsmServer.get_reference_by_form_id(actor.linked_reference_form_id)
 	return null
 
 ## Files an actor in the leased, the busy unleased or the idle unleased sweep.

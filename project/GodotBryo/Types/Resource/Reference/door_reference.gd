@@ -56,8 +56,11 @@ extends EsmReference
 
 ## The destination door's EsmServer instance id, or "" when this door does not
 ## teleport.
-func get_teleport_destination_id() -> String:
-	return "authored:%08X" % teleport_destination_form_id if has_teleport else ""
+func get_teleport_destination_id() -> StringName:
+	var server := get_esm_server()
+	if not has_teleport or server == null:
+		return &""
+	return server.instance_id_for_form_id(teleport_destination_form_id)
 
 ## The destination door, built on demand; null when this door does not
 ## teleport.

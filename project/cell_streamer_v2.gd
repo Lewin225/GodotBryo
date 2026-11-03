@@ -137,7 +137,7 @@ func find_ref_by_editor_id(editor_id: String) -> EsmReference:
 
 
 func find_ref_by_form_id(refr_form_id: int) -> EsmReference:
-	var wanted := "authored:%08X" % refr_form_id
+	var wanted: StringName = EsmServer.instance_id_for_form_id(refr_form_id)
 	for reference in _current_refs:
 		if reference != null and reference.instance_id == wanted:
 			return reference

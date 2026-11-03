@@ -196,10 +196,9 @@ out.
 
 ### Runtime references
 
-- A reference with no ESM record is `runtime:<base file>:<base local id>:<number>` (step 1
-  built it as `runtime:%08X:%d`; step 2 moves it), numbered from one counter in EsmServer and
-  kept for the playthrough. EsmServer's table holds every runtime reference;
-  `get_reference()` resolves `runtime:` only from it and returns null otherwise. A runtime
+- A reference with no ESM record is `runtime:<base file>:<base local id>:<number>`, numbered
+  from one counter in EsmServer and kept for the playthrough. EsmServer's table holds every
+  runtime reference; `get_reference()` resolves `runtime:` only from it and returns null otherwise. A runtime
   reference leaves the table when it is used up (an item consumed or removed from the last
   inventory holding it) or deleted (`MarkForDelete`), and is not saved after that. The counter
   never goes back, so a released number is never reused and a stale id resolves to null, as a
@@ -315,10 +314,13 @@ out.
    counter; `InventoryItem` as a stack or a reference, readers on the item's base; ESM-read
    reference fields without `STORAGE`; dirty marked at the setters and cleared after building.
    Checked by `tests/test_esm_server` (`_check_inventory_contract`, `_check_dirty_marking`).
-2. **File-relative ids.** `instance_id` as a `StringName` of `<file>:<local id>`, and
-   `runtime:<file>:<local id>:<n>`; `get_reference()`, the caches, `find_reference_by_editor_id`,
-   ScriptInstance `ref` locals, tests and debug tools moved to it. Census first: every place that
-   builds or parses an instance_id. Gate: the existing tests pass with the new ids.
+2. **File-relative ids.** Done in code, not committed. Only EsmServer builds or parses an
+   instance_id (`instance_id_for_form_id`, `form_id_for_instance_id`, `file_for_form_id`,
+   `get_reference_by_form_id`, `load_order`); the code and tests that built `authored:%08X`
+   ask it by FormID. `base:` and `runtime:` ids take the same form; `player` is unchanged.
+   Diag scripts still build `authored:` ids and are left to break. Every test passes except
+   `test_head_tracking` (2 failures, the same on `master`) and `test_script_corpus_survey`
+   (no result within 300 s).
 3. **Field writer and reader.** One helper that writes a resource's storage fields to plain
    values and reads them back, by the rules above. Gate: for a Goodsprings NPC, a container, a
    door and a runtime weapon, write, read into a fresh instance of the same class, write again,

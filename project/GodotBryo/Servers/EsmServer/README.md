@@ -37,9 +37,14 @@ EsmServer.get_base(form_id) -> EsmBase               # the authored record
 EsmServer.get_base_from_uri(uri) -> EsmBase
 EsmServer.get_base_type(form_id) -> Script
 EsmServer.get_reference(instance_id) -> EsmReference # a placed instance
+EsmServer.get_reference_by_form_id(refr_form_id) -> EsmReference
+EsmServer.instance_id_for_form_id(form_id) -> StringName   # <file>:<local id>
+EsmServer.form_id_for_instance_id(instance_id) -> int
+EsmServer.file_for_form_id(form_id) -> String              # the master its top byte indexes in load_order
 EsmServer.get_reference_type(refr_form_id) -> Script
 EsmServer.create_reference_for_base(base_form_id) -> EsmReference
-EsmServer.create_inventory_item_reference(base_form_id, instance_id := "") -> EsmReference
+EsmServer.create_runtime_reference(base_form_id) -> EsmReference   # runtime:<file>:<local id>:<n>
+EsmServer.release_runtime_reference(reference)
 EsmServer.get_references_in_cell(cell_form_id) -> Array[EsmReference]   # currently in it
 EsmServer.is_relocated(reference) -> bool
 EsmServer.get_all_placed_actor_references() -> Array[ActorReference]   # ACHR and ACRE
@@ -134,10 +139,19 @@ leaves it out.
 **Finding a reference.** Every placed REFR/ACHR/ACRE's filing CELL and every
 placed reference's editor ID are indexed on the load thread (native
 `EsmReader.get_placed_reference_cells()` and the record index).
-`get_reference("authored:%08X")` builds a reference from its own record
+`get_reference_by_form_id()` builds a reference from its own record
 (`EsmReader.get_reference_placement()`) without reading the rest of its CELL.
 `find_reference_by_editor_id()` is case-insensitive and returns the same cached
 instance.
+
+**Instance ids.** Only EsmServer builds or parses an `instance_id` (a
+`StringName`); everything else asks it by FormID. A placed reference is
+`<file>:<local id>`: the master its FormID's top byte indexes in `load_order`, and
+the lower three bytes (`FalloutNV.esm:00104C0C`), so the id does not depend on load
+order. The player is `player`; a throwaway reference built from a base is
+`base:<file>:<local id>`; a reference with no ESM record is
+`runtime:<file>:<base local id>:<n>`, numbered from one counter and found only in
+the runtime table. `load_order` holds only `FalloutNV.esm` until DLC masters load.
 
 **Quests.** QUST records are `QuestBase`: DATA flags, priority, script delay, stages
 with their log entries and result scripts, and objectives. Stages come before the first

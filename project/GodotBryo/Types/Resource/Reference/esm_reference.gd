@@ -30,12 +30,15 @@ const ENABLE_PARENT_POP_IN := 0x02
 ## NAME: the base record's FormID. Read; the persisted link to `base`.
 @export var base_form_id: int = 0
 ## Not an ESM field: the reference's identity in EsmServer's index.
-## `authored:<FormID>` for a placed REFR/ACHR/ACRE (its record header FormID),
-## `player`, `base:<FormID>` for one created from a base, and
-## `runtime:<base FormID>:<number>` for one with no ESM record (an item given its
-## own state, a placed-at-me object), which keeps it for the whole playthrough.
-## Set; used by get_reference(), saves and the debug tools.
-@export var instance_id: String = ""
+## `<file>:<local id>` for a placed REFR/ACHR/ACRE (the file its record comes
+## from and the lower three bytes of its FormID, `FalloutNV.esm:00104C0C`),
+## `player`, `base:<file>:<local id>` for a throwaway one built from a base, and
+## `runtime:<file>:<base local id>:<number>` for one with no ESM record (an item
+## given its own state, a placed-at-me object), which keeps it for the whole
+## playthrough. A StringName, so comparing two is a pointer comparison. Set by
+## EsmServer, which alone builds and parses it; used by get_reference(), saves
+## and the debug tools.
+@export var instance_id: StringName = &""
 ## Not an ESM field: the space containing this reference, the WRLD for an
 ## exterior position or the CELL for an interior one, from the CELL that files
 ## the placement; 0 when not placed. Set; used by the streamers and
@@ -235,7 +238,7 @@ func get_enable_parent() -> EsmReference:
 	if enable_parent_form_id == 0:
 		return null
 	var server := get_esm_server()
-	return server.get_reference("authored:%08X" % enable_parent_form_id) if server != null else null
+	return server.get_reference_by_form_id(enable_parent_form_id) if server != null else null
 
 ## This reference's actor values, or null when it is not an actor.
 func get_actor_values() -> ActorValues:

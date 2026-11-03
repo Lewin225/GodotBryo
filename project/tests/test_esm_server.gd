@@ -34,7 +34,7 @@ func _ready() -> void:
 		var raw: Dictionary = server.reader.get_record_data(int(row.get("form_id", 0)))
 		var name_form_id := _u32(_subrecord(raw, "NAME"))
 		if name_form_id == 0: continue
-		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 		if reference is NpcReference:
 			found_actor = true
 			var actor_base := reference.base as NpcBase
@@ -88,7 +88,10 @@ func _ready() -> void:
 	_check_talking_activator_and_terminal_resources(server, index)
 	_check_dropped_item_resources(server, index)
 	_check_leveled_item_resources(server, index)
-	_check(server.get_reference("runtime:000E3778:1") == null, "runtime ID is deferred")
+	_check(server.get_reference("runtime:FalloutNV.esm:000E3778:1") == null, "a runtime ID not in the runtime table resolves to null")
+	_check(server.instance_id_for_form_id(0x00104C0C) == &"FalloutNV.esm:00104C0C", "an authored instance_id names its file and local id")
+	_check(server.form_id_for_instance_id("FalloutNV.esm:00104C0C") == 0x00104C0C, "an authored instance_id parses back to its FormID")
+	_check(server.instance_id_for_form_id(0x05000001).is_empty() and server.form_id_for_instance_id("DeadMoney.esm:00000001") == 0, "a FormID or file outside the load order has no instance_id")
 	_check(server.get_reference("not-an-id") == null, "malformed ID returns null")
 	_check_relocated_references(server)
 	_check_player_reference(server)
@@ -103,7 +106,7 @@ func _check_authored_reference_cache(server, index: Array) -> void:
 		for row in index:
 			if String(row.get("record_type", "")) != record_type:
 				continue
-			var instance_id := "authored:%08X" % int(row.get("form_id", 0))
+			var instance_id: StringName = server.instance_id_for_form_id(int(row.get("form_id", 0)))
 			var first: EsmReference = server.get_reference(instance_id)
 			var second: EsmReference = server.get_reference(instance_id)
 			if first == null:
@@ -129,7 +132,7 @@ func _check_xemi_reference_fields(server) -> void:
 		var placement: Dictionary = server.reader.get_reference_placement(refr_form_id)
 		var emittance_form_id: int = int(placement.get("emittance_form_id", 0))
 		_check(emittance_form_id != 0, "REFR %08X has authored XEMI" % refr_form_id)
-		var reference: EsmReference = server.get_reference("authored:%08X" % refr_form_id)
+		var reference: EsmReference = server.get_reference_by_form_id(refr_form_id)
 		_check(reference != null and reference.get_script() == entry[1],
 			"REFR %08X resolves to its XEMI-capable reference type" % refr_form_id)
 		if reference != null:
@@ -146,7 +149,7 @@ func _check_xemi_visual_tint(server) -> void:
 		[0x0016B5EB, "FXLightBeamBrtW02:1", "EditorMarker:0"],
 	]
 	for entry in cases:
-		var reference: EsmReference = server.get_reference("authored:%08X" % int(entry[0]))
+		var reference: EsmReference = server.get_reference_by_form_id(int(entry[0]))
 		var node := _physicalise_in_tree(reference)
 		var visual := await _await_nif_visual(node) if node != null else null
 		_check(visual != null, "REFR %08X receives its XEMI visual" % int(entry[0]))
@@ -586,7 +589,7 @@ func _check_actor_references(server, index: Array) -> void:
 		if record_type != "ACHR" and record_type != "ACRE":
 			continue
 		var form_id := int(row["form_id"])
-		var reference: EsmReference = server.get_reference("authored:%08X" % form_id)
+		var reference: EsmReference = server.get_reference_by_form_id(form_id)
 		if reference == null:
 			continue
 		var typed := reference is NpcReference if record_type == "ACHR" else reference is CreatureReference
@@ -687,13 +690,13 @@ func _check_reference_index(server, index: Array) -> void:
 	var freeside_persistent := int(server._persistent_cell_by_worldspace.get(freeside, 0))
 	var unbuilt := 0
 	for i in server._placed_reference_ids.size():
-		var id := "authored:%08X" % server._placed_reference_ids[i]
+		var id: StringName = server.instance_id_for_form_id(server._placed_reference_ids[i])
 		if server._placed_reference_cells[i] == freeside_persistent and not server._authored_reference_cache.has(id):
 			unbuilt = server._placed_reference_ids[i]
 			break
 	_check(unbuilt != 0, "FreesideWorld's persistent CELL has an unbuilt reference")
 	var started := Time.get_ticks_usec()
-	var built: EsmReference = server.get_reference("authored:%08X" % unbuilt)
+	var built: EsmReference = server.get_reference_by_form_id(unbuilt)
 	var elapsed_ms := (Time.get_ticks_usec() - started) / 1000.0
 	_check(built != null and built.current_space_form_id == freeside, "it resolves into FreesideWorld")
 	_check(elapsed_ms < 50.0, "building one persistent-CELL reference reads only its own record (%.1f ms)" % elapsed_ms)
@@ -738,7 +741,7 @@ func _check_door_links_and_locks(server) -> void:
 	_check(locked_level_zero_keyless == 6, "6 locked XTEL doors are Very Easy with no key (%d)" % locked_level_zero_keyless)
 
 	# One link resolved all the way to its destination door.
-	var back_door: DoorReference = by_id.get("authored:0010901D")
+	var back_door: DoorReference = by_id.get(server.instance_id_for_form_id(0x0010901D))
 	_check(back_door != null and back_door.is_locked and back_door.lock_level == 0, "Prospector Saloon back door (0010901D) is locked at Very Easy")
 	var interior := int(server.reader.find_cell_by_editor_id("GSProspectorSaloonInterior").get("form_id", 0))
 	var inside: DoorReference = back_door.get_teleport_destination() if back_door != null else null
@@ -899,7 +902,7 @@ func _check_typed_container_inventory(server, index: Array) -> void:
 	for row in index:
 		if String(row.get("record_type", "")) != "REFR":
 			continue
-		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 		if reference is not ContainerReference:
 			continue
 		_check(reference.contents is Inventory, "ContainerReference owns a typed Inventory")
@@ -920,7 +923,7 @@ func _check_dirty_marking(server, index: Array) -> void:
 		var record_type := String(row.get("record_type", ""))
 		if record_type != "REFR" and record_type != "ACHR":
 			continue
-		var id := "authored:%08X" % int(row.get("form_id", 0))
+		var id: StringName = server.instance_id_for_form_id(int(row.get("form_id", 0)))
 		var reference: EsmReference = server.get_reference(id)
 		if container == null and reference is ContainerReference and not reference.dirty:
 			container = reference
@@ -948,7 +951,7 @@ func _check_inventory_contract(server) -> void:
 	var stack := InventoryItem.make_stack(stimpak, 5)
 	_check(inventory.add_inventory_item(stack), "Inventory accepts a stack")
 	var item_reference: EsmReference = server.create_runtime_reference(0x000E3778)
-	_check(item_reference != null and item_reference.instance_id.begins_with("runtime:000E3778:"), "a runtime reference is named runtime:<base>:<number>")
+	_check(item_reference != null and item_reference.instance_id.begins_with("runtime:FalloutNV.esm:000E3778:"), "a runtime reference is named runtime:<file>:<base local id>:<number>")
 	_check(server.get_reference(item_reference.instance_id) == item_reference, "get_reference finds a runtime reference")
 	var item := InventoryItem.new()
 	item.item_reference = item_reference
@@ -1158,7 +1161,7 @@ func _check_door_resources(server, index: Array) -> void:
 		var base_id := _u32(_subrecord(refr_raw, "NAME"))
 		var base_raw: Dictionary = server.reader.get_record_data(base_id)
 		if String(base_raw.get("record_type", "")) != "DOOR": continue
-		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 		if reference is DoorReference:
 			found_door_reference = true
 			_check(reference.base is DoorBase, "DoorReference points to DoorBase")
@@ -1329,7 +1332,7 @@ func _check_activation(esm_server, script_server) -> void:
 	_check(used_signals == [[null, terminal], [terminal, null]], "using_changed reports start and end of use")
 
 func _check_open_door_full_visual_state(server) -> void:
-	var reference := server.get_reference("authored:0010757E") as DoorReference
+	var reference := server.get_reference_by_form_id(0x0010757E) as DoorReference
 	_check(reference != null, "Doc Mitchell exterior gate resolves as a DoorReference")
 	if reference == null:
 		return
@@ -1370,7 +1373,7 @@ func _check_misc_physicaliser(server) -> void:
 	_check(not placement.is_empty(), "a real MISC placement is available for physicalisation")
 	if placement.is_empty():
 		return
-	var reference: EsmReference = server.get_reference("authored:%08X" % int(placement.get("refr_form_id", 0)))
+	var reference: EsmReference = server.get_reference_by_form_id(int(placement.get("refr_form_id", 0)))
 	_check(reference is MiscReference, "MISC placement resolves as MiscReference")
 	if not reference is MiscReference:
 		return
@@ -1438,7 +1441,7 @@ func _check_item_resources(server, index: Array) -> void:
 			var base_raw: Dictionary = server.reader.get_record_data(base_id)
 			if String(base_raw.get("record_type", "")) != type_tag:
 				continue
-			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 			if reference == null:
 				continue
 			found_reference = true
@@ -1472,7 +1475,7 @@ func _check_static_resource(server, index: Array) -> void:
 		var base_raw: Dictionary = server.reader.get_record_data(base_id)
 		if String(base_raw.get("record_type", "")) != "STAT":
 			continue
-		var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+		var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 		if reference == null:
 			continue
 		found_reference = true
@@ -1502,7 +1505,7 @@ func _check_lod_visual_handover(server) -> void:
 					var model := String(placement.get("model", "")).replace("\\", "/").to_lower()
 					if not model.ends_with("architecture/barracks/barracks01.nif"):
 						continue
-					reference = server.get_reference("authored:%08X" % int(placement.get("refr_form_id", 0)))
+					reference = server.get_reference_by_form_id(int(placement.get("refr_form_id", 0)))
 					break
 				if reference != null:
 					break
@@ -1591,7 +1594,7 @@ func _check_interactive_resources(server, index: Array) -> void:
 			var base_id := _u32(_subrecord(raw, "NAME"))
 			var base_raw: Dictionary = server.reader.get_record_data(base_id)
 			if String(base_raw.get("record_type", "")) != tag: continue
-			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected_refs[tag], "%s resolves as typed Reference" % tag)
@@ -1627,7 +1630,7 @@ func _check_collection_and_movable_resources(server, index: Array) -> void:
 			var base_id := _u32(_subrecord(raw, "NAME"))
 			var base_raw: Dictionary = server.reader.get_record_data(base_id)
 			if String(base_raw.get("record_type", "")) != tag: continue
-			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
@@ -1674,7 +1677,7 @@ func _check_talking_activator_and_terminal_resources(server, index: Array) -> vo
 			var base_id := _u32(_subrecord(raw, "NAME"))
 			var base_raw: Dictionary = server.reader.get_record_data(base_id)
 			if String(base_raw.get("record_type", "")) != tag: continue
-			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed Reference" % tag)
@@ -1709,7 +1712,7 @@ func _check_dropped_item_resources(server, index: Array) -> void:
 			var base_id := _u32(_subrecord(raw, "NAME"))
 			var base_raw: Dictionary = server.reader.get_record_data(base_id)
 			if String(base_raw.get("record_type", "")) != tag: continue
-			var reference: EsmReference = server.get_reference("authored:%08X" % int(row.get("form_id", 0)))
+			var reference: EsmReference = server.get_reference_by_form_id(int(row.get("form_id", 0)))
 			if reference == null: continue
 			found_reference = true
 			_check(reference.get_script() == expected[tag]["reference"], "%s resolves as typed dropped-item Reference" % tag)
@@ -1942,7 +1945,7 @@ func _check_owner_conditions(server, index: Array) -> void:
 ## 0013DC47 (terminal_link_census.cpp: all 4 placed terminals whose base has
 ## linked-reference conditions carry an XLKR).
 func _check_linked_references(server, _index: Array) -> void:
-	var terminal: EsmReference = server.get_reference("authored:00143990")
+	var terminal: EsmReference = server.get_reference_by_form_id(0x00143990)
 	_check(terminal != null and terminal.linked_reference_form_id == 0x0013DC47,
 			"a placed reference carries its XLKR linked reference (%s)" % ("0x%08X" % terminal.linked_reference_form_id if terminal != null else "missing"))
 

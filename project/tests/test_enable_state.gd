@@ -40,8 +40,8 @@ func _ready() -> void:
 	node.queue_free()
 
 	# ACHR 000A46FC: Opposite of Parent, parent REFR 001438BE Initially Disabled.
-	var child: EsmReference = esm_server.get_reference("authored:000A46FC")
-	var parent: EsmReference = esm_server.get_reference("authored:001438BE")
+	var child: EsmReference = esm_server.get_reference_by_form_id(0x000A46FC)
+	var parent: EsmReference = esm_server.get_reference_by_form_id(0x001438BE)
 	check(child.enable_parent_form_id == 0x001438BE and (child.enable_parent_flags & EsmReference.ENABLE_PARENT_OPPOSITE) != 0
 			and not child.initially_disabled and parent.is_disabled() and not child.is_disabled(),
 			"000A46FC follows disabled 001438BE inverted: it is enabled")
@@ -55,8 +55,8 @@ func _ready() -> void:
 	child_node.queue_free()
 
 	# 000F3BD3 -> 000F3BD2 -> 000EE6C6 (Initially Disabled), no Opposite.
-	var leaf: EsmReference = esm_server.get_reference("authored:000F3BD3")
-	var root: EsmReference = esm_server.get_reference("authored:000EE6C6")
+	var leaf: EsmReference = esm_server.get_reference_by_form_id(0x000F3BD3)
+	var root: EsmReference = esm_server.get_reference_by_form_id(0x000EE6C6)
 	var leaf_disabled := leaf.is_disabled()
 	root.set_disabled(false)
 	check(leaf_disabled and not leaf.is_disabled(), "a two-deep chain follows its root (disabled, then enabled)")
@@ -64,7 +64,7 @@ func _ready() -> void:
 
 	# ACHR 000A41B4 (HVPasswordPaladinTalk): Initially Disabled, its script has
 	# an OnLoad block, which does not run until it is enabled.
-	var actor: EsmReference = esm_server.get_reference("authored:000A41B4")
+	var actor: EsmReference = esm_server.get_reference_by_form_id(0x000A41B4)
 	check(actor is ActorReference and actor.is_disabled() and not script_server.has_block_for(actor, "OnLoad"),
 			"000A41B4 is a disabled actor; its OnLoad block does not run")
 	actor.set_disabled(false)

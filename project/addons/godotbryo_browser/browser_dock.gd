@@ -293,7 +293,7 @@ func _lvlo_item_form_id(data: PackedByteArray) -> int:
 	return int(data.decode_u32(2)) if data.size() >= 8 else 0
 
 func _activate_reference_card(_card, reference_id: int) -> void:
-	var reference = server.get_reference("authored:%08X" % reference_id) if server != null else null
+	var reference = server.get_reference_by_form_id(reference_id) if server != null else null
 	if reference != null: EditorInterface.inspect_object(reference)
 
 func _open_selected_reference_scene() -> void:
@@ -301,7 +301,7 @@ func _open_selected_reference_scene() -> void:
 	var reference: EsmReference
 	if selected_card.has_method("get_reference_id"):
 		var reference_id := int(selected_card.get_reference_id())
-		reference = server.get_reference("authored:%08X" % reference_id)
+		reference = server.get_reference_by_form_id(reference_id)
 	else:
 		var base_id := int(selected_card.row.get("form_id", 0))
 		reference = server.create_reference_for_base(base_id)

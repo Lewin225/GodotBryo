@@ -18,7 +18,7 @@ func configure(reference_type: String, reference_id: int, base_id: int, base_nam
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(box)
 	var title := Label.new()
-	title.text = "%s  authored:%08X" % [reference_type, reference_id]
+	title.text = "%s  %08X" % [reference_type, reference_id]
 	title.clip_text = true
 	box.add_child(title)
 	var metadata := Label.new()

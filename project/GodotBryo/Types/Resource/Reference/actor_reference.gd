@@ -230,7 +230,7 @@ func get_merchant_container() -> EsmReference:
 	var server := get_esm_server()
 	if merchant_container_form_id == 0 or server == null:
 		return null
-	return server.get_reference("authored:%08X" % merchant_container_form_id)
+	return server.get_reference_by_form_id(merchant_container_form_id)
 
 ## Sends the actor toward `target` (metres, Gamebryo axes, current space).
 func set_move_target(target: Vector3) -> void:

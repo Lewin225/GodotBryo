@@ -92,7 +92,10 @@ var _next_runtime_number := 1
 ## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
 ## for it.
 const PLAYER_BASE_FORM_ID := 0x00000007
-const PLAYER_INSTANCE_ID := "player"
+const PLAYER_INSTANCE_ID := &"player"
+## The masters in load order: a load-order FormID's top byte indexes it. Only
+## GameDataConfig.ESM_FILE loads, so this is one file until DLC masters load.
+var load_order: PackedStringArray = [GameDataConfigScript.ESM_FILE]
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -310,21 +313,27 @@ func get_reference_type(refr_form_id: int) -> Script:
 	var script_name := String(TYPE_TO_REFERENCE.get(String(base_raw.get("record_type", "")), "EsmReference"))
 	return _resource_script(script_name)
 
-func get_reference(instance_id: String) -> EsmReference:
+## The reference with this instance_id: `player`, a `runtime:` one from the
+## runtime table, a new `base:` one, or an authored `<file>:<local id>` one,
+## built from its record on first use and the same instance after. Null when
+## nothing has the id.
+func get_reference(instance_id: StringName) -> EsmReference:
 	if _game_session != null:
 		return _game_session.get_reference(instance_id)
 	if instance_id == PLAYER_INSTANCE_ID:
 		return get_player_reference()
 	if instance_id.begins_with("runtime:"):
 		return _runtime_references.get(instance_id)
-	if reader == null or not instance_id.begins_with("authored:"):
-		if reader == null or not instance_id.begins_with("base:"):
-			return null
-		var base_form_id := _parse_prefixed_form_id(instance_id, "base:")
-		return create_reference_for_base(base_form_id)
+	if reader == null:
+		return null
+	if instance_id.begins_with("base:"):
+		var base_form_id := form_id_for_instance_id(instance_id.trim_prefix("base:"))
+		return create_reference_for_base(base_form_id) if base_form_id != 0 else null
 	if _authored_reference_cache.has(instance_id):
 		return _authored_reference_cache[instance_id]
-	var form_id := _parse_authored_id(instance_id)
+	var form_id := form_id_for_instance_id(instance_id)
+	if form_id == 0:
+		return null
 	var cell_id := get_filing_cell_form_id(form_id)
 	if cell_id == 0:
 		return null
@@ -332,6 +341,39 @@ func get_reference(instance_id: String) -> EsmReference:
 	if placement.is_empty():
 		return null
 	return _reference_from_placement(placement, instance_id, cell_id)
+
+## The placed reference with load-order FormID `form_id`, or null.
+func get_reference_by_form_id(form_id: int) -> EsmReference:
+	if form_id == 0:
+		return null
+	return get_reference(instance_id_for_form_id(form_id))
+
+## The file the record with load-order FormID `form_id` comes from: the master
+## its top byte indexes in `load_order`. Empty when that names no loaded file.
+func file_for_form_id(form_id: int) -> String:
+	var index := (form_id >> 24) & 0xFF
+	return load_order[index] if index < load_order.size() else ""
+
+## The instance_id of the placed reference with load-order FormID `form_id`:
+## `<file>:<local id>`, the local id being the lower three bytes
+## (`FalloutNV.esm:00104C0C`). Empty when the FormID's file is not loaded.
+func instance_id_for_form_id(form_id: int) -> StringName:
+	var file := file_for_form_id(form_id)
+	if file.is_empty():
+		return &""
+	return StringName("%s:%08X" % [file, form_id & 0x00FFFFFF])
+
+## The load-order FormID an authored instance_id names, or 0 when it is not
+## `<file>:<local id>` for a loaded file.
+func form_id_for_instance_id(instance_id: String) -> int:
+	var separator := instance_id.rfind(":")
+	if separator <= 0:
+		return 0
+	var index := load_order.find(instance_id.left(separator))
+	var local := instance_id.substr(separator + 1)
+	if index == -1 or local.length() != 8 or not local.is_valid_hex_number():
+		return 0
+	return (index << 24) | (local.hex_to_int() & 0x00FFFFFF)
 
 ## The player's reference: one NpcReference on the Player NPC_ record, the
 ## same instance on every call. Unplaced (space 0) until something moves it.
@@ -345,7 +387,7 @@ func get_player_reference() -> NpcReference:
 ## The placed reference with this editor ID, or null. Case-insensitive.
 func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 	var form_id := int(_reference_by_editor_id.get(editor_id.to_lower(), 0))
-	return get_reference("authored:%08X" % form_id) if form_id != 0 else null
+	return get_reference_by_form_id(form_id)
 
 ## The QUST record with this editor ID, or null. Case-insensitive. Its
 ## script_form_id is the quest script whose variables scripts reach as
@@ -426,7 +468,7 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	var result: EsmReference = script.new()
 	result.base_form_id = base.form_id
 	result.base = base
-	result.instance_id = "base:%08X" % base.form_id
+	result.instance_id = StringName("base:" + instance_id_for_form_id(base.form_id))
 	result.position = Vector3.ZERO
 	result.rotation = Vector3.ZERO
 	result.scale = 1.0
@@ -438,7 +480,7 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	return result
 
 ## A new reference to `base_form_id` with no ESM record, named
-## `runtime:<base FormID>:<number>` from one counter, and held in the runtime
+## `runtime:<file>:<base local id>:<number>` from one counter, and held in the runtime
 ## table until release_runtime_reference(). Unplaced (space 0). Null when the
 ## base does not exist.
 func create_runtime_reference(base_form_id: int) -> EsmReference:
@@ -452,7 +494,7 @@ func create_runtime_reference(base_form_id: int) -> EsmReference:
 	var result: EsmReference = script.new()
 	result.base_form_id = base_form_id
 	result.base = base
-	result.instance_id = "runtime:%08X:%d" % [base_form_id, _next_runtime_number]
+	result.instance_id = StringName("runtime:%s:%d" % [instance_id_for_form_id(base_form_id), _next_runtime_number])
 	_next_runtime_number += 1
 	_runtime_references[result.instance_id] = result
 	return result
@@ -470,7 +512,7 @@ func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 	if reader == null:
 		return result
 	for placement in reader.get_cell_references(cell_form_id) + reader.get_cell_actors(cell_form_id):
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), cell_form_id)
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), cell_form_id)
 		if reference != null and not _relocated.has(reference):
 			result.append(reference)
 	for reference: EsmReference in _relocated_by_cell.get(cell_form_id, {}):
@@ -497,7 +539,7 @@ func get_all_placed_actor_references() -> Array[ActorReference]:
 	for placement in _get_placed_actor_placements():
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			int(placement.get("cell_form_id", 0))
 		) as ActorReference
 		if reference != null:
@@ -514,7 +556,7 @@ func get_all_placed_actor_instance_ids() -> PackedStringArray:
 		return _placed_actor_instance_ids.duplicate()
 	_placed_actor_ids_built = true
 	for placement in _get_placed_actor_placements():
-		_placed_actor_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+		_placed_actor_instance_ids.append(instance_id_for_form_id(int(placement.get("refr_form_id", 0))))
 	return _placed_actor_instance_ids.duplicate()
 
 ## Every placed DOOR REFR with an authored XTEL destination, independent of
@@ -525,7 +567,7 @@ func get_all_xtel_door_references() -> Array[DoorReference]:
 	for placement in _get_xtel_door_placements():
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			int(placement.get("cell_form_id", 0))
 		) as DoorReference
 		if reference != null and reference.has_teleport:
@@ -542,7 +584,7 @@ func get_all_xtel_door_instance_ids() -> PackedStringArray:
 		return _xtel_door_instance_ids.duplicate()
 	_xtel_door_ids_built = true
 	for placement in _get_xtel_door_placements():
-		_xtel_door_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+		_xtel_door_instance_ids.append(instance_id_for_form_id(int(placement.get("refr_form_id", 0))))
 	return _xtel_door_instance_ids.duplicate()
 
 ## Frame-sized construction access for data-only global consumers. Placement
@@ -553,7 +595,7 @@ func get_placed_actor_reference_batch(offset: int, limit: int) -> Array[ActorRef
 	var placements := _get_placed_actor_placements()
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as ActorReference
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), int(placement.get("cell_form_id", 0))) as ActorReference
 		if reference != null:
 			result.append(reference)
 	return result
@@ -563,7 +605,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 	var placements := _get_xtel_door_placements()
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as DoorReference
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), int(placement.get("cell_form_id", 0))) as DoorReference
 		if reference != null and reference.has_teleport:
 			result.append(reference)
 	return result
@@ -574,7 +616,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 func get_authored_placement(reference: EsmReference) -> Dictionary:
 	if _authored_placement_by_id.is_empty():
 		for placement in _get_placed_actor_placements():
-			_authored_placement_by_id["authored:%08X" % int(placement.get("refr_form_id", 0))] = placement
+			_authored_placement_by_id[instance_id_for_form_id(int(placement.get("refr_form_id", 0)))] = placement
 	var placement: Dictionary = _authored_placement_by_id.get(reference.instance_id, {})
 	if placement.is_empty():
 		return {}
@@ -608,7 +650,7 @@ func get_space_form_id_for_reference(instance_id: String) -> int:
 	var cached: EsmReference = _authored_reference_cache.get(instance_id)
 	if cached != null:
 		return cached.current_space_form_id
-	var cell := get_filing_cell_form_id(_parse_authored_id(instance_id))
+	var cell := get_filing_cell_form_id(form_id_for_instance_id(instance_id))
 	return get_space_form_id_for_cell(cell) if cell != 0 else 0
 
 ## The space a CELL belongs to: its WRLD for an exterior grid or persistent
@@ -652,7 +694,7 @@ func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[
 	for placement in reader.get_persistent_refs_for_worldspace(worldspace_form_id):
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			persistent_cell
 		)
 		if reference != null and not _relocated.has(reference):
@@ -2161,14 +2203,6 @@ func _sound_path(form_id: int) -> String:
 	if form_id == 0 or reader == null or not reader.has_method("get_sound_path"):
 		return ""
 	return String(reader.get_sound_path(form_id))
-
-func _parse_authored_id(id: String) -> int:
-	var suffix := id.trim_prefix("authored:")
-	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
-
-func _parse_prefixed_form_id(id: String, prefix: String) -> int:
-	var suffix := id.trim_prefix(prefix)
-	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
 
 func _parse_source_uri(uri: String) -> Dictionary:
 	if not uri.begins_with("esm://"):
