@@ -73,7 +73,7 @@ out.
 - **Disabled actors.** `PackageRunner` and `LowLevelTravel` skip an actor whose `is_disabled()` is
   true, so an initially disabled actor does not move until it is enabled. An actor under an
   enable parent takes its state from the parent.
- (FalloutNV.esm): CNTO is a base or LVLI FormID and a count;
+- **Authored inventory entries** (FalloutNV.esm): CNTO is a base or LVLI FormID and a count;
   6,595 on CONT, 16,166 on NPC_, 1,568 on CREA, 2,586 with a count above 1. LVLO adds 13,319.
   None names a placed reference. COED (owner, global or rank, condition) follows 1,455 CNTO and
   1,926 LVLO: 2,110 on ARMO, 1,261 on WEAP, 8 on LVLI, 1 MISC, 1 NOTE; conditions 0.12 to 0.85;
@@ -96,7 +96,7 @@ out.
       bases.json           dirty bases; encounter zone resolved_level
       runtime.json         the runtime counter; runtime references
       references/<space editor ID>.json
-                           authored, base: and player references, by the space they are in
+                           authored and player references, by the space they are in
     quest_server.json      QuestState per QUST; the clock, next runs, active quest
     script_server.json     global values, clock, disabled player controls
     dialogue_server.json   said, talked to the player, added topics
@@ -109,15 +109,47 @@ out.
 - A save is written to a new folder and renamed into place, so a failed save leaves the old one.
 - Not Godot resources: loading a `.tres`/`.res` can load and run scripts, builds an object per
   field and runs every setter. The reader builds only plain values (`JSON.to_native` without
-  objects, or our own parser; decided at step 2).
+  objects, or our own parser; decided at step 3).
 - Two ways to store saves, chosen by the player:
   - **Full** (the default): every save is a complete folder.
   - **Git**, offered only when git is installed: the saves folder is a git repository and each
     save is a commit, so saves share unchanged files and a save loaded and saved again from an
     earlier one starts a branch. The save browser can later show the branches, and a remote gives
     save sync between machines.
-- Reading a save reads its files whole; nothing seeks. Step 3 measures size, save time and read
+- Reading a save reads its files whole; nothing seeks. Step 4 measures size, save time and read
   time.
+
+### Layers
+
+- **State.** Each owner's `save_state()`/`load_state()` turns its state into a save state of
+  plain values and back. Owners know nothing of files.
+- **SaveServer** (new autoload) builds the whole save state from the owners and applies one to
+  them in the load order below. It owns the save state's schema and format version, migrations
+  from older versions, the master check, the save and load refusals, and which backend stores
+  saves.
+- **Backends** store and fetch whole save states, already in the current version:
+
+  ```gdscript
+  class_name SaveBackend
+  extends RefCounted
+
+  ## Stores `state` (header and sections of plain values) under `save_id`.
+  func write(save_id: String, state: Dictionary) -> Error
+  ## The save state stored under `save_id`, or {} with the error in `last_error`.
+  func read(save_id: String) -> Dictionary
+  ## Headers of every stored save, for the save browser.
+  func list() -> Array[Dictionary]
+  func delete(save_id: String) -> Error
+  ## What the backend supports: "parents" (branches), "sync", "partial_read".
+  func capabilities() -> PackedStringArray
+  ```
+
+  Backends are registered with SaveServer by name and chosen by a setting. The interface carries
+  only plain values, so a backend never touches game objects. The folder of JSON files (Format)
+  and Git are the first two; another (a `.fos` writer) is one more class against the schema.
+- **Schema.** The save state's sections, fields, id formats and version are documented beside
+  SaveServer (`project/GodotBryo/Servers/SaveServer/README.md`); it is the contract between the
+  layers, and changes to it bump the version with a migration.
 
 ### Fields and values
 
@@ -187,8 +219,60 @@ out.
   entry of the loaded save that this session has not built. A clean reference is rebuilt from
   the ESM on load.
 - Every list a server saves is bounded by the records it is about (quests, INFOs, actors), never
-  by how long the game has run. `DialogueServer._said` is checked against this at step 3: it
+  by how long the game has run. `DialogueServer._said` is checked against this at step 4: it
   keeps only what a condition can read.
+
+### Controller state
+
+- A saved actor loads as the simulation holds it: `simulation_mode` LOW_LEVEL, with no controller.
+  The fields its controller sets every frame (`simulation_mode`, `is_moving`, `is_running`,
+  `is_sneaking`) lose `STORAGE`; the controller sets them again when the actor is leased.
+- Furniture: `using` and `using_marker` are plain `var`, so a seated actor would load with a
+  `sit_state` of 3 and no furniture. `using` is saved as the furniture's instance_id and
+  `using_marker` with it, and loading seats the actor again through `FurnitureSeating`; the
+  furniture's `occupants` is rebuilt from them. Census at step 3: every other plain `var` on a
+  reference that a saved field depends on.
+- `base:<FormID>` references (`create_reference_for_base`) are throwaway builds for previews and
+  hydration, not world state, and are never saved; the player is `player`. Step 2 checks no saved
+  field links to one.
+
+### Loading from an open game
+
+- No process restart: it would throw away the caches that make a second load fast. Each part
+  is one of four kinds:
+  - **Cache servers keep everything.** ArchiveServer, TextureServer, NifServer (and its KF disk
+    cache), MeshServer, MaterialServer, FaceGenServer, and the terrain's texture pool and region
+    data hold only what is derived from game files, never game state. Their warm caches are why
+    a second load is fast.
+  - **EsmServer keeps what it read from the ESM** (the reader, the record and placement indices,
+    clean bases) and discards its game state: the reference caches, `_relocated`, the runtime
+    table and counter, the player's reference. A dirty base is read from the ESM again before the
+    save's version is applied.
+  - **State servers that come back up quickly are torn down and started again** rather than
+    given reset code: QuestServer, ScriptServer, DialogueServer, NpcSimulationServer (its navmesh
+    stays with LocalNavigation if that is the slow part; measured at step 7), time and weather.
+  - **The game scene stays.** Its streamers unload the world they hold and stream the saved
+    location in, as a `coc` does; TerrainStreamer and Terrain3D keep their caches.
+- Then the load order above runs as from the launcher.
+
+### Progress
+
+- SaveServer emits `progress(stage: String, detail: String, done: int, total: int)` through a save
+  and a load, with what it is working on by name, not a bare fraction:
+  - reading: each file (`esm_server/references/GoodspringsWorld.json`);
+  - applying: each owner and its count (`QuestServer: 412 quests`), each moved reference built
+    (`Moved items: 14 of 37, WeapNV9mmPistol`);
+  - seeding: `NpcSimulationServer.seed_progress`, forwarded with the actor's editor ID;
+  - placing and streaming: the destination cell, `CellStreamerV2.load_progress`, and
+    TerrainStreamer's ready status, forwarded until the transition releases the player.
+  - saving: each owner, then each file written.
+- Loading and saving run in steps across frames (a batch of references per frame), so the
+  loading screen redraws between them; nothing is applied in one blocking call.
+- The transition screen (`TransitionCoordinator`'s overlay) shows the stage, the detail and a bar
+  while a load runs; a save shows its progress only when it outlasts a short delay.
+- Every load writes a load report beside the saves (`user://saves/last_load.txt`): each stage's
+  time, counts, warnings, and the entries dropped by the master check. It is what a bug report
+  attaches.
 
 ### Saving
 
@@ -222,12 +306,12 @@ out.
   only built references, so loading builds every saved reference whose saved cell is not its
   filing cell, before streaming starts; otherwise its new cell would not list it until its filing
   cell loaded. Actors are built at seeding anyway; this covers moved items and objects (dropped,
-  `MoveTo`). The
-  `references/<space>.json` split is for editing; the loader does not depend on it.
+  `MoveTo`). The `references/<space>.json` split is for editing; the loader does not depend on
+  it.
 
 ## Build order
 
-1. **Runtime ids, inventories and dirty.** Done in code, not committed. The runtime table and
+1. **Runtime ids, inventories and dirty.** Done (`4f0581a`). The runtime table and
    counter; `InventoryItem` as a stack or a reference, readers on the item's base; ESM-read
    reference fields without `STORAGE`; dirty marked at the setters and cleared after building.
    Checked by `tests/test_esm_server` (`_check_inventory_contract`, `_check_dirty_marking`).
@@ -240,20 +324,36 @@ out.
    door and a runtime weapon, write, read into a fresh instance of the same class, write again,
    and the two Dictionaries are equal; `bytes_to_var()` of the result holds no Object.
 4. **Sections.** `save_state()`/`load_state()` on EsmServer (with the overlay), QuestServer,
-   ScriptServer and DialogueServer. Gate: a test runs the simulation and VCG01's first stages,
-   saves, loads into new instances of each server, saves again, and both saves are equal. Measure
+   ScriptServer and DialogueServer. EsmServer is not instanced again (that reloads the ESM): its
+   test clears its reference caches and runtime table, loads the overlay, and builds the saved
+   references again. Gate: a test runs the simulation and VCG01's first stages, saves, loads into
+   new instances of the other servers and the cleared EsmServer, saves again, and both saves are
+   equal. Measure
    size, save time and read time, after one Goodsprings save and after a long session (hours of
    simulated travel at high speed scale), against a target set from the first measurement.
-5. **Files.** Write a save folder, rename it into place, read it back; the header and its master
-   check. Gate: a save naming a missing master is refused; one from a changed master loads with a
+5. **SaveServer and files.** SaveServer, the `SaveBackend` interface, the schema README, and the
+   JSON folder backend: write a save folder, rename it into place, read it back; the header and
+   its master check. Gate: a save naming a missing master is refused; one from a changed master loads with a
    warning and a report of dropped entries; two saves a minute apart in one cell differ only in
    the files that changed.
-6. **Load in game.** The launcher's Load, the load order above, time and weather. Gate: save in
-   Goodsprings, quit, load from the launcher; the player, Doc Mitchell's quest stage, Sunny's
-   position and package, an opened container's contents and the time are as saved.
-7. **Quick save and quick load keys**, and the launcher's list of saves.
-8. **Git storage.** The Git choice where git is installed: commit per save, branch on saving from
-   an earlier save. The save browser's branch view and remotes come after.
+6. **Load in game.** The launcher's Load, the load order above, time and weather; progress
+   across frames, the transition screen's stage and detail, the load report. A save can be
+   anywhere, so the game must boot into an exterior, which no start has done: every start so
+   far is Doc Mitchell's house, and exteriors are reached only from an interior. First, a boot
+   straight into a worldspace (the startup script moving the player to Goodsprings, PR #88):
+   WorldStreamerV2 activating with no earlier space, TerrainStreamer's first ready wait, and
+   `game.gd`'s exterior environment, weather and sky; a test for it beside `test_transitions`.
+   Gate: save inside Doc Mitchell's house and outside in Goodsprings, quit, load each from the launcher; the
+   player, Doc Mitchell's quest stage, Sunny's position and package, an opened container's
+   contents, the time and the weather are as saved, and the exterior load has its terrain,
+   distant objects and sky.
+7. **Quick save and quick load keys**, and the launcher's list of saves. Quick load is loading
+   from an open game (above). Census first: each server's state, what it caches, and how long it
+   takes to start; measure NpcSimulationServer's navmesh load separately. Gate: quick load twice
+   in Goodsprings; the second load reuses NifServer's trees and textures (its stats show no new
+   parses) and the world matches the save.
+8. **Git storage.** A second backend, offered where git is installed: commit per save, branch on
+   saving from an earlier save. The save browser's branch view and remotes come after.
 
 ## Open
 
@@ -267,12 +367,12 @@ out.
   when placed actors choose from their leveled list again, and when encounter zones without Never
   Resets fix their level again (`templated_npcs.md`). They are what bounds save growth from
   play; the save only stops storing what they discard.
-- Loading from an open game: reset every stateful server, or restart the process and load from
-  the launcher (as choosing a data folder already does). Restarting needs no reset code; its cost
-  is the ESM load time.
-- Whether `is_moving`, `is_running` and `is_sneaking`, which controllers set each frame, are
-  saved or left to the controller.
-- `ScriptServer._pending_moves`: moves waiting for their space to load at the moment of saving.
+- `ScriptServer._pending_moves`: none can be waiting when a save is made (Saving), so none is
+  saved; whether that refusal is ever noticeable in play.
+- A `.fos` backend: writing one is partial (perks, stats, map markers, Havok state and the
+  change-form flag bits are not modelled or not documented; `enginedocs/nv_save_architecture.html`
+  rates the layouts low confidence) and needs a fixed load order; reading a real New Vegas save
+  is a project of its own. Neither changes the interface.
 - Possible optimisation, in case moved non-actor references reach the tens of thousands and the
   eager build at load costs too much time or memory: key `_relocated`/`_relocated_by_cell` by
   instance_id instead of EsmReference, fill them from the save without building, and let
