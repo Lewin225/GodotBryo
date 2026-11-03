@@ -1,14 +1,29 @@
 # GodotBryo
 
-An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day). It also works as a asset browser and exporter via an included godot editor plugin
+An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, using godot's native tooling. Targeting New Vegas for now, then fo3, then skyrim. It also works as a asset browser and exporter via an included godot editor plugin
 
 What's working - in short.
-- **Actors**(NPC/Creatures) - Will render, execute packages and simulate/navigate anywhere in the world
+- **Actors**(NPC/Creatures) - Will render, execute packages and simulate/navigate anywhere in the world. But will not do combat
 - **Performance** : 3080ti+9800x3d returns 300 fps in the open world at 1080p. optimisation target is 500, so running with vsync should give a quiet gpu. m4pro macbook managed 70fps @ 3024 x 1964
 - **Load Time** : Fully threaded esm load and decode, promise based streaming, boot to new game start is about 4 seconds on an nvme drive
 - **Interactions** : Dialog(+Most dialog conditions), Quests(Functional, but dialog quests only), All Spaces(-except for the strip terrain, bugged)
 - **Transitions** : Instant swap between exterior and interior spaces, interior to interior near instant, world to world is fast, but could be better
 - **Stutter** : Very minimal(but only tested on an nvme) Profiled every major update with tracy(cpu) and nvidia insight(gpu). I hunt this frequently because I hate it
+- **Animation** : Animation data is upscaled to play nice at high framerates, included model, bone, kf and lipsync animations
+- **Saving** : In development right now - Works but not fully tested - allows for custom saver plugins, currently plain json for debugging, but binary and git based saves soon
+
+Major missing pieces right now
+- **Inventory** - All actors and containers get one, but there's no container ui right now
+- **Weapons and Combat** - Was waiting on inventory and npc packages. But will be getting a lot of gamefeel work as it's the original engine's weakest area imo
+
+Change Plans from the Original Engine
+- **Rendering** - Implemented - A modern vulkan renderer that can use modern hardware - godot gives us this for free
+- **Simulation** - Implemented - Deeper simulation of off screen npc's
+- **Threading** - Implemented - Any work that can go to other cores or the gpu is offloaded, Included mesh parsing, file loading, npc simulation, cell loading, texture fetch, terrain rendering
+- **Movement** - Floating capsule with ground ray
+- **CO-OP** - Not yet - Groundwork is there, all actors are pawns that a player or remote client can control
+- **VR** - Net Yet, once desktop is finished - VR Support in both solo and coop, with genuine weapon/item interactions + lockpicking and physical doors
+- **Custom Mods** - Not yet - Load a custom mod format that can add godot scenes as custom base types and create them with a refr
 
 ---
 
