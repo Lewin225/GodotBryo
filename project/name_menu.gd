@@ -34,7 +34,7 @@ func accept() -> void:
 	var typed := _name.text.strip_edges()
 	if _actor != null and _actor.base != null and not typed.is_empty():
 		_actor.base.full_name = typed
-		_actor.base.mark_dirty()
+		_actor.base.mark_changed("full_name")
 	visible = false
 	ScriptServer.exit_menu(ScriptServer.MENU_TEXT_EDIT)
 	closed.emit()

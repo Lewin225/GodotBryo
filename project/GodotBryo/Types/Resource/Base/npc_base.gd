@@ -152,7 +152,7 @@ func is_female() -> bool:
 ## the record dirty.
 func set_female(female: bool) -> void:
 	acbs_flags = (acbs_flags | FLAG_FEMALE) if female else (acbs_flags & ~FLAG_FEMALE)
-	mark_dirty()
+	mark_changed("acbs_flags")
 
 ## RNAM's RACE body parts (required) and head parts, then HNAM's hair and
 ## ENAM's eyes (optional), for the actor node.

@@ -41,6 +41,65 @@ func begin_game() -> void:
 		if quest != null and quest.starts_enabled:
 			start_quest(quest)
 
+## The quest state as plain values for a save (SaveFields): each QuestState by
+## its quest's `<file>:<local id>` (with the quest's editor_id, which loading
+## ignores), the clock, when each running quest's script runs next, the
+## SetQuestObject overrides and the active quest.
+func save_state() -> Dictionary:
+	var states := {}
+	for form_id: int in _states:
+		var entry := SaveFields.write(_states[form_id], ["quest_form_id"])
+		entry["editor_id"] = (_states[form_id] as QuestState).quest.editor_id
+		states[_record_text(form_id)] = entry
+	var next_runs := {}
+	for form_id: int in _next_run:
+		next_runs[_record_text(form_id)] = _next_run[form_id]
+	var quest_objects := {}
+	for form_id: int in _quest_objects:
+		quest_objects[_record_text(form_id)] = _quest_objects[form_id]
+	return {
+		"states": states,
+		"clock": _clock,
+		"next_run": next_runs,
+		"quest_objects": quest_objects,
+		"active_quest": _record_text(active_quest.form_id) if active_quest != null else null,
+	}
+
+## Replaces all quest state with a save_state() result. A quest not in the
+## load order is dropped with a warning.
+func load_state(state: Dictionary) -> void:
+	_states.clear()
+	_next_run.clear()
+	_quest_objects.clear()
+	var states: Dictionary = state.get("states", {})
+	for text: String in states:
+		var quest := EsmServer.get_base(EsmServer.form_id_for_instance_id(text)) as QuestBase
+		if quest == null:
+			push_warning("QuestServer: saved quest %s is not in the load order; dropped" % text)
+			continue
+		var quest_state := QuestState.new()
+		quest_state.quest_form_id = quest.form_id
+		quest_state.quest = quest
+		SaveFields.read(quest_state, states[text], ["quest_form_id"])
+		_states[quest.form_id] = quest_state
+	_clock = float(state.get("clock", 0.0))
+	var next_runs: Dictionary = state.get("next_run", {})
+	for text: String in next_runs:
+		var form_id := EsmServer.form_id_for_instance_id(text)
+		if _states.has(form_id):
+			_next_run[form_id] = float(next_runs[text])
+	var quest_objects: Dictionary = state.get("quest_objects", {})
+	for text: String in quest_objects:
+		var form_id := EsmServer.form_id_for_instance_id(text)
+		if form_id != 0:
+			_quest_objects[form_id] = bool(quest_objects[text])
+	var active: Variant = state.get("active_quest")
+	active_quest = EsmServer.get_base(EsmServer.form_id_for_instance_id(String(active))) as QuestBase if active != null else null
+
+## `<file>:<local id>` for a record's load-order FormID.
+func _record_text(form_id: int) -> String:
+	return String(EsmServer.instance_id_for_form_id(form_id))
+
 ## The runtime state of a quest: the same QuestState on every call, created on
 ## first use. Null for a record that is not a QUST.
 func get_quest_state(quest: EsmBase) -> QuestState:

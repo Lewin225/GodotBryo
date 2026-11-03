@@ -87,6 +87,12 @@ var _player_reference: NpcReference = null
 var _runtime_references: Dictionary = {}
 ## The number the next runtime reference's instance_id ends with.
 var _next_runtime_number := 1
+## A loaded save's reference entries not yet applied: instance_id -> saved
+## fields. Filled by load_state(); an entry is applied, and dropped from here,
+## when EsmServer builds its reference.
+var _saved_references: Dictionary = {}
+## A reference's fields a save keys its entry by rather than repeats.
+const SAVE_KEY_FIELDS := ["instance_id", "base_form_id"]
 
 ## FormID of the Player NPC_ record. The player's own placed reference
 ## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
@@ -382,6 +388,7 @@ func get_player_reference() -> NpcReference:
 		_player_reference = create_reference_for_base(PLAYER_BASE_FORM_ID) as NpcReference
 		if _player_reference != null:
 			_player_reference.instance_id = PLAYER_INSTANCE_ID
+			_apply_saved_entry(_player_reference)
 	return _player_reference
 
 ## The placed reference with this editor ID, or null. Case-insensitive.
@@ -484,6 +491,145 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 ## table until release_runtime_reference(). Unplaced (space 0). Null when the
 ## base does not exist.
 func create_runtime_reference(base_form_id: int) -> EsmReference:
+	var result := _new_unplaced_reference(base_form_id)
+	if result == null:
+		return null
+	result.instance_id = StringName("runtime:%s:%d" % [instance_id_for_form_id(base_form_id), _next_runtime_number])
+	_next_runtime_number += 1
+	_runtime_references[result.instance_id] = result
+	return result
+
+## EsmServer's game state as plain values for a save (SaveFields):
+## - `references`: instance_id -> saved fields, for every dirty built
+##   reference, the player, and each loaded save entry not built since;
+## - `runtime`: the counter and each runtime reference, with its base;
+## - `bases`: each dirty base's changed fields, by `<file>:<local id>`.
+## Entries also carry `editor_id` (the base's, or the record's), which loading
+## ignores.
+func save_state() -> Dictionary:
+	var references := {}
+	for id: String in _saved_references:
+		references[id] = _saved_references[id]
+	for id: StringName in _authored_reference_cache:
+		var reference: EsmReference = _authored_reference_cache[id]
+		if reference.dirty:
+			references[String(id)] = _reference_entry(reference)
+	if _player_reference != null:
+		references[String(PLAYER_INSTANCE_ID)] = _reference_entry(_player_reference)
+	var runtime := {}
+	for id: StringName in _runtime_references:
+		var entry := _reference_entry(_runtime_references[id])
+		entry["base_form_id"] = String(instance_id_for_form_id(_runtime_references[id].base_form_id))
+		runtime[String(id)] = entry
+	var bases := {}
+	for form_id: int in _cache:
+		var base: EsmBase = _cache[form_id]
+		if not base.dirty or base.changed_fields.is_empty():
+			continue
+		var entry := SaveFields.write_named(base, base.changed_fields)
+		entry["editor_id"] = base.editor_id
+		bases[String(instance_id_for_form_id(form_id))] = entry
+	return {
+		"references": references,
+		"runtime": {"next_number": _next_runtime_number, "references": runtime},
+		"bases": bases,
+	}
+
+## Applies a save_state() result to an EsmServer with no game state (after
+## clear_game_state()): dirty bases first, then the runtime references, then
+## the reference entries, held until each reference is built. References whose
+## saved cell is not their filing cell are built now, so the cells they moved
+## to list them.
+func load_state(state: Dictionary) -> void:
+	var bases: Dictionary = state.get("bases", {})
+	for text: String in bases:
+		var base := get_base(form_id_for_instance_id(text))
+		if base == null:
+			push_warning("EsmServer: saved base %s is not in the load order; dropped" % text)
+			continue
+		SaveFields.read_named(base, bases[text])
+		for field: String in bases[text]:
+			if field != "editor_id":
+				base.mark_changed(field)
+	var runtime: Dictionary = state.get("runtime", {})
+	_next_runtime_number = int(runtime.get("next_number", 1))
+	var runtime_entries: Dictionary = runtime.get("references", {})
+	for id: String in runtime_entries:
+		var base_form_id := form_id_for_instance_id(String(runtime_entries[id].get("base_form_id", "")))
+		var reference := _new_unplaced_reference(base_form_id)
+		if reference == null:
+			push_warning("EsmServer: saved runtime reference %s has no base in the load order; dropped" % id)
+			continue
+		reference.instance_id = StringName(id)
+		_runtime_references[reference.instance_id] = reference
+		SaveFields.read(reference, runtime_entries[id], SAVE_KEY_FIELDS)
+		reference.dirty = true
+	_saved_references = (state.get("references", {}) as Dictionary).duplicate()
+	if _player_reference != null:
+		_apply_saved_entry(_player_reference)
+	for id: String in _saved_references.keys():
+		if _saved_reference_moved(id):
+			get_reference(StringName(id))
+
+## Drops all game state and keeps what was read from the ESM: the reference
+## caches, relocations, runtime references and counter, the player's
+## reference, a loaded save's unapplied entries, and every dirty base (read
+## again from the ESM on next use).
+func clear_game_state() -> void:
+	_authored_reference_cache.clear()
+	_relocated.clear()
+	_relocated_by_cell.clear()
+	_runtime_references.clear()
+	_next_runtime_number = 1
+	_player_reference = null
+	_saved_references.clear()
+	for form_id: int in _cache.keys():
+		var base: EsmBase = _cache[form_id]
+		if base.dirty:
+			_cache.erase(form_id)
+
+## A reference's save entry: its saved fields, and its base's editor ID. An
+## inventory unchanged since it was built is left out; loading builds it again
+## from the ESM.
+func _reference_entry(reference: EsmReference) -> Dictionary:
+	var entry := SaveFields.write(reference, SAVE_KEY_FIELDS)
+	entry["editor_id"] = reference.base.editor_id if reference.base != null else ""
+	var inventory: Inventory = reference.get("contents") if "contents" in reference else null
+	if inventory != null and not inventory.changed_since_built:
+		entry.erase("contents")
+	return entry
+
+## Applies a loaded save's entry for `reference`, if it has one, and drops
+## the entry; the reference is then dirty, as when it was saved.
+func _apply_saved_entry(reference: EsmReference) -> void:
+	var id := String(reference.instance_id)
+	if not _saved_references.has(id):
+		return
+	var entry: Dictionary = _saved_references[id]
+	_saved_references.erase(id)
+	SaveFields.read(reference, entry, SAVE_KEY_FIELDS)
+	reference.dirty = true
+
+## Whether saved entry `id` puts an authored reference in another cell than
+## the one that files it.
+func _saved_reference_moved(id: String) -> bool:
+	var form_id := form_id_for_instance_id(id)
+	if form_id == 0:
+		return false
+	var entry: Dictionary = _saved_references[id]
+	var space_text: Variant = entry.get("current_space_form_id")
+	var space := 0
+	if space_text != null:
+		space = form_id_for_instance_id(String(space_text))
+	var position_values: Array = entry.get("position", [])
+	if space == 0 or position_values.size() != 3:
+		return false
+	var position := Vector3(position_values[0], position_values[1], position_values[2])
+	return cell_at(space, position) != get_filing_cell_form_id(form_id)
+
+## A new reference of the class for `base_form_id`'s record type, with its
+## base and nothing else set; null when the base does not exist.
+func _new_unplaced_reference(base_form_id: int) -> EsmReference:
 	var base := get_base(base_form_id)
 	if base == null:
 		return null
@@ -494,9 +640,6 @@ func create_runtime_reference(base_form_id: int) -> EsmReference:
 	var result: EsmReference = script.new()
 	result.base_form_id = base_form_id
 	result.base = base
-	result.instance_id = StringName("runtime:%s:%d" % [instance_id_for_form_id(base_form_id), _next_runtime_number])
-	_next_runtime_number += 1
-	_runtime_references[result.instance_id] = result
 	return result
 
 ## Drops a runtime reference from the runtime table, for one used up or
@@ -780,6 +923,7 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 	# Building it ran the setters that mark a change; it matches the ESM.
 	result.dirty = false
 	_authored_reference_cache[id] = result
+	_apply_saved_entry(result)
 	return result
 
 ## A terminal's lock state starts from its base's DNAM.
@@ -861,6 +1005,8 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		item_index += 1
 	if reference is NpcReference:
 		inventory.equip_default_armor()
+	# Filling it emitted inventory_changed; it matches the ESM.
+	inventory.changed_since_built = false
 
 func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result._rehydrating = true

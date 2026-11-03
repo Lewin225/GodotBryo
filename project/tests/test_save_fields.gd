@@ -93,9 +93,10 @@ func _round_trip(resource: Resource, label: String) -> Resource:
 		copy.base = resource.base
 	SaveFields.read(copy, JSON.parse_string(text), skipped)
 	var again := JSON.stringify(SaveFields.write(copy, skipped), "\t", true)
-	check(again == text, "%s writes the same after a read through JSON" % label)
-	if again != text:
-		print(text, "\n---\n", again)
+	var difference := SaveCompare.first_difference(JSON.parse_string(text), JSON.parse_string(again))
+	check(difference.is_empty(), "%s writes the same after a read through JSON (floats within 1e-9)" % label)
+	if not difference.is_empty():
+		print("  first difference: ", difference)
 	return copy
 
 func _first_reference_of(type: Script) -> EsmReference:

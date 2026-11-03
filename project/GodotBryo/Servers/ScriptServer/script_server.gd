@@ -119,6 +119,29 @@ func _ready() -> void:
 		else:
 			esm_server.esm_ready.connect(func(): function_registry.esm = esm_server.reader, CONNECT_ONE_SHOT)
 
+## The script state as plain values for a save: every global the game has
+## touched (by editor ID), the script clock and the disabled player controls.
+## Object scripts' locals are saved with their references, quest scripts'
+## with QuestServer.
+func save_state() -> Dictionary:
+	return {
+		"globals": globals.values.duplicate(),
+		"clock": clock,
+		"disabled_player_controls": disabled_player_controls,
+	}
+
+## Replaces the script state with a save_state() result. Globals go through
+## set_global(), which reads each one's type from the ESM, so short and long
+## globals are ints again.
+func load_state(state: Dictionary) -> void:
+	globals = GlobalVariables.new()
+	var saved_globals: Dictionary = state.get("globals", {})
+	for name: String in saved_globals:
+		if not globals.set_global(name, saved_globals[name]):
+			push_warning("ScriptServer: saved global %s is not in the ESM; dropped" % name)
+	clock = float(state.get("clock", 0.0))
+	_set_disabled_player_controls(int(state.get("disabled_player_controls", 0)))
+
 ## Each frame: advances the script clock, runs loaded references' GameMode
 ## blocks, or in menu mode their MenuMode blocks for the open menu, then
 ## applies queued moves.

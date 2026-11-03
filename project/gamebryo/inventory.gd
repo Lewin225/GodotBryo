@@ -9,8 +9,20 @@ extends Resource
 signal inventory_changed
 
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "InventoryItem", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE) var items: Array[InventoryItem] = []
+## Not an ESM field: whether the inventory changed after EsmServer built it
+## from its owner's CNTO. Set on every inventory_changed; cleared by EsmServer
+## once it has filled the inventory. A save writes an inventory only when set:
+## an unchanged one is built again from the ESM on load, the same, since its
+## leveled lists are seeded from its owner.
+@export_storage var changed_since_built := false
 var _batch_depth: int = 0
 var _batch_dirty: bool = false
+
+func _init() -> void:
+	inventory_changed.connect(_on_inventory_changed)
+
+func _on_inventory_changed() -> void:
+	changed_since_built = true
 
 func add_item(item_or_form_id: Variant, payload: Variant = null, count: int = 1) -> bool:
 	var item: InventoryItem
@@ -164,58 +176,6 @@ func _equipment_conflicts(first: InventoryItem, second: InventoryItem) -> bool:
 		var second_flags := (second.base as ArmorBase).biped_flags
 		return first_flags != 0 and (first_flags & second_flags) != 0
 	return false
-
-## The inventory as plain values: a stack by its base FormID, a reference
-## entry by its reference's instance_id.
-func serialize_state() -> Dictionary:
-	var saved: Array[Dictionary] = []
-	for item in items:
-		if item == null:
-			continue
-		var state: Dictionary = {
-			"base_form_id": item.base_form_id,
-			"count": item.count,
-			"is_equipped": item.is_equipped,
-			"owner_form_id": item.owner_form_id,
-			"health_percent": item.health_percent,
-		}
-		if item.item_reference != null:
-			state["reference_instance_id"] = item.item_reference.instance_id
-		saved.append(state)
-	return {"version": 2, "items": saved}
-
-## Restores serialize_state()'s output. A reference entry's reference comes
-## from `reference_lookup` (instance_id -> EsmReference); an entry whose
-## reference it cannot find is dropped.
-func restore_state(state: Dictionary, reference_lookup: Callable) -> bool:
-	if int(state.get("version", 0)) != 2 or not reference_lookup.is_valid():
-		return false
-	for existing in items:
-		if existing != null:
-			_disconnect_item(existing)
-	items.clear()
-	for data in state.get("items", []):
-		if not data is Dictionary:
-			continue
-		var form_id := int(data.get("base_form_id", 0))
-		if form_id == 0:
-			continue
-		var item := InventoryItem.make_stack(_get_base(form_id), int(data.get("count", 0)))
-		item.base_form_id = form_id
-		var reference_id := String(data.get("reference_instance_id", ""))
-		if not reference_id.is_empty():
-			var item_ref = reference_lookup.call(reference_id)
-			if not item_ref is EsmReference:
-				continue
-			item.item_reference = item_ref
-		item.is_equipped = bool(data.get("is_equipped", false))
-		item.owner_form_id = int(data.get("owner_form_id", 0))
-		item.health_percent = float(data.get("health_percent", -1.0))
-		if item.count > 0:
-			items.append(item)
-			_connect_item(item)
-	inventory_changed.emit()
-	return true
 
 ## The base of `form_id` from EsmServer, or null when EsmServer is not running.
 func _get_base(form_id: int) -> EsmBase:

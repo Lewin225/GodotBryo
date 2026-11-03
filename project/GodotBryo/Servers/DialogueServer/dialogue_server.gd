@@ -501,9 +501,15 @@ func _voice_type(speaker: EsmReference) -> EsmBase:
 	var form_id: int = speaker.base.get("voice_type_form_id") if speaker.base.get("voice_type_form_id") != null else 0
 	return EsmServer.get_base(form_id) if form_id != 0 else null
 
-## Records that `speaker` said `info`, for Say Once and Say Once a Day.
+## Records that `speaker` said `info`, for Say Once and Say Once a Day. Only
+## lines with one of those flags are recorded, since nothing else reads it;
+## that keeps `_said` bounded by the flagged INFOs, not by play time.
 func mark_said(info: DialogueInfoBase, speaker: EsmReference) -> void:
 	if info == null or speaker == null:
+		return
+	var say_once := info.has_flag(DialogueInfoBase.FLAG_SAY_ONCE)
+	var say_once_a_day := (info.flags_2 & DialogueInfoBase.FLAG_SAY_ONCE_A_DAY) != 0
+	if not say_once and not say_once_a_day:
 		return
 	var said: Dictionary = _said.get_or_add(speaker.instance_id, {})
 	said[info.form_id] = _game_day()
@@ -527,6 +533,46 @@ func add_topic(topic: DialogueTopicBase) -> void:
 
 func has_topic(topic: DialogueTopicBase) -> bool:
 	return topic != null and _added_topics.has(topic.form_id)
+
+## The dialogue state as plain values for a save: the flagged lines each
+## speaker has said (INFO `<file>:<local id>` -> game day), who has talked to
+## the player, and the topics AddTopic added.
+func save_state() -> Dictionary:
+	var said := {}
+	for speaker_id: String in _said:
+		var lines := {}
+		for info_form_id: int in _said[speaker_id]:
+			lines[_record_text(info_form_id)] = _said[speaker_id][info_form_id]
+		said[speaker_id] = lines
+	var topics := []
+	for form_id: int in _added_topics:
+		topics.append(_record_text(form_id))
+	topics.sort()
+	var talked: Array = _talked_to_player.keys().map(func(id: Variant) -> String: return String(id))
+	talked.sort()
+	return {"said": said, "talked_to_player": talked, "added_topics": topics}
+
+## Replaces the dialogue state with a save_state() result, after reset().
+func load_state(state: Dictionary) -> void:
+	reset()
+	var said: Dictionary = state.get("said", {})
+	for speaker_id: String in said:
+		var lines := {}
+		for text: String in said[speaker_id]:
+			var info_form_id := EsmServer.form_id_for_instance_id(text)
+			if info_form_id != 0:
+				lines[info_form_id] = int(said[speaker_id][text])
+		_said[StringName(speaker_id)] = lines
+	for speaker_id: String in state.get("talked_to_player", []):
+		_talked_to_player[StringName(speaker_id)] = true
+	for text: String in state.get("added_topics", []):
+		var form_id := EsmServer.form_id_for_instance_id(text)
+		if form_id != 0:
+			_added_topics[form_id] = true
+
+## `<file>:<local id>` for a record's load-order FormID.
+func _record_text(form_id: int) -> String:
+	return String(EsmServer.instance_id_for_form_id(form_id))
 
 ## Clears all dialogue state, as for a new game.
 func reset() -> void:

@@ -338,7 +338,25 @@ out.
    container, a door, a runtime weapon and a QuestState, changed, written, sent through JSON
    text, read into a fresh instance and written again, match; the output holds no Object. Nothing
    in play makes a runtime reference yet; the test creates its weapon directly.
-4. **Sections.** `save_state()`/`load_state()` on EsmServer (with the overlay), QuestServer,
+4. **Sections.** Done in code, not committed. EsmServer (`save_state`, `load_state`,
+   `clear_game_state`, entries applied as each reference is built), QuestServer (states, clock,
+   next runs, `_quest_objects`, active quest), ScriptServer (globals, clock, disabled controls)
+   and DialogueServer (flagged lines said, talked to the player, added topics; `mark_said` now
+   records only Say Once and Say Once a Day lines). A dirty base saves the fields
+   `EsmBase.mark_changed()` recorded (`changed_fields`): the name menu, `set_female`, and an
+   encounter zone's `resolved_level`. `Inventory.serialize_state`/`restore_state` removed.
+   `JSON.parse_string` does not read a float's printed digits back exactly (writing with
+   `full_precision` makes every float differ), so a float can change in its last digit across
+   a save and a load; the tests compare saves value by value, floats within a relative 1e-9
+   (`tests/save_compare.gd`). Measured (`tests/test_save_sections`, a new game, 10 s and 40 s
+   of simulation at speed 50): 3,393 to 3,520 references, 312 quest states; 5.7 to 6.1 MB of
+   indented JSON, 234 to 248 KB zstd; `save_state` 593 to 640 ms; parse and load 1.6 to 1.8 s
+   (building every saved reference from the ESM). Actor inventories were 64% of the
+   references' size, nearly all unchanged since built; `Inventory.changed_since_built`
+   (cleared by EsmServer after filling, set on every change) leaves those out, and loading
+   builds them again from the ESM. With it, after 10 s: 7 of 3,393 references carry an
+   inventory; 3.3 MB, 196 KB zstd; `save_state` 593 ms; parse and load 1.1 s.
+   `save_state()`/`load_state()` on EsmServer (with the overlay), QuestServer,
    ScriptServer and DialogueServer. EsmServer is not instanced again (that reloads the ESM): its
    test clears its reference caches and runtime table, loads the overlay, and builds the saved
    references again. Gate: a test runs the simulation and VCG01's first stages, saves, loads into

@@ -48,6 +48,25 @@ static func read(resource: Resource, data: Dictionary, skipped: Array = []) -> v
 		resource.call("_after_fields_read")
 
 
+## The fields `names` of `resource`, whatever their usage, as plain values: a
+## dirty base's changed_fields, whose ESM fields are not storage properties.
+static func write_named(resource: Resource, names: PackedStringArray) -> Dictionary:
+	var result := {}
+	for name in names:
+		result[name] = _write_value(resource.get(name), name, resource)
+	return result
+
+
+## Sets each field of `resource` that `data` names, whatever its usage: the
+## counterpart of write_named(). Keys that are not script properties are
+## ignored.
+static func read_named(resource: Resource, data: Dictionary) -> void:
+	for property: Dictionary in resource.get_script().get_script_property_list():
+		var name := String(property["name"])
+		if data.has(name):
+			resource.set(name, _read_value(data[name], property, resource))
+
+
 ## Whether `value` holds an Object anywhere, for checking write()'s output.
 static func holds_object(value: Variant) -> bool:
 	if value is Object:
