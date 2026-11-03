@@ -1,6 +1,6 @@
 # GodotBryo
 
-An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day).
+An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, in Godot 4.7. Targeting New Vegas for now (fo3 3 and Skyrim one day). It also works as a asset browser and exporter via an included godot editor plugin
 
 This is NOT a 1:1 engine remake, i'm modernising a lot of the game (coop / vr, vulkan pbr renderer, procedural and upscaled animations, player feel, weapon handling, npc behaviours, full threading ect..) 
 
