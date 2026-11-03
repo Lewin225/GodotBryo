@@ -49,6 +49,12 @@ var _top_level_built := false
 ## Picks among a set of Random INFOs.
 var rng := RandomNumberGenerator.new()
 
+func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
 ## The INFO `speaker` says in `topic` to `listener`, or null when none
 ## qualifies. The topic's INFOs of running quests are taken by quest priority,
 ## highest first, in file order within a priority; the first that qualifies
@@ -154,9 +160,9 @@ func get_line(speaker: EsmReference) -> DialogueLine:
 ## Starts lines whose voice has loaded, then advances every started line by
 ## `delta` seconds, finishing those whose last response ends. In menu mode
 ## lines and their voices pause, except under the Dialog menu (a
-## conversation), whose lines run.
+## conversation), whose lines run; while the game is paused they all pause.
 func _process(delta: float) -> void:
-	var paused := ScriptServer.is_menu_mode() and ScriptServer.get_menu() != ScriptServer.MENU_DIALOG
+	var paused := get_tree().paused or (ScriptServer.is_menu_mode() and ScriptServer.get_menu() != ScriptServer.MENU_DIALOG)
 	_pause_voices(paused)
 	if paused:
 		return

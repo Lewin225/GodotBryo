@@ -19,6 +19,9 @@ var _available := true
 
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var data_dir := _resolve_data_dir()
 	if data_dir.is_empty():
 		_init_error = "no data directory configured"

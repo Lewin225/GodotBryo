@@ -21,7 +21,7 @@ size_flags_horizontal = 0
 
 [node name="Notice" type="Label" parent="Panel"]
 layout_mode = 2
-text = "GodotBryo is early and most of Fallout: New Vegas is missing: no combat, Pip-Boy, inventory, saving or creatures yet, and plenty of bugs. A new game starts in Doc Mitchell's house.
+text = "GodotBryo is early and most of Fallout: New Vegas is missing: no combat, Pip-Boy or inventory yet, and plenty of bugs. A new game starts in Doc Mitchell's house.
 
 Pick FalloutNV.esm from your own copy of the game below."
 autowrap_mode = 3
@@ -36,6 +36,11 @@ unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
 
+[node name="SaveList" type="ItemList" parent="Panel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+
 [node name="Buttons" type="HBoxContainer" parent="Panel"]
 layout_mode = 2
 
@@ -48,6 +53,11 @@ text = "Pick FalloutNV.esm..."
 unique_name_in_owner = true
 layout_mode = 2
 text = "New game"
+
+[node name="LoadButton" type="Button" parent="Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Load"
 
 [node name="QuitButton" type="Button" parent="Panel/Buttons"]
 unique_name_in_owner = true

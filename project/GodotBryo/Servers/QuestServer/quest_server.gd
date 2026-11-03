@@ -32,6 +32,11 @@ var active_quest: QuestBase = null:
 		active_quest = value
 		active_quest_changed.emit(value)
 
+func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 ## Starts every quest flagged to run from the start of a new game.
 func begin_game() -> void:
 	for row: Dictionary in EsmServer.get_record_index():
@@ -309,6 +314,9 @@ func _objective_state(quest: EsmBase, index: int) -> QuestState:
 
 ## Runs each running quest's script GameMode block once its delay has passed.
 func _process(delta: float) -> void:
+	# While the game is paused no quest script runs and the clock stands.
+	if get_tree().paused:
+		return
 	_clock += delta
 	for form_id: int in _next_run.keys():
 		# A script run earlier in this loop may have stopped this quest.

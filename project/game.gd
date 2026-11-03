@@ -1,9 +1,11 @@
 extends Node3D
 
-## The runtime entry point. Wires the scene's servers and nodes, gives the
-## player controller the player's reference to possess, and starts the game by
-## moving that reference to START_MARKER_EDITOR_ID (or, without it,
-## DEFAULT_CELL_EDITOR_ID's COC marker).
+## The runtime entry point. Wires the scene's servers and nodes, then starts
+## the game one of two ways: a new game gives the player controller the
+## player's reference and moves it to START_MARKER_EDITOR_ID (or `start_location`,
+## or DEFAULT_CELL_EDITOR_ID's COC marker); a loaded game (`load_save_id`)
+## applies the save through SaveServer first and places the player where the
+## save puts them.
 ##
 ## Loading follows the possessed reference (TransitionCoordinator). Game reacts
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
@@ -14,6 +16,14 @@ const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
 ## `player.moveto VCG01PlayerStartMarkerREF`, the bed in Doc Mitchell's house.
 const START_MARKER_EDITOR_ID := "VCG01PlayerStartMarkerREF"
 const GameDataConfigScript := preload("res://game_data_config.gd")
+
+## The save the next game loads instead of starting new; cleared when read.
+## Set by the launcher's Load.
+static var load_save_id := ""
+## Where the next new game puts the player instead of START_MARKER_EDITOR_ID:
+## {space_form_id, position, rotation}, Gamebryo axes. Cleared when read; for
+## tests that start outside.
+static var start_location: Dictionary = {}
 
 
 ## Scene wiring. Exported rather than looked up by $Path in _ready(): a node
@@ -88,10 +98,6 @@ func _ready() -> void:
 	if typed_esm == null:
 		push_error("Game: EsmServer did not become ready")
 		return
-	# Runtime interiors and exteriors share EsmServer's typed reference graph.
-	# Terrain keeps its private native reader because that independent pipeline
-	# still consumes raw LAND data rather than typed EsmReference resources.
-	player.possess(EsmServer.get_player_reference())
 	ScriptServer.function_registry.place_at_me_handler = debug_place_at_me
 	ScriptServer.function_registry.center_on_cell_handler = transition_coordinator.center_on_cell
 	ScriptServer.function_registry.game_time_manager = game_time_manager
@@ -101,7 +107,19 @@ func _ready() -> void:
 	game_time_manager.configure(typed_esm)
 	weather_manager.configure(typed_esm)
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
+	SaveServer.extra_sections["game_time"] = game_time_manager
+	SaveServer.extra_sections["weather"] = weather_manager
+	SaveServer.save_refusals = [_save_refusal]
 
+	var save_id := load_save_id
+	load_save_id = ""
+	if not save_id.is_empty():
+		_load_game(save_id)
+		return
+	# Runtime interiors and exteriors share EsmServer's typed reference graph.
+	# Terrain keeps its private native reader because that independent pipeline
+	# still consumes raw LAND data rather than typed EsmReference resources.
+	player.possess(EsmServer.get_player_reference())
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
 	# VCG00, the cemetery intro, is not played: its stage 0 moves the player to
@@ -112,6 +130,11 @@ func _ready() -> void:
 	var vcg01 := EsmServer.find_quest_by_editor_id("VCG01")
 	QuestServer.set_stage(vcg01, 0)
 	QuestServer.active_quest = vcg01
+	var location := start_location
+	start_location = {}
+	if not location.is_empty():
+		ScriptServer.move_reference(player.possessed, int(location["space_form_id"]), location["position"], location.get("rotation", Vector3.ZERO))
+		return
 	var marker := EsmServer.find_reference_by_editor_id(START_MARKER_EDITOR_ID)
 	if marker != null and player.possessed != null:
 		ScriptServer.move_reference(player.possessed, marker.current_space_form_id, marker.position, marker.rotation)
@@ -120,10 +143,71 @@ func _ready() -> void:
 	if start is Dictionary:
 		push_error("game.gd: " + String(start["error"]))
 
+## Loads save `save_id` in the load order of Plans/Saving/save_load.md: the
+## save's sections applied (EsmServer's dirty bases, runtime and saved
+## references, then quests, scripts, dialogue, time and weather), the
+## player's reference possessed, the simulation seeded, and only then the
+## player moved to the header's space (its saved position), so streaming does
+## not physicalise actors while seeding builds them. A save that cannot load falls back to a new
+## game's start cell, with SaveServer's report pushed as an error.
+func _load_game(save_id: String) -> void:
+	# The game stays paused until the player is placed: no script, package,
+	# body or streamed node acts on a half-loaded game. The servers and the
+	# streamers run while paused (Servers/readme.md, Pausing).
+	get_tree().paused = true
+	# Frozen too: after the unpause a physics frame can run before the move
+	# is applied, and a free body would write its own position over the saved
+	# one. The transition releases it once placed.
+	player.set_frozen(true)
+	transition_coordinator.holding_overlay = true
+	SaveServer.progress.connect(transition_coordinator.show_progress)
+	var state: Dictionary = SaveServer.read_save(save_id)
+	if state.is_empty():
+		push_error("Game: save %s did not load: %s" % [save_id, "; ".join(SaveServer.report)])
+		_end_load_progress()
+		transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		return
+	await SaveServer.apply_state(state)
+	for line in SaveServer.report:
+		push_warning("Game: loading %s: %s" % [save_id, line])
+	var player_reference := EsmServer.get_player_reference()
+	player.possess(player_reference)
+	# Seeding builds every actor; it finishes before the player's space starts
+	# loading, so streaming does not physicalise actors while they are built.
+	var forward_seeding := func(status: String, completed: int, total: int) -> void:
+		transition_coordinator.show_progress("Seeding actors", status, completed, total)
+	NpcSimulationServer.seed_progress.connect(forward_seeding)
+	await NpcSimulationServer.seed()
+	NpcSimulationServer.seed_progress.disconnect(forward_seeding)
+	var header: Dictionary = state["header"]
+	var space := EsmServer.form_id_for_instance_id(String(header.get("player_space", "")))
+	if space == 0:
+		push_error("Game: save %s does not say where the player is" % save_id)
+		_end_load_progress()
+		transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		return
+	# The reference already holds the saved position; the move makes the
+	# transition load its space around it.
+	ScriptServer.move_reference(player_reference, space, player_reference.position, player_reference.rotation)
+	# The game starts with the move, as a new game does.
+	_end_load_progress()
+
+## Unpauses the game and hands the overlay back to transitions once a save is
+## applied.
+func _end_load_progress() -> void:
+	SaveServer.progress.disconnect(transition_coordinator.show_progress)
+	transition_coordinator.holding_overlay = false
+	get_tree().paused = false
+
+## SaveServer's check that refuses a save while the possessed actor's space
+## is loading.
+func _save_refusal() -> String:
+	return "the world is loading" if transition_coordinator.is_transitioning() else ""
+
 func _on_entered_interior(cell_form_id: int) -> void:
 	_set_exterior_environment(false)
 	celestial_controller.set_exterior(false)
-	weather_manager.set_paused(true)
+	weather_manager.set_weather_paused(true)
 	_apply_cell_lighting(cell_form_id)
 	_update_cell_hud(cell_form_id)
 
@@ -135,7 +219,7 @@ func _on_entered_exterior(worldspace_form_id: int) -> void:
 ## Keeps the HUD's cell label current while streaming exteriors and advances
 ## the clock-driven sky and weather.
 func _process(_delta: float) -> void:
-	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_paused():
+	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_streaming_paused():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
 			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellStreamerV2's single-load case
@@ -293,9 +377,23 @@ func _zone_hud_text(cell_form_id: int) -> String:
 	var level := str(zone.resolved_level) if zone.resolved_level > 0 else "unset"
 	return "%s level %s, min %d" % [zone.editor_id, level, zone.minimum_level]
 
-## F4 shows or hides every actor's ActorDebugLabel.
+## The save F5 writes.
+const QUICK_SAVE_ID := "quicksave"
+
+## F4 shows or hides every actor's ActorDebugLabel; F5 quick saves.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or key.keycode != KEY_F4:
+	if key == null or not key.pressed or key.echo:
 		return
-	ActorDebugLabel.set_shown(not ActorDebugLabel.shown)
+	if key.keycode == KEY_F4:
+		ActorDebugLabel.set_shown(not ActorDebugLabel.shown)
+	elif key.keycode == KEY_F5:
+		_quick_save()
+
+## Saves to QUICK_SAVE_ID and says so, or why not, as a notification.
+func _quick_save() -> void:
+	var text := "Quick saved."
+	if SaveServer.save(QUICK_SAVE_ID) != OK:
+		text = "Quick save failed: " + "; ".join(SaveServer.report)
+	if ScriptServer.message_box != null:
+		ScriptServer.message_box.display_message({"text": text, "is_message_box": false, "display_time": 2.0})

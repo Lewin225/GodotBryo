@@ -49,6 +49,9 @@ var _waiting_for_esm := false
 @export var settle_timeout_seconds := 20.0
 
 func _ready() -> void:
+	# Keeps loading while the game is paused (get_tree().paused); the roots it
+	# fills are PROCESS_MODE_PAUSABLE, so what it loads stays paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_resolve_esm_server()
 
 
@@ -163,6 +166,7 @@ func _begin_load(cell_form_id: int, generation: int) -> void:
 	root.name = "LoadingCell"
 	root.visible = false
 	root.set_meta("cell_form_id", cell_form_id)
+	root.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(root)
 	_loading_root = root
 	_loading_refs = esm_server.get_references_in_cell(cell_form_id)

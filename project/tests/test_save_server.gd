@@ -5,10 +5,10 @@ extends Node
 ## again unchanged; a save needing a master that is not loaded refused; one
 ## from a changed master loaded with a warning; two saves differing only in
 ## the file whose state changed; a save refused while a move is queued.
-## Saves go to user://test_saves and are deleted after.
+## Saves go to user://test_save_server and are deleted after.
 
 const SaveServerScript := preload("res://GodotBryo/Servers/SaveServer/save_server.gd")
-const ROOT := "user://test_saves"
+const ROOT := "user://test_save_server"
 
 var failures := 0
 
@@ -46,9 +46,14 @@ func _ready() -> void:
 	check(not read.is_empty() and saves.report.is_empty(), "the save reads back with nothing to report")
 	check(_sections_differ(built, read).is_empty(), "the save reads back as the state it was made from: %s" % _sections_differ(built, read))
 
-	saves.apply_state(read)
+	# The game is paused around a load, as game.gd does, so no quest or
+	# script runs between applying the save and building it again.
+	get_tree().paused = true
+	await saves.apply_state(read)
 	check(saves.report.is_empty(), "applying it drops nothing")
+	check(FileAccess.get_file_as_string(SaveServerScript.LOAD_REPORT_PATH).contains("Loaded test_a"), "the load report is written")
 	check(_sections_differ(read, saves.build_state()).is_empty(), "the state built after applying it is the save: %s" % _sections_differ(read, saves.build_state()))
+	get_tree().paused = false
 
 	check(saves.save("test_a") == OK and saves.read_save("test_a").size() == read.size(), "saving over a save replaces it")
 

@@ -207,6 +207,10 @@ func _game_hour() -> float:
 	return clock.game_hour
 
 func _physics_process(_delta: float) -> void:
+	# While the game is paused no package runs and no actor travels; seeding,
+	# which is not done here, carries on.
+	if get_tree().paused:
+		return
 	for actor in _leased.take():
 		_run(actor)
 	for actor in _unleased.take():

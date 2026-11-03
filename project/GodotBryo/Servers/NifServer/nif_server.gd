@@ -174,6 +174,9 @@ var _stats := {
 
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# Resolved once here: _resolve_task() runs on a worker, where any
 	# scene-tree query is forbidden.
 	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")

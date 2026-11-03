@@ -377,7 +377,30 @@ out.
    its master check. Gate: a save naming a missing master is refused; one from a changed master loads with a
    warning and a report of dropped entries; two saves a minute apart in one cell differ only in
    the files that changed.
-6. **Load in game.** The launcher's Load, the load order above, time and weather; progress
+6. **Load in game.** Done; checked in game (a loaded quicksave keeps NPCs' script follow packages). Booting straight into an exterior worked
+   with no changes (`tests/test_exterior_boot`, through `game.gd`'s `start_location`).
+   `game.gd` loads `load_save_id` instead of a new game: the save applied, the player's
+   reference possessed and moved to its saved space, the simulation seeded while that space
+   loads. GameTimeManager and WeatherManager are the `game_time` and `weather` sections (a
+   loaded weather survives the climate being read on entering the worldspace). F5 quick saves
+   to `quicksave`; the launcher lists saves and loads one. `SaveServer.apply_state()` runs
+   across frames with `progress` and writes `user://saves/last_load.txt`. The game is paused
+   (`get_tree().paused`) from the start of a load until the player's move is queued: scripts
+   running on a half-applied save moved a quest stage backwards. Every server and the
+   streamers are `PROCESS_MODE_ALWAYS` and decide in their own `_process` what pausing means
+   (`GodotBryo/Servers/readme.md`, Pausing); the roots the streamers fill are
+   `PROCESS_MODE_PAUSABLE`. `set_paused()` on WorldStreamerV2 and TerrainStreamer became
+   `set_streaming_paused()`, WeatherManager's `set_weather_paused()`, so they are not taken
+   for the game pause. Seeding finishes before the player's space starts loading: streaming
+   physicalised actors while seeding built 6,000 of them and stalled the load. The body stays
+   frozen from the start of a load until the transition places it (a free body wrote its own
+   position over the saved one). The transition overlay shows the stage and detail, and the
+   cell streamer's progress in every transition. Saving still runs in one frame (about
+   0.6 s). Checked by `tests/test_save_load_game`, in three processes (`SAVE_LOAD_PHASE`
+   `save`, `load_inside`, `load_outside`): the player, VCG01 (stage 10 or past it: its script
+   moves it on once the player is in the house), the back door, a container's stimpaks,
+   Sunny's package and position, the time, and outside the weather, exterior environment and
+   resident tile. The launcher's Load, the load order above, time and weather; progress
    across frames, the transition screen's stage and detail, the load report. A save can be
    anywhere, so the game must boot into an exterior, which no start has done: every start so
    far is Doc Mitchell's house, and exteriors are reached only from an interior. First, a boot

@@ -57,7 +57,7 @@ func _ready() -> void:
 	streamer._active_wrld_form_id = 1
 	streamer._region_states[Vector2i(1, 0)] = "queued"
 	streamer._region_states[Vector2i(2, 0)] = "prepared"
-	streamer.set_paused(true)
+	streamer.set_streaming_paused(true)
 	check(streamer._region_states[Vector2i(1, 0)] == "cancelled" and streamer._region_states[Vector2i(2, 0)] == "cancelled",
 			"pause moves every nonterminal queued/prepared region to cancelled")
 

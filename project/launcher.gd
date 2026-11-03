@@ -2,7 +2,8 @@ extends MarginContainer
 
 ## The main scene. Says how much is missing, shows which FalloutNV.esm the
 ## servers loaded, lets the player pick another, and starts a new game in Doc
-## Mitchell's house (game.tscn).
+## Mitchell's house (game.tscn) or loads a save from the list (SaveServer's
+## backend; game.gd's load_save_id).
 ##
 ## The servers open the game data once, when they load, from
 ## GameDataConfig.resolve(). Choosing a different ESM saves its folder with
@@ -11,12 +12,15 @@ extends MarginContainer
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const GAME_SCENE := "res://game.tscn"
+const GameScript := preload("res://game.gd")
 
 @onready var _data_label: Label = %DataLabel
 @onready var _status_label: Label = %StatusLabel
 @onready var _choose_button: Button = %ChooseButton
 @onready var _new_game_button: Button = %NewGameButton
 @onready var _quit_button: Button = %QuitButton
+@onready var _save_list: ItemList = %SaveList
+@onready var _load_button: Button = %LoadButton
 @onready var _esm_dialog: FileDialog = %EsmDialog
 
 var _loaded_data_dir := ""
@@ -27,6 +31,9 @@ func _ready() -> void:
 	_choose_button.pressed.connect(_on_choose_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_quit_button.pressed.connect(get_tree().quit)
+	_load_button.pressed.connect(_on_load_pressed)
+	_save_list.item_activated.connect(func(_index: int) -> void: _on_load_pressed())
+	_load_button.disabled = true
 	_esm_dialog.file_selected.connect(_on_esm_selected)
 	_new_game_button.disabled = true
 	_show_configuration()
@@ -54,6 +61,30 @@ func _show_configuration() -> void:
 func _on_esm_ready() -> void:
 	_status_label.text = "Ready."
 	_new_game_button.disabled = false
+	_list_saves()
+
+
+## Fills the save list, newest first: each save's name, the cell the player
+## is in, and when it was saved (UTC).
+func _list_saves() -> void:
+	_save_list.clear()
+	var saves := SaveServer.get_backend().list()
+	saves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a.get("saved_at", "")) > String(b.get("saved_at", "")))
+	for header: Dictionary in saves:
+		var text := "%s   %s   %s" % [header["save_id"], header.get("player_cell", ""), String(header.get("saved_at", "")).replace("T", " ")]
+		var index := _save_list.add_item(text)
+		_save_list.set_item_metadata(index, String(header["save_id"]))
+	_load_button.disabled = saves.is_empty()
+	if not saves.is_empty():
+		_save_list.select(0)
+
+
+func _on_load_pressed() -> void:
+	var selected := _save_list.get_selected_items()
+	if selected.is_empty():
+		return
+	GameScript.load_save_id = String(_save_list.get_item_metadata(selected[0]))
+	get_tree().change_scene_to_file(GAME_SCENE)
 
 
 func _on_esm_failed(message: String) -> void:

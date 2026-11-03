@@ -87,6 +87,9 @@ func configure(esm_reader: EsmReader) -> void:
 		_cache_family = CACHE_FAMILY_PREFIX + GameDataConfigScript.ESM_FILE
 
 func _ready() -> void:
+	# Keeps loading while the game is paused (get_tree().paused): terrain
+	# holds no game state.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	if _configured:
 		return
 	var data_dir: String = GameDataSettings.get_data_dir()
@@ -98,7 +101,7 @@ func _ready() -> void:
 
 func activate(worldspace_form_id: int) -> void:
 	if _active_wrld_form_id == worldspace_form_id:
-		set_paused(false)
+		set_streaming_paused(false)
 		return
 	# Worldspaces are discovered by the worker-side ESM catalogue. Do not reject
 	# IDs here: DLC/mod worldspaces must still complete the transition even when
@@ -255,7 +258,10 @@ func _free_entry(entry: Dictionary) -> void:
 	if entry_terrain != null and is_instance_valid(entry_terrain):
 		entry_terrain.free()
 
-func set_paused(paused: bool) -> void:
+## Holds or resumes terrain streaming, for an interior visit: regions are
+## kept and their collision is off while held. Not the game pause
+## (get_tree().paused), during which terrain keeps loading.
+func set_streaming_paused(paused: bool) -> void:
 	if _active_wrld_form_id == -1 or paused == _paused:
 		return
 	if paused:
@@ -346,7 +352,9 @@ func get_generation() -> int:
 func is_active() -> bool:
 	return _active_wrld_form_id != -1
 
-func is_paused() -> bool:
+## Whether set_streaming_paused() holds terrain streaming. Not the game
+## pause, which is get_tree().paused.
+func is_streaming_paused() -> bool:
 	return _paused
 
 func get_diagnostics() -> Dictionary:

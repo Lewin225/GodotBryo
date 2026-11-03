@@ -109,6 +109,9 @@ var state := "loading"
 var _pending_rehydrates: Array[EsmBase] = []
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	reference_cell_changed.connect(_on_reference_cell_changed)
 	_load_thread = Thread.new()
 	_load_thread.start(_open_reader_background)
@@ -539,9 +542,10 @@ func save_state() -> Dictionary:
 ## clear_game_state()): dirty bases first, then the runtime references, then
 ## the reference entries, held until each reference is built. References whose
 ## saved cell is not their filing cell are built now, so the cells they moved
-## to list them. A base or runtime reference whose record is not in the load
-## order is dropped and listed in `report`.
-func load_state(state: Dictionary, report: Array = []) -> void:
+## to list them, unless `build_moved` is false (get_saved_moved_ids()). A base
+## or runtime reference whose record is not in the load order is dropped and
+## listed in `report`.
+func load_state(state: Dictionary, report: Array = [], build_moved: bool = true) -> void:
 	var bases: Dictionary = state.get("bases", {})
 	for text: String in bases:
 		var base := get_base(form_id_for_instance_id(text))
@@ -568,9 +572,20 @@ func load_state(state: Dictionary, report: Array = []) -> void:
 	_saved_references = (state.get("references", {}) as Dictionary).duplicate()
 	if _player_reference != null:
 		_apply_saved_entry(_player_reference)
-	for id: String in _saved_references.keys():
+	if not build_moved:
+		return
+	for id in get_saved_moved_ids():
+		get_reference(StringName(id))
+
+## The loaded save's unapplied entries whose reference is in another cell than
+## the one that files it: the references load_state() builds, or its caller
+## builds in batches after `build_moved` false.
+func get_saved_moved_ids() -> Array[String]:
+	var moved: Array[String] = []
+	for id: String in _saved_references:
 		if _saved_reference_moved(id):
-			get_reference(StringName(id))
+			moved.append(id)
+	return moved
 
 ## Drops all game state and keeps what was read from the ESM: the reference
 ## caches, relocations, runtime references and counter, the player's

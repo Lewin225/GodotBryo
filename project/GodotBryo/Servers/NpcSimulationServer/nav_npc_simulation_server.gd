@@ -105,6 +105,9 @@ var _next_request_id := 1
 var _indexed_space_by_instance_id: Dictionary = {}
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	local_navigation.name = "LocalNavigation"
 	add_child(local_navigation)
 	package_runner.name = "PackageRunner"

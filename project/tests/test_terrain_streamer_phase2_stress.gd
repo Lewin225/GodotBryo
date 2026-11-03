@@ -28,8 +28,8 @@ func _ready() -> void:
 	# Supersede the initial catalogue task and resume before it completes. The
 	# stale index must be reaped and a current-generation index must restart.
 	await get_tree().process_frame
-	streamer.set_paused(true)
-	streamer.set_paused(false)
+	streamer.set_streaming_paused(true)
+	streamer.set_streaming_paused(false)
 
 	var deadline := Time.get_ticks_msec() + 30000
 	var query_count := 0
@@ -55,12 +55,12 @@ func _ready() -> void:
 	camera.global_position = Terrain3DBridge.cell_terrain3d_global_position(40, 0) + Vector3(8, 40, 8)
 	streamer.request_terrain_priority(Vector2i(40, 0))
 	var generation_before_pause := streamer.get_generation()
-	streamer.set_paused(true)
+	streamer.set_streaming_paused(true)
 	var committed_at_pause := int(streamer.get_diagnostics().committed_regions)
 	for i in range(10): await get_tree().process_frame
 	check(streamer.get_generation() != generation_before_pause and int(streamer.get_diagnostics().committed_regions) == committed_at_pause,
 			"pause rejects stale worker publication and advances generation")
-	streamer.set_paused(false)
+	streamer.set_streaming_paused(false)
 	check(streamer.terrain.visible and streamer.terrain.is_physics_processing(), "resume restores the live Terrain3D before work")
 	deadline = Time.get_ticks_msec() + 10000
 	while int(streamer.get_diagnostics().committed_regions) <= committed_at_pause and Time.get_ticks_msec() < deadline:

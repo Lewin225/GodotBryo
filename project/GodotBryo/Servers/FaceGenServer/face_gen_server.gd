@@ -75,6 +75,9 @@ var _stats := {
 
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")
 	if _archive_server == null:
 		push_error("FaceGenServer: ArchiveServer autoload not found; every request will deliver null")

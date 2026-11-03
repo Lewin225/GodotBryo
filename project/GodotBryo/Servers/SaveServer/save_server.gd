@@ -9,6 +9,16 @@ extends Node
 
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
+## Emitted through a load as it goes: the stage, what it is working on by name,
+## and a count when the stage has one (`total` 0 otherwise).
+signal progress(stage: String, detail: String, done: int, total: int)
+
+## Where each load writes its report: what it took, each stage's time and the
+## report's lines.
+const LOAD_REPORT_PATH := "user://saves/last_load.txt"
+## Moved references built per frame while a save is applied.
+const MOVED_PER_FRAME := 32
+
 ## The save state's format version. A save from a newer version is refused;
 ## an older one is migrated before it is applied.
 const FORMAT_VERSION := 1
@@ -33,6 +43,9 @@ var report: Array[String] = []
 
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	register_backend("json_folder", JsonFolderBackend.new())
 
 
@@ -94,10 +107,12 @@ func build_state(parent: String = "") -> Dictionary:
 func read_save(save_id: String) -> Dictionary:
 	report.clear()
 	var backend := get_backend()
+	progress.emit("Reading save", save_id, 0, 0)
 	var state := backend.read(save_id)
 	if state.is_empty():
 		report.append("not loaded: " + backend.last_error)
 		return {}
+	(state["header"] as Dictionary)["save_id"] = save_id
 	var refusal := check_header(state.get("header", {}))
 	if not refusal.is_empty():
 		report.append("not loaded: " + refusal)
@@ -130,18 +145,71 @@ func check_header(header: Dictionary) -> String:
 
 
 ## Applies a checked save state's sections to their owners, EsmServer first,
-## after clearing EsmServer's game state. Seeding the simulation and placing
-## the player are the game's (Plans/Saving/save_load.md, Loading). Entries an
-## owner drops are added to `report`.
+## after clearing EsmServer's game state, across frames: a section, or a batch
+## of moved references, per frame, with `progress` emitted before each.
+## The caller pauses the game around it (get_tree().paused), so nothing acts
+## on a half-applied save; SaveServer runs while paused. A coroutine; await
+## it. Seeding the simulation and placing the player are the
+## game's (Plans/Saving/save_load.md, Loading). Entries an owner drops are
+## added to `report`, and the load report is written to LOAD_REPORT_PATH.
 func apply_state(state: Dictionary) -> void:
+	var timings: Array[String] = []
+	var started := Time.get_ticks_usec()
+	progress.emit("Loading save", "EsmServer: bases, runtime and saved references", 0, 0)
 	EsmServer.clear_game_state()
-	EsmServer.load_state(state.get("esm_server", {}), report)
-	QuestServer.load_state(state.get("quest_server", {}), report)
-	ScriptServer.load_state(state.get("script_server", {}), report)
-	DialogueServer.load_state(state.get("dialogue_server", {}), report)
-	for section: String in extra_sections:
-		if state.has(section):
-			extra_sections[section].load_state(state[section], report)
+	EsmServer.load_state(state.get("esm_server", {}), report, false)
+	timings.append(_timing("esm_server", started))
+	await get_tree().process_frame
+	started = Time.get_ticks_usec()
+	var moved := EsmServer.get_saved_moved_ids()
+	for i in moved.size():
+		if i % MOVED_PER_FRAME == 0:
+			progress.emit("Moved references", moved[i], i, moved.size())
+			await get_tree().process_frame
+		EsmServer.get_reference(StringName(moved[i]))
+	timings.append(_timing("%d moved references" % moved.size(), started))
+	var owners := {"quest_server": QuestServer, "script_server": ScriptServer, "dialogue_server": DialogueServer}
+	owners.merge(extra_sections)
+	for section: String in owners:
+		if not state.has(section):
+			continue
+		progress.emit("Loading save", section, 0, 0)
+		await get_tree().process_frame
+		started = Time.get_ticks_usec()
+		owners[section].load_state(state[section], report)
+		timings.append(_timing(section, started))
+	_write_load_report(state, timings)
+
+
+func _timing(stage: String, started_usec: int) -> String:
+	return "%s: %.1f ms" % [stage, (Time.get_ticks_usec() - started_usec) / 1000.0]
+
+
+## Writes what the last load did to LOAD_REPORT_PATH, for bug reports.
+func _write_load_report(state: Dictionary, timings: Array[String]) -> void:
+	var header: Dictionary = state.get("header", {})
+	var esm: Dictionary = state.get("esm_server", {})
+	var lines: Array[String] = [
+		"Loaded %s (saved %s, format %s)" % [header.get("save_id", "?"), header.get("saved_at", "?"), header.get("version", "?")],
+		"Player in %s" % header.get("player_cell", "?"),
+		"References %d, runtime %d, bases %d, quest states %d" % [
+			(esm.get("references", {}) as Dictionary).size(),
+			((esm.get("runtime", {}) as Dictionary).get("references", {}) as Dictionary).size(),
+			(esm.get("bases", {}) as Dictionary).size(),
+			((state.get("quest_server", {}) as Dictionary).get("states", {}) as Dictionary).size()],
+		"",
+		"Times:",
+	]
+	lines.append_array(timings)
+	lines.append("")
+	lines.append("Report:" if not report.is_empty() else "Report: nothing dropped, no warnings")
+	lines.append_array(report)
+	DirAccess.make_dir_recursive_absolute(LOAD_REPORT_PATH.get_base_dir())
+	var file := FileAccess.open(LOAD_REPORT_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string("\n".join(lines) + "\n")
+	file.close()
 
 
 ## The header: format version, masters, where the player is, the editor ID of

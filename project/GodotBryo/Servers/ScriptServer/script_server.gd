@@ -101,6 +101,9 @@ var _variable_names: Dictionary = {} # SCPT FormID -> {SLSD index: SCVR name}
 const _DECLARATION_TYPES := ["int", "short", "long", "float", "ref"]
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# Runs after default-priority nodes' _process each frame. Physics bodies
 	# sync their references in _physics_process, which runs earlier still, so
 	# queued moves are applied after that frame's body sync.
@@ -147,6 +150,10 @@ func load_state(state: Dictionary, report: Array = []) -> void:
 ## blocks, or in menu mode their MenuMode blocks for the open menu, then
 ## applies queued moves.
 func _process(delta: float) -> void:
+	# While the game is paused no script runs, the clock stands and queued
+	# moves wait.
+	if get_tree().paused:
+		return
 	clock += delta
 	for reference: EsmReference in _loaded_game_mode.keys():
 		if is_menu_mode():

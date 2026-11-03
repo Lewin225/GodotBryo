@@ -134,17 +134,17 @@ func _ready() -> void:
 	await _check_local_navigation_follows_tiles(streamer)
 	await _check_references_follow_moves(streamer, esm_server, int(world.form_id))
 
-	streamer.set_paused(true, false)
-	check(streamer.is_paused() and streamer.visible and not streamer.is_pause_hiding(),
+	streamer.set_streaming_paused(true, false)
+	check(streamer.is_streaming_paused() and streamer.visible and not streamer.is_pause_hiding(),
 		"plain pause retains visible exterior geometry and collision state")
-	streamer.set_paused(true)
-	check(streamer.is_paused() and not streamer.visible and streamer.is_pause_hiding(),
+	streamer.set_streaming_paused(true)
+	check(streamer.is_streaming_paused() and not streamer.visible and streamer.is_pause_hiding(),
 		"Pause & Hide retains roots while suppressing the exterior")
 	await get_tree().process_frame
 	check(_local_regions(streamer) == 0, "a paused worldspace has no local navigation")
 	streamer.activate(int(world.form_id))
 	check(await _await_settled(streamer), "same-worldspace resume emits settlement again for Game's player-release handshake")
-	check(not streamer.is_paused(), "activate() resumes the retained worldspace")
+	check(not streamer.is_streaming_paused(), "activate() resumes the retained worldspace")
 	await get_tree().process_frame
 	check(_local_regions(streamer) > 0, "resuming makes the full-detail tiles local navigation again")
 

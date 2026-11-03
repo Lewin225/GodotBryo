@@ -58,7 +58,7 @@ func _ready() -> void:
 	check(not streamer.visible and not streamer.terrain.visible
 			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DISABLED,
 			"pause disables terrain visibility, processing, and collision")
-	streamer.set_paused(false)
+	streamer.set_streaming_paused(false)
 	check(streamer.visible and streamer.terrain.visible and streamer.terrain.is_physics_processing()
 			and streamer.terrain.get_collision_mode() == Terrain3DCollision.DYNAMIC_GAME,
 			"same-worldspace resume restores camera-driven physics before queue work")
@@ -102,7 +102,7 @@ func _ready() -> void:
 	get_tree().quit(1 if failures else 0)
 
 func _pause_streamer(streamer: TerrainStreamer) -> void:
-	streamer.set_paused(true)
+	streamer.set_streaming_paused(true)
 
 func _deactivate_streamer(streamer: TerrainStreamer) -> void:
 	streamer.deactivate()
