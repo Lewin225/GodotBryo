@@ -62,6 +62,21 @@ func _ready() -> void:
 	_force_finish_button.visible = false
 	_force_finish_button.pressed.connect(force_finish)
 
+## Unloads the world for loading a save into an open game: the interior and
+## the exterior streamed in are freed (their nodes hold the replaced game's
+## references), any transition in flight is dropped, and nothing counts as
+## loaded, so the loaded player's move loads their space. Terrain is kept: it
+## holds no game state.
+func unload_world() -> void:
+	_generation += 1
+	_settling = false
+	_drop_into_cell = false
+	cell_streamer.unload_current()
+	world_streamer.deactivate()
+	terrain_streamer.set_streaming_paused(true)
+	loaded_space_form_id = 0
+	_target_space_form_id = 0
+
 ## Shows what is loading under the overlay's "Loading": `stage: detail`, with
 ## `done / total` when `total` is above 0. An empty stage clears it.
 func show_progress(stage: String, detail: String, done: int, total: int) -> void:

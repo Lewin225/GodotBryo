@@ -34,6 +34,12 @@ var _actors_by_request: Dictionary = {}
 ## debugger. NpcSimulationServer.debug_report shows it.
 var routes_not_found := 0
 
+## Drops every route, for loading a save into an open game. Results of
+## requests still in flight find no actor and are ignored.
+func clear_game_state() -> void:
+	_routes.clear()
+	_actors_by_request.clear()
+
 func _ready() -> void:
 	get_parent().route_ready.connect(_on_route_ready)
 

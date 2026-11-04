@@ -145,7 +145,8 @@ func check_header(header: Dictionary) -> String:
 
 
 ## Applies a checked save state's sections to their owners, EsmServer first,
-## after clearing EsmServer's game state, across frames: a section, or a batch
+## after clearing ScriptServer's, NpcSimulationServer's and EsmServer's game
+## state (so it also loads into an open game), across frames: a section, or a batch
 ## of moved references, per frame, with `progress` emitted before each.
 ## The caller pauses the game around it (get_tree().paused), so nothing acts
 ## on a half-applied save; SaveServer runs while paused. A coroutine; await
@@ -156,6 +157,8 @@ func apply_state(state: Dictionary) -> void:
 	var timings: Array[String] = []
 	var started := Time.get_ticks_usec()
 	progress.emit("Loading save", "EsmServer: bases, runtime and saved references", 0, 0)
+	ScriptServer.clear_game_state()
+	NpcSimulationServer.clear_game_state()
 	EsmServer.clear_game_state()
 	EsmServer.load_state(state.get("esm_server", {}), report, false)
 	timings.append(_timing("esm_server", started))

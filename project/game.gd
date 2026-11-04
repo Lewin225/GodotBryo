@@ -150,7 +150,11 @@ func _ready() -> void:
 ## player moved to the header's space (its saved position), so streaming does
 ## not physicalise actors while seeding builds them. A save that cannot load falls back to a new
 ## game's start cell, with SaveServer's report pushed as an error.
+## Whether a save is being loaded; quick_load() waits for it to finish.
+var _loading := false
+
 func _load_game(save_id: String) -> void:
+	_loading = true
 	# The game stays paused until the player is placed: no script, package,
 	# body or streamed node acts on a half-loaded game. The servers and the
 	# streamers run while paused (Servers/readme.md, Pausing).
@@ -195,6 +199,7 @@ func _load_game(save_id: String) -> void:
 ## Unpauses the game and hands the overlay back to transitions once a save is
 ## applied.
 func _end_load_progress() -> void:
+	_loading = false
 	SaveServer.progress.disconnect(transition_coordinator.show_progress)
 	transition_coordinator.holding_overlay = false
 	get_tree().paused = false
@@ -380,7 +385,8 @@ func _zone_hud_text(cell_form_id: int) -> String:
 ## The save F5 writes.
 const QUICK_SAVE_ID := "quicksave"
 
-## F4 shows or hides every actor's ActorDebugLabel; F5 quick saves.
+## F4 shows or hides every actor's ActorDebugLabel; F5 quick saves; F6 quick
+## loads.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
@@ -389,6 +395,24 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		ActorDebugLabel.set_shown(not ActorDebugLabel.shown)
 	elif key.keycode == KEY_F5:
 		_quick_save()
+	elif key.keycode == KEY_F6:
+		quick_load()
+
+## Loads QUICK_SAVE_ID into the running game: the streamed world unloaded and
+## every server's game state cleared, then the same load as from the launcher.
+## Caches (NIF trees, textures, terrain, the navmesh) are kept. Does nothing
+## while a load or transition runs, or when there is no quick save.
+func quick_load() -> void:
+	if _loading or transition_coordinator.is_transitioning():
+		return
+	if not SaveServer.get_backend().list().any(func(header: Dictionary) -> bool: return header["save_id"] == QUICK_SAVE_ID):
+		if ScriptServer.message_box != null:
+			ScriptServer.message_box.display_message({"text": "No quick save.", "is_message_box": false, "display_time": 2.0})
+		return
+	get_tree().paused = true
+	player.possess(null)
+	transition_coordinator.unload_world()
+	await _load_game(QUICK_SAVE_ID)
 
 ## Saves to QUICK_SAVE_ID and says so, or why not, as a notification.
 func _quick_save() -> void:

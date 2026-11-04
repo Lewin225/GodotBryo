@@ -121,6 +121,20 @@ func _ready() -> void:
 	if esm_server != null:
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
 
+## Drops the seeded actors and everything that runs them, for loading a save
+## into an open game: seed() builds them again from the loaded references.
+## The navmesh and LocalNavigation's built cells are kept.
+func clear_game_state() -> void:
+	is_seeded = false
+	status = "Waiting to seed"
+	actors_by_instance_id.clear()
+	actors_by_space_form_id.clear()
+	actors_by_cell_form_id.clear()
+	_indexed_space_by_instance_id.clear()
+	grounding_by_instance_id.clear()
+	package_runner.clear_game_state()
+	low_level_travel.clear_game_state()
+
 func _exit_tree() -> void:
 	# Same hazard EsmServer documents: destroying a running Thread aborts the
 	# process, so a session quitting mid-load must wait for the read rather than
@@ -156,7 +170,7 @@ func seed() -> void:
 
 	status = "Loading navmesh"
 	seed_progress.emit(status, 0, 0)
-	if not await _load_navmesh():
+	if navmesh == null and not await _load_navmesh():
 		status = "Navmesh unavailable"
 		seed_progress.emit(status, 0, 0)
 		return

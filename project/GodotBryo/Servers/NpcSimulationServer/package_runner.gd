@@ -115,6 +115,21 @@ var _warned: Dictionary = {}
 
 var travel: LowLevelTravel
 
+## Drops every actor this runner tracks, for loading a save into an open game;
+## the actors belong to the game being replaced. Results of requests still in
+## flight find no actor and are ignored.
+func clear_game_state() -> void:
+	_leased = Sweep.new(_leased.period)
+	_unleased = Sweep.new(_unleased.period)
+	_unleased_idle = Sweep.new(_unleased_idle.period)
+	_last_run_msec.clear()
+	_mode_handlers.clear()
+	_door_plans.clear()
+	_actors_by_request.clear()
+	_next_evaluation_msec.clear()
+	_travels.clear()
+	_seated_by_package.clear()
+
 func _ready() -> void:
 	travel = get_parent().low_level_travel
 	get_parent().door_sequence_ready.connect(_on_door_sequence_ready)

@@ -602,6 +602,9 @@ func clear_game_state() -> void:
 	for form_id: int in _cache.keys():
 		var base: EsmBase = _cache[form_id]
 		if base.dirty:
+			# Something may still hold the old base; freeing its path lets
+			# the base read again take the esm:// path.
+			base.resource_path = ""
 			_cache.erase(form_id)
 
 ## A reference's save entry: its saved fields, and its base's editor ID. An

@@ -133,6 +133,26 @@ func save_state() -> Dictionary:
 		"disabled_player_controls": disabled_player_controls,
 	}
 
+## Drops all script state that belongs to the running game, for loading a
+## save into an open game: the loaded and run references, queued moves, open
+## menus, the message box's owner, the disabled controls, the globals and the
+## clock, and ActorIdles' and FurnitureSeating's per-actor state. Compiled
+## scripts are kept.
+func clear_game_state() -> void:
+	_loaded.clear()
+	_loaded_game_mode.clear()
+	_instances.clear()
+	_pending_moves.clear()
+	_open_menus.clear()
+	_message_owner = null
+	_last_button_pressed = -1
+	player_reference = null
+	globals = GlobalVariables.new()
+	clock = 0.0
+	_set_disabled_player_controls(0)
+	actor_idles.clear_game_state()
+	furniture_seating.clear_game_state()
+
 ## Replaces the script state with a save_state() result. Globals go through
 ## set_global(), which reads each one's type from the ESM, so short and long
 ## globals are ints again. A global the ESM lacks is dropped and listed in

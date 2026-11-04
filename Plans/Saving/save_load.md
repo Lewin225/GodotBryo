@@ -411,7 +411,15 @@ out.
    player, Doc Mitchell's quest stage, Sunny's position and package, an opened container's
    contents, the time and the weather are as saved, and the exterior load has its terrain,
    distant objects and sky.
-7. **Quick save and quick load keys**, and the launcher's list of saves. Quick load is loading
+7. **Quick save and quick load keys**, and the launcher's list of saves.
+   F6 `quick_load()` pauses the game, unloads the streamed world
+   (`TransitionCoordinator.unload_world()`, terrain kept), and runs the launcher's load;
+   `SaveServer.apply_state()` first calls `clear_game_state()` on ScriptServer (with ActorIdles
+   and FurnitureSeating) and NpcSimulationServer (with PackageRunner and LowLevelTravel; the
+   navmesh is kept and `seed()` reuses it) as well as EsmServer. Checked by
+   `tests/test_quick_load` (quest stage, door and position put back; a second quick load
+   misses NifServer's tree cache no more). The F5, launcher list and F6 parts are in; a
+   save browser in game is not. Quick load is loading
    from an open game (above). Census first: each server's state, what it caches, and how long it
    takes to start; measure NpcSimulationServer's navmesh load separately. Gate: quick load twice
    in Goodsprings; the second load reuses NifServer's trees and textures (its stats show no new
@@ -441,3 +449,6 @@ out.
   eager build at load costs too much time or memory: key `_relocated`/`_relocated_by_cell` by
   instance_id instead of EsmReference, fill them from the save without building, and let
   `get_references_in_cell()` build each one through `get_reference()` when its cell loads.
+- Possible optimisation, in case loading with many actors around is too slow: seed only the
+  actors near the player before the body is released, and seed the offscreen ones after the
+  load, while the game runs.
