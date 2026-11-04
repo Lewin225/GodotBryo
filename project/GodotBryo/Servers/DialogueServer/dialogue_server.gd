@@ -95,9 +95,10 @@ func choose_info(topic: DialogueTopicBase, speaker: EsmReference, listener: EsmR
 ## the next frame): its begin script runs on the speaker, then each response is
 ## said and played for its duration; when the last ends, the end script runs
 ## and the speaker's `SayToDone` block for the topic. A line the speaker is
-## already saying is replaced. Returns the line, or null when no INFO
-## qualifies.
-func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference, chosen: DialogueInfoBase = null) -> DialogueLine:
+## already saying is replaced. With `skip_begin_script` the begin script is
+## not run (a line replayed from a save that had already begun). Returns the
+## line, or null when no INFO qualifies.
+func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference, chosen: DialogueInfoBase = null, skip_begin_script := false) -> DialogueLine:
 	var info := chosen if chosen != null else choose_info(topic, speaker, listener)
 	if info == null or speaker == null:
 		return null
@@ -106,6 +107,7 @@ func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference
 	line.topic = topic
 	line.speaker = speaker
 	line.listener = listener
+	line.skip_begin_script = skip_begin_script
 	var missing := PackedStringArray()
 	for i in info.responses.size():
 		var path := voice_path(info, i, speaker)
@@ -129,7 +131,7 @@ func _cut(line: DialogueLine) -> void:
 		return
 	_lines.erase(line.speaker.instance_id)
 	_stop(line)
-	if not line.started:
+	if not line.started and not line.skip_begin_script:
 		ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
 	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
 	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
@@ -235,7 +237,8 @@ func _start(line: DialogueLine) -> void:
 		line.lips.append(_lips.get(line.voice_paths[i]))
 		line.durations.append(stream.get_length() if stream != null and stream.get_length() > 0.0 else _text_duration(line.info.responses[i].text))
 	line.started = true
-	ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
+	if not line.skip_begin_script:
+		ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
 	if _lines.get(line.speaker.instance_id) == line and not line.info.responses.is_empty():
 		_say_response(line)
 
@@ -542,7 +545,9 @@ func has_topic(topic: DialogueTopicBase) -> bool:
 
 ## The dialogue state as plain values for a save: the flagged lines each
 ## speaker has said (INFO `<file>:<local id>` -> game day), who has talked to
-## the player, and the topics AddTopic added.
+## the player, the topics AddTopic added, and the lines being said (each
+## speaker, topic, INFO, listener and whether its begin script has run), which
+## a load says again from the start.
 func save_state() -> Dictionary:
 	var said := {}
 	for speaker_id: String in _said:
@@ -556,10 +561,20 @@ func save_state() -> Dictionary:
 	topics.sort()
 	var talked: Array = _talked_to_player.keys().map(func(id: Variant) -> String: return String(id))
 	talked.sort()
-	return {"said": said, "talked_to_player": talked, "added_topics": topics}
+	var saying := []
+	for line: DialogueLine in _lines.values():
+		saying.append({
+			"speaker": String(line.speaker.instance_id),
+			"topic": _record_text(line.topic.form_id),
+			"info": _record_text(line.info.form_id),
+			"listener": String(line.listener.instance_id) if line.listener != null else null,
+			"begun": line.started or line.skip_begin_script,
+		})
+	return {"said": said, "talked_to_player": talked, "added_topics": topics, "saying": saying}
 
 ## Replaces the dialogue state with a save_state() result, after reset().
-## Lines and topics whose record is not in the load order are dropped.
+## Lines and topics whose record is not in the load order are dropped. Lines
+## being said when saved are said again from the start.
 func load_state(state: Dictionary, report: Array = []) -> void:
 	reset()
 	var said: Dictionary = state.get("said", {})
@@ -576,6 +591,23 @@ func load_state(state: Dictionary, report: Array = []) -> void:
 		var form_id := EsmServer.form_id_for_instance_id(text)
 		if form_id != 0:
 			_added_topics[form_id] = true
+	for entry: Dictionary in state.get("saying", []):
+		_say_again(entry, report)
+
+## Says a line from a save's `saying` again from the start, its begin script
+## skipped when it had run. A line whose speaker, topic or INFO cannot be
+## found is dropped and listed in `report`.
+func _say_again(entry: Dictionary, report: Array) -> void:
+	var speaker := EsmServer.get_reference(StringName(String(entry.get("speaker", ""))))
+	var topic := EsmServer.get_base(EsmServer.form_id_for_instance_id(String(entry.get("topic", "")))) as DialogueTopicBase
+	var info := EsmServer.get_base(EsmServer.form_id_for_instance_id(String(entry.get("info", "")))) as DialogueInfoBase
+	if speaker == null or topic == null or info == null:
+		report.append("dropped line %s being said by %s: not found" % [entry.get("info"), entry.get("speaker")])
+		return
+	var listener: EsmReference = null
+	if entry.get("listener") != null:
+		listener = EsmServer.get_reference(StringName(String(entry["listener"])))
+	say(speaker, topic, listener, info, bool(entry.get("begun", false)))
 
 ## `<file>:<local id>` for a record's load-order FormID.
 func _record_text(form_id: int) -> String:

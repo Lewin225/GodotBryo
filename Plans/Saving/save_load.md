@@ -426,6 +426,14 @@ out.
    parses) and the world matches the save.
 8. **Git storage.** A second backend, offered where git is installed: commit per save, branch on
    saving from an earlier save. The save browser's branch view and remotes come after.
+   `GitBackend`: one bare repository per playthrough under `user://saves_git` (the playthrough id
+   is in the header, made at a new game), a commit per save with the save last written or read as
+   its parent, `refs/saves/<save_id>` per save, reading by checkout into a scratch folder through
+   JsonFolderBackend. Chosen with `user://save_settings.cfg` `[saves] storage`. Measured on a
+   231-file, 3.9 MB quick save: the first commit 63 ms, a later one 15 ms; packed, 269 KB.
+   Checked by `tests/test_git_backend` (parents, branching, playthroughs apart, list, delete, a
+   one-file change adds 350 bytes) and `tests/test_quick_load` with `SAVE_BACKEND=git`. A
+   setting in the launcher is not in.
 
 ## Open
 

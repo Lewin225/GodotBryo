@@ -119,6 +119,7 @@ func _ready() -> void:
 	# Runtime interiors and exteriors share EsmServer's typed reference graph.
 	# Terrain keeps its private native reader because that independent pipeline
 	# still consumes raw LAND data rather than typed EsmReference resources.
+	SaveServer.start_playthrough()
 	player.possess(EsmServer.get_player_reference())
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
@@ -405,7 +406,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func quick_load() -> void:
 	if _loading or transition_coordinator.is_transitioning():
 		return
-	if not SaveServer.get_backend().list().any(func(header: Dictionary) -> bool: return header["save_id"] == QUICK_SAVE_ID):
+	if not SaveServer.has_save(QUICK_SAVE_ID):
 		if ScriptServer.message_box != null:
 			ScriptServer.message_box.display_message({"text": "No quick save.", "is_message_box": false, "display_time": 2.0})
 		return

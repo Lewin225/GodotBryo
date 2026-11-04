@@ -28,9 +28,17 @@ const FORMAT_VERSION := 1
 ## to references.
 const SERVER_SECTIONS := ["esm_server", "quest_server", "script_server", "dialogue_server"]
 
+## Where the player's choice of storage is kept: `[saves] storage`,
+## "json_folder" or "git".
+const SETTINGS_PATH := "user://save_settings.cfg"
+
 ## Backends by name; `backend_name` picks the one in use.
 var backends: Dictionary = {}
 var backend_name := "json_folder"
+## The playthrough being played: made by start_playthrough() on a new game
+## and taken from a loaded save's header. Saved in the header; the git
+## backend keeps one repository per playthrough.
+var playthrough_id := ""
 ## Sections the game adds (time, weather): section name -> owner with
 ## save_state() and load_state(state, report). Loaded after SERVER_SECTIONS.
 var extra_sections: Dictionary = {}
@@ -47,14 +55,35 @@ func _ready() -> void:
 	# state, so it keeps loading; see Servers/readme.md, Pausing.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	register_backend("json_folder", JsonFolderBackend.new())
+	if GitBackend.is_available():
+		register_backend("git", GitBackend.new())
+	var settings := ConfigFile.new()
+	if settings.load(SETTINGS_PATH) == OK:
+		var storage := String(settings.get_value("saves", "storage", backend_name))
+		if backends.has(storage):
+			backend_name = storage
 
 
 func register_backend(backend_title: String, backend: SaveBackend) -> void:
 	backends[backend_title] = backend
 
 
+## The backend in use, told the current playthrough.
 func get_backend() -> SaveBackend:
-	return backends.get(backend_name)
+	var backend: SaveBackend = backends.get(backend_name)
+	backend.playthrough_id = playthrough_id
+	return backend
+
+
+## Starts a new playthrough: a new game's saves are kept apart from every
+## earlier one's. Its id is the real time it started.
+func start_playthrough() -> void:
+	playthrough_id = Time.get_datetime_string_from_system(true).replace(":", "").replace("-", "")
+
+
+## Whether a save is stored under `save_id`.
+func has_save(save_id: String) -> bool:
+	return get_backend().has_save(save_id)
 
 
 ## Why a save cannot be made now, or "" when it can: a conversation, a queued
@@ -117,6 +146,11 @@ func read_save(save_id: String) -> Dictionary:
 	if not refusal.is_empty():
 		report.append("not loaded: " + refusal)
 		return {}
+	var playthrough: Variant = state["header"].get("playthrough")
+	if playthrough != null:
+		playthrough_id = String(playthrough)
+	else:
+		start_playthrough()
 	return state
 
 
@@ -234,6 +268,7 @@ func _build_header(state: Dictionary, parent: String) -> Dictionary:
 		"space_names": space_names,
 		"saved_at": Time.get_datetime_string_from_system(true),
 		"parent": parent if not parent.is_empty() else null,
+		"playthrough": playthrough_id,
 	}
 	return header
 

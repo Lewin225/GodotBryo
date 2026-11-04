@@ -9,6 +9,10 @@ extends RefCounted
 
 ## Why the last call failed; empty after a success.
 var last_error := ""
+## The playthrough being played, set by SaveServer. A backend that keeps
+## playthroughs apart files a save without one in its header here, and reads
+## a save_id that names none from here.
+var playthrough_id := ""
 
 
 ## Stores `state` under `save_id`, replacing any save already there only once
@@ -26,6 +30,11 @@ func read(_save_id: String) -> Dictionary:
 ## browser.
 func list() -> Array[Dictionary]:
 	return []
+
+
+## Whether a save is stored under `save_id`.
+func has_save(save_id: String) -> bool:
+	return list().any(func(header: Dictionary) -> bool: return header["save_id"] == save_id)
 
 
 func delete(_save_id: String) -> Error:
