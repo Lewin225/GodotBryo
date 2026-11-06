@@ -58,7 +58,11 @@ therefore preserves every supported transform track under its escaped, bare auth
 it never guesses a human skeleton or rebinds a creature clip. Morph weight keys for skeleton.nif's
 `HeadAnims:0` morpher (`NiGeomMorpherController` links, the morph name in the interpolator ID) are
 not tracks: each clip carries them as `nif_face_tracks` metadata, morph name → time/value pairs,
-for the actor's facial player. Sequence names key the library --
+for the actor's facial player. Each controlled block's priority byte (0 to 100 in the shipped
+KFs) is clip metadata: `nif_track_priorities`, track path → priority, and with face tracks
+`nif_face_track_priorities`, morph name → priority. No transform target is linked twice in one
+sequence with different priorities across the 4,765 shipped KFs (`native/tools/kf_priority_corpus`).
+Sequence names key the library --
 one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 sequences. Delivered
 libraries are shared immutable resources. NifServer caches them in memory and as compressed
 resources under `user://nifserver_kf_cache/`, keyed by conversion schema, canonical path and the

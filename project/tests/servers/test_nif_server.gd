@@ -7,6 +7,7 @@ extends Node
 ## Tree CONTENT is covered by test_nif_tree_builder; this is about delivery.
 
 const NifServerScript := preload("res://GodotBryo/Servers/NifServer/nif_server.gd")
+const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 const BARRACKS := "meshes/architecture/barracks/barracks01.nif"
 const BOTTLE := "meshes/clutter/junk/milkbottle01.nif"
 const DOOR := "meshes/dungeons/vaultruined/doors/vdoorslidingvault22.nif"
@@ -16,6 +17,9 @@ const MTFORWARD := "meshes/characters/_male/locomotion/male/mtforward.kf"
 const MULTI_SEQUENCE_KF := "meshes/characters/_male/idleanims/1stp_stooldynamicidle.kf"
 ## Drives HeadAnims:0's morpher: BigAah (44 keys), Anger (17), Aah and others.
 const FACE_TRACK_KF := "meshes/characters/_male/idleanims/sitchaireata.kf"
+## An Upper Body idle whose links carry three priorities: 13 on Bip01 and the
+## legs, 30 on Bip01 Spine1, 33 on the head and arms.
+const PRIORITY_KF := "meshes/characters/_male/idleanims/2hrloiter.kf"
 ## Drives ##dgRubberBand:0's morpher (the weapon), no face.
 const RUBBER_BAND_KF := "meshes/characters/_male/1hpattackright.kf"
 ## 710 blocks / 2,111 built nodes, 12.8 ms per duplicate -- and an SCOL, so it
@@ -543,6 +547,51 @@ func _has_class(root: Node, klass: String) -> bool:
 	return false
 
 
+func test_kf_track_priorities() -> void:
+	print("--- standalone KF: per-track priority metadata ---")
+	NifServer.purge_all()
+	_received_kf.clear()
+	NifServer.request_kf(PRIORITY_KF, self, _on_kf_result)
+	NifServer.request_kf(FACE_TRACK_KF, self, _on_kf_result)
+	await _drain_kf(2)
+	var loiter: Animation = null
+	var eating: Animation = null
+	for library: AnimationLibrary in _received_kf:
+		if library == null:
+			continue
+		var animation := library.get_animation(library.get_animation_list()[0])
+		if String(animation.get_meta("nif_sequence_name", "")) == "SpecialIdle_2hrLoiter":
+			loiter = animation
+		else:
+			eating = animation
+	check(loiter != null and eating != null, "both priority fixtures delivered")
+	if loiter == null or eating == null:
+		_received_kf.clear()
+		return
+	var priorities: Dictionary = loiter.get_meta("nif_track_priorities", {})
+	var expected := {
+		"Bip01": 13,
+		"Bip01 L Thigh": 13,
+		"Bip01 Spine1": 30,
+		"Bip01 Head": 33,
+		"Bip01 R UpperArm": 33,
+	}
+	for bone: String in expected:
+		var path := NifNamesScript.escape(bone)
+		check(int(priorities.get(path, -1)) == expected[bone],
+			"%s has priority %d (got %d)" % [bone, expected[bone], int(priorities.get(path, -1))])
+	var untracked := 0
+	for track_index in loiter.get_track_count():
+		if not priorities.has(String(loiter.track_get_path(track_index))):
+			untracked += 1
+	check(untracked == 0, "every transform track's path has a priority (%d without)" % untracked)
+	var face_priorities: Dictionary = eating.get_meta("nif_face_track_priorities", {})
+	var face_tracks: Dictionary = eating.get_meta("nif_face_tracks", {})
+	check(not face_tracks.is_empty() and face_priorities.size() == face_tracks.size(),
+		"every face track has a priority (%d of %d)" % [face_priorities.size(), face_tracks.size()])
+	_received_kf.clear()
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_canonical_paths()
@@ -550,6 +599,7 @@ func _ready() -> void:
 	await test_lod_request()
 	await test_inflight_dedup()
 	await test_kf_delivery_and_cache()
+	await test_kf_track_priorities()
 	await test_build_budget()
 	await test_missing_path()
 	await test_owner_gone()

@@ -370,6 +370,7 @@ Array NifSource::get_sequences() const {
 			b["controller_id"] = String(cb.controller_id.c_str());
 			b["interpolator_id"] = String(cb.interpolator_id.c_str());
 			b["from_string_palette"] = cb.from_string_palette;
+			b["priority"] = static_cast<int>(cb.priority);
 			b["interpolator"] = interpolator_dict(cb.interpolator);
 			blocks.push_back(b);
 		}

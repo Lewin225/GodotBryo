@@ -461,6 +461,10 @@ struct ControlledBlock {
 	std::string controller_id;
 	std::string interpolator_id;
 	bool from_string_palette = false; // true when resolved via offsets
+	// ControllerLink priority byte, 0 to 100 in the shipped corpus: the
+	// precedence of this link against other sequences animating the same
+	// target.
+	uint8_t priority = 0;
 
 	// The curve this link plays. Absent when interpolatorRef is null, which
 	// real sequences do carry.

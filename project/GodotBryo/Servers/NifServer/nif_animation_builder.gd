@@ -56,6 +56,8 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 
 	var unhandled: PackedStringArray = []
 	var face_tracks := {}
+	var track_priorities := {}
+	var face_track_priorities := {}
 	for controlled in sequence.get("controlled_blocks", []):
 		var block := controlled as Dictionary
 		var interpolator: Dictionary = block.get("interpolator", {})
@@ -64,6 +66,7 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 			continue
 		if _is_face_track(block):
 			_add_face_track(face_tracks, block, start)
+			_add_priority(face_track_priorities, String(block["interpolator_id"]), block)
 			continue
 		if target.is_empty():
 			unhandled.append("<unnamed>:%s" % String(interpolator.get("kind", "")))
@@ -75,17 +78,30 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 			# representation.
 			unhandled.append(target + ":" + String(interpolator.get("kind", "")))
 			continue
-		_add_transform_tracks(animation, NifNamesScript.escape(target), interpolator, start)
+		var track_target := NifNamesScript.escape(target)
+		if _add_transform_tracks(animation, track_target, interpolator, start) > 0:
+			_add_priority(track_priorities, track_target, block)
 
 	animation.set_meta("nif_sequence_name", String(sequence.get("name", "")))
 	animation.set_meta("nif_accum_root", String(sequence.get("accum_root_name", "")))
 	animation.set_meta("nif_start_time", start)
 	animation.set_meta("nif_text_keys", sequence.get("text_keys", []))
+	animation.set_meta("nif_track_priorities", track_priorities)
 	if not face_tracks.is_empty():
 		animation.set_meta("nif_face_tracks", face_tracks)
+		animation.set_meta("nif_face_track_priorities", face_track_priorities)
 	if not unhandled.is_empty():
 		animation.set_meta("nif_unhandled_controller_targets", unhandled)
 	return animation
+
+
+## Records the link's priority byte under `key` (a track path or a morph
+## name). A key met twice keeps its first priority; no transform target in the
+## shipped KFs is linked twice in one sequence with different priorities.
+static func _add_priority(priorities: Dictionary, key: String, block: Dictionary) -> void:
+	if priorities.has(key):
+		return
+	priorities[key] = int(block.get("priority", 0))
 
 
 static func _is_face_track(block: Dictionary) -> bool:
