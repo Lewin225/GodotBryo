@@ -229,6 +229,85 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 ## else -1. Saved with `using`.
 @export_storage var using_marker: int = -1
 
+## How far in front of the actor, and how high above its feet, drop() places
+## an item, in metres.
+const DROP_DISTANCE := 0.6
+const DROP_HEIGHT := 1.0
+
+## Takes the placed item `item` into this actor's inventory: the item's node
+## wakes the items resting against it, the reference is held by this actor
+## (no space, so the streamers free the node) and an inventory entry holds it.
+## False when `item` is not an item or is already held.
+func pick_up(item: EsmReference) -> bool:
+	if item == null or item.base == null or not item.base.is_item():
+		return false
+	if item.get_holder() != null or contents == null:
+		return false
+	var node := EsmNode.node_for(item) as EsmItemNode
+	if node != null:
+		node.wake_neighbours()
+	item.set_holder(self)
+	contents.add_inventory_item(InventoryItem.make_reference(item))
+	return true
+
+## Places the held item `item` in the world in front of this actor, facing its
+## heading, and removes its inventory entry; the streamers build its node from
+## the cell change. False when this actor does not hold it.
+func drop(item: EsmReference) -> bool:
+	if item == null or item.get_holder() != self or contents == null:
+		return false
+	var entry := _entry_for(item)
+	if entry == null:
+		return false
+	contents.remove_inventory_item(entry)
+	# A Gamebryo heading turns clockwise from +Y about +Z.
+	var heading := rotation.z
+	var ahead := Vector3(sin(heading), cos(heading), 0.0) * DROP_DISTANCE
+	item.rotation = Vector3(0.0, 0.0, heading)
+	item.set_location(current_space_form_id, position + ahead + Vector3(0.0, 0.0, DROP_HEIGHT))
+	return true
+
+## How far apart drop_entry() places the units of a stack, in metres, in a
+## row across the actor's front.
+const DROP_SPACING := 0.15
+
+## Drops `count` units of the inventory entry `entry` (all of them when
+## negative) in front of this actor, and returns how many it dropped. An entry
+## holding a reference drops that reference. A stack has no reference to drop,
+## so each unit becomes a new runtime reference of its base, placed in a row so
+## their bodies do not start inside each other.
+func drop_entry(entry: InventoryItem, count := -1) -> int:
+	if entry == null or contents == null or not contents.get_items().has(entry):
+		return 0
+	if entry.item_reference != null:
+		return 1 if drop(entry.item_reference) else 0
+	var server := get_esm_server()
+	if server == null:
+		return 0
+	var units := entry.count if count < 0 else mini(count, entry.count)
+	var heading := rotation.z
+	# A Gamebryo heading turns clockwise from +Y about +Z; across is to its right.
+	var ahead := Vector3(sin(heading), cos(heading), 0.0)
+	var across := Vector3(cos(heading), -sin(heading), 0.0)
+	var dropped := 0
+	for unit in units:
+		var item: EsmReference = server.create_runtime_reference(entry.base_form_id)
+		if item == null:
+			break
+		var offset := (float(unit) - float(units - 1) / 2.0) * DROP_SPACING
+		item.rotation = Vector3(0.0, 0.0, heading)
+		item.set_location(current_space_form_id, position + ahead * DROP_DISTANCE + across * offset + Vector3(0.0, 0.0, DROP_HEIGHT))
+		dropped += 1
+	contents.remove_inventory_item(entry, dropped)
+	return dropped
+
+## The inventory entry holding the reference `item`, or null.
+func _entry_for(item: EsmReference) -> InventoryItem:
+	for entry in contents.get_items():
+		if entry.item_reference == item:
+			return entry
+	return null
+
 ## XMRC's placed container, built on demand; null when there is none.
 func get_merchant_container() -> EsmReference:
 	var server := get_esm_server()

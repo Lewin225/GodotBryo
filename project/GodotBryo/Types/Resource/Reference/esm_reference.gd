@@ -110,6 +110,16 @@ const ENABLE_PARENT_POP_IN := 0x02
 ## saved: loading derives it from the space and position.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var current_cell_form_id: int = 0
 
+## Not an ESM field: the instance_id of the actor or container reference whose
+## inventory holds this reference, as an item picked up; empty while it is
+## placed. A held reference has space 0, and a placed one no holder: set_holder()
+## and set_location() keep exactly one set. Set by set_holder(); used by
+## get_holder() and world_location(). Saved.
+@export var holder_instance_id: StringName = &"":
+	set(value):
+		holder_instance_id = value
+		mark_dirty()
+
 ## Not an ESM field: this reference's object script state (locals), created
 ## by ScriptServer the first time the script runs or a variable is written.
 ## Null when the base has no script or it has not run yet. Saved.
@@ -153,22 +163,56 @@ static var _esm_server: Node
 ## Sets space and position together, refreshing the cell once. With `notify`
 ## false the cell is updated without emitting cell_changed or
 ## EsmServer.reference_cell_changed, for a reference being constructed.
+## Placing a reference in a space clears its holder.
 func set_location(space_form_id: int, new_position: Vector3, notify := true) -> void:
+	if space_form_id != 0 and not holder_instance_id.is_empty():
+		holder_instance_id = &""
 	_cell_refresh_suspended = true
 	current_space_form_id = space_form_id
 	position = new_position
 	_cell_refresh_suspended = false
 	_refresh_cell(notify)
 
-## Recomputes current_cell_form_id. Does nothing for an unplaced reference
-## (space 0) or before EsmServer is ready, as while a resource is being loaded.
+## Moves this reference into `holder`'s inventory: no space, so its cell
+## becomes 0 and the streamers free its node, and `holder` as its holder. Does
+## not touch the inventory itself.
+func set_holder(holder: EsmReference) -> void:
+	if holder == null:
+		return
+	set_location(0, Vector3.ZERO)
+	holder_instance_id = holder.instance_id
+
+## The reference whose inventory holds this one, or null while it is placed
+## or where EsmServer does not exist.
+func get_holder() -> EsmReference:
+	if holder_instance_id.is_empty():
+		return null
+	var server := get_esm_server()
+	if server == null:
+		return null
+	return server.get_reference(holder_instance_id)
+
+## The placed reference that gives this one's place in the world: itself
+## while placed, else its holder's, as for a quest marker on an item in a
+## container.
+func world_location() -> EsmReference:
+	var holder := get_holder()
+	if holder != null:
+		return holder.world_location()
+	return self
+
+## Recomputes current_cell_form_id: 0 for an unplaced reference (space 0), as
+## for an item taken into an inventory. Does nothing before EsmServer is ready,
+## as while a resource is being loaded.
 func _refresh_cell(notify := true) -> void:
-	if _cell_refresh_suspended or current_space_form_id == 0:
+	if _cell_refresh_suspended:
 		return
 	var server := get_esm_server()
 	if server == null or not server.is_ready():
 		return
-	var cell: int = server.cell_at(current_space_form_id, position)
+	var cell := 0
+	if current_space_form_id != 0:
+		cell = server.cell_at(current_space_form_id, position)
 	if cell == current_cell_form_id:
 		return
 	var old_cell := current_cell_form_id

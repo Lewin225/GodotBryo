@@ -288,15 +288,11 @@ func _register_defaults() -> void:
 	register("SetObjectiveCompleted", func(a: Array, _c):
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
-	# TODO: Delete the "Caps001" placeholder once inventories hold real caps.
-	# Until then every reference reports 20000 caps, even after RemoveItem.
 	# Inventory of the calling reference (actor, creature or container). Items
 	# are named by base editor ID; a leveled list resolves when added.
 	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
-		if item != null and item.editor_id.to_lower() == "caps001":
-			return 20000
 		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
 	# `AddItem Item Count [HideMessage]`.
 	register("AddItem", func(a: Array, ctx: ScriptExecutionContext):

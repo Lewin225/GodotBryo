@@ -16,9 +16,9 @@ signal item_changed
 ## saved, since the saved FormID resolves to it.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base: EsmBase
 ## Not an ESM field: the item's own reference, a runtime reference from
-## EsmServer.create_runtime_reference(); null for a stack. When the item becomes
-## a reference is not decided (Plans/Completed Plans/Saving/save_load.md, Open), so nothing
-## sets it yet outside tests.
+## EsmServer.create_runtime_reference(), or a placed item an actor picked up
+## (ActorReference.pick_up()); null for a stack. Authored container entries
+## stay stacks (Plans/Completed Plans/Saving/save_load.md, Open).
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE) var item_reference: EsmReference:
 	set(value):
 		item_reference = value
@@ -41,6 +41,14 @@ var compatibility_data: Dictionary = {}
 
 
 ## A stack of `count` of `item_base`.
+## An entry holding one item reference, as an item picked up from the world.
+static func make_reference(reference: EsmReference) -> InventoryItem:
+	var item := InventoryItem.new()
+	item.item_reference = reference
+	item.count = 1
+	return item
+
+
 static func make_stack(item_base: EsmBase, item_count: int) -> InventoryItem:
 	var item := InventoryItem.new()
 	item.base = item_base

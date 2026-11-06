@@ -441,6 +441,11 @@ Array NifSource::get_collision_bodies() const {
 		d["restitution"] = cb.restitution;
 		d["linear_damping"] = cb.linear_damping;
 		d["angular_damping"] = cb.angular_damping;
+		d["motion_system"] = cb.motion_system;
+		d["quality_type"] = cb.quality_type;
+		d["deactivator_type"] = cb.deactivator_type;
+		d["solver_deactivation"] = cb.solver_deactivation;
+		d["layer"] = cb.layer;
 		d["translation"] = Vector3(cb.translation[0], cb.translation[1], cb.translation[2]);
 		d["rotation"] = Quaternion(cb.rotation[0], cb.rotation[1], cb.rotation[2], cb.rotation[3]);
 		Array constraints;
@@ -464,6 +469,9 @@ Array NifSource::get_collision_bodies() const {
 			c["min_angle"] = cc.min_angle;
 			c["max_angle"] = cc.max_angle;
 			c["max_friction"] = cc.max_friction;
+			c["entity_a_block"] = cc.entity_a_block;
+			c["entity_b_block"] = cc.entity_b_block;
+			c["limited"] = cc.limited;
 			constraints.push_back(c);
 		}
 		d["constraints"] = constraints;

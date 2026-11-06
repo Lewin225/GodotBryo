@@ -337,6 +337,8 @@ static func _dynamic_content(root: Node3D) -> String:
 			return "particles"
 		if n is AnimatableBody3D:
 			return "animated collision"
+		if n is NifRigidBody:
+			return "rigid body"
 		if n is Skeleton3D:
 			return "Skeleton3D"
 		if n is MeshInstance3D and (n as MeshInstance3D).skin != null:
@@ -942,7 +944,10 @@ static func _track_interp(keys: Array, resampled: bool) -> int:
 ## a door panel, a lift platform -- collision parked at the root stays behind
 ## while the visual moves. An animated owner gets an AnimatableBody3D rather
 ## than a StaticBody3D, because a StaticBody3D that moves does not push
-## anything it moves into.
+## anything it moves into. A body whose motion system moves (MOVING_MOTION_SYSTEMS)
+## on an owner that is not animated is a NifRigidBody, which moves its owner;
+## every other body is a StaticBody3D. A caller that must not move, such as a
+## STAT, freezes its NifRigidBodys.
 static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		skeleton: Skeleton3D, bone_of_node: Dictionary, attachments: Dictionary,
 		animated: Dictionary, ragdolled: Dictionary) -> void:
@@ -951,6 +956,7 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 		return
 	var bodies: Array = src.get_collision_bodies()
 	var body_of_owner := {}   # owning node index -> PhysicsBody3D
+	var body_node_by_block := {}   # bhkRigidBody block index -> PhysicsBody3D
 	for s in shapes:
 		var shape := _make_shape(s)
 		if shape == null:
@@ -968,7 +974,14 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 			if parent is PhysicsBody3D:
 				body_of_owner[owner_index] = parent
 			else:
-				var b: PhysicsBody3D = AnimatableBody3D.new() if animated.has(owner_index) else StaticBody3D.new()
+				var body_data := _body_data(bodies, int(s["body_index"]))
+				var b: PhysicsBody3D
+				if animated.has(owner_index):
+					b = AnimatableBody3D.new()
+				elif _is_moving(body_data):
+					b = _make_rigid_body(body_data)
+				else:
+					b = StaticBody3D.new()
 				b.name = "Collision"
 				parent.add_child(b)
 				body_of_owner[owner_index] = b
@@ -993,7 +1006,170 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 			if String(b["block_type"]) == "bhkRigidBodyT":
 				cs.transform = Transform3D(Basis(b["rotation"] as Quaternion),
 					Vector3(b["translation"]))
+			body_node_by_block[int(b["block_index"])] = container
 		container.add_child(cs)
+	_build_joints(root, bodies, body_node_by_block)
+
+
+## Constraint -> joint, for constraints between two bodies _build_collision
+## built (ragdoll bones have their own path, _apply_ragdoll_joint). A hinge is a
+## HingeJoint3D turning about the axle, limited when the constraint is a
+## limited hinge: Havok measures its angle between the perpendicular axes
+## axleInA1 and axleInB1, Godot from the pose at creation, so the limits are
+## shifted by the authored angle. A ragdoll constraint is a ConeTwistJoint3D
+## twisting about its twist axis, its swing span the cone angle and its twist
+## span the larger twist limit; the plane limits have no Godot equivalent and
+## stay in metadata. Other constraint types (prismatic, stiff spring,
+## breakable) get no joint; their block types are listed in the root's
+## `nif_unjoined_constraints`.
+static func _build_joints(root: Node3D, bodies: Array, body_node_by_block: Dictionary) -> void:
+	var unjoined: Array[String] = []
+	for body_data: Dictionary in bodies:
+		for c: Dictionary in body_data.get("constraints", []):
+			var a := body_node_by_block.get(int(c.get("entity_a_block", -1))) as PhysicsBody3D
+			var b := body_node_by_block.get(int(c.get("entity_b_block", -1))) as PhysicsBody3D
+			if a == null or b == null or a == b:
+				continue
+			var joint := _make_joint(c, a, b, _body_frame(bodies, int(c["entity_a_block"])), _body_frame(bodies, int(c["entity_b_block"])))
+			if joint == null:
+				unjoined.append(String(c.get("block_type", "")))
+				continue
+			joint.name = "%s_%d" % [String(c.get("block_type", "Joint")), int(c.get("block_index", 0))]
+			a.add_child(joint)
+			joint.node_a = joint.get_path_to(a)
+			joint.node_b = joint.get_path_to(b)
+	if not unjoined.is_empty():
+		root.set_meta("nif_unjoined_constraints", unjoined)
+
+
+## A body's own frame relative to its node: bhkRigidBodyT's transform, or
+## identity for a plain bhkRigidBody, whose fields are inert.
+static func _body_frame(bodies: Array, block_index: int) -> Transform3D:
+	for body_data: Dictionary in bodies:
+		if int(body_data["block_index"]) != block_index:
+			continue
+		if String(body_data["block_type"]) == "bhkRigidBodyT":
+			return Transform3D(Basis(body_data["rotation"] as Quaternion), Vector3(body_data["translation"]))
+	return Transform3D.IDENTITY
+
+
+## The joint for constraint `c` between `a` and `b`, as a child of `a` at
+## pivot_a, or null for a type with no joint. `frame_a` and `frame_b` place
+## each body's constraint frame relative to its node.
+static func _make_joint(c: Dictionary, a: PhysicsBody3D, b: PhysicsBody3D, frame_a: Transform3D, frame_b: Transform3D) -> Joint3D:
+	var kind := String(c.get("kind", ""))
+	var pivot := Vector3(c["pivot_a"])
+	var axis := (frame_a.basis * Vector3(c["axis_a"])).normalized()
+	var perpendicular := (frame_a.basis * Vector3(c["plane_a"])).normalized()
+	if axis == Vector3.ZERO:
+		return null
+	if kind == "hinge":
+		var hinge := HingeJoint3D.new()
+		# HingeJoint3D turns about its local Z.
+		hinge.transform = Transform3D(_basis_with_axis(axis, perpendicular, 2), frame_a * pivot)
+		if bool(c.get("limited", false)):
+			var authored := _authored_hinge_angle(c, a, b, frame_a, frame_b, axis)
+			hinge.set_flag(HingeJoint3D.FLAG_USE_LIMIT, true)
+			hinge.set_param(HingeJoint3D.PARAM_LIMIT_LOWER, float(c["min_angle"]) - authored)
+			hinge.set_param(HingeJoint3D.PARAM_LIMIT_UPPER, float(c["max_angle"]) - authored)
+		hinge.set_meta("nif_hinge_limits", Vector2(float(c["min_angle"]), float(c["max_angle"])))
+		return hinge
+	if kind == "ragdoll":
+		var cone := ConeTwistJoint3D.new()
+		# ConeTwistJoint3D twists about its local X.
+		cone.transform = Transform3D(_basis_with_axis(axis, perpendicular, 0), frame_a * pivot)
+		cone.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, float(c["cone_max_angle"]))
+		cone.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, maxf(absf(float(c["twist_min_angle"])), absf(float(c["twist_max_angle"]))))
+		cone.set_meta("nif_plane_limits", Vector2(float(c["plane_min_angle"]), float(c["plane_max_angle"])))
+		return cone
+	return null
+
+
+## An orthonormal basis whose axis `index` (0 X, 1 Y, 2 Z) is `axis`, with the
+## next axis as close to `perpendicular` as `axis` allows.
+static func _basis_with_axis(axis: Vector3, perpendicular: Vector3, index: int) -> Basis:
+	var next := perpendicular - axis * perpendicular.dot(axis)
+	if next.length() < 0.0001:
+		next = axis.cross(Vector3.UP if absf(axis.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT)
+	next = next.normalized()
+	var third := axis.cross(next)
+	var columns := [axis, next, third]
+	var x: Vector3 = columns[(3 - index) % 3]
+	var y: Vector3 = columns[(4 - index) % 3]
+	var z: Vector3 = columns[(5 - index) % 3]
+	return Basis(x, y, z)
+
+
+## The limited hinge's angle in the authored pose: from body A's perpendicular
+## axis to body B's, about the axle, in A's node frame.
+static func _authored_hinge_angle(c: Dictionary, a: Node3D, b: Node3D, frame_a: Transform3D, frame_b: Transform3D, axis: Vector3) -> float:
+	var a_to_b := _relative(a, b)
+	var perp_a := (frame_a.basis * Vector3(c["plane_a"])).normalized()
+	var perp_b := (a_to_b.basis * frame_b.basis * Vector3(c["plane_b"])).normalized()
+	return perp_a.signed_angle_to(perp_b, axis)
+
+
+## `b`'s transform in `a`'s frame, through their common ancestors.
+static func _relative(a: Node3D, b: Node3D) -> Transform3D:
+	return _to_root(a).affine_inverse() * _to_root(b)
+
+
+static func _to_root(node: Node3D) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var current: Node = node
+	while current is Node3D:
+		result = (current as Node3D).transform * result
+		current = current.get_parent()
+	return result
+
+
+## Motion systems that move under simulation: 1 dynamic, 2 sphere inertia,
+## 4 box inertia, 8 thin box. 6 is keyframed and 7 fixed; 3 and 5, the
+## stabilized systems, do not exist in the game's Havok and behave as fixed.
+const MOVING_MOTION_SYSTEMS := [1, 2, 4, 8]
+## bhkRigidBody deactivator type 1: the body never comes to rest.
+const DEACTIVATOR_NEVER := 1
+## The share of a bhkRigidBody's restitution a NifRigidBody bounces with. At the
+## authored values (0.4 on most items) Jolt bounces dropped items far more
+## than the game does, where restitution is only partly applied.
+const RESTITUTION_SCALE := 0.25
+
+
+## The rigid body a shape belongs to, or an empty Dictionary.
+static func _body_data(bodies: Array, body_index: int) -> Dictionary:
+	if body_index < 0 or body_index >= bodies.size():
+		return {}
+	return bodies[body_index]
+
+
+## Whether the body's motion system moves under simulation.
+static func _is_moving(body_data: Dictionary) -> bool:
+	return MOVING_MOTION_SYSTEMS.has(int(body_data.get("motion_system", 0)))
+
+
+## A NifRigidBody with the bhkRigidBody's mass, friction, restitution (scaled by
+## RESTITUTION_SCALE), damping
+## and deactivation; it moves its parent with it. Mass 0
+## means infinite mass, which no moving body in the corpus has; it is built as
+## 1 kg.
+static func _make_rigid_body(body_data: Dictionary) -> NifRigidBody:
+	var body := NifRigidBody.new()
+	var mass := float(body_data.get("mass", 0.0))
+	body.mass = mass if mass > 0.0 else 1.0
+	var material := PhysicsMaterial.new()
+	material.friction = float(body_data.get("friction", 0.5))
+	material.bounce = float(body_data.get("restitution", 0.0)) * RESTITUTION_SCALE
+	body.physics_material_override = material
+	body.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	body.linear_damp = float(body_data.get("linear_damping", 0.0))
+	body.angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	body.angular_damp = float(body_data.get("angular_damping", 0.0))
+	body.can_sleep = int(body_data.get("deactivator_type", 0)) != DEACTIVATOR_NEVER
+	body.motion_system = int(body_data.get("motion_system", 0))
+	body.quality_type = int(body_data.get("quality_type", 0))
+	body.solver_deactivation = int(body_data.get("solver_deactivation", 0))
+	body.layer = int(body_data.get("layer", 0))
+	return body
 
 
 ## Where a shape's body belongs: under its owning node, under that bone's

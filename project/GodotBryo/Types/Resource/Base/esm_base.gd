@@ -92,8 +92,19 @@ func all_subrecord_data(tag: String) -> Array[PackedByteArray]:
 ## shared by every placement, so the reference is passed in. Types with
 ## built-in activation override this and call ScriptServer primitives
 ## (move_reference, begin_use, lock, unlock) to do the work.
-func activate(_ref: EsmReference, _activator: EsmReference) -> void:
-	pass
+## An item is picked up by an actor that activates it.
+func activate(ref: EsmReference, activator: EsmReference) -> void:
+	var actor := activator as ActorReference
+	if is_item() and actor != null:
+		actor.pick_up(ref)
+
+## Record types of the items an actor can pick up from the world into its
+## inventory.
+const ITEM_RECORD_TYPES := ["MISC", "ALCH", "AMMO", "KEYM", "WEAP", "ARMO", "BOOK", "CCRD", "CMNY"]
+
+## Whether a reference of this base is an item an actor can pick up.
+func is_item() -> bool:
+	return ITEM_RECORD_TYPES.has(record_type)
 
 ## Whether `actor` has an item with this base FormID in its inventory.
 static func carries(actor: EsmReference, item_form_id: int) -> bool:
