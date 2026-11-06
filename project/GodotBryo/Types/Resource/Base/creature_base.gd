@@ -31,9 +31,10 @@ const ACBS_FLAG_NAMES := "Biped:1,Essential:2,Weapon & Shield?:4,Respawn:8,Swims
 
 @export_group("Body")
 ## NIFZ: the body-part NIFs, file names relative to MODL's folder (1,059 CREA in
-## FalloutNV.esm). Read; not used yet (the actors plan's stage J).
+## FalloutNV.esm). Read; used through `model_list_paths`.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_list: PackedStringArray = PackedStringArray()
-## Not an ESM field: `model_list` joined to MODL's folder. Set; not used yet.
+## Not an ESM field: `model_list` joined to MODL's folder. Set; used by
+## get_model_parts() for the actor node.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var model_list_paths: PackedStringArray = PackedStringArray()
 ## NIFT: Model List Textures, raw (texture-file hashes for `model_list`).
 ## Read; not used.
@@ -43,7 +44,8 @@ const ACBS_FLAG_NAMES := "Biped:1,Essential:2,Weapon & Shield?:4,Respawn:8,Swims
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "BodyPartDataBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var body_part_data: BodyPartDataBase
 ## TNAM: Turning Speed. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var turning_speed: float = 0.0
-## BNAM: Base Scale. Read; not used yet.
+## BNAM: Base Scale. Read; used through get_body_scale by EsmActorNode, from the
+## Model/Animation template source.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base_scale: float = 1.0
 ## WNAM: Foot Weight. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var foot_weight: float = 0.0
@@ -64,3 +66,25 @@ const ACBS_FLAG_NAMES := "Biped:1,Essential:2,Weapon & Shield?:4,Respawn:8,Swims
 func _validate_property(property: Dictionary) -> void:
 	if property.name == "acbs_flags":
 		property.hint_string = ACBS_FLAG_NAMES
+
+## Its skeleton's folder below meshes/, where its KFs are; the actor node's
+## animator takes its locomotion from there (ActorAnimator).
+## BNAM.
+func get_body_scale(_female: bool) -> float:
+	return base_scale
+
+func animation_search_paths() -> PackedStringArray:
+	if model_path.is_empty():
+		return PackedStringArray()
+	var folder := model_path.replace("\\", "/").get_base_dir().to_lower()
+	return PackedStringArray(["meshes/%s/" % folder])
+
+## NIFZ's body parts, for the actor node. Optional: 18 of the 276 distinct
+## skeleton and part pairs in FalloutNV.esm name a file no archive ships, and
+## a creature builds without them. A templated creature's parts are its
+## Model/Animation template's: the node asks that record.
+func get_model_parts(_female: bool) -> Array[Dictionary]:
+	var parts: Array[Dictionary] = []
+	for index in model_list_paths.size():
+		parts.append({"key": "body:%d" % index, "path": model_list_paths[index], "required": false, "kind": "body"})
+	return parts

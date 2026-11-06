@@ -82,9 +82,9 @@ func _on_streaming_mode_selected(mode: int) -> void:
 	if _suppress_config_signals or _world_streamer == null or not _world_streamer.is_active():
 		return
 	match mode:
-		0: _world_streamer.set_paused(false)
-		1: _world_streamer.set_paused(true, false)
-		2: _world_streamer.set_paused(true, true)
+		0: _world_streamer.set_streaming_paused(false)
+		1: _world_streamer.set_streaming_paused(true, false)
+		2: _world_streamer.set_streaming_paused(true, true)
 
 func _on_refresh_now_pressed() -> void:
 	if _world_streamer != null:
@@ -104,7 +104,7 @@ func _refresh_state() -> void:
 	var ws := _world_streamer
 	if not ws.is_active():
 		_status.text = "[color=#7f848e][b]INACTIVE[/b][/color]"
-	elif ws.is_paused():
+	elif ws.is_streaming_paused():
 		_status.text = "[color=#e5c07b][b]PAUSED[/b][/color]"
 	else:
 		_status.text = "[color=#98c379][b]ACTIVE[/b][/color]  %.1f FPS" % Engine.get_frames_per_second()
@@ -150,7 +150,7 @@ func _refresh_config() -> void:
 	_spawn_achr.button_pressed = (flags & WorldStreamerV2.SPAWN_ACHR) != 0
 	_spawn_crea.button_pressed = (flags & WorldStreamerV2.SPAWN_CREA) != 0
 	_streaming_mode.disabled = not _world_streamer.is_active()
-	_streaming_mode.select(0 if not _world_streamer.is_paused() else (2 if _world_streamer.is_pause_hiding() else 1))
+	_streaming_mode.select(0 if not _world_streamer.is_streaming_paused() else (2 if _world_streamer.is_pause_hiding() else 1))
 	_refresh_now.disabled = not _world_streamer.is_active()
 	_suppress_config_signals = false
 

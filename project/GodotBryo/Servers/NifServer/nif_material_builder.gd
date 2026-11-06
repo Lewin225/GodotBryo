@@ -10,8 +10,8 @@ class_name NifMaterialBuilder
 ## returning a different Material altogether. build() stamps the `nif_*`
 ## metadata onto whatever the path returns.
 ##
-## Shapes with the Hair flag go to PATH_HAIR; every other shape goes to
-## PATH_STANDARD.
+## Shapes with the Hair flag go to PATH_HAIR, shapes with the FaceGen flag to
+## PATH_SKIN; every other shape goes to PATH_STANDARD.
 
 # For cache_key() only, which is static.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -25,16 +25,27 @@ const PATH_STANDARD := &"standard"
 ## `_hl` texture in slot 2: 154 under meshes/characters/hair, 3 Fort head
 ## pikes and 2 skeleton clutter shapes.
 const PATH_HAIR := &"hair"
-const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR]
+## Shapes whose BSShaderPPLightingProperty sets the FaceGen flag: the skin.
+## 332 shapes in the mesh archives (one per path): heads, hands, nude upper
+## bodies and the skin parts of outfits, with a head, hand or upper-body
+## diffuse, but for a few gore caps, a DLC02 body and some with no diffuse.
+## Slot 2 is a `_sk` texture on 238 of them, none on the rest.
+const PATH_SKIN := &"skin"
+const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN]
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
 const ROLE_GLOW := &"glow"
 ## Slot 2 on a hair shape: the hair highlight texture, not a glow map.
 const ROLE_HAIR_HIGHLIGHT := &"hair_highlight"
+## Slot 2 on a skin shape: the `_sk` texture. HeadHuman_sk and HandMale_sk are
+## one flat colour (21, 6, 5); what the skin shader does with it is not known.
+const ROLE_SKIN_SK := &"skin_sk"
 
 ## BSShaderFlags bit 18, Hair (nif.xml F3SF1).
 const SHADER_FLAG1_HAIR := 1 << 18
+## BSShaderFlags bit 10, FaceGen (nif.xml F3SF1).
+const SHADER_FLAG1_FACEGEN := 1 << 10
 ## The blocks the GECK lists the Hair flag for.
 const HAIR_SHADER_BLOCKS: Array[String] = ["BSShaderPPLightingProperty", "Lighting30ShaderProperty"]
 
@@ -69,6 +80,8 @@ static func set_material_path(path: StringName, builder: Callable) -> bool:
 static func path_for(nd: Dictionary) -> StringName:
 	if _is_hair(nd):
 		return PATH_HAIR
+	if _is_skin(nd):
+		return PATH_SKIN
 	return PATH_STANDARD
 
 
@@ -78,6 +91,14 @@ static func _is_hair(nd: Dictionary) -> bool:
 	if not HAIR_SHADER_BLOCKS.has(String(nd["shader_type"])):
 		return false
 	return (int(nd["shader_flags1"]) & SHADER_FLAG1_HAIR) != 0
+
+
+static func _is_skin(nd: Dictionary) -> bool:
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	if String(nd["shader_type"]) != "BSShaderPPLightingProperty":
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_FACEGEN) != 0
 
 
 ## The textures a shape's path uses: [{role, slot, path, alpha_safe}] in slot
@@ -91,8 +112,11 @@ static func texture_refs(nd: Dictionary) -> Array:
 	var alpha_safe := _alpha_safe(nd)
 	var map: Array = _texture_slot_map(String(nd.get("texture_convention", "")))
 	var roles: Array[StringName] = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_GLOW]
-	if path_for(nd) == PATH_HAIR:
-		roles = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_HAIR_HIGHLIGHT]
+	match path_for(nd):
+		PATH_HAIR:
+			roles = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_HAIR_HIGHLIGHT]
+		PATH_SKIN:
+			roles = [ROLE_DIFFUSE, ROLE_NORMAL, ROLE_SKIN_SK]
 	for i in map.size():
 		var slot: int = map[i]
 		if slot < 0 or slot >= slots.size() or String(slots[slot]).is_empty():
@@ -140,6 +164,8 @@ static func _stock_builder(path: StringName) -> Callable:
 			return _build_standard
 		PATH_HAIR:
 			return _build_hair
+		PATH_SKIN:
+			return _build_skin
 	return _build_standard
 
 
@@ -268,6 +294,14 @@ static func _build_hair(context: NifMaterialContext) -> Material:
 	var mat := _build_standard(context) as StandardMaterial3D
 	mat.vertex_color_use_as_albedo = false
 	return mat
+
+
+## PATH_SKIN's stock material: PATH_STANDARD's, with no emission, because slot
+## 2 is the `_sk` texture rather than a glow map; its path stays in
+## `nif_texture_roles`. An actor replaces it with its own skin material (the
+## race's texture and the NPC's FaceGen tint, EsmActorNode._apply_skin).
+static func _build_skin(context: NifMaterialContext) -> Material:
+	return _build_standard(context)
 
 
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth

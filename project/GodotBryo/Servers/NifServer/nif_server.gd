@@ -16,7 +16,7 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 ## The raw-target AnimationLibrary schema. Bump when NifAnimationBuilder's
 ## Godot resource representation changes; old disk entries then cannot be
 ## mistaken for a library compiled under a different binding contract.
-const KF_CACHE_VERSION := "nifserver-kf-v1"
+const KF_CACHE_VERSION := "nifserver-kf-v3"
 const KF_CACHE_DIR := "user://nifserver_kf_cache"
 
 ## All editor-object classification and visibility belongs here. Keeping the
@@ -174,6 +174,9 @@ var _stats := {
 
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# Resolved once here: _resolve_task() runs on a worker, where any
 	# scene-tree query is forbidden.
 	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")

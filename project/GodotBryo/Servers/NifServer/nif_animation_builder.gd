@@ -9,6 +9,13 @@ class_name NifAnimationBuilder
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 
+## A face morph weight: a link to skeleton.nif's HeadAnims:0 morpher, whose
+## channels KF clips animate by morph name (the link's interpolator ID). The
+## morpher's other targets in KFs (##dgRubberBand:0 on weapons, ##VomitSpray:0,
+## ##Shock01:0) are not faces.
+const FACE_MORPHER_CONTROLLER := "NiGeomMorpherController"
+const FACE_MORPHER_NODE := "HeadAnims:0"
+
 
 ## One library per file: 4,981 shipped KFs have one sequence, but 33 contain
 ## 2-5 and cannot be represented honestly by one Animation resource.
@@ -48,11 +55,15 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 		_: animation.loop_mode = Animation.LOOP_NONE
 
 	var unhandled: PackedStringArray = []
+	var face_tracks := {}
 	for controlled in sequence.get("controlled_blocks", []):
 		var block := controlled as Dictionary
 		var interpolator: Dictionary = block.get("interpolator", {})
 		var target := String(block.get("node_name", ""))
 		if not bool(interpolator.get("present", false)):
+			continue
+		if _is_face_track(block):
+			_add_face_track(face_tracks, block, start)
 			continue
 		if target.is_empty():
 			unhandled.append("<unnamed>:%s" % String(interpolator.get("kind", "")))
@@ -70,9 +81,43 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 	animation.set_meta("nif_accum_root", String(sequence.get("accum_root_name", "")))
 	animation.set_meta("nif_start_time", start)
 	animation.set_meta("nif_text_keys", sequence.get("text_keys", []))
+	if not face_tracks.is_empty():
+		animation.set_meta("nif_face_tracks", face_tracks)
 	if not unhandled.is_empty():
 		animation.set_meta("nif_unhandled_controller_targets", unhandled)
 	return animation
+
+
+static func _is_face_track(block: Dictionary) -> bool:
+	if String(block.get("controller_type", "")) != FACE_MORPHER_CONTROLLER:
+		return false
+	if String(block.get("node_name", "")) != FACE_MORPHER_NODE:
+		return false
+	var interpolator: Dictionary = block.get("interpolator", {})
+	return String(interpolator.get("kind", "")) == "float" \
+			and not String(block.get("interpolator_id", "")).is_empty()
+
+
+## Adds a morph weight track to `face_tracks`: morph name -> PackedFloat32Array
+## of time, value pairs, times rebased as transform keys are. A link without
+## keys holds its static value when it has one. A name met twice keeps its first track.
+## Keys play linearly whatever their authored interpolation.
+static func _add_face_track(face_tracks: Dictionary, block: Dictionary, start: float) -> void:
+	var name := String(block["interpolator_id"])
+	if face_tracks.has(name):
+		return
+	var interpolator: Dictionary = block["interpolator"]
+	var pairs := PackedFloat32Array()
+	for key: Dictionary in interpolator.get("float_keys", []):
+		pairs.append(maxf(float(key["time"]) - start, 0.0))
+		pairs.append(float(key["value"]))
+	var static_value := float(interpolator.get("static_float", 0.0))
+	# NIF writes an unset static value as -FLT_MAX.
+	if pairs.is_empty() and bool(interpolator.get("has_static_float", false)) and absf(static_value) < 1.0e30:
+		pairs.append(0.0)
+		pairs.append(static_value)
+	if not pairs.is_empty():
+		face_tracks[name] = pairs
 
 
 ## Keys are already converted to Godot coordinates by NifSource. Times are

@@ -20,7 +20,8 @@ extends Node3D
 ## reports IsTalking, GetCurrentAIProcedure DIALOGUE (4) and
 ## GetCurrentAIPackage 6, his response's emotion, and plays a gesture from
 ## under DialogueIdles (or the response's own SNAM idle) that ends with the
-## line.
+## line. Face tracks: NPCSmokingIdle's KF drives his mouth through its
+## HeadAnims morph keys (Completed Plans/Actors/faces.md step 5's gate).
 
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
@@ -111,6 +112,7 @@ func _ready() -> void:
 	await _check_collections(doc)
 	await _check_ambient(doc)
 	await _check_dialogue(doc)
+	await _check_face_tracks(doc, doc_node)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
@@ -302,6 +304,26 @@ func _record_idles(doc: ActorReference, count: int, milliseconds: int) -> Array[
 	while doc.special_idle != null and Time.get_ticks_msec() < deadline + 10000:
 		await get_tree().process_frame
 	return played
+
+## While NPCSmokingIdle plays, its KF's face tracks reach the animator and the
+## facial player sets them on his face: Oh, the lips round on the cigarette
+## (keyed to 0.94 at 1.1 s), rises above 0.5.
+func _check_face_tracks(doc: ActorReference, doc_node: NpcController) -> void:
+	var animator := doc_node.actor.animator
+	var facial_player := doc_node.actor.facial_player
+	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle NPCSmokingIdle")
+	await _wait_until(func() -> bool: return _player_clip(doc_node) == ActorAnimator.IDLE_CLIP_NAME)
+	var clip_largest := 0.0
+	var face_largest := 0.0
+	var deadline := Time.get_ticks_msec() + TIMEOUT_MSEC
+	while doc.special_idle != null and Time.get_ticks_msec() < deadline:
+		var weights := animator.face_weights()
+		clip_largest = maxf(clip_largest, float(weights.get("Oh", 0.0)))
+		face_largest = maxf(face_largest, facial_player.get_weight("Oh"))
+		await get_tree().process_frame
+	ScriptServer.actor_idles.finish(doc)
+	check(clip_largest > 0.5, "NPCSmokingIdle's clip sets Oh (up to %.2f)" % clip_largest)
+	check(face_largest > 0.5, "and his face shows it (Oh up to %.2f)" % face_largest)
 
 ## The animation Doc's locomotion AnimationPlayer is playing, or "".
 func _player_clip(node: NpcController) -> String:

@@ -185,9 +185,9 @@ func _on_auto_exposure_scale_changed(value: float) -> void:
 		camera_attributes.auto_exposure_scale = value
 
 func _camera_attributes() -> CameraAttributesPractical:
-	if _game == null or _game._world_environment == null:
+	if _game == null or _game.world_environment == null:
 		return null
-	return _game._world_environment.camera_attributes as CameraAttributesPractical
+	return _game.world_environment.camera_attributes as CameraAttributesPractical
 
 func _show_entry(index: int) -> void:
 	if index < 0 or index >= _entries.size():

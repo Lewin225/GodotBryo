@@ -142,7 +142,7 @@ func _project_from_inventory() -> void:
 		return
 	var projected := EsmActorEquipmentState.new()
 	for item in inventory.get_equipped_items():
-		var item_base := item.item_reference.base if item.item_reference != null else null
+		var item_base := item.base
 		if item_base is ArmorBase:
 			projected.armor_items.append(item)
 		elif item_base is WeaponBase:
@@ -160,7 +160,7 @@ func _connect_state_signals() -> void:
 		_add_resource(resources, item)
 		if item != null:
 			_add_resource(resources, item.item_reference)
-			_add_resource(resources, item.item_reference.base as ArmorBase if item.item_reference != null else null)
+			_add_resource(resources, item.base as ArmorBase)
 	_add_resource(resources, equipment_state.weapon_item)
 	for resource in resources:
 		if resource != null and not resource.changed.is_connected(_on_resource_changed):

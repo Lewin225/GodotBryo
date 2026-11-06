@@ -103,8 +103,8 @@ func _ready() -> void:
 	server.get_quest_instance(repcon).set_local("WarningActive", 0)
 
 	# A real terminal: V19OverseerWallTerminal's items follow its linked reference's open state.
-	var terminal_ref: EsmReference = esm_server.get_reference("authored:00143990")
-	var linked: EsmReference = esm_server.get_reference("authored:%08X" % terminal_ref.linked_reference_form_id)
+	var terminal_ref: EsmReference = esm_server.get_reference_by_form_id(0x00143990)
+	var linked: EsmReference = esm_server.get_reference_by_form_id(terminal_ref.linked_reference_form_id)
 	var terminal_base: TerminalBase = terminal_ref.base
 	var disengage: TerminalMenuItemCollection = terminal_base.menu_items[0]
 	var engage: TerminalMenuItemCollection = terminal_base.menu_items[1]

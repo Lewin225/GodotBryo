@@ -42,6 +42,14 @@ var _collections: Dictionary = {}
 ## Replay Delay.
 var _last_played: Dictionary = {}
 
+## Drops every actor's idle state, for loading a save into an open game; the
+## actors it names belong to the game being replaced.
+func clear_game_state() -> void:
+	_dialogue_idles.clear()
+	_ambient_next_msec.clear()
+	_collections.clear()
+	_last_played.clear()
+
 func _ready() -> void:
 	# DialogueServer is an autoload that may be added after ScriptServer.
 	_connect_dialogue.call_deferred()
@@ -114,7 +122,7 @@ func update_ambient(actor: ActorReference) -> void:
 ## Seconds between `actor`'s ambient idles: ambient_idle_seconds scaled by its
 ## energy level (NPC_ AIDT, from its AI Data template) over 50.
 func ambient_seconds(actor: ActorReference) -> float:
-	var base := ActorBase.template_source(actor.base, ActorBase.TEMPLATE_USE_AI_DATA)
+	var base := actor.template_source(ActorBase.TEMPLATE_USE_AI_DATA)
 	var energy := base.energy if base != null else 50
 	return maxf(DEFAULT_IDLE_WAIT_SECONDS, ambient_idle_seconds * energy / 50.0)
 

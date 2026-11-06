@@ -82,3 +82,151 @@ func bind_external_skins(root: Node3D, skeleton: Skeleton3D) -> bool:
 		# would compose it a second time.
 		mesh.transform = Transform3D.IDENTITY
 	return found_skin
+
+## Builds the Skeleton3D for a skeleton NIF that NifServer returned as plain
+## nodes because the file declares no bones (Mister Gutsy, eyebots): every NIF
+## node under `tree` becomes a bone with its local transform as the rest, and
+## what hangs from a node (collision, meshes) moves to a BoneAttachment3D on
+## its bone. The bones are what this actor's parts skin and attach to. Null
+## when `tree` has no NIF node.
+func build_skeleton_from_nodes(tree: Node3D) -> Skeleton3D:
+	var skeleton := Skeleton3D.new()
+	skeleton.name = "Skeleton3D"
+	var bone_nodes: Array[Node3D] = []
+	var top_nodes: Array[Node3D] = []
+	for child in tree.get_children():
+		if _is_nif_node(child):
+			top_nodes.append(child)
+			_add_node_bones(skeleton, child, -1, bone_nodes)
+	if skeleton.get_bone_count() == 0:
+		skeleton.free()
+		return null
+	tree.add_child(skeleton)
+	skeleton.reset_bone_poses()
+	var attachments := {}
+	for node in bone_nodes:
+		var bone := int(node.get_meta("actor_skeleton_bone"))
+		for child in node.get_children():
+			if bone_nodes.has(child):
+				continue
+			child.reparent(_attachment_for(skeleton, bone, attachments), false)
+	for node in top_nodes:
+		node.free()
+	return skeleton
+
+
+## Adds `node` and the NIF nodes under it as bones of `skeleton`, under
+## `parent_bone` (-1 for a root), recording each in `bone_nodes`.
+func _add_node_bones(skeleton: Skeleton3D, node: Node3D, parent_bone: int, bone_nodes: Array[Node3D]) -> void:
+	var bone := skeleton.add_bone(_unique_bone_name(skeleton, NifNames.escape(String(node.get_meta(NifNames.META_NIF_NAME)))))
+	skeleton.set_bone_rest(bone, node.transform)
+	if parent_bone != -1:
+		skeleton.set_bone_parent(bone, parent_bone)
+	node.set_meta("actor_skeleton_bone", bone)
+	bone_nodes.append(node)
+	for child in node.get_children():
+		if _is_nif_node(child):
+			_add_node_bones(skeleton, child, bone, bone_nodes)
+
+
+## Whether `node` is a plain NIF node (NiNode and its kin) rather than a mesh,
+## collision body or other typed node.
+func _is_nif_node(node: Node) -> bool:
+	return node.get_class() == "Node3D" and node.has_meta(NifNames.META_NIF_NAME) \
+			and String(node.get_meta("nif_block_type", "")).ends_with("Node")
+
+
+func _unique_bone_name(skeleton: Skeleton3D, wanted: String) -> String:
+	var name := wanted if not wanted.is_empty() else "Bone"
+	var suffix := 1
+	while skeleton.find_bone(name) != -1:
+		name = "%s#%d" % [wanted, suffix]
+		suffix += 1
+	return name
+
+
+func _attachment_for(skeleton: Skeleton3D, bone: int, cache: Dictionary) -> BoneAttachment3D:
+	if cache.has(bone):
+		return cache[bone]
+	var attachment := BoneAttachment3D.new()
+	attachment.bone_name = skeleton.get_bone_name(bone)
+	attachment.name = "%sAttachment" % attachment.bone_name
+	skeleton.add_child(attachment)
+	attachment.bone_idx = bone
+	cache[bone] = attachment
+	return attachment
+
+
+## Makes the skeleton NIF's node `nif_name`, which hangs from a bone through
+## a BoneAttachment3D, a bone of its own under that bone (a part's Prn can
+## name such a node: the sentry bot's Bip01 L Finger1, the robobrain's
+## DomeRoot). Returns its bone, or -1 when the tree has no such node under a
+## bone.
+func add_skeleton_node_bone(skeleton_tree: Node3D, skeleton: Skeleton3D, nif_name: String) -> int:
+	var existing := skeleton.find_bone(NifNames.escape(nif_name))
+	if existing != -1:
+		return existing
+	var node := _find_nif_node(skeleton_tree, nif_name)
+	if node == null:
+		return -1
+	var rest := node.transform
+	var parent := node.get_parent()
+	while parent != null and not parent is BoneAttachment3D:
+		if parent == skeleton_tree or not parent is Node3D:
+			return -1
+		rest = (parent as Node3D).transform * rest
+		parent = parent.get_parent()
+	if parent == null:
+		return -1
+	return _add_bone(skeleton, NifNames.escape(nif_name), (parent as BoneAttachment3D).bone_idx, rest)
+
+
+## Adds the bones a skinned part's binds name that `skeleton` lacks but the
+## part carries as nodes of its own (the brahmin lamp's pole, the Cazador's
+## wings): each under the bone of its nearest ancestor the skeleton has, at
+## its transform relative to that ancestor. Call before
+## compact_external_skin_part, which frees those nodes.
+func add_part_bones(part_tree: Node3D, skeleton: Skeleton3D) -> void:
+	for child in part_tree.find_children("*", "MeshInstance3D", true, false):
+		var mesh := child as MeshInstance3D
+		if mesh.skin == null:
+			continue
+		for bind_index in mesh.skin.get_bind_count():
+			var bone_name := String(mesh.skin.get_bind_name(bind_index))
+			if skeleton.find_bone(bone_name) != -1:
+				continue
+			var node := _find_nif_node(part_tree, NifNames.unescape(bone_name))
+			if node != null:
+				_ensure_part_bone(part_tree, skeleton, node)
+
+
+func _ensure_part_bone(part_tree: Node3D, skeleton: Skeleton3D, node: Node3D) -> int:
+	var bone_name := NifNames.escape(String(node.get_meta(NifNames.META_NIF_NAME)))
+	var existing := skeleton.find_bone(bone_name)
+	if existing != -1:
+		return existing
+	var parent := node.get_parent() as Node3D
+	if parent == null or parent == part_tree or not parent.has_meta(NifNames.META_NIF_NAME):
+		return -1
+	var parent_bone := _ensure_part_bone(part_tree, skeleton, parent)
+	if parent_bone == -1:
+		return -1
+	return _add_bone(skeleton, bone_name, parent_bone, node.transform)
+
+
+func _add_bone(skeleton: Skeleton3D, bone_name: String, parent_bone: int, rest: Transform3D) -> int:
+	var bone := skeleton.add_bone(bone_name)
+	skeleton.set_bone_parent(bone, parent_bone)
+	skeleton.set_bone_rest(bone, rest)
+	# A new bone's pose is not its rest until set (see reset_bone_poses).
+	skeleton.reset_bone_pose(bone)
+	return bone
+
+
+func _find_nif_node(root: Node, nif_name: String) -> Node3D:
+	if nif_name.is_empty():
+		return null
+	for node in root.find_children("*", "Node3D", true, false):
+		if String(node.get_meta(NifNames.META_NIF_NAME, "")) == nif_name:
+			return node
+	return null

@@ -32,11 +32,16 @@ var _generation := 0
 var _drop_into_cell := false
 ## Seconds the current transition has been running.
 var _transition_seconds := 0.0
+## Keeps the overlay up while set, though no transition runs: a save being
+## applied before the player's space starts loading. Set by Game.
+var holding_overlay := false
+## The line under "Loading" that says what is loading; built on first use.
+var _progress_label: Label = null
 
 @onready var _force_finish_button: Button = $ColorRect/ForceFinishButton
 
 func _process(delta: float) -> void:
-	if is_transitioning():
+	if is_transitioning() or holding_overlay:
 		$ColorRect.modulate.a = 1.0
 		_transition_seconds += delta
 	else:
@@ -48,10 +53,55 @@ func _process(delta: float) -> void:
 	_force_finish_button.visible = offer_force_finish
 
 func _ready() -> void:
+	# The overlay and its progress keep drawing while the game is paused for
+	# a load.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	ScriptServer.reference_teleported.connect(_on_reference_teleported)
 	cell_streamer.load_completed.connect(_on_load_completed)
+	cell_streamer.load_progress.connect(_on_cell_load_progress)
 	_force_finish_button.visible = false
 	_force_finish_button.pressed.connect(force_finish)
+
+## Unloads the world for loading a save into an open game: the interior and
+## the exterior streamed in are freed (their nodes hold the replaced game's
+## references), any transition in flight is dropped, and nothing counts as
+## loaded, so the loaded player's move loads their space. Terrain is kept: it
+## holds no game state.
+func unload_world() -> void:
+	_generation += 1
+	_settling = false
+	_drop_into_cell = false
+	cell_streamer.unload_current()
+	world_streamer.deactivate()
+	terrain_streamer.set_streaming_paused(true)
+	loaded_space_form_id = 0
+	_target_space_form_id = 0
+
+## Shows what is loading under the overlay's "Loading": `stage: detail`, with
+## `done / total` when `total` is above 0. An empty stage clears it.
+func show_progress(stage: String, detail: String, done: int, total: int) -> void:
+	if _progress_label == null:
+		_progress_label = Label.new()
+		_progress_label.name = "ProgressLabel"
+		_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_progress_label.set_anchors_preset(Control.PRESET_CENTER)
+		_progress_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_progress_label.position.y += 48.0
+		$ColorRect.add_child(_progress_label)
+	var text := stage
+	if not detail.is_empty():
+		text += ": " + detail
+	if total > 0:
+		text += "  (%d / %d)" % [done, total]
+	_progress_label.text = text
+
+func _on_cell_load_progress(fraction: float) -> void:
+	if is_transitioning():
+		show_progress("Loading cell", _space_name(_target_space_form_id), roundi(fraction * 100.0), 100)
+
+func _space_name(space_form_id: int) -> String:
+	var record := EsmServer.get_base(space_form_id) if space_form_id != 0 else null
+	return record.editor_id if record != null else ""
 
 ## Ends the current transition without waiting for its loads: the destination
 ## counts as loaded, the body is placed from the actor's reference and
@@ -107,8 +157,8 @@ func _on_reference_teleported(reference: EsmReference, _old_space_form_id: int, 
 		return
 	player.set_frozen(true)
 	if _is_interior(new_space_form_id):
-		terrain_streamer.set_paused(true)
-		world_streamer.set_paused(true)
+		terrain_streamer.set_streaming_paused(true)
+		world_streamer.set_streaming_paused(true)
 		cell_streamer.load_cell(new_space_form_id)
 	else:
 		_enter_worldspace(new_space_form_id, _generation)
@@ -151,7 +201,7 @@ func _enter_worldspace(worldspace_form_id: int, generation: int) -> void:
 	var settled := func() -> void: object_ready[0] = true
 	world_streamer.streaming_settled.connect(settled)
 	if same_worldspace:
-		terrain_streamer.set_paused(false)
+		terrain_streamer.set_streaming_paused(false)
 	else:
 		terrain_streamer.activate(worldspace_form_id)
 	world_streamer.activate(worldspace_form_id)

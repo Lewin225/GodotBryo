@@ -726,6 +726,14 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 
 static func _apply_extra_data(node: Node3D, nd: Dictionary) -> void:
 	var furniture_index := 0
+	# Every NiStringExtraData by its block name ("Prn", "UPB", ...): a node can
+	# carry several, which the per-type metadata below keeps only the last of.
+	var named_strings := {}
+	for x in nd["extra_data"]:
+		if String(x["block_type"]) == "NiStringExtraData" and x.has("string"):
+			named_strings[String(x["name"])] = String(x["string"])
+	if not named_strings.is_empty():
+		node.set_meta("nif_string_extra_data", named_strings)
 	for x in nd["extra_data"]:
 		# BSFurnitureMarker: one Marker3D per position, in file order. The
 		# orientation stays raw, as turning it into a rotation would pick a

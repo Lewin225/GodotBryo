@@ -2,7 +2,9 @@ extends MarginContainer
 
 ## The main scene. Says how much is missing, shows which FalloutNV.esm the
 ## servers loaded, lets the player pick another, and starts a new game in Doc
-## Mitchell's house (game.tscn).
+## Mitchell's house (game.tscn) or loads a save from the list (SaveServer's
+## backend; game.gd's load_save_id). A drop-down picks the save storage
+## from SaveServer's registered backends (SaveServer.set_storage()).
 ##
 ## The servers open the game data once, when they load, from
 ## GameDataConfig.resolve(). Choosing a different ESM saves its folder with
@@ -20,6 +22,9 @@ const GAME_SCENE := "res://game.tscn"
 @onready var _custom_start_button: Button = %CustomStartButton
 @onready var _startup_script_edit: CodeEdit = %StartupScriptEdit
 @onready var _quit_button: Button = %QuitButton
+@onready var _save_list: ItemList = %SaveList
+@onready var _load_button: Button = %LoadButton
+@onready var _storage_option: OptionButton = %StorageOption
 @onready var _esm_dialog: FileDialog = %EsmDialog
 
 var _loaded_data_dir := ""
@@ -31,6 +36,11 @@ func _ready() -> void:
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_custom_start_button.pressed.connect(_on_custom_start_pressed)
 	_quit_button.pressed.connect(get_tree().quit)
+	_load_button.pressed.connect(_on_load_pressed)
+	_save_list.item_activated.connect(func(_index: int) -> void: _on_load_pressed())
+	_load_button.disabled = true
+	_fill_storage_options()
+	_storage_option.item_selected.connect(_on_storage_selected)
 	_esm_dialog.file_selected.connect(_on_esm_selected)
 	_new_game_button.disabled = true
 	_custom_start_button.disabled = true
@@ -62,6 +72,50 @@ func _on_esm_ready() -> void:
 	_new_game_button.disabled = false
 	_custom_start_button.disabled = false
 	_startup_script_edit.editable = true
+	_list_saves()
+
+
+## Fills the save list, newest first: each save's name, the cell the player
+## is in, and when it was saved (UTC).
+func _list_saves() -> void:
+	_save_list.clear()
+	var saves := SaveServer.get_backend().list()
+	saves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a.get("saved_at", "")) > String(b.get("saved_at", "")))
+	for header: Dictionary in saves:
+		var text := "%s   %s   %s" % [header["save_id"], header.get("player_cell", ""), String(header.get("saved_at", "")).replace("T", " ")]
+		var index := _save_list.add_item(text)
+		_save_list.set_item_metadata(index, String(header["save_id"]))
+	_load_button.disabled = saves.is_empty()
+	if not saves.is_empty():
+		_save_list.select(0)
+
+
+## One entry per registered backend, named by its title, with the one in use
+## selected.
+func _fill_storage_options() -> void:
+	_storage_option.clear()
+	for backend_key: String in SaveServer.backends:
+		var backend: SaveBackend = SaveServer.backends[backend_key]
+		_storage_option.add_item(backend.title)
+		var index := _storage_option.item_count - 1
+		_storage_option.set_item_metadata(index, backend_key)
+		if backend_key == SaveServer.backend_name:
+			_storage_option.select(index)
+
+
+## Switches storage and lists the saves kept there.
+func _on_storage_selected(index: int) -> void:
+	SaveServer.set_storage(String(_storage_option.get_item_metadata(index)))
+	if EsmServer.is_ready():
+		_list_saves()
+
+
+func _on_load_pressed() -> void:
+	var selected := _save_list.get_selected_items()
+	if selected.is_empty():
+		return
+	GameScript.load_save_id = String(_save_list.get_item_metadata(selected[0]))
+	get_tree().change_scene_to_file(GAME_SCENE)
 
 
 func _on_esm_failed(message: String) -> void:

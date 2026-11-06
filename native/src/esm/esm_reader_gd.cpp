@@ -110,7 +110,7 @@ void EsmReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_cell_containing_ref", "refr_form_id"), &EsmReader::find_cell_containing_ref);
 	ClassDB::bind_method(D_METHOD("get_cell_references", "cell_form_id"), &EsmReader::get_cell_references);
 	ClassDB::bind_method(D_METHOD("get_cell_actors", "cell_form_id"), &EsmReader::get_cell_actors);
-	ClassDB::bind_method(D_METHOD("get_all_placed_npc_actors"), &EsmReader::get_all_placed_npc_actors);
+	ClassDB::bind_method(D_METHOD("get_all_placed_actors"), &EsmReader::get_all_placed_actors);
 	ClassDB::bind_method(D_METHOD("get_all_xtel_doors"), &EsmReader::get_all_xtel_doors);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_cell", "cell_form_id"), &EsmReader::get_persistent_refs_for_cell);
 	ClassDB::bind_method(D_METHOD("get_persistent_refs_for_worldspace", "wrld_form_id"), &EsmReader::get_persistent_refs_for_worldspace);
@@ -462,7 +462,7 @@ Array EsmReader::get_cell_actors(int64_t cell_form_id) const {
 	return out;
 }
 
-Array EsmReader::get_all_placed_npc_actors() const {
+Array EsmReader::get_all_placed_actors() const {
 	Array out;
 	if (!opened_) {
 		return out;
@@ -478,7 +478,7 @@ Array EsmReader::get_all_placed_npc_actors() const {
 				return;
 			}
 			for (const auto &placement : file_.get_cell_actors(cell)) {
-				if (placement.base_type != "NPC_") {
+				if (placement.base_type != "NPC_" && placement.base_type != "CREA") {
 					continue;
 				}
 				Dictionary entry = placement_to_dict(placement);

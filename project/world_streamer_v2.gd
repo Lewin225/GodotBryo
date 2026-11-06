@@ -85,6 +85,9 @@ var _persistent_population_jobs: Array[Dictionary] = []
 
 
 func _ready() -> void:
+	# Keeps loading while the game is paused (get_tree().paused); the roots it
+	# fills are PROCESS_MODE_PAUSABLE, so what it loads stays paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_resolve_esm_server()
 	if not NpcSimulationServer.seed_finished.is_connected(_on_npc_simulation_seeded):
 		NpcSimulationServer.seed_finished.connect(_on_npc_simulation_seeded)
@@ -92,7 +95,7 @@ func _ready() -> void:
 
 func activate(worldspace_form_id: int) -> void:
 	if _active_wrld_form_id == worldspace_form_id:
-		set_paused(false)
+		set_streaming_paused(false)
 		return
 	deactivate()
 	_active_wrld_form_id = worldspace_form_id
@@ -142,7 +145,9 @@ func is_active() -> bool:
 	return _active_wrld_form_id != -1
 
 
-func is_paused() -> bool:
+## Whether set_streaming_paused() holds this worldspace's streaming (an
+## interior visit). Not the game pause, which is get_tree().paused.
+func is_streaming_paused() -> bool:
 	return _paused
 
 
@@ -151,9 +156,11 @@ func is_pause_hiding() -> bool:
 	return _paused and _pause_hides
 
 
-## Pausing retains exterior state for an interior return, while suppressing
-## visibility and collision. EsmNode reapplies this state to late NIF trees.
-func set_paused(paused: bool, hide_when_paused := true) -> void:
+## Holds or resumes this worldspace's streaming, for an interior visit: the
+## resident tiles are kept for the return, and with `hide_when_paused` hidden
+## and their collision off. EsmNode reapplies this state to late NIF trees.
+## Not the game pause (get_tree().paused), during which streaming carries on.
+func set_streaming_paused(paused: bool, hide_when_paused := true) -> void:
 	if not is_active():
 		return
 	var next_pause_hides := hide_when_paused if paused else false
@@ -200,6 +207,8 @@ func _resolve_esm_server() -> bool:
 	esm_server = root.get_node_or_null("EsmServer") if root != null else null
 	if esm_server != null and not esm_server.reference_cell_changed.is_connected(_on_reference_cell_changed):
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
+	if esm_server != null and not esm_server.reference_enable_state_changed.is_connected(_on_reference_enable_state_changed):
+		esm_server.reference_enable_state_changed.connect(_on_reference_enable_state_changed)
 	return esm_server != null
 
 
@@ -341,6 +350,7 @@ func _start_tile(coord: Vector2i, detail: EsmNode.VisualDetail) -> void:
 	root.set_meta("cell_form_id", cell_form_id)
 	root.set_meta("grid_coord", coord)
 	root.set_meta("visual_detail", detail)
+	root.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(root)
 	_resident[coord] = root
 	_pending[coord] = true
@@ -388,6 +398,7 @@ func _on_npc_simulation_seeded() -> void:
 func _begin_persistent_root() -> void:
 	var root := Node3D.new()
 	root.name = "PersistentRoot"
+	root.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(root)
 	_persistent_root = root
 	var references: Array[EsmReference] = esm_server.get_persistent_references_for_worldspace(_active_wrld_form_id)
@@ -563,6 +574,10 @@ func _should_spawn(reference: EsmReference) -> bool:
 	# The player's body stands in for the possessed actor; it gets no node.
 	if reference == ScriptServer.player_reference or reference.marked_for_delete:
 		return false
+	# A disabled actor stays with NpcSimulationServer until it is enabled
+	# (_on_reference_enable_state_changed).
+	if reference is ActorReference and reference.is_disabled():
+		return false
 	if reference is NpcReference:
 		return (spawn_reference_types & SPAWN_ACHR) != 0
 	if reference is CreatureReference:
@@ -659,6 +674,24 @@ func _on_reference_arrived(reference: EsmReference) -> void:
 	var detail: EsmNode.VisualDetail = int(root.get_meta("visual_detail", EsmNode.VisualDetail.FULL)) as EsmNode.VisualDetail
 	if EsmNode.node_for(reference) == null and _should_physicalise(reference, detail):
 		_physicaliser.physicalise(reference, root, detail)
+
+## Physicalises resident tiles' actors that `changed` has just enabled, and
+## frees the nodes of those it has disabled; a freed actor's controller hands
+## it back to NpcSimulationServer as it leaves the tree.
+func _on_reference_enable_state_changed(changed: EsmReference) -> void:
+	if not is_active():
+		return
+	for root: Node3D in _resident.values():
+		for reference in root.get_meta("references", []):
+			if not reference is ActorReference or not reference.follows_enable_state_of(changed):
+				continue
+			var node := EsmNode.node_for(reference)
+			if reference.is_disabled():
+				if node != null and is_ancestor_of(node):
+					node.get_parent().remove_child(node)
+					node.queue_free()
+			else:
+				_on_reference_arrived(reference)
 
 ## Whether this streamer holds `reference` in a loaded CELL: a resident tile
 ## at full detail while not paused.

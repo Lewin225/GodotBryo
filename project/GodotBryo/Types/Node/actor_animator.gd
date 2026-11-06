@@ -25,6 +25,12 @@ extends Node
 ## `stop_idle` puts them back where they were before the first idle and reports
 ## how far that turns the torso, for the caller to turn the actor instead
 ## (standing up from a chair leaves the body facing away from it).
+##
+## A creature (`load_locomotion` with `creature`) takes its clips from the KFs
+## directly in its skeleton folder and in that folder's `locomotion/`, and
+## picks each by file name from creature_locomotion_candidates(): creature
+## folders have uneven sets (43 skeleton folders in FalloutNV.esm's CREA; 12
+## have no mtforward, 23 no mtleft or mtright, several only mtidle).
 
 signal load_completed(clip_count: int)
 signal load_failed(reason: String)
@@ -85,17 +91,23 @@ static var _locomotion_paths: Dictionary = {}
 ## no track names one of its bones}. Locomotion clips are not changed after
 ## binding; idle clips are, so they are bound per actor and not kept here.
 static var _bound_clips: Dictionary = {}
+## Whether this actor's clips are a creature's (chosen by file name).
+var _creature := false
+## Creature clips by KF file name without extension ("mtidle") -> clip name.
+var _creature_clips: Dictionary = {}
 
 ## Finds every locomotion KF below `search_paths` (the base's animation search
 ## paths), requests them from NifServer, binds each to `skeleton` and plays the
 ## idle. The AnimationPlayer exists as soon as this is called, so the actor has
 ## a playback endpoint while the KFs are still loading.
-func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Skeleton3D) -> void:
+func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Skeleton3D, creature := false) -> void:
 	cancel()
 	if search_paths.is_empty() or body == null or skeleton == null or not is_inside_tree():
 		return
 	_body = body
 	_skeleton = skeleton
+	_creature = creature
+	_creature_clips.clear()
 	_ensure_player()
 	var archive := get_tree().root.get_node_or_null("ArchiveServer")
 	if archive == null or not archive.is_ready():
@@ -103,7 +115,9 @@ func load_locomotion(search_paths: PackedStringArray, body: Node3D, skeleton: Sk
 		return
 	var paths := PackedStringArray()
 	for search_path in search_paths:
-		for path in _locomotion_kfs(archive, String(search_path) + LOCOMOTION_SUBDIRECTORY):
+		var found := _creature_locomotion_kfs(archive, String(search_path)) if creature \
+				else _locomotion_kfs(archive, String(search_path) + LOCOMOTION_SUBDIRECTORY)
+		for path in found:
 			if not paths.has(path):
 				paths.append(path)
 	paths.sort()
@@ -137,6 +151,25 @@ static func _locomotion_kfs(archive: Node, folder: String) -> PackedStringArray:
 		if canonical.ends_with(".kf"):
 			paths.append(canonical)
 	_locomotion_paths[folder] = paths
+	return paths
+
+## The KFs directly in a creature's skeleton `folder` and in its
+## `locomotion/` (not deeper, so not `locomotion/hurt/`, `idleanims/` or
+## `specialanims/`), canonical paths, listed once per folder.
+static func _creature_locomotion_kfs(archive: Node, folder: String) -> PackedStringArray:
+	var key := "creature:" + folder
+	if _locomotion_paths.has(key):
+		return _locomotion_paths[key]
+	var canonical_folder := folder.replace("\\", "/").to_lower()
+	var paths := PackedStringArray()
+	for path in archive.list_files_with_prefix(folder):
+		var canonical := String(path).replace("\\", "/").to_lower()
+		if not canonical.ends_with(".kf"):
+			continue
+		var relative := canonical.trim_prefix(canonical_folder)
+		if not relative.contains("/") or (relative.begins_with(LOCOMOTION_SUBDIRECTORY) and relative.count("/") == 1):
+			paths.append(canonical)
+	_locomotion_paths[key] = paths
 	return paths
 
 ## Plays `idle`'s KF in place of locomotion, its root tracks kept; emits
@@ -205,6 +238,42 @@ func _restore_locomotion_root_pose() -> void:
 ## The idle play_idle is playing, or null.
 func get_idle() -> IdleBase:
 	return _idle
+
+## The face morph weights the playing clip's KF sets at its current position,
+## by morph name (NifAnimationBuilder's `nif_face_tracks`); empty when the clip
+## animates none.
+func face_weights() -> Dictionary:
+	var weights := {}
+	if _player == null or not is_instance_valid(_player) or not _player.is_playing():
+		return weights
+	if not _player.has_animation(_player.current_animation):
+		return weights
+	var animation := _player.get_animation(_player.current_animation)
+	var tracks: Dictionary = animation.get_meta("nif_face_tracks", {})
+	var time := _player.current_animation_position
+	for morph_name: String in tracks:
+		weights[morph_name] = _sample_face_track(tracks[morph_name], time)
+	return weights
+
+## A face track's value at `time`: linear between keys, held before the first
+## and after the last.
+static func _sample_face_track(pairs: PackedFloat32Array, time: float) -> float:
+	@warning_ignore("integer_division")
+	var key_count := pairs.size() / 2
+	if key_count == 0:
+		return 0.0
+	if time <= pairs[0]:
+		return pairs[1]
+	for key in range(1, key_count):
+		var key_time := pairs[key * 2]
+		if time > key_time:
+			continue
+		var previous_time := pairs[key * 2 - 2]
+		var weight := 0.0
+		if key_time > previous_time:
+			weight = (time - previous_time) / (key_time - previous_time)
+		return lerpf(pairs[key * 2 - 1], pairs[key * 2 + 1], weight)
+	return pairs[key_count * 2 - 1]
 
 ## Whether the locomotion clips have loaded, so an idle can play.
 func is_loaded() -> bool:
@@ -337,11 +406,15 @@ func _physics_process(_delta: float) -> void:
 			_repeat_loop_section(_player.current_animation_position - _loop_end)
 		return
 	var actor := get_parent() as EsmActorNode
-	var female := actor != null and actor.is_female()
-	var clip := locomotion_clip(actor.motion if actor != null else null, female)
-	var clip_name := _clip_name(_root_path + clip, 0)
-	if not _player.has_animation(clip_name):
-		clip_name = _clip_name(_root_path + IDLE_CLIP_PATH, 0)
+	var clip_name := ""
+	if _creature:
+		clip_name = _creature_clip(actor.motion if actor != null else null)
+	else:
+		var female := actor != null and actor.is_female()
+		var clip := locomotion_clip(actor.motion if actor != null else null, female)
+		clip_name = _clip_name(_root_path + clip, 0)
+		if not _player.has_animation(clip_name):
+			clip_name = _clip_name(_root_path + IDLE_CLIP_PATH, 0)
 	if _player.current_animation != clip_name and _player.has_animation(clip_name):
 		_player.play(clip_name, BLEND_SECONDS)
 
@@ -369,6 +442,39 @@ static func locomotion_clip(motion: ActorMotion, female: bool) -> String:
 	var pace := "fast" if motion.running else ""
 	var body := "female/" if female else "male/"
 	return LOCOMOTION_SUBDIRECTORY + body + "mt%s%s.kf" % [pace, direction]
+
+## The KF file names, most fitting first, a creature plays for `motion`: the
+## clip for its direction and pace, then the nearest it may lack; a creature
+## with none of them idles. mtbackrward is the dog's misspelt backward clip.
+static func creature_locomotion_candidates(motion: ActorMotion) -> PackedStringArray:
+	if motion == null:
+		return PackedStringArray(["mtidle"])
+	if motion.get_planar_speed() < STANDING_SPEED:
+		if motion.turn_rate > TURNING_RATE:
+			return PackedStringArray(["mtturnleft", "mtidle"])
+		if motion.turn_rate < -TURNING_RATE:
+			return PackedStringArray(["mtturnright", "mtidle"])
+		return PackedStringArray(["mtidle"])
+	var forward: float = -motion.velocity.z
+	var right: float = motion.velocity.x
+	var ahead := PackedStringArray(["mtfastforward", "mtforward"]) if motion.running \
+			else PackedStringArray(["mtforward", "mtfastforward"])
+	var candidates := PackedStringArray()
+	if absf(forward) >= absf(right):
+		if forward < 0.0:
+			candidates.append_array(["mtbackward", "mtbackrward"])
+	else:
+		candidates.append("mtright" if right > 0.0 else "mtleft")
+	candidates.append_array(ahead)
+	candidates.append("mtidle")
+	return candidates
+
+## The first of creature_locomotion_candidates(motion) this creature has.
+func _creature_clip(motion: ActorMotion) -> String:
+	for candidate in creature_locomotion_candidates(motion):
+		if _creature_clips.has(candidate):
+			return _creature_clips[candidate]
+	return ""
 
 func cancel() -> void:
 	_generation += 1
@@ -440,7 +546,7 @@ func _finish_if_ready() -> void:
 	if library == null:
 		load_failed.emit("locomotion animation player was unavailable")
 		return
-	var idle_clip := _clip_name(_root_path + IDLE_CLIP_PATH, 0)
+	var idle_clip := _creature_clip(null) if _creature else _clip_name(_root_path + IDLE_CLIP_PATH, 0)
 	if library.has_animation(idle_clip):
 		player.play(idle_clip)
 	else:
@@ -474,6 +580,9 @@ func _bind_library(library: AnimationLibrary, source_path: String, raw_library: 
 			if not animation.has_meta("nif_source_path"):
 				animation.set_meta("nif_source_path", source_path)
 			library.add_animation(clip_name, animation)
+			var file_name := source_path.get_file().get_basename()
+			if _creature and sequence_index == 0 and not _creature_clips.has(file_name):
+				_creature_clips[file_name] = clip_name
 		sequence_index += 1
 
 func _clip_name(source_path: String, sequence_index: int) -> String:

@@ -345,7 +345,7 @@ func _register_defaults() -> void:
 		if inventory == null or item == null:
 			return 0
 		for owned in inventory.get_equipped_items():
-			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+			if owned.base_form_id == item.form_id:
 				inventory.unequip_item(owned)
 		return 1)
 	register("GetEquipped", func(a: Array, ctx: ScriptExecutionContext):
@@ -354,7 +354,7 @@ func _register_defaults() -> void:
 		if inventory == null or item == null:
 			return 0
 		for owned in inventory.get_equipped_items():
-			if owned.item_reference != null and owned.item_reference.base_form_id == item.form_id:
+			if owned.base_form_id == item.form_id:
 				return 1
 		return 0)
 
@@ -915,7 +915,7 @@ static func _inventory_of(ref: EsmReference) -> Inventory:
 static func _traits_of(reference: EsmReference) -> NpcBase:
 	if reference == null:
 		return null
-	return ActorBase.template_source(reference.base, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	return ActorReference.template_source_of(reference, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
 
 static func _base_arg(args: Array, index: int) -> EsmBase:
 	if index >= args.size():
@@ -930,7 +930,7 @@ static func _base_arg(args: Array, index: int) -> EsmBase:
 static func _actor_part(actor: EsmReference, template_flag: int) -> ActorBase:
 	if actor == null or not actor.base is ActorBase:
 		return null
-	return ActorBase.template_source(actor.base, template_flag)
+	return ActorReference.template_source_of(actor, template_flag)
 
 ## `actor`'s authored rank in `faction` (FactionSubrecord.rank), or -1 when it
 ## is not a member. A negative authored rank also reads as not a member.
@@ -950,7 +950,7 @@ static func _dialogue_server() -> Node:
 ## The first inventory item of a base, or null.
 static func _first_item(inventory: Inventory, base_form_id: int) -> InventoryItem:
 	for item in inventory.get_items():
-		if item.item_reference != null and item.item_reference.base_form_id == base_form_id:
+		if item.base_form_id == base_form_id:
 			return item
 	return null
 
@@ -960,7 +960,7 @@ static func _remove_items(inventory: Inventory, base_form_id: int, count: int) -
 	for item in inventory.get_items():
 		if removed >= count:
 			break
-		if item.item_reference == null or item.item_reference.base_form_id != base_form_id:
+		if item.base_form_id != base_form_id:
 			continue
 		var take := mini(item.count, count - removed)
 		if inventory.remove_inventory_item(item, take):

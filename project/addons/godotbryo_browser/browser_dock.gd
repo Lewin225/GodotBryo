@@ -230,8 +230,8 @@ func _preview_selected_list() -> void:
 	var level := int(preview_level.value) if preview_level != null else 1
 	for run in runs:
 		for item in resolver.resolve(base as LeveledItemBase, level, {"seed": base.form_id + run}):
-			if item == null or item.item_reference == null or item.item_reference.base == null: continue
-			var item_base: EsmBase = item.item_reference.base
+			if item == null or item.base == null: continue
+			var item_base: EsmBase = item.base
 			var row := {"record_type": item_base.record_type, "form_id": item_base.form_id, "full_name": item_base.full_name, "editor_id": item_base.editor_id}
 			row["display_name"] = item_base.full_name if not item_base.full_name.is_empty() else item_base.editor_id
 			var card := CardScript.new()
@@ -293,7 +293,7 @@ func _lvlo_item_form_id(data: PackedByteArray) -> int:
 	return int(data.decode_u32(2)) if data.size() >= 8 else 0
 
 func _activate_reference_card(_card, reference_id: int) -> void:
-	var reference = server.get_reference("authored:%08X" % reference_id) if server != null else null
+	var reference = server.get_reference_by_form_id(reference_id) if server != null else null
 	if reference != null: EditorInterface.inspect_object(reference)
 
 func _open_selected_reference_scene() -> void:
@@ -301,7 +301,7 @@ func _open_selected_reference_scene() -> void:
 	var reference: EsmReference
 	if selected_card.has_method("get_reference_id"):
 		var reference_id := int(selected_card.get_reference_id())
-		reference = server.get_reference("authored:%08X" % reference_id)
+		reference = server.get_reference_by_form_id(reference_id)
 	else:
 		var base_id := int(selected_card.row.get("form_id", 0))
 		reference = server.create_reference_for_base(base_id)

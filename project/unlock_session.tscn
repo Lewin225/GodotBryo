@@ -1,12 +1,12 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://fg3tv0n8tl0w"]
 
-[ext_resource type="Script" path="res://unlock_session.gd" id="1"]
+[ext_resource type="Script" uid="uid://dy7pug86pw6e4" path="res://unlock_session.gd" id="1"]
 
-[node name="UnlockSession" type="CanvasLayer"]
+[node name="UnlockSession" type="CanvasLayer" unique_id=1158988715]
 layer = 10
 script = ExtResource("1")
 
-[node name="Root" type="Control" parent="."]
+[node name="Root" type="Control" parent="." unique_id=470981057]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -14,7 +14,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Panel" type="PanelContainer" parent="Root"]
+[node name="Panel" type="PanelContainer" parent="Root" unique_id=1477871697]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -28,31 +28,36 @@ offset_bottom = 80.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Margin" type="MarginContainer" parent="Root/Panel"]
+[node name="Margin" type="MarginContainer" parent="Root/Panel" unique_id=1008972617]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 16
 
-[node name="VBox" type="VBoxContainer" parent="Root/Panel/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Root/Panel/Margin" unique_id=1896322437]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Title" type="Label" parent="Root/Panel/Margin/VBox"]
+[node name="Title" type="Label" parent="Root/Panel/Margin/VBox" unique_id=1192162655]
 layout_mode = 2
-text = "Lockpick"
+text = "Lockpick Placeholder"
 horizontal_alignment = 1
 
-[node name="Detail" type="Label" parent="Root/Panel/Margin/VBox"]
+[node name="Detail" type="Label" parent="Root/Panel/Margin/VBox" unique_id=894477080]
 layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.5749679, 0.82064354, 1)
 text = "Average"
 horizontal_alignment = 1
 
-[node name="Slider" type="HSlider" parent="Root/Panel/Margin/VBox"]
+[node name="info" type="Label" parent="Root/Panel/Margin/VBox" unique_id=1541930861]
 layout_mode = 2
-max_value = 100.0
+text = ">>>> Slide to unlock >>>"
+horizontal_alignment = 1
 
-[node name="Cancel" type="Button" parent="Root/Panel/Margin/VBox"]
+[node name="Slider" type="HSlider" parent="Root/Panel/Margin/VBox" unique_id=433663412]
+layout_mode = 2
+
+[node name="Cancel" type="Button" parent="Root/Panel/Margin/VBox" unique_id=827986535]
 layout_mode = 2
 text = "Cancel"

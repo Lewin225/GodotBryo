@@ -48,11 +48,11 @@ func _ready() -> void:
 	# An actor walking out of an interior while the player is still inside:
 	# the streamer is paused when she arrives, and shows her on resuming.
 	var sunny := EsmServer.find_reference_by_editor_id("SunnyRef") as ActorReference
-	streamer.set_paused(true)
+	streamer.set_streaming_paused(true)
 	sunny.set_location(WASTELAND_NV, pete.position + Vector3(2.0, 0.0, 0.0))
 	for frame in 10:
 		await get_tree().process_frame
-	streamer.set_paused(false)
+	streamer.set_streaming_paused(false)
 	await _wait_until(func() -> bool: return EsmNode.node_for(sunny) != null)
 	var sunny_node := EsmNode.node_for(sunny)
 	check(sunny_node != null and sunny_node.get_parent() == streamer._tile_root_for(sunny), "Sunny, arriving from her interior while the streamer is paused, has a node under her tile once it resumes (%s)" % (sunny_node.get_parent().name if sunny_node != null else "none"))

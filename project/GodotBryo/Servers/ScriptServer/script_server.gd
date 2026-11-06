@@ -101,6 +101,9 @@ var _variable_names: Dictionary = {} # SCPT FormID -> {SLSD index: SCVR name}
 const _DECLARATION_TYPES := ["int", "short", "long", "float", "ref"]
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# Runs after default-priority nodes' _process each frame. Physics bodies
 	# sync their references in _physics_process, which runs earlier still, so
 	# queued moves are applied after that frame's body sync.
@@ -119,10 +122,58 @@ func _ready() -> void:
 		else:
 			esm_server.esm_ready.connect(func(): function_registry.esm = esm_server.reader, CONNECT_ONE_SHOT)
 
+## The script state as plain values for a save: every global the game has
+## touched (by editor ID), the script clock and the disabled player controls.
+## Object scripts' locals are saved with their references, quest scripts'
+## with QuestServer.
+func save_state() -> Dictionary:
+	return {
+		"globals": globals.values.duplicate(),
+		"clock": clock,
+		"disabled_player_controls": disabled_player_controls,
+	}
+
+## Drops all script state that belongs to the running game, for loading a
+## save into an open game: the loaded and run references, queued moves, open
+## menus, the message box's owner, the disabled controls, the globals and the
+## clock, and ActorIdles' and FurnitureSeating's per-actor state. Compiled
+## scripts are kept.
+func clear_game_state() -> void:
+	_loaded.clear()
+	_loaded_game_mode.clear()
+	_instances.clear()
+	_pending_moves.clear()
+	_open_menus.clear()
+	_message_owner = null
+	_last_button_pressed = -1
+	player_reference = null
+	globals = GlobalVariables.new()
+	clock = 0.0
+	_set_disabled_player_controls(0)
+	actor_idles.clear_game_state()
+	furniture_seating.clear_game_state()
+
+## Replaces the script state with a save_state() result. Globals go through
+## set_global(), which reads each one's type from the ESM, so short and long
+## globals are ints again. A global the ESM lacks is dropped and listed in
+## `report`.
+func load_state(state: Dictionary, report: Array = []) -> void:
+	globals = GlobalVariables.new()
+	var saved_globals: Dictionary = state.get("globals", {})
+	for name: String in saved_globals:
+		if not globals.set_global(name, saved_globals[name]):
+			report.append("dropped global %s: not in the ESM" % name)
+	clock = float(state.get("clock", 0.0))
+	_set_disabled_player_controls(int(state.get("disabled_player_controls", 0)))
+
 ## Each frame: advances the script clock, runs loaded references' GameMode
 ## blocks, or in menu mode their MenuMode blocks for the open menu, then
 ## applies queued moves.
 func _process(delta: float) -> void:
+	# While the game is paused no script runs, the clock stands and queued
+	# moves wait.
+	if get_tree().paused:
+		return
 	clock += delta
 	for reference: EsmReference in _loaded_game_mode.keys():
 		if is_menu_mode():
@@ -334,6 +385,10 @@ func move_reference(reference: EsmReference, space_form_id: int, position: Vecto
 	if reference == null:
 		return
 	_pending_moves[reference] = {"space_form_id": space_form_id, "position": position, "rotation": rotation}
+
+## Whether any move is queued; SaveServer refuses to save while one is.
+func has_pending_moves() -> bool:
+	return not _pending_moves.is_empty()
 
 ## The queued move for `reference`, or an empty Dictionary.
 func get_pending_move(reference: EsmReference) -> Dictionary:

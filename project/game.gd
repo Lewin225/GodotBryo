@@ -1,8 +1,11 @@
 extends Node3D
 
-## The runtime entry point. Wires the scene's servers and nodes, gives the
-## player controller the player's reference to possess, and starts the game by
-## running the startup script through ScriptServer.
+## The runtime entry point. Wires the scene's servers and nodes, then starts
+## the game one of two ways: a new game gives the player controller the
+## player's reference and runs the startup script (`startup_script`, else
+## DEFAULT_STARTUP_SCRIPT) through ScriptServer, then moves the player to
+## `start_location` when set; a loaded game (`load_save_id`) applies the save
+## through SaveServer first and places the player where the save puts them.
 ##
 ## Loading follows the possessed reference (TransitionCoordinator). Game reacts
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
@@ -18,6 +21,13 @@ const GameDataConfigScript := preload("res://game_data_config.gd")
 
 ## When non-empty, runs in ScriptServer on startup in place of DEFAULT_STARTUP_SCRIPT.
 static var startup_script := ""
+## The save the next game loads instead of starting new; cleared when read.
+## Set by the launcher's Load.
+static var load_save_id := ""
+## Where the next new game puts the player instead of where the startup script
+## does: {space_form_id, position, rotation}, Gamebryo axes. Cleared when read;
+## for tests that start outside.
+static var start_location: Dictionary = {}
 
 
 ## Scene wiring. Exported rather than looked up by $Path in _ready(): a node
@@ -72,6 +82,9 @@ func _enter_tree() -> void:
 	terrain_streamer.configure(_shared_esm)
 
 func _ready() -> void:
+	var issue_reporter := IssueReporter.new()
+	issue_reporter.name = "IssueReporter"
+	add_child(issue_reporter)
 	# XCLL owns a separate directional source for interiors.  It is created
 	# here rather than authored into game.tscn so the scene's exterior Sun
 	# remains its own independently-tunable resource.
@@ -89,10 +102,6 @@ func _ready() -> void:
 	if typed_esm == null:
 		push_error("Game: EsmServer did not become ready")
 		return
-	# Runtime interiors and exteriors share EsmServer's typed reference graph.
-	# Terrain keeps its private native reader because that independent pipeline
-	# still consumes raw LAND data rather than typed EsmReference resources.
-	player.possess(EsmServer.get_player_reference())
 	ScriptServer.function_registry.place_at_me_handler = debug_place_at_me
 	ScriptServer.function_registry.center_on_cell_handler = transition_coordinator.center_on_cell
 	ScriptServer.function_registry.game_time_manager = game_time_manager
@@ -102,25 +111,110 @@ func _ready() -> void:
 	game_time_manager.configure(typed_esm)
 	weather_manager.configure(typed_esm)
 	celestial_controller.configure(sun, world_environment, EXTERIOR_ENVIRONMENT, weather_manager)
+	SaveServer.extra_sections["game_time"] = game_time_manager
+	SaveServer.extra_sections["weather"] = weather_manager
+	SaveServer.save_refusals = [_save_refusal]
 
+	var save_id := load_save_id
+	load_save_id = ""
+	if not save_id.is_empty():
+		_load_game(save_id)
+		return
+	# Runtime interiors and exteriors share EsmServer's typed reference graph.
+	# Terrain keeps its private native reader because that independent pipeline
+	# still consumes raw LAND data rather than typed EsmReference resources.
+	SaveServer.start_playthrough()
+	player.possess(EsmServer.get_player_reference())
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
 	var script := startup_script if not startup_script.is_empty() else DEFAULT_STARTUP_SCRIPT
 	startup_script = ""
 	ScriptServer.run_result_script(script, player.possessed)
+	var location := start_location
+	start_location = {}
+	if not location.is_empty():
+		# Replaces any move the startup script queued for the player.
+		ScriptServer.move_reference(player.possessed, int(location["space_form_id"]), location["position"], location.get("rotation", Vector3.ZERO))
+		return
 	# MoveTo and COC only queue a move, hence the pending-move check. This
 	# relies on the player reference starting in no space (space 0), as
-	# EsmServer creates it; a loaded save would need another test.
+	# EsmServer creates it for a new game.
 	if player.possessed == null or (player.possessed.current_space_form_id == 0 and ScriptServer.get_pending_move(player.possessed).is_empty()):
 		push_error("game.gd: startup script did not place the player in a cell")
 		var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
 		if start is Dictionary:
 			push_error("game.gd: " + String(start["error"]))
 
+## Loads save `save_id` in the load order of Plans/Completed Plans/Saving/save_load.md: the
+## save's sections applied (EsmServer's dirty bases, runtime and saved
+## references, then quests, scripts, dialogue, time and weather), the
+## player's reference possessed, the simulation seeded, and only then the
+## player moved to the header's space (its saved position), so streaming does
+## not physicalise actors while seeding builds them. A save that cannot load falls back to a new
+## game's start cell, with SaveServer's report pushed as an error.
+## Whether a save is being loaded; quick_load() waits for it to finish.
+var _loading := false
+
+func _load_game(save_id: String) -> void:
+	_loading = true
+	# The game stays paused until the player is placed: no script, package,
+	# body or streamed node acts on a half-loaded game. The servers and the
+	# streamers run while paused (Servers/readme.md, Pausing).
+	get_tree().paused = true
+	# Frozen too: after the unpause a physics frame can run before the move
+	# is applied, and a free body would write its own position over the saved
+	# one. The transition releases it once placed.
+	player.set_frozen(true)
+	transition_coordinator.holding_overlay = true
+	SaveServer.progress.connect(transition_coordinator.show_progress)
+	var state: Dictionary = SaveServer.read_save(save_id)
+	if state.is_empty():
+		push_error("Game: save %s did not load: %s" % [save_id, "; ".join(SaveServer.report)])
+		_end_load_progress()
+		transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		return
+	await SaveServer.apply_state(state)
+	for line in SaveServer.report:
+		push_warning("Game: loading %s: %s" % [save_id, line])
+	var player_reference := EsmServer.get_player_reference()
+	player.possess(player_reference)
+	# Seeding builds every actor; it finishes before the player's space starts
+	# loading, so streaming does not physicalise actors while they are built.
+	var forward_seeding := func(status: String, completed: int, total: int) -> void:
+		transition_coordinator.show_progress("Seeding actors", status, completed, total)
+	NpcSimulationServer.seed_progress.connect(forward_seeding)
+	await NpcSimulationServer.seed()
+	NpcSimulationServer.seed_progress.disconnect(forward_seeding)
+	var header: Dictionary = state["header"]
+	var space := EsmServer.form_id_for_instance_id(String(header.get("player_space", "")))
+	if space == 0:
+		push_error("Game: save %s does not say where the player is" % save_id)
+		_end_load_progress()
+		transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		return
+	# The reference already holds the saved position; the move makes the
+	# transition load its space around it.
+	ScriptServer.move_reference(player_reference, space, player_reference.position, player_reference.rotation)
+	# The game starts with the move, as a new game does.
+	_end_load_progress()
+
+## Unpauses the game and hands the overlay back to transitions once a save is
+## applied.
+func _end_load_progress() -> void:
+	_loading = false
+	SaveServer.progress.disconnect(transition_coordinator.show_progress)
+	transition_coordinator.holding_overlay = false
+	get_tree().paused = false
+
+## SaveServer's check that refuses a save while the possessed actor's space
+## is loading.
+func _save_refusal() -> String:
+	return "the world is loading" if transition_coordinator.is_transitioning() else ""
+
 func _on_entered_interior(cell_form_id: int) -> void:
 	_set_exterior_environment(false)
 	celestial_controller.set_exterior(false)
-	weather_manager.set_paused(true)
+	weather_manager.set_weather_paused(true)
 	_apply_cell_lighting(cell_form_id)
 	_update_cell_hud(cell_form_id)
 
@@ -132,7 +226,7 @@ func _on_entered_exterior(worldspace_form_id: int) -> void:
 ## Keeps the HUD's cell label current while streaming exteriors and advances
 ## the clock-driven sky and weather.
 func _process(_delta: float) -> void:
-	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_paused():
+	if world_streamer != null and world_streamer.is_active() and not world_streamer.is_streaming_paused():
 		var current_cell_form_id := world_streamer.get_current_cell_form_id()
 		if current_cell_form_id != 0 and current_cell_form_id != _hud_cell_form_id:
 			_update_cell_hud(current_cell_form_id) # refreshed continuously while streaming -- the "current cell" changes as the player walks, unlike CellStreamerV2's single-load case
@@ -279,4 +373,53 @@ func _update_cell_hud(cell_form_id: int) -> void:
 	var grid: Dictionary = esm.get_exterior_cell_grid(cell_form_id)
 	if not grid.is_empty():
 		label += " (%d, %d)" % [int(grid["x"]), int(grid["y"])]
-	cell_label.text = "cell: " + label
+	cell_label.text = "cell: " + label + "\nzone: " + _zone_hud_text(cell_form_id)
+
+## The cell's XEZN encounter zone for the HUD: its EditorID, resolved level
+## and minimum level, or "none".
+func _zone_hud_text(cell_form_id: int) -> String:
+	var zone: EncounterZoneBase = EsmServer.encounter_zone_for_cell(cell_form_id)
+	if zone == null:
+		return "none"
+	var level := str(zone.resolved_level) if zone.resolved_level > 0 else "unset"
+	return "%s level %s, min %d" % [zone.editor_id, level, zone.minimum_level]
+
+## The save F5 writes.
+const QUICK_SAVE_ID := "quicksave"
+
+## F4 shows or hides every actor's ActorDebugLabel; F5 quick saves; F6 quick
+## loads.
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	if key.keycode == KEY_F4:
+		ActorDebugLabel.set_shown(not ActorDebugLabel.shown)
+	elif key.keycode == KEY_F5:
+		_quick_save()
+	elif key.keycode == KEY_F6:
+		quick_load()
+
+## Loads QUICK_SAVE_ID into the running game: the streamed world unloaded and
+## every server's game state cleared, then the same load as from the launcher.
+## Caches (NIF trees, textures, terrain, the navmesh) are kept. Does nothing
+## while a load or transition runs, or when there is no quick save.
+func quick_load() -> void:
+	if _loading or transition_coordinator.is_transitioning():
+		return
+	if not SaveServer.has_save(QUICK_SAVE_ID):
+		if ScriptServer.message_box != null:
+			ScriptServer.message_box.display_message({"text": "No quick save.", "is_message_box": false, "display_time": 2.0})
+		return
+	get_tree().paused = true
+	player.possess(null)
+	transition_coordinator.unload_world()
+	await _load_game(QUICK_SAVE_ID)
+
+## Saves to QUICK_SAVE_ID and says so, or why not, as a notification.
+func _quick_save() -> void:
+	var text := "Quick saved."
+	if SaveServer.save(QUICK_SAVE_ID) != OK:
+		text = "Quick save failed: " + "; ".join(SaveServer.report)
+	if ScriptServer.message_box != null:
+		ScriptServer.message_box.display_message({"text": text, "is_message_box": false, "display_time": 2.0})

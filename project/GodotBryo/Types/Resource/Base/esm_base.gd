@@ -46,6 +46,16 @@ var raw_subrecords: Array[Dictionary] = []
 ## unexpected subrecord sizes in LVLI, PACK, BPTD). Set; not read by anything.
 var diagnostics: PackedStringArray = []
 var _rehydrating := false
+## Not an ESM field: the fields changed at runtime, by name. Set by
+## mark_changed(); the save writes these fields of a dirty base and nothing
+## else, since a base's ESM fields are not storage properties.
+@export_storage var changed_fields: PackedStringArray = []
+
+## Records that `field` changed at runtime, so the base is saved with it.
+func mark_changed(field: String) -> void:
+	if not changed_fields.has(field):
+		changed_fields.append(field)
+	mark_dirty()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_POSTINITIALIZE:

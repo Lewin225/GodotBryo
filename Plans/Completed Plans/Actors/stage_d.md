@@ -212,7 +212,7 @@ Moved to `Plans/Navigation/door_obstacle_cut.md`.
 
 ## Open
 
-- **Templated and leveled appearance.** Moved to `Plans/Actors/templated_npcs.md`.
+- **Templated and leveled appearance.** Moved to `Plans/Completed Plans/Actors/templated_npcs.md`.
 
 - **Router seams (NavmeshReader / NpcSimulationServer).** Its A* crosses between records only by
   the derived NVEX pairs (`build_cross_record_links`), so it likely cannot route across the 538

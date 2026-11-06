@@ -9,9 +9,20 @@ extends Resource
 signal inventory_changed
 
 @export_custom(PROPERTY_HINT_ARRAY_TYPE, "InventoryItem", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE) var items: Array[InventoryItem] = []
-var _next_instance_id: int = 1
+## Not an ESM field: whether the inventory changed after EsmServer built it
+## from its owner's CNTO. Set on every inventory_changed; cleared by EsmServer
+## once it has filled the inventory. A save writes an inventory only when set:
+## an unchanged one is built again from the ESM on load, the same, since its
+## leveled lists are seeded from its owner.
+@export_storage var changed_since_built := false
 var _batch_depth: int = 0
 var _batch_dirty: bool = false
+
+func _init() -> void:
+	inventory_changed.connect(_on_inventory_changed)
+
+func _on_inventory_changed() -> void:
+	changed_since_built = true
 
 func add_item(item_or_form_id: Variant, payload: Variant = null, count: int = 1) -> bool:
 	var item: InventoryItem
@@ -21,17 +32,14 @@ func add_item(item_or_form_id: Variant, payload: Variant = null, count: int = 1)
 		var form_id := int(item_or_form_id)
 		if form_id == 0 or count <= 0:
 			return false
-		item = InventoryItem.new()
-		item.item_reference = _make_compatibility_reference(form_id)
-		item.count = count
+		item = InventoryItem.make_stack(_get_base(form_id), count)
+		item.base_form_id = form_id
 		item.compatibility_data = payload.duplicate() if payload is Dictionary else {}
 	return add_inventory_item(item)
 
 func add_inventory_item(item: InventoryItem) -> bool:
-	if item == null or item.item_reference == null or item.count <= 0:
+	if item == null or item.base_form_id == 0 or item.count <= 0:
 		return false
-	if item.instance_id.is_empty():
-		item.instance_id = _new_instance_id(item.item_reference.base_form_id)
 	items.append(item)
 	_connect_item(item)
 	_emit_changed()
@@ -44,7 +52,7 @@ func remove_item(item_or_form_id: Variant, count: int = 1) -> bool:
 		return remove_inventory_item(item_or_form_id as InventoryItem, count)
 	var form_id := int(item_or_form_id)
 	for item in items:
-		if item != null and item.item_reference != null and item.item_reference.base_form_id == form_id:
+		if item != null and item.base_form_id == form_id:
 			return remove_inventory_item(item, count)
 	return false
 
@@ -64,15 +72,9 @@ func has_item(form_id: int, count: int = 1) -> bool:
 func get_item_count(form_id: int) -> int:
 	var total := 0
 	for item in items:
-		if item != null and item.item_reference != null and item.item_reference.base_form_id == form_id:
+		if item != null and item.base_form_id == form_id:
 			total += item.count
 	return total
-
-func set_equipped(instance_id: String, equipped: bool) -> bool:
-	for item in items:
-		if item != null and item.instance_id == instance_id:
-			return equip_item(item) if equipped else unequip_item(item)
-	return false
 
 func equip_item(item: InventoryItem) -> bool:
 	if item == null or not items.has(item):
@@ -128,12 +130,11 @@ func get_equipped_items() -> Array[InventoryItem]:
 func get_entries() -> Array:
 	var result: Array = []
 	for item in items:
-		if item == null or item.item_reference == null:
+		if item == null:
 			continue
 		var entry: Dictionary = item.compatibility_data.duplicate()
-		entry["base_form_id"] = item.item_reference.base_form_id
+		entry["base_form_id"] = item.base_form_id
 		entry["count"] = item.count
-		entry["instance_id"] = item.instance_id
 		result.append(entry)
 	return result
 
@@ -165,90 +166,28 @@ func _emit_changed() -> void:
 		inventory_changed.emit()
 
 func _is_armor_item(item: InventoryItem) -> bool:
-	return item != null and item.item_reference is ArmorReference \
-			and item.item_reference.base is ArmorBase
+	return item != null and item.base is ArmorBase
 
 func _equipment_conflicts(first: InventoryItem, second: InventoryItem) -> bool:
-	if first.item_reference is WeaponReference and second.item_reference is WeaponReference:
+	if first.base is WeaponBase and second.base is WeaponBase:
 		return true
 	if _is_armor_item(first) and _is_armor_item(second):
-		var first_flags := (first.item_reference.base as ArmorBase).biped_flags
-		var second_flags := (second.item_reference.base as ArmorBase).biped_flags
+		var first_flags := (first.base as ArmorBase).biped_flags
+		var second_flags := (second.base as ArmorBase).biped_flags
 		return first_flags != 0 and (first_flags & second_flags) != 0
 	return false
 
-func serialize_state() -> Dictionary:
-	var saved: Array[Dictionary] = []
-	for item in items:
-		if item == null or item.item_reference == null:
-			continue
-		var item_ref := item.item_reference
-		var state: Dictionary = {
-			"base_form_id": item_ref.base_form_id,
-			"reference_instance_id": item_ref.instance_id,
-			"item_instance_id": item.instance_id,
-			"count": item.count,
-			"is_equipped": item.is_equipped,
-			"owner_form_id": item.owner_form_id,
-			"health_percent": item.health_percent,
-		}
-		if item_ref is WeaponReference:
-			state["reference_type"] = "WeaponReference"
-			state["condition"] = (item_ref as WeaponReference).condition
-			state["loaded_ammo_form_id"] = (item_ref as WeaponReference).loaded_ammo_form_id
-			state["loaded_ammo_count"] = (item_ref as WeaponReference).loaded_ammo_count
-		elif item_ref is ArmorReference:
-			state["reference_type"] = "ArmorReference"
-			state["condition"] = (item_ref as ArmorReference).condition
-		saved.append(state)
-	return {"version": 1, "items": saved}
+## The base of `form_id` from EsmServer, or null when EsmServer is not running.
+func _get_base(form_id: int) -> EsmBase:
+	var server := EsmReference.get_esm_server()
+	if server == null:
+		return null
+	return server.get_base(form_id)
 
-## Restores live typed item references through the supplied base/reference
-## factory. CNTO is intentionally not involved in this path.
-func restore_state(state: Dictionary, reference_factory: Callable) -> bool:
-	if int(state.get("version", 0)) != 1 or not reference_factory.is_valid():
-		return false
-	for existing in items:
-		if existing != null:
-			_disconnect_item(existing)
-	items.clear()
-	for data in state.get("items", []):
-		if not data is Dictionary:
-			continue
-		var form_id := int(data.get("base_form_id", 0))
-		if form_id == 0:
-			continue
-		var item_ref = reference_factory.call(form_id, String(data.get("reference_instance_id", "")))
-		if not item_ref is EsmReference:
-			continue
-		var typed_reference: EsmReference = item_ref
-		if typed_reference is WeaponReference:
-			var weapon := typed_reference as WeaponReference
-			weapon.condition = float(data.get("condition", -1.0))
-			weapon.loaded_ammo_form_id = int(data.get("loaded_ammo_form_id", 0))
-			weapon.loaded_ammo_count = int(data.get("loaded_ammo_count", 0))
-		elif typed_reference is ArmorReference:
-			(typed_reference as ArmorReference).condition = float(data.get("condition", -1.0))
-		var item := InventoryItem.new()
-		item.item_reference = typed_reference
-		item.instance_id = String(data.get("item_instance_id", ""))
-		item.count = int(data.get("count", 0))
-		item.is_equipped = bool(data.get("is_equipped", false))
-		item.owner_form_id = int(data.get("owner_form_id", 0))
-		item.health_percent = float(data.get("health_percent", -1.0))
-		if item.count > 0:
-			items.append(item)
+## After SaveFields.read() has replaced `items`: listens to each item, as
+## add_inventory_item() does, and reports the change.
+func _after_fields_read() -> void:
+	for item in items:
+		if item != null:
 			_connect_item(item)
 	inventory_changed.emit()
-	return true
-
-func _make_compatibility_reference(form_id: int) -> EsmReference:
-	var item_ref := EsmReference.new()
-	item_ref.base_form_id = form_id
-	item_ref.instance_id = _new_instance_id(form_id) + ":ref"
-	return item_ref
-
-func _new_instance_id(form_id: int) -> String:
-	var result := "inventory:%08X:%d" % [form_id, _next_instance_id]
-	_next_instance_id += 1
-	return result

@@ -49,6 +49,17 @@ signal animation_load_failed(reason: String)
 
 const PRESET_FORM_IDS := {"Doc Mitchell (Goodsprings)": 0x00104C0C,}
 const BODY_NODE_NAME := "Body"
+const SKIN_SHADER := preload("res://GodotBryo/Types/Node/actor_skin.gdshader")
+## Skin parts by the stem of the NIF's diffuse: the race part whose ICON
+## replaces it, as [body block, INDX]. Head 0 is the head; body 0 the upper
+## body, 1 and 2 the hands (both hands name the same texture on every race).
+const SKIN_PARTS := {
+	"headhuman": [false, 0],
+	"upperbodymale": [true, 0],
+	"upperbodyfemale": [true, 0],
+	"handmale": [true, 1],
+	"handfemale": [true, 1],
+}
 const STAGING_NODE_NAME := "HumanoidStaging"
 
 
@@ -65,6 +76,13 @@ const TORSO_CAP_LAST := 213
 var motion: ActorMotion = null
 
 var _active_record: ActorBase = null
+## Where the actor's look comes from: the template its base takes traits from
+## (race, gender, head parts, hair, eyes, FaceGen), or the base itself
+## (ActorBase.template_source with Use Traits). A template chain that ends at
+## a leveled list stops at the NPC_ that names it.
+var _trait_record: ActorBase = null
+## Where its skeleton and animations come from (Use Model/Animation).
+var _model_record: ActorBase = null
 
 ## Messages already warned, so a failure every actor of a kind shares is
 ## reported once rather than flooding the debugger.
@@ -111,8 +129,13 @@ var _humanoid_visual_built := false
 var _rehydrate_queued := false
 var _rehydrating_reference := false
 var _pending_requests := 0
-## FaceGenServer morphs still to be delivered before the staged body is shown.
+## FaceGenServer morphs, and the skin, still to be delivered before the staged
+## body is shown.
 var _pending_face_gen := 0
+## The NPC's skin for the body being built: FaceGenServer's "face_map" and
+## "body_offset", and "textures", part ("head", "upper_body", "hand") ->
+## the race's Texture2D for it. Empty for creatures.
+var _skin := {}
 var _requested_assets := {}
 var _delivered_trees := {}
 var _load_failures: Array[String] = []
@@ -159,6 +182,10 @@ func _ready() -> void:
 	equipment.committed.connect(_on_equipment_committed)
 	equipment.watch(reference as ActorReference)
 	apply_process_thread_group()
+	if not Engine.is_editor_hint():
+		var debug_label := ActorDebugLabel.new()
+		debug_label.name = "ActorDebugLabel"
+		add_child(debug_label)
 	_queue_rehydrate_and_build()
 
 
@@ -197,6 +224,8 @@ func _reference_changed() -> void:
 	if animator != null:
 		animator.cancel()
 	_active_record = null
+	_trait_record = null
+	_model_record = null
 	if not _rehydrating_reference:
 		_load_requested = false
 	_humanoid_visual_built = false
@@ -262,14 +291,40 @@ func load_actor() -> void:
 	_queue_rehydrate_and_build()
 
 
+## The record supplying `reference_base`'s part named by `flag`, through the
+## reference's leveled-list choice when the reference is an actor.
+func _template_source(reference_base: ActorBase, flag: int) -> ActorBase:
+	if reference is ActorReference:
+		return (reference as ActorReference).template_source(flag)
+	return ActorBase.template_source(reference_base, flag)
+
+
+## A creature's scale comes with its model (Model/Animation template), an
+## NPC's with its race (Traits template).
+func _body_scale() -> float:
+	if _model_record is CreatureBase:
+		return _model_record.get_body_scale(_is_female)
+	return _trait_record.get_body_scale(_is_female)
+
+
+## The record supplying `reference_base`'s skeleton and animations
+## (ActorReference.model_source when the reference is an actor).
+func _model_source(reference_base: ActorBase) -> ActorBase:
+	if reference is ActorReference:
+		return (reference as ActorReference).model_source()
+	return ActorBase.template_source(reference_base, ActorBase.TEMPLATE_USE_MODEL_ANIMATION)
+
+
 func _start_visual_load(reference_base: ActorBase) -> void:
 	_cancel_visual_load()
 	_load_generation += 1
 	_loading = true
 	equipment.forget_body()
 	_active_record = reference_base
-	_is_female = reference_base.is_female()
-	_requested_assets = _requested_asset_set(reference_base)
+	_trait_record = _template_source(reference_base, ActorBase.TEMPLATE_USE_TRAITS)
+	_model_record = _model_source(reference_base)
+	_is_female = _trait_record.is_female()
+	_requested_assets = _requested_asset_set()
 	_delivered_trees.clear()
 	_load_failures.clear()
 	# The staging root is used to hold nodes before they become visible
@@ -292,12 +347,15 @@ func _start_visual_load(reference_base: ActorBase) -> void:
 		nif_server.request(String(asset.path), self, _on_nif_delivered.bind(generation, String(asset_key)), false)
 
 
-## The NIFs this actor is assembled from: its MODL skeleton and the parts its
-## base lists (ActorBase.get_model_parts).
-func _requested_asset_set(record: ActorBase) -> Dictionary:
+## The NIFs this actor is assembled from: the model record's MODL skeleton and
+## the parts the trait record lists (ActorBase.get_model_parts).
+func _requested_asset_set() -> Dictionary:
 	var assets := {}
-	_add_requested_asset(assets, "skeleton", record.model_path, true, "skeleton")
-	for part in record.get_model_parts(_is_female):
+	_add_requested_asset(assets, "skeleton", _model_record.model_path, true, "skeleton")
+	# An NPC's parts come from its race (traits); a creature's NIFZ parts are
+	# part of its model, like its skeleton.
+	var parts_record := _model_record if _model_record is CreatureBase else _trait_record
+	for part in parts_record.get_model_parts(_is_female):
 		var extra := part.duplicate()
 		for key in ["key", "path", "required", "kind"]:
 			extra.erase(key)
@@ -360,13 +418,18 @@ func _assemble_staged_body(generation: int) -> void:
 		return
 	var skeleton := skeleton_tree.find_child("Skeleton3D", true, false) as Skeleton3D
 	if skeleton == null:
-		_finish_visual_load(false, "skeleton NIF contains no Skeleton3D")
+		# A skeleton NIF that declares no bones of its own; its parts name its
+		# nodes as bones.
+		skeleton = skinning.build_skeleton_from_nodes(skeleton_tree)
+	if skeleton == null:
+		_finish_visual_load(false, "skeleton NIF contains no Skeleton3D and no nodes")
 		return
 
 	# Construct a root node
 	var body := Node3D.new()
 	body.name = BODY_NODE_NAME
 	body.visible = false
+	body.scale = Vector3.ONE * _body_scale()
 	_staging_root.add_child(body)
 
 	#Attach the returned skeleton to the body node, 99% it's _male/skeleton.nif
@@ -384,14 +447,35 @@ func _assemble_staged_body(generation: int) -> void:
 		if String(asset.get("kind", "")) != "body":
 			continue
 		var part_tree := _delivered_trees.get(asset_key) as Node3D
+		var required := bool(asset.get("required", true))
 		if part_tree == null:
-			_finish_visual_load(false, "required body tree is missing: " + String(asset.get("path", "")))
-			return
-		_move_tree(part_tree, nude_body, "BodyPart_%s" % String(asset_key).validate_node_name())
+			if required:
+				_finish_visual_load(false, "required body tree is missing: " + String(asset.get("path", "")))
+				return
+			_warn_once("EsmActorNode: optional body part is missing: " + String(asset.get("path", "")))
+			continue
+		var part_name := "BodyPart_%s" % String(asset_key).validate_node_name()
+		if not skinning.tree_has_skin(part_tree):
+			# A rigid part hangs from the skeleton node its root's Prn names.
+			if not _attach_rigid_part(part_tree, skeleton, skeleton_tree, part_name):
+				_warn_once("EsmActorNode: rigid body part has no Prn bone in the skeleton: " + String(asset.get("path", "")))
+				part_tree.queue_free()
+				if required:
+					_finish_visual_load(false, "rigid body part has no Prn bone: " + String(asset.get("path", "")))
+					return
+				continue
+			_tag_nude_body_meshes(part_tree, asset)
+			continue
+		skinning.add_part_bones(part_tree, skeleton)
+		_move_tree(part_tree, nude_body, part_name)
 		skinning.compact_external_skin_part(part_tree)
 		if not skinning.bind_external_skins(part_tree, skeleton):
-			_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
-			return
+			if required:
+				_finish_visual_load(false, "body tree has unresolved skeleton binds: " + String(asset.get("path", "")))
+				return
+			_warn_once("EsmActorNode: optional body part has unresolved skeleton binds: " + String(asset.get("path", "")))
+			part_tree.queue_free()
+			continue
 		_tag_nude_body_meshes(part_tree, asset)
 
 	# Attach the head and setup it's face/eyes/teeth/hair
@@ -473,14 +557,20 @@ func _assemble_staged_appearance(body: Node3D, skeleton: Skeleton3D, staging: No
 ## returns each mesh with the race's and the NPC's FaceGen applied, and the
 ## body is committed once every one has come back. A mesh with no EGM keeps
 ## the shared mesh.
+##
+## The NPC's skin (face map, body tint and the race's skin textures) is
+## fetched alongside and the body waits for it too.
 func _request_face_gen(body: Node3D, generation: int) -> void:
 	var face_gen_server := get_tree().root.get_node_or_null("FaceGenServer")
-	var npc := _active_record as NpcBase
-	var targets := _face_gen_targets(body)
-	if face_gen_server == null or npc == null or targets.is_empty():
+	var npc := _trait_record as NpcBase
+	_skin = {}
+	if face_gen_server == null or npc == null:
 		_commit_staged_body(body, generation)
 		return
-	_pending_face_gen = targets.size()
+	var targets := _face_gen_targets(body)
+	_pending_face_gen = targets.size() + 1
+	var placed_npc := reference.base as NpcBase if reference != null else null
+	face_gen_server.request_skin(npc, self, _on_skin_delivered.bind(npc, body, generation), placed_npc)
 	for mesh_instance in targets:
 		var model_path := String(mesh_instance.get_meta("gamebryo_model_path", ""))
 		var shape_name := String(mesh_instance.get_meta("nif_dismember_source_shape", mesh_instance.get_meta("nif_name", "")))
@@ -501,14 +591,76 @@ func _face_gen_targets(body: Node3D) -> Array[MeshInstance3D]:
 	return targets
 
 
-func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance: MeshInstance3D, body: Node3D, generation: int) -> void:
+## `mesh_instance` and `body` are untyped: a cancelled load frees them before
+## FaceGenServer answers, and a freed object cannot be passed to a typed
+## parameter.
+func _on_face_gen_delivered(mesh: ArrayMesh, mesh_instance, body, generation: int) -> void:
 	if generation != _load_generation or not _loading or not is_instance_valid(body):
 		return
 	if mesh != null and is_instance_valid(mesh_instance):
-		mesh_instance.mesh = mesh
+		(mesh_instance as MeshInstance3D).mesh = mesh
+	_face_gen_part_done(body as Node3D, generation)
+
+
+## FaceGenServer's skin has come: loads the race's skin textures before the
+## body is committed.
+## `body` is untyped for the reason _on_face_gen_delivered gives.
+func _on_skin_delivered(skin: Dictionary, npc: NpcBase, body, generation: int) -> void:
+	if generation != _load_generation or not _loading or not is_instance_valid(body):
+		return
+	var textures := {}
+	var source := ActorBase.template_source(npc, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase
+	if source == null:
+		source = npc
+	if source.race != null:
+		for stem in SKIN_PARTS:
+			var part: Array = SKIN_PARTS[stem]
+			var icon := source.race.part_texture(source.is_female(), part[0], part[1])
+			if icon.is_empty():
+				continue
+			textures[stem] = await TextureServer.request("textures\\" + icon)
+	if generation != _load_generation or not _loading or not is_instance_valid(body):
+		return
+	_skin = skin.duplicate()
+	_skin["textures"] = textures
+	_face_gen_part_done(body as Node3D, generation)
+
+
+func _face_gen_part_done(body: Node3D, generation: int) -> void:
 	_pending_face_gen -= 1
 	if _pending_face_gen == 0:
 		_commit_staged_body(body, generation)
+
+
+## Puts an unskinned part under a BoneAttachment3D on the bone named by the
+## first Prn NiStringExtraData in its tree, in that bone's space through its
+## file root's transform (its NifRoot conversion is dropped). A Prn naming a
+## node of the skeleton NIF that is not a bone makes it one. False when no
+## node carries a Prn or neither has such a node.
+func _attach_rigid_part(tree: Node3D, skeleton: Skeleton3D, skeleton_tree: Node3D, part_name: String) -> bool:
+	var bone_name := ""
+	for node: Node in [tree] + tree.find_children("*", "Node3D", true, false):
+		var strings: Dictionary = node.get_meta("nif_string_extra_data", {})
+		if strings.has("Prn"):
+			bone_name = NifNames.escape(String(strings["Prn"]))
+			break
+	if bone_name.is_empty():
+		return false
+	if skeleton.find_bone(bone_name) == -1 and skinning.add_skeleton_node_bone(skeleton_tree, skeleton, NifNames.unescape(bone_name)) == -1:
+		return false
+	var attachment := BoneAttachment3D.new()
+	attachment.name = "Attach_%s" % part_name
+	attachment.bone_name = bone_name
+	skeleton.add_child(attachment)
+	_move_tree(tree, attachment, part_name)
+	tree.transform = Transform3D.IDENTITY
+	# The part's file root places it in the bone's space (the dog's eyes match
+	# the skeleton's Bip01 Head2 Eyeleds, the protectron's dome its DomeRoot),
+	# so the transform NifTreeBuilder suppresses is put back.
+	for node: Node in [tree] + tree.find_children("*", "Node3D", true, false):
+		if node.has_meta("nif_suppressed_file_root_transform"):
+			(node as Node3D).transform = node.get_meta("nif_suppressed_file_root_transform")
+	return true
 
 
 func _create_facial_attachment(skeleton: Skeleton3D) -> BoneAttachment3D:
@@ -563,11 +715,11 @@ func _track_hair_meshes(body: Node) -> void:
 ## Temporary: PPLighting will get a proper shader with per-instance properties
 ## (hair colour among them), which tints without copying the material.
 func _apply_hair_color(body: Node) -> void:
-	if body == null or not (_active_record is NpcBase):
+	if body == null or not (_trait_record is NpcBase):
 		return
 	# HCLR is authored Gamebryo-linear RGB, as XEMI's colour is (see
 	# _apply_external_emittance). albedo_color is sRGB-facing.
-	var hair_color := (_active_record as NpcBase).hair_color.linear_to_srgb()
+	var hair_color := (_trait_record as NpcBase).hair_color.linear_to_srgb()
 	for child in body.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := child as MeshInstance3D
 		if mesh_instance.mesh == null:
@@ -579,6 +731,72 @@ func _apply_hair_color(body: Node) -> void:
 			var tinted := source.duplicate() as StandardMaterial3D
 			tinted.albedo_color = hair_color
 			mesh_instance.set_surface_override_material(surface, tinted)
+
+
+## Gives every skin shape under `body` (NifMaterialBuilder.PATH_SKIN) this
+## NPC's skin material, as a surface override: the race's texture for the part
+## in place of the NIF's, the face map on the head and the body offset on the
+## upper body and hands. Hands take the upper body's offset: no record or file
+## names a hand EGT, and the upper-body EGT is one value over its texels.
+## Shapes whose diffuse is no SKIN_PARTS stem (first-person hands, gore caps)
+## and alpha-blended or alpha-tested ones keep the stock material. One
+## material per stock material and part, so it batches within the actor.
+func _apply_skin(body: Node) -> void:
+	if body == null or _skin.is_empty():
+		return
+	var built := {}
+	for child in body.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			if mesh_instance.get_surface_override_material(surface) != null:
+				continue
+			var source := mesh_instance.mesh.surface_get_material(surface) as StandardMaterial3D
+			if source == null or source.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_SKIN:
+				continue
+			if source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				continue
+			var stem := _skin_stem(source)
+			if not SKIN_PARTS.has(stem):
+				continue
+			var key := "%d|%s" % [source.get_instance_id(), stem]
+			if not built.has(key):
+				built[key] = _skin_material(source, stem)
+			mesh_instance.set_surface_override_material(surface, built[key])
+
+
+## The lowercase file stem of the stock material's diffuse.
+func _skin_stem(source: StandardMaterial3D) -> String:
+	var roles: Dictionary = source.get_meta("nif_texture_roles", {})
+	var diffuse := String(roles.get(NifMaterialBuilder.ROLE_DIFFUSE, ""))
+	return diffuse.replace("\\", "/").get_file().get_basename().to_lower()
+
+
+func _skin_material(source: StandardMaterial3D, stem: String) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = SKIN_SHADER
+	var albedo: Texture2D = _skin["textures"].get(stem)
+	if albedo == null:
+		albedo = source.albedo_texture
+	material.set_shader_parameter("albedo_texture", albedo)
+	material.set_shader_parameter("normal_texture", source.normal_texture)
+	material.set_shader_parameter("use_normal_texture", source.normal_enabled and source.normal_texture != null)
+	material.set_shader_parameter("use_vertex_color", source.vertex_color_use_as_albedo)
+	material.set_shader_parameter("roughness", source.roughness)
+	material.set_shader_parameter("metallic", source.metallic)
+	material.set_shader_parameter("specular", source.metallic_specular)
+	var face_map: Texture2D = _skin.get("face_map")
+	var is_head := not bool(SKIN_PARTS[stem][0])
+	if is_head and face_map != null:
+		material.set_shader_parameter("face_map", face_map)
+		material.set_shader_parameter("use_face_map", true)
+	elif not is_head:
+		var offset: Color = _skin.get("body_offset", Color(0, 0, 0))
+		material.set_shader_parameter("skin_offset", Vector3(offset.r, offset.g, offset.b))
+	for meta in source.get_meta_list():
+		material.set_meta(meta, source.get_meta(meta))
+	return material
 
 
 func _rebuild_dismember_partition_index(body: Node) -> void:
@@ -625,13 +843,14 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_clear_staging()
 	_track_hair_meshes(body)
 	_apply_hair_color(body)
+	_apply_skin(body)
 	_rebuild_dismember_partition_index(body)
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
 	equipment.set_body(body, skeleton, _is_female)
 	facial_player.set_body(body)
-	animator.load_locomotion(_active_record.animation_search_paths(), body, skeleton)
+	animator.load_locomotion(_model_record.animation_search_paths(), body, skeleton, _model_record is CreatureBase)
 	visual_load_completed.emit()
 
 
@@ -770,6 +989,8 @@ func unload_actor() -> void:
 	equipment.clear()
 	animator.cancel()
 	_active_record = null
+	_trait_record = null
+	_model_record = null
 	_is_female = false
 	hair_no_hat_meshes.clear()
 	hair_hat_meshes.clear()
@@ -795,6 +1016,7 @@ func _on_equipment_committed(body: Node3D) -> void:
 	# every replacement before restoring ordinary body coverage.
 	_rebuild_dismember_partition_index(body)
 	_apply_equipment_body_coverage(body)
+	_apply_skin(body)
 	wearing_hat = (_equipped_biped_flags(body) & ArmorBase.BIPED_HAT) != 0
 	_apply_ragdoll_simulator_state()
 	_apply_possessed_first_person_render_mode()

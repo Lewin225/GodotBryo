@@ -10,11 +10,11 @@ extends Resource
 ## DamageAV and RestoreAV the damage modifier, which is never above 0.
 
 ## Base values set by SetAV, by code. They replace the derived base.
-@export var base_overrides: Dictionary = {}
+@export var base_overrides: Dictionary[int, float] = {}
 ## Permanent modifiers (ModAV, ForceAV), by code.
-@export var permanent: Dictionary = {}
+@export var permanent: Dictionary[int, float] = {}
 ## Damage modifiers (DamageAV, RestoreAV), by code; always <= 0.
-@export var damage: Dictionary = {}
+@export var damage: Dictionary[int, float] = {}
 
 ## Every actor value's current value by script name, for inspection. Not
 ## saved.
@@ -49,9 +49,11 @@ func get_current(code: int) -> float:
 
 func set_base(code: int, value: float) -> void:
 	base_overrides[code] = value
+	_mark_owner_dirty()
 
 func modify(code: int, amount: float) -> void:
 	permanent[code] = float(permanent.get(code, 0.0)) + amount
+	_mark_owner_dirty()
 
 ## Changes the permanent modifier so the current value becomes `value`.
 func force(code: int, value: float) -> void:
@@ -59,9 +61,11 @@ func force(code: int, value: float) -> void:
 
 func damage_value(code: int, amount: float) -> void:
 	damage[code] = float(damage.get(code, 0.0)) - amount
+	_mark_owner_dirty()
 
 func restore_value(code: int, amount: float) -> void:
 	damage[code] = minf(float(damage.get(code, 0.0)) + amount, 0.0)
+	_mark_owner_dirty()
 
 ## Current Health over base Health; 1.0 when base Health is 0.
 func health_percentage() -> float:
@@ -90,8 +94,14 @@ func get_level() -> int:
 ## The record the base values derive from: the base record, or its template
 ## chain's while each record takes its stats from its template.
 func get_stats() -> ActorBase:
-	return ActorBase.template_source(owner.base if owner != null else null, ActorBase.TEMPLATE_USE_STATS)
+	return ActorReference.template_source_of(owner, ActorBase.TEMPLATE_USE_STATS)
 
 func _is_player() -> bool:
 	var esm_server := EsmReference.get_esm_server()
 	return owner != null and esm_server != null and owner.instance_id == esm_server.PLAYER_INSTANCE_ID
+
+## Marks the owning actor dirty after a change, so its values are saved.
+func _mark_owner_dirty() -> void:
+	var actor := owner
+	if actor != null:
+		actor.mark_dirty()

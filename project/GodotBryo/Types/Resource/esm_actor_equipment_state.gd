@@ -11,11 +11,11 @@ extends Resource
 func get_armor_bases() -> Array[ArmorBase]:
 	var result: Array[ArmorBase] = []
 	for item in armor_items:
-		if item != null and item.item_reference != null and item.item_reference.base is ArmorBase:
-			result.append(item.item_reference.base as ArmorBase)
+		if item != null and item.base is ArmorBase:
+			result.append(item.base as ArmorBase)
 	return result
 
 func get_weapon_base() -> WeaponBase:
-	if weapon_item != null and weapon_item.item_reference != null and weapon_item.item_reference.base is WeaponBase:
-		return weapon_item.item_reference.base as WeaponBase
+	if weapon_item != null and weapon_item.base is WeaponBase:
+		return weapon_item.base as WeaponBase
 	return null

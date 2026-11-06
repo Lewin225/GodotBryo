@@ -44,7 +44,7 @@ func _check_doc(player: ActorReference) -> void:
 	QuestServer.start_quest(quest)
 	state.stage = 115
 	state.stages_done[115] = true
-	var exit_marker := EsmServer.get_reference("authored:00105BCF")
+	var exit_marker := EsmServer.get_reference_by_form_id(0x00105BCF)
 	_move(player, exit_marker.current_space_form_id, exit_marker.position + Vector3(2.0, 0.0, 0.0))
 	NpcSimulationServer.package_runner.evaluate_now(doc)
 	check(doc.active_package != null and doc.active_package.editor_id == "VCG01DocMitchellFarewellDialogueStart", "at stage 115 Doc runs his farewell (%s)" % _name(doc.active_package))

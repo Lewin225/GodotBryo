@@ -115,6 +115,21 @@ var _warned: Dictionary = {}
 
 var travel: LowLevelTravel
 
+## Drops every actor this runner tracks, for loading a save into an open game;
+## the actors belong to the game being replaced. Results of requests still in
+## flight find no actor and are ignored.
+func clear_game_state() -> void:
+	_leased = Sweep.new(_leased.period)
+	_unleased = Sweep.new(_unleased.period)
+	_unleased_idle = Sweep.new(_unleased_idle.period)
+	_last_run_msec.clear()
+	_mode_handlers.clear()
+	_door_plans.clear()
+	_actors_by_request.clear()
+	_next_evaluation_msec.clear()
+	_travels.clear()
+	_seated_by_package.clear()
+
 func _ready() -> void:
 	travel = get_parent().low_level_travel
 	get_parent().door_sequence_ready.connect(_on_door_sequence_ready)
@@ -180,7 +195,7 @@ func set_script_package_for_all(package: PackageBase) -> int:
 func choose_package(actor: ActorReference) -> PackageBase:
 	if actor.script_package != null:
 		return actor.script_package
-	var source := ActorBase.template_source(actor.base, TEMPLATE_USE_AI_PACKAGES)
+	var source := actor.template_source(TEMPLATE_USE_AI_PACKAGES)
 	if source == null:
 		return null
 	var hour := _game_hour()
@@ -207,6 +222,10 @@ func _game_hour() -> float:
 	return clock.game_hour
 
 func _physics_process(_delta: float) -> void:
+	# While the game is paused no package runs and no actor travels; seeding,
+	# which is not done here, carries on.
+	if get_tree().paused:
+		return
 	for actor in _leased.take():
 		_run(actor)
 	for actor in _unleased.take():
@@ -400,7 +419,7 @@ func _location(actor: ActorReference, package: PackageBase, index: int) -> Dicti
 		PackageBase.LocationType.NEAR_LINKED_REFERENCE:
 			if actor.linked_reference_form_id == 0:
 				return {}
-			return _reference_destination(EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id))
+			return _reference_destination(EsmServer.get_reference_by_form_id(actor.linked_reference_form_id))
 		PackageBase.LocationType.NEAR_EDITOR_LOCATION:
 			return EsmServer.get_authored_placement(actor)
 		PackageBase.LocationType.NEAR_CURRENT_LOCATION:
@@ -544,11 +563,11 @@ func _target_1(actor: ActorReference, package: PackageBase) -> EsmReference:
 		PackageBase.TargetType.SPECIFIC_REFERENCE:
 			if package.target_1_form_id == PackageBase.PLAYER_REFERENCE_FORM_ID:
 				return ScriptServer.player_reference
-			return EsmServer.get_reference("authored:%08X" % package.target_1_form_id)
+			return EsmServer.get_reference_by_form_id(package.target_1_form_id)
 		PackageBase.TargetType.LINKED_REFERENCE:
 			if actor.linked_reference_form_id == 0:
 				return null
-			return EsmServer.get_reference("authored:%08X" % actor.linked_reference_form_id)
+			return EsmServer.get_reference_by_form_id(actor.linked_reference_form_id)
 	return null
 
 ## Files an actor in the leased, the busy unleased or the idle unleased sweep.

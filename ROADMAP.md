@@ -31,13 +31,13 @@ a placeholder path.
 | 0 Groundwork | Done |
 | 1 Static world rendering | Done |
 | 2 World streaming and scale | Done: interior and continuous exterior streaming, terrain, distant LOD |
-| 3 Actors, skeletons, animation | Done for NPCs: skinned assembly, equipment, hair colour, FaceGen geometry, locomotion and idles. Creatures: `Plans/Actors/creatures.md` |
+| 3 Actors, skeletons, animation | Done for NPCs: skinned assembly, equipment, hair colour, FaceGen geometry and skin, expressions and lip sync, locomotion and idles. Creatures: `Plans/Actors/creatures.md` |
 | 4 Actor runtime | Done: actor references and bases, inventory, actor values, packages, furniture use |
 | 5 Scripting VM | In use: result and object scripts, conditions, quest stages; many functions still unimplemented |
 | 6 AI and combat | AI packages (Travel, Dialogue, Follow) on and off screen through `NpcSimulationServer`; no combat |
 | 7 Dialogue, quests, UI | Dialogue with voice, quests and objectives, terminals, message boxes; no Pip-Boy or inventory UI |
 | 8 VATS | Not started |
-| 9 Save/load | Not started (`Plans/Saving/reference_persistence.md`) |
+| 9 Save/load | Done (`Plans/Completed Plans/Saving/save_load.md`) |
 | 10 Content pass | Not started; the opening quest VCG01 plays start to finish |
 | 14 Physics | Physics items that can be picked up, and the player controller |
 
@@ -240,6 +240,8 @@ solid before calling the base game "complete."
   per cell.
 - **Exit criterion:** save mid-quest, reload, and all world/quest/inventory state is
   identical to pre-save.
+- **Status:** done (`Plans/Completed Plans/Saving/save_load.md`): JSON folder and git
+  backends, F5/F6, launcher list. Open items there are improvements.
 
 ## Phase 10 — Full Base-Game Content Pass
 

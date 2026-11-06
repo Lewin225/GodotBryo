@@ -70,8 +70,11 @@ func _ready() -> void:
 	var modifier := node.head_tracking.get_modifier() if node.head_tracking != null else null
 	check(modifier != null and modifier.bone_name == ActorHeadTracking.HEAD_BONE_NAME and modifier.get_parent() is Skeleton3D, "ActorHeadTracking owns the look-at modifier on Doc's %s" % ActorHeadTracking.HEAD_BONE_NAME)
 	await _check_facial_player(node, doc)
+	await _check_skin(node)
 	await _check_motion(node, player)
 	await _check_creature(esm_server)
+	await _check_templated(esm_server)
+	await _check_leveled(esm_server)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
@@ -99,6 +102,34 @@ func _check_hair_color(node: EsmActorNode, doc: EsmReference) -> void:
 	check(hair_meshes == EXPECTED["hair_variant_meshes"], "Doc's hair has %d shapes on the hair material path (got %d)" % [EXPECTED["hair_variant_meshes"], hair_meshes])
 	check(tinted == hair_meshes, "each has its own material tinted with his HCLR %s (got %d)" % [hair_color, tinted])
 	check(shared_white == hair_meshes, "the shared materials stay white (got %d)" % shared_white)
+
+## Every skin shape of Doc's (head, hands and upper body; his outfit has none)
+## wears his own skin material: the head the CaucasianOld race's
+## HeadHumanOld.dds in place of the NIF's HeadHuman.dds, with his facemod; the
+## rest the body offset.
+func _check_skin(node: EsmActorNode) -> void:
+	var head_texture := await TextureServer.request("textures\\Characters\\Male\\HeadHumanOld.dds")
+	var skin_surfaces := 0
+	var skinned := 0
+	var heads := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			var shared := mesh_instance.mesh.surface_get_material(surface)
+			if shared == null or shared.get_meta("nif_material_path", &"") != NifMaterialBuilder.PATH_SKIN:
+				continue
+			skin_surfaces += 1
+			var override := mesh_instance.get_surface_override_material(surface) as ShaderMaterial
+			if override == null or override.shader != EsmActorNode.SKIN_SHADER:
+				continue
+			skinned += 1
+			if override.get_shader_parameter("use_face_map") == true:
+				if override.get_shader_parameter("albedo_texture") == head_texture:
+					heads += 1
+	check(skin_surfaces > 0 and skinned == skin_surfaces, "each of Doc's %d skin surfaces wears his skin material (got %d)" % [skin_surfaces, skinned])
+	check(heads == 2, "both of his head's partitions have the race's HeadHumanOld.dds and his face map (got %d)" % heads)
 
 ## Every head-part, eye and hair mesh of Doc's has an EGM, so each carries
 ## FaceGenServer's morphed copy rather than NifServer's shared mesh.
@@ -220,9 +251,47 @@ func _measure(node: Node, animation_clips: int) -> Dictionary:
 			counts["facial_attached_meshes"] += 1
 	return counts
 
-## A creature gets the same controller and actor node. CreatureBase lists no model parts until the
-## actors plan's stage J, so Rex (CREA 0x118E71) builds his skeleton and
-## nothing else.
+## VMcCarranNCRTrooperMonorail1 takes its traits from NCRTrooperCF but carries
+## its own, different HNAM and HCLR: the actor is built with the template's
+## hair and hair colour.
+func _check_templated(esm_server) -> void:
+	var trooper: EsmReference = esm_server.find_reference_by_editor_id("VMcCarranNCRTrooperMonorail1REF")
+	var base := trooper.base as NpcBase if trooper != null else null
+	var template := ActorBase.template_source(base, ActorBase.TEMPLATE_USE_TRAITS) as NpcBase if base != null else null
+	check(template != null and template.editor_id == "NCRTrooperCF" and template.hair != base.hair
+			and template.hair_color != base.hair_color,
+			"VMcCarranNCRTrooperMonorail1 takes its traits from NCRTrooperCF, whose hair and colour differ from its own")
+	if template == null:
+		return
+	var controller := EsmReferencePhysicaliser.new().physicalise(trooper, self) as NpcController
+	var node := controller.actor
+	var finished := [false]
+	node.visual_load_completed.connect(func() -> void: finished[0] = true)
+	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
+	for frame in 1200:
+		await get_tree().process_frame
+		if finished[0]:
+			break
+	var hair_paths := {}
+	var hair_tinted := 0
+	var hair_color := template.hair_color.linear_to_srgb()
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if String(mesh_instance.get_meta("gamebryo_head_part_type", "")) != "hair":
+			continue
+		hair_paths[String(mesh_instance.get_meta("gamebryo_model_path", ""))] = true
+		var override := mesh_instance.get_surface_override_material(0) as StandardMaterial3D
+		if override != null and override.albedo_color == hair_color:
+			hair_tinted += 1
+	check(node.is_visual_built() and hair_paths.keys() == [template.hair.model_path],
+			"the trooper wears the template's hair %s (got %s)" % [template.hair.model_path, hair_paths.keys()])
+	check(hair_tinted > 0, "its hair has the template's HCLR")
+	controller.queue_free()
+
+## A creature gets the same controller and actor node, and Rex (CREA 0x118E71)
+## builds his skeleton and his NIFZ body parts on it, and plays his folder's
+## clips: the dog has no mtleft, mtright or mtbackward, only the misspelt
+## mtbackrward.
 func _check_creature(esm_server) -> void:
 	var rex: EsmReference = esm_server.create_reference_for_base(0x118E71)
 	var controller := EsmReferencePhysicaliser.new().physicalise(rex, self) as NpcController
@@ -231,13 +300,118 @@ func _check_creature(esm_server) -> void:
 		return
 	var node := controller.actor
 	var finished := [false]
+	var clips := [-1]
 	node.visual_load_completed.connect(func() -> void: finished[0] = true)
 	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
-	for frame in 600:
+	node.animation_load_completed.connect(func(count: int) -> void: clips[0] = count)
+	for frame in 900:
 		await get_tree().process_frame
-		if finished[0]:
+		if finished[0] and clips[0] != -1:
 			break
 	var body := node.get_node_or_null("Body")
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D if body != null else null
 	check(skeleton != null and skeleton.get_bone_count() > 0, "Rex's skeleton is built (%d bones)" % (skeleton.get_bone_count() if skeleton != null else 0))
+	var parts := (rex.base as CreatureBase).model_list_paths
+	var built_paths := {}
+	var skinned := 0
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		built_paths[String(mesh_instance.get_meta("gamebryo_model_path", ""))] = true
+		if mesh_instance.skin != null:
+			skinned += 1
+	var missing: Array[String] = []
+	for path in parts:
+		if not built_paths.has(path):
+			missing.append(path)
+	check(node.is_visual_built() and not parts.is_empty() and missing.is_empty() and skinned > 0,
+			"Rex builds his %d NIFZ parts, skinned to the skeleton (%d skinned meshes; missing %s)" % [parts.size(), skinned, missing])
+	var player := body.get_node_or_null(NodePath(ActorAnimator.PLAYER_NODE_NAME)) as AnimationPlayer if body != null else null
+	check(clips[0] > 0 and player != null and _playing_file(player) == "mtidle.kf",
+			"Rex loads %d clips from Creatures\\Dog and idles on mtidle.kf (%s)" % [clips[0], _playing_file(player)])
+	if player != null:
+		var motion := ActorMotion.new()
+		node.motion = motion
+		var cases := [
+			[Vector3(0.0, 0.0, -1.2), 0.0, false, "mtforward.kf"],
+			[Vector3(0.0, 0.0, -3.0), 0.0, true, "mtfastforward.kf"],
+			[Vector3(0.0, 0.0, 1.2), 0.0, false, "mtbackrward.kf"],
+			[Vector3(-1.2, 0.0, 0.0), 0.0, false, "mtforward.kf"],
+			[Vector3.ZERO, 2.0, false, "mtturnleft.kf"],
+			[Vector3.ZERO, 0.0, false, "mtidle.kf"],
+		]
+		for case in cases:
+			motion.velocity = case[0]
+			motion.turn_rate = case[1]
+			motion.running = case[2]
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			check(_playing_file(player) == case[3], "Rex with velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], _playing_file(player)])
+		node.motion = null
+	controller.queue_free()
+
+
+## The KF file the player's current clip came from.
+func _playing_file(player: AnimationPlayer) -> String:
+	if player == null or player.current_animation.is_empty():
+		return ""
+	return String(player.get_animation(player.current_animation).get_meta("nif_source_path", "")).get_file()
+
+
+## Every placed actor whose template chain reaches a leveled list gets an actor
+## from it, the same one when chosen again, with a real skeleton; the first
+## NPC among them builds its visual.
+func _check_leveled(esm_server) -> void:
+	var leveled: Array[ActorReference] = []
+	for candidate: ActorReference in esm_server.get_all_placed_actor_references():
+		if ActorBase.leveled_list_in_chain(candidate.base) != null:
+			leveled.append(candidate)
+	var chosen := 0
+	var repeatable := 0
+	var with_skeleton := 0
+	for actor in leveled:
+		var choice := actor.get_leveled_template()
+		if choice == null:
+			continue
+		chosen += 1
+		actor.leveled_template = null
+		if actor.get_leveled_template() == choice:
+			repeatable += 1
+		var model := actor.model_source()
+		if model != null and not model.model_path.to_lower().ends_with(ActorReference.PLACEHOLDER_MODEL):
+			with_skeleton += 1
+	check(not leveled.is_empty() and chosen == leveled.size(), "every leveled actor gets an actor from its list (%d of %d)" % [chosen, leveled.size()])
+	check(repeatable == chosen, "choosing again gives the same actor (%d of %d)" % [repeatable, chosen])
+	check(with_skeleton == chosen, "each takes a skeleton other than marker_creature.nif (%d of %d)" % [with_skeleton, chosen])
+	var by_space := {}
+	var modified := 0
+	var differing := 0
+	for actor in leveled:
+		if actor.level_modifier == ActorReference.LEVEL_MODIFIER_NONE:
+			continue
+		modified += 1
+		var zone: EncounterZoneBase = actor.encounter_zone if actor.encounter_zone != null else esm_server.encounter_zone_for_cell(actor.current_cell_form_id)
+		var space: int = zone.form_id if zone != null else actor.current_cell_form_id
+		var key := [space, actor.level_modifier, ActorBase.leveled_list_in_chain(actor.base).form_id]
+		if by_space.has(key) and by_space[key] != actor.get_leveled_template():
+			differing += 1
+		by_space[key] = actor.get_leveled_template()
+	check(modified > 0 and differing == 0,
+			"actors with the same XLCM and list in one space are the same actor (%d with XLCM, %d differ)" % [modified, differing])
+	var npc: ActorReference = null
+	for actor in leveled:
+		if actor.base is NpcBase:
+			npc = actor
+			break
+	if npc == null:
+		return
+	var controller := EsmReferencePhysicaliser.new().physicalise(npc, self) as NpcController
+	var node := controller.actor
+	var finished := [false]
+	node.visual_load_completed.connect(func() -> void: finished[0] = true)
+	node.visual_load_failed.connect(func(_reason: String) -> void: finished[0] = true)
+	for frame in 1200:
+		await get_tree().process_frame
+		if finished[0]:
+			break
+	check(node.is_visual_built(), "%s builds as %s" % [npc.instance_id, npc.leveled_template.editor_id])
 	controller.queue_free()

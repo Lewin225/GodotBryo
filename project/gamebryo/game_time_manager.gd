@@ -123,6 +123,29 @@ func _advance_day() -> void:
 			game_month = 0
 			game_year += 1
 
+## The clock as plain values for a save (SaveServer's `game_time` section).
+func save_state() -> Dictionary:
+	return {
+		"game_hour": game_hour,
+		"game_day": game_day,
+		"game_month": game_month,
+		"game_year": game_year,
+		"game_days_passed": game_days_passed,
+		"timescale": timescale,
+	}
+
+## Sets the clock from a save_state() result, without the hour and day
+## signals a change in play emits.
+func load_state(state: Dictionary, _report: Array = []) -> void:
+	game_hour = float(state.get("game_hour", game_hour))
+	game_day = int(state.get("game_day", game_day))
+	game_month = int(state.get("game_month", game_month))
+	game_year = int(state.get("game_year", game_year))
+	game_days_passed = float(state.get("game_days_passed", game_days_passed))
+	timescale = float(state.get("timescale", timescale))
+	_last_hour_int = int(game_hour)
+	_last_day = game_day
+
 ## Directly set game time (for fast travel, sleep, etc.)
 func set_time(hour: float, day: int, month: int, year: int) -> void:
 	game_hour = clampf(hour, 0.0, 23.9999)

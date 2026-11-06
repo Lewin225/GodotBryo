@@ -745,5 +745,5 @@ static func resolve_parameter(parameter_type: String, raw: int) -> Variant:
 	if REFERENCE_PARAMETERS.has(parameter_type):
 		if raw == PLAYER_REFERENCE_FORM_ID:
 			return esm_server.get_player_reference()
-		return esm_server.get_reference("authored:%08X" % raw)
+		return esm_server.get_reference_by_form_id(raw)
 	return esm_server.get_base(raw)
