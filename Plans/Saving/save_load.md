@@ -438,6 +438,9 @@ out.
 
 ## Open
 
+- Save list metadata: New Vegas' load menu shows each save's screenshot, the player's name and
+  stats. The header holds none of them yet. Benchmark reading them from every save in the list;
+  if it is slow, write a per-save meta file (header fields and a thumbnail) for the list to read.
 - When an inventory entry becomes a reference, by item type or by use: COED entries, and whether
   one with a count above 1 is that many references; damage, mods, dropping. Ammo belongs here
   too (a fired round leaves a casing). Not a save and load question; an inventory plan of its
