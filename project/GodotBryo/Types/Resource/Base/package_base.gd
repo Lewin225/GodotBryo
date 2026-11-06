@@ -269,7 +269,7 @@ func get_location_reference(index: int) -> EsmReference:
 	if not present or type != LocationType.NEAR_REFERENCE or form_id == 0:
 		return null
 	var server := EsmReference.get_esm_server()
-	return server.get_reference("authored:%08X" % form_id) if server != null else null
+	return server.get_reference_by_form_id(form_id) if server != null else null
 
 ## The placed reference target `index` (1 or 2) names, for a Specific
 ## reference target; null otherwise. Built on demand, as get_location_reference.
@@ -284,4 +284,4 @@ func get_target_reference(index: int) -> EsmReference:
 		return null
 	if form_id == PLAYER_REFERENCE_FORM_ID:
 		return server.get_player_reference()
-	return server.get_reference("authored:%08X" % form_id)
+	return server.get_reference_by_form_id(form_id)

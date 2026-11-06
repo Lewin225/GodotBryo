@@ -200,7 +200,7 @@ func _test_items_and_location(esm_server, server) -> void:
 	check(run.call("GetItemCount Stimpak", doc) == start_count + 3, "AddItem / GetItemCount (Stimpak +3)")
 	run.call("RemoveItem Stimpak 2", doc)
 	check(run.call("GetItemCount Stimpak", doc) == start_count + 1, "RemoveItem removes the count asked for")
-	var added: EsmBase = doc.contents.get_items().back().item_reference.base
+	var added: EsmBase = doc.contents.get_items().back().base
 	check(added is AlchemyBase, "added items are typed references (%s)" % added.get_class())
 
 	var leveled: LeveledItemBase = null
@@ -212,7 +212,7 @@ func _test_items_and_location(esm_server, server) -> void:
 	var before: int = doc.contents.get_items().size()
 	server.run_debug_line("AddItem %s 1" % leveled.editor_id, doc)
 	var from_list: InventoryItem = doc.contents.get_items().back() if doc.contents.get_items().size() > before else null
-	check(from_list == null or not from_list.item_reference.base is LeveledItemBase,
+	check(from_list == null or not from_list.base is LeveledItemBase,
 			"AddItem with a leveled list adds what it resolves to, never the list (%s)" % leveled.editor_id)
 
 	run.call("EquipItem Stimpak", doc)

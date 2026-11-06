@@ -42,6 +42,14 @@ var _collections: Dictionary = {}
 ## Replay Delay.
 var _last_played: Dictionary = {}
 
+## Drops every actor's idle state, for loading a save into an open game; the
+## actors it names belong to the game being replaced.
+func clear_game_state() -> void:
+	_dialogue_idles.clear()
+	_ambient_next_msec.clear()
+	_collections.clear()
+	_last_played.clear()
+
 func _ready() -> void:
 	# DialogueServer is an autoload that may be added after ScriptServer.
 	_connect_dialogue.call_deferred()

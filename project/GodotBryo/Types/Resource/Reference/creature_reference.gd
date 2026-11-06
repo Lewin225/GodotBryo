@@ -11,5 +11,5 @@ extends ActorReference
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var owner_form_id: int = 0
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var owner: EsmBase
 ## XRNK (owner faction rank). Present on no ACRE in FalloutNV.esm; not read.
-@export var owner_faction_rank: int = -1
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var owner_faction_rank: int = -1
 @export_group("")

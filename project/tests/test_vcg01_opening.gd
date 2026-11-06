@@ -79,8 +79,8 @@ func _ready() -> void:
 	# displays objective 30; activating the tester sets 65, whose timer sets 70,
 	# Doc's reaction, whose end script sets 75 (the shipped stages then carry on
 	# to 79, skipping the cut skull test).
-	var trigger: EsmReference = esm_server.get_reference("authored:00104C16")
-	var tester: EsmReference = esm_server.get_reference("authored:00104C13")
+	var trigger: EsmReference = esm_server.get_reference_by_form_id(0x00104C16)
+	var tester: EsmReference = esm_server.get_reference_by_form_id(0x00104C13)
 	script_server.dispatch_event(trigger, "OnTriggerEnter", script_server.player_reference)
 	check(quests.get_stage(vcg01) == 60, "entering the vigor tester's trigger sets stage 60 (%d)" % quests.get_stage(vcg01))
 	var waited := 0.0

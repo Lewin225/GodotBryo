@@ -52,7 +52,7 @@ func _ready() -> void:
 	NpcSimulationServer.package_runner.set_script_package(doc, package)
 	await _check_follows("across his house")
 
-	var front_door := EsmServer.get_reference("authored:%08X" % FRONT_DOOR_FORM_ID) as DoorReference
+	var front_door := EsmServer.get_reference_by_form_id(FRONT_DOOR_FORM_ID) as DoorReference
 	var wasteland := front_door.get_teleport_destination_space_form_id()
 	_move_player(wasteland, front_door.teleport_position + Vector3(3.0, 0.0, 0.0))
 	await _check_follows("out of the front door into WastelandNV")
@@ -116,13 +116,13 @@ func _check_disabled_is_inert(house: int, package: PackageBase) -> void:
 ## has lock data and no key. Sunny's door sequence out uses one of the others.
 func _check_avoids_locked_door(wasteland: int) -> void:
 	var sunny := EsmServer.find_reference_by_editor_id("SunnyRef") as ActorReference
-	var front_door := EsmServer.get_reference("authored:%08X" % FRONT_DOOR_FORM_ID) as DoorReference
+	var front_door := EsmServer.get_reference_by_form_id(FRONT_DOOR_FORM_ID) as DoorReference
 	var blocked: Dictionary = NpcSimulationServer.blocked_doors_for(sunny)
 	var sequence: Dictionary = NpcSimulationServer.find_door_sequence(sunny.current_space_form_id, sunny.position, wasteland, front_door.teleport_position, blocked)
 	var doors := []
 	for portal in sequence["portals"]:
 		doors.append(portal.source_reference.instance_id)
-	var locked_door := EsmServer.get_reference("authored:00108BC7") as DoorReference
+	var locked_door := EsmServer.get_reference_by_form_id(0x00108BC7) as DoorReference
 	check(blocked.has(locked_door) and bool(sequence["found"]) and not doors.has(locked_door.instance_id), "Sunny leaves the saloon by a door she can pass (%s), not the locked 00108BC7" % ", ".join(doors))
 
 func _move_player(space: int, position: Vector3) -> void:

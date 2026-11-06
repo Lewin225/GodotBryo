@@ -77,6 +77,6 @@ one when chosen again, and a skeleton other than the placeholder; the first one
 - Choices are made on first use, which is when EsmServer creates the reference (its inventory
   comes from the Inventory template), so zones resolve at the player's level then. Choosing
   again on cell reset, and zone resets (Never Resets), wait for cell reset
-  ([`reference_persistence.md`](../../Saving/reference_persistence.md)).
+  ([`save_load.md`](../../Saving/save_load.md)).
 - Lists with nothing at or below the level: taking the lowest entries is our choice.
 - The 44 placeholder actors' skeletons.

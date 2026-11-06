@@ -55,8 +55,8 @@ func _ready() -> void:
 	var esm_server = get_node("/root/EsmServer")
 	if not esm_server.is_ready():
 		await esm_server.esm_ready
-	var wall: TerminalReference = esm_server.get_reference("authored:00143990")
-	var linked: ActivatorReference = esm_server.get_reference("authored:%08X" % wall.linked_reference_form_id)
+	var wall: TerminalReference = esm_server.get_reference_by_form_id(0x00143990)
+	var linked: ActivatorReference = esm_server.get_reference_by_form_id(wall.linked_reference_form_id)
 	var menu_texts := func() -> Array[String]:
 		var texts: Array[String] = []
 		for i in session._choices.item_count:

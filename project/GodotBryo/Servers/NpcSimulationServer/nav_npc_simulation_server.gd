@@ -105,6 +105,9 @@ var _next_request_id := 1
 var _indexed_space_by_instance_id: Dictionary = {}
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused) and decides itself
+	# what to do then; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	local_navigation.name = "LocalNavigation"
 	add_child(local_navigation)
 	package_runner.name = "PackageRunner"
@@ -117,6 +120,20 @@ func _ready() -> void:
 	var esm_server := get_tree().root.get_node_or_null("EsmServer")
 	if esm_server != null:
 		esm_server.reference_cell_changed.connect(_on_reference_cell_changed)
+
+## Drops the seeded actors and everything that runs them, for loading a save
+## into an open game: seed() builds them again from the loaded references.
+## The navmesh and LocalNavigation's built cells are kept.
+func clear_game_state() -> void:
+	is_seeded = false
+	status = "Waiting to seed"
+	actors_by_instance_id.clear()
+	actors_by_space_form_id.clear()
+	actors_by_cell_form_id.clear()
+	_indexed_space_by_instance_id.clear()
+	grounding_by_instance_id.clear()
+	package_runner.clear_game_state()
+	low_level_travel.clear_game_state()
 
 func _exit_tree() -> void:
 	# Same hazard EsmServer documents: destroying a running Thread aborts the
@@ -153,7 +170,7 @@ func seed() -> void:
 
 	status = "Loading navmesh"
 	seed_progress.emit(status, 0, 0)
-	if not await _load_navmesh():
+	if navmesh == null and not await _load_navmesh():
 		status = "Navmesh unavailable"
 		seed_progress.emit(status, 0, 0)
 		return

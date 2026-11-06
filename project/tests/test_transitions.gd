@@ -152,7 +152,7 @@ func _ready() -> void:
 ## The vigor tester's trigger (REFR 00104C16, VCG01VigorTesterTriggerSCRIPT):
 ## a Box primitive whose OnTriggerEnter Player sets VCG01 stage 60.
 func _check_trigger_volume(esm_server, player: PlayerController, player_ref: ActorReference) -> void:
-	var trigger: EsmReference = esm_server.get_reference("authored:00104C16")
+	var trigger: EsmReference = esm_server.get_reference_by_form_id(0x00104C16)
 	check(trigger != null and trigger.primitive_type == EsmReference.PrimitiveType.BOX and trigger.primitive_bounds.x > 0.0,
 			"the vigor tester trigger carries a Box primitive (%s)" % (trigger.primitive_bounds if trigger != null else "missing"))
 	var node := EsmNode.node_for(trigger)

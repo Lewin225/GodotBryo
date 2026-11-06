@@ -47,6 +47,9 @@ var weather_from: Dictionary = {}
 var weather_to: Dictionary = {}
 ## Transition progress [0.0, 1.0]; 1.0 = fully in weather_to.
 var blend_alpha: float = 1.0
+## Set by load_state(): the next activate_worldspace() keeps the loaded
+## weather instead of picking the climate's first.
+var _keep_loaded_weather := false
 
 func configure(esm: EsmReader) -> void:
 	_esm = esm
@@ -63,7 +66,11 @@ func activate_worldspace(wrld_form_id: int) -> void:
 	if climate.is_empty():
 		push_warning("WeatherManager: climate FormID 0x%x not found" % clmt_id)
 		return
-	# Pick a starting weather from the chance-weighted list.
+	# Pick a starting weather from the chance-weighted list, unless a save
+	# has just set one.
+	if _keep_loaded_weather:
+		_keep_loaded_weather = false
+		return
 	_pick_initial_weather()
 
 ## Pick the initial weather deterministically (highest chance entry).
@@ -78,6 +85,39 @@ func _pick_initial_weather() -> void:
 	weather_from = _esm.get_weather_data(first_id)
 	weather_to = weather_from
 	blend_alpha = 1.0
+
+## The weather as plain values for a save (SaveServer's `weather` section):
+## the two WTHR records being blended, by `<file>:<local id>`, and the blend.
+func save_state() -> Dictionary:
+	return {
+		"weather_from": _record_text(int(weather_from.get("form_id", 0))),
+		"weather_to": _record_text(int(weather_to.get("form_id", 0))),
+		"blend_alpha": blend_alpha,
+	}
+
+## Sets the weather from a save_state() result. The worldspace's climate is
+## read when the player next enters it, which keeps this weather. A WTHR
+## record not in the load order is dropped and listed in `report`.
+func load_state(state: Dictionary, report: Array = []) -> void:
+	if _esm == null:
+		return
+	for slot in ["weather_from", "weather_to"]:
+		var text: Variant = state.get(slot)
+		var form_id := EsmServer.form_id_for_instance_id(String(text)) if text != null else 0
+		var weather: Dictionary = _esm.get_weather_data(form_id) if form_id != 0 else {}
+		if text != null and weather.is_empty():
+			report.append("dropped weather %s: not in the load order" % text)
+		if slot == "weather_from":
+			weather_from = weather
+		else:
+			weather_to = weather
+	blend_alpha = float(state.get("blend_alpha", 1.0))
+	_keep_loaded_weather = not weather_to.is_empty()
+
+func _record_text(form_id: int) -> Variant:
+	if form_id == 0:
+		return null
+	return String(EsmServer.instance_id_for_form_id(form_id))
 
 ## Set or transition to a specific weather preset by FormID.
 func set_weather(wthr_form_id: int, instant: bool = true) -> void:
@@ -117,9 +157,11 @@ func get_climate_weather_list() -> Array[Dictionary]:
 		})
 	return result
 
-## Called by game.gd when transitioning to a new interior (pauses weather
-## selection so it doesn't change while the player is indoors).
-func set_paused(p: bool) -> void:
+## Holds or resumes the weather, for an interior visit: game.gd holds it on
+## entering an interior so it does not change while the player is indoors.
+## Not the game pause (get_tree().paused), which stops WeatherManager with
+## the rest of the game scene.
+func set_weather_paused(p: bool) -> void:
 	set_process(not p)
 
 ## Advance blend transition. Called by game.gd with game-hour delta.

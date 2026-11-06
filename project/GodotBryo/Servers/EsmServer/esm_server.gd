@@ -81,12 +81,27 @@ var _game_settings: Dictionary = {} # lowercased GMST EDID -> value, once read
 var _relocated_by_cell: Dictionary = {}
 var _relocated: Dictionary = {} # EsmReference -> current CELL
 var _player_reference: NpcReference = null
+## References with no ESM record, by `runtime:` instance_id. Filled by
+## create_runtime_reference() and by save loading; the only place
+## get_reference() looks for a runtime id.
+var _runtime_references: Dictionary = {}
+## The number the next runtime reference's instance_id ends with.
+var _next_runtime_number := 1
+## A loaded save's reference entries not yet applied: instance_id -> saved
+## fields. Filled by load_state(); an entry is applied, and dropped from here,
+## when EsmServer builds its reference.
+var _saved_references: Dictionary = {}
+## A reference's fields a save keys its entry by rather than repeats.
+const SAVE_KEY_FIELDS := ["instance_id", "base_form_id"]
 
 ## FormID of the Player NPC_ record. The player's own placed reference
 ## (PlayerRef, 0x14) is not an ESM record; get_player_reference() stands in
 ## for it.
 const PLAYER_BASE_FORM_ID := 0x00000007
-const PLAYER_INSTANCE_ID := "player"
+const PLAYER_INSTANCE_ID := &"player"
+## The masters in load order: a load-order FormID's top byte indexes it. Only
+## GameDataConfig.ESM_FILE loads, so this is one file until DLC masters load.
+var load_order: PackedStringArray = [GameDataConfigScript.ESM_FILE]
 var _game_session = null
 var _load_thread: Thread
 var _load_result: Dictionary = {}
@@ -94,6 +109,9 @@ var state := "loading"
 var _pending_rehydrates: Array[EsmBase] = []
 
 func _ready() -> void:
+	# Runs while the game is paused (get_tree().paused): it holds no game
+	# state, so it keeps loading; see Servers/readme.md, Pausing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	reference_cell_changed.connect(_on_reference_cell_changed)
 	_load_thread = Thread.new()
 	_load_thread.start(_open_reader_background)
@@ -304,19 +322,27 @@ func get_reference_type(refr_form_id: int) -> Script:
 	var script_name := String(TYPE_TO_REFERENCE.get(String(base_raw.get("record_type", "")), "EsmReference"))
 	return _resource_script(script_name)
 
-func get_reference(instance_id: String) -> EsmReference:
+## The reference with this instance_id: `player`, a `runtime:` one from the
+## runtime table, a new `base:` one, or an authored `<file>:<local id>` one,
+## built from its record on first use and the same instance after. Null when
+## nothing has the id.
+func get_reference(instance_id: StringName) -> EsmReference:
 	if _game_session != null:
 		return _game_session.get_reference(instance_id)
 	if instance_id == PLAYER_INSTANCE_ID:
 		return get_player_reference()
-	if reader == null or not instance_id.begins_with("authored:"):
-		if reader == null or not instance_id.begins_with("base:"):
-			return null
-		var base_form_id := _parse_prefixed_form_id(instance_id, "base:")
-		return create_reference_for_base(base_form_id)
+	if instance_id.begins_with("runtime:"):
+		return _runtime_references.get(instance_id)
+	if reader == null:
+		return null
+	if instance_id.begins_with("base:"):
+		var base_form_id := form_id_for_instance_id(instance_id.trim_prefix("base:"))
+		return create_reference_for_base(base_form_id) if base_form_id != 0 else null
 	if _authored_reference_cache.has(instance_id):
 		return _authored_reference_cache[instance_id]
-	var form_id := _parse_authored_id(instance_id)
+	var form_id := form_id_for_instance_id(instance_id)
+	if form_id == 0:
+		return null
 	var cell_id := get_filing_cell_form_id(form_id)
 	if cell_id == 0:
 		return null
@@ -325,6 +351,39 @@ func get_reference(instance_id: String) -> EsmReference:
 		return null
 	return _reference_from_placement(placement, instance_id, cell_id)
 
+## The placed reference with load-order FormID `form_id`, or null.
+func get_reference_by_form_id(form_id: int) -> EsmReference:
+	if form_id == 0:
+		return null
+	return get_reference(instance_id_for_form_id(form_id))
+
+## The file the record with load-order FormID `form_id` comes from: the master
+## its top byte indexes in `load_order`. Empty when that names no loaded file.
+func file_for_form_id(form_id: int) -> String:
+	var index := (form_id >> 24) & 0xFF
+	return load_order[index] if index < load_order.size() else ""
+
+## The instance_id of the placed reference with load-order FormID `form_id`:
+## `<file>:<local id>`, the local id being the lower three bytes
+## (`FalloutNV.esm:00104C0C`). Empty when the FormID's file is not loaded.
+func instance_id_for_form_id(form_id: int) -> StringName:
+	var file := file_for_form_id(form_id)
+	if file.is_empty():
+		return &""
+	return StringName("%s:%08X" % [file, form_id & 0x00FFFFFF])
+
+## The load-order FormID an authored instance_id names, or 0 when it is not
+## `<file>:<local id>` for a loaded file.
+func form_id_for_instance_id(instance_id: String) -> int:
+	var separator := instance_id.rfind(":")
+	if separator <= 0:
+		return 0
+	var index := load_order.find(instance_id.left(separator))
+	var local := instance_id.substr(separator + 1)
+	if index == -1 or local.length() != 8 or not local.is_valid_hex_number():
+		return 0
+	return (index << 24) | (local.hex_to_int() & 0x00FFFFFF)
+
 ## The player's reference: one NpcReference on the Player NPC_ record, the
 ## same instance on every call. Unplaced (space 0) until something moves it.
 func get_player_reference() -> NpcReference:
@@ -332,12 +391,13 @@ func get_player_reference() -> NpcReference:
 		_player_reference = create_reference_for_base(PLAYER_BASE_FORM_ID) as NpcReference
 		if _player_reference != null:
 			_player_reference.instance_id = PLAYER_INSTANCE_ID
+			_apply_saved_entry(_player_reference)
 	return _player_reference
 
 ## The placed reference with this editor ID, or null. Case-insensitive.
 func find_reference_by_editor_id(editor_id: String) -> EsmReference:
 	var form_id := int(_reference_by_editor_id.get(editor_id.to_lower(), 0))
-	return get_reference("authored:%08X" % form_id) if form_id != 0 else null
+	return get_reference_by_form_id(form_id)
 
 ## The QUST record with this editor ID, or null. Case-insensitive. Its
 ## script_form_id is the quest script whose variables scripts reach as
@@ -418,26 +478,194 @@ func create_reference_for_base(base_form_id: int) -> EsmReference:
 	var result: EsmReference = script.new()
 	result.base_form_id = base.form_id
 	result.base = base
-	result.instance_id = "base:%08X" % base.form_id
+	result.instance_id = StringName("base:" + instance_id_for_form_id(base.form_id))
 	result.position = Vector3.ZERO
 	result.rotation = Vector3.ZERO
 	result.scale = 1.0
 	_populate_reference_inventory(result)
 	_populate_actor_values(result)
 	_populate_terminal_lock(result)
+	# Building it ran the setters that mark a change; it matches its base.
+	result.dirty = false
 	return result
 
-## Creates a typed item reference for Inventory.restore_state(). Unlike a
-## world reference it has no placement; its mutable item state is restored by
-## Inventory from the save payload.
-func create_inventory_item_reference(base_form_id: int, instance_id: String = "") -> EsmReference:
+## A new reference to `base_form_id` with no ESM record, named
+## `runtime:<file>:<base local id>:<number>` from one counter, and held in the runtime
+## table until release_runtime_reference(). Unplaced (space 0). Null when the
+## base does not exist.
+func create_runtime_reference(base_form_id: int) -> EsmReference:
+	var result := _new_unplaced_reference(base_form_id)
+	if result == null:
+		return null
+	result.instance_id = StringName("runtime:%s:%d" % [instance_id_for_form_id(base_form_id), _next_runtime_number])
+	_next_runtime_number += 1
+	_runtime_references[result.instance_id] = result
+	return result
+
+## EsmServer's game state as plain values for a save (SaveFields):
+## - `references`: instance_id -> saved fields, for every dirty built
+##   reference, the player, and each loaded save entry not built since;
+## - `runtime`: the counter and each runtime reference, with its base;
+## - `bases`: each dirty base's changed fields, by `<file>:<local id>`.
+## Entries also carry `editor_id` (the base's, or the record's), which loading
+## ignores.
+func save_state() -> Dictionary:
+	var references := {}
+	for id: String in _saved_references:
+		references[id] = _saved_references[id]
+	for id: StringName in _authored_reference_cache:
+		var reference: EsmReference = _authored_reference_cache[id]
+		if reference.dirty:
+			references[String(id)] = _reference_entry(reference)
+	if _player_reference != null:
+		references[String(PLAYER_INSTANCE_ID)] = _reference_entry(_player_reference)
+	var runtime := {}
+	for id: StringName in _runtime_references:
+		var entry := _reference_entry(_runtime_references[id])
+		entry["base_form_id"] = String(instance_id_for_form_id(_runtime_references[id].base_form_id))
+		runtime[String(id)] = entry
+	var bases := {}
+	for form_id: int in _cache:
+		var base: EsmBase = _cache[form_id]
+		if not base.dirty or base.changed_fields.is_empty():
+			continue
+		var entry := SaveFields.write_named(base, base.changed_fields)
+		entry["editor_id"] = base.editor_id
+		bases[String(instance_id_for_form_id(form_id))] = entry
+	return {
+		"references": references,
+		"runtime": {"next_number": _next_runtime_number, "references": runtime},
+		"bases": bases,
+	}
+
+## Applies a save_state() result to an EsmServer with no game state (after
+## clear_game_state()): dirty bases first, then the runtime references, then
+## the reference entries, held until each reference is built. References whose
+## saved cell is not their filing cell are built now, so the cells they moved
+## to list them, unless `build_moved` is false (get_saved_moved_ids()). A base
+## or runtime reference whose record is not in the load order is dropped and
+## listed in `report`.
+func load_state(state: Dictionary, report: Array = [], build_moved: bool = true) -> void:
+	var bases: Dictionary = state.get("bases", {})
+	for text: String in bases:
+		var base := get_base(form_id_for_instance_id(text))
+		if base == null:
+			report.append("dropped base %s: not in the load order" % text)
+			continue
+		SaveFields.read_named(base, bases[text])
+		for field: String in bases[text]:
+			if field != "editor_id":
+				base.mark_changed(field)
+	var runtime: Dictionary = state.get("runtime", {})
+	_next_runtime_number = int(runtime.get("next_number", 1))
+	var runtime_entries: Dictionary = runtime.get("references", {})
+	for id: String in runtime_entries:
+		var base_form_id := form_id_for_instance_id(String(runtime_entries[id].get("base_form_id", "")))
+		var reference := _new_unplaced_reference(base_form_id)
+		if reference == null:
+			report.append("dropped runtime reference %s: its base is not in the load order" % id)
+			continue
+		reference.instance_id = StringName(id)
+		_runtime_references[reference.instance_id] = reference
+		SaveFields.read(reference, runtime_entries[id], SAVE_KEY_FIELDS)
+		reference.dirty = true
+	_saved_references = (state.get("references", {}) as Dictionary).duplicate()
+	if _player_reference != null:
+		_apply_saved_entry(_player_reference)
+	if not build_moved:
+		return
+	for id in get_saved_moved_ids():
+		get_reference(StringName(id))
+
+## The loaded save's unapplied entries whose reference is in another cell than
+## the one that files it: the references load_state() builds, or its caller
+## builds in batches after `build_moved` false.
+func get_saved_moved_ids() -> Array[String]:
+	var moved: Array[String] = []
+	for id: String in _saved_references:
+		if _saved_reference_moved(id):
+			moved.append(id)
+	return moved
+
+## Drops all game state and keeps what was read from the ESM: the reference
+## caches, relocations, runtime references and counter, the player's
+## reference, a loaded save's unapplied entries, and every dirty base (read
+## again from the ESM on next use).
+func clear_game_state() -> void:
+	_authored_reference_cache.clear()
+	_relocated.clear()
+	_relocated_by_cell.clear()
+	_runtime_references.clear()
+	_next_runtime_number = 1
+	_player_reference = null
+	_saved_references.clear()
+	for form_id: int in _cache.keys():
+		var base: EsmBase = _cache[form_id]
+		if base.dirty:
+			# Something may still hold the old base; freeing its path lets
+			# the base read again take the esm:// path.
+			base.resource_path = ""
+			_cache.erase(form_id)
+
+## A reference's save entry: its saved fields, and its base's editor ID. An
+## inventory unchanged since it was built is left out; loading builds it again
+## from the ESM.
+func _reference_entry(reference: EsmReference) -> Dictionary:
+	var entry := SaveFields.write(reference, SAVE_KEY_FIELDS)
+	entry["editor_id"] = reference.base.editor_id if reference.base != null else ""
+	var inventory: Inventory = reference.get("contents") if "contents" in reference else null
+	if inventory != null and not inventory.changed_since_built:
+		entry.erase("contents")
+	return entry
+
+## Applies a loaded save's entry for `reference`, if it has one, and drops
+## the entry; the reference is then dirty, as when it was saved.
+func _apply_saved_entry(reference: EsmReference) -> void:
+	var id := String(reference.instance_id)
+	if not _saved_references.has(id):
+		return
+	var entry: Dictionary = _saved_references[id]
+	_saved_references.erase(id)
+	SaveFields.read(reference, entry, SAVE_KEY_FIELDS)
+	reference.dirty = true
+
+## Whether saved entry `id` puts an authored reference in another cell than
+## the one that files it.
+func _saved_reference_moved(id: String) -> bool:
+	var form_id := form_id_for_instance_id(id)
+	if form_id == 0:
+		return false
+	var entry: Dictionary = _saved_references[id]
+	var space_text: Variant = entry.get("current_space_form_id")
+	var space := 0
+	if space_text != null:
+		space = form_id_for_instance_id(String(space_text))
+	var position_values: Array = entry.get("position", [])
+	if space == 0 or position_values.size() != 3:
+		return false
+	var position := Vector3(position_values[0], position_values[1], position_values[2])
+	return cell_at(space, position) != get_filing_cell_form_id(form_id)
+
+## A new reference of the class for `base_form_id`'s record type, with its
+## base and nothing else set; null when the base does not exist.
+func _new_unplaced_reference(base_form_id: int) -> EsmReference:
 	var base := get_base(base_form_id)
 	if base == null:
 		return null
-	var result := _create_inventory_item_reference(base, base_form_id, 0)
-	if result != null and not instance_id.is_empty():
-		result.instance_id = instance_id
+	var script_name := String(TYPE_TO_REFERENCE.get(base.record_type, "EsmReference"))
+	var script := _resource_script(script_name)
+	if script == null:
+		return null
+	var result: EsmReference = script.new()
+	result.base_form_id = base_form_id
+	result.base = base
 	return result
+
+## Drops a runtime reference from the runtime table, for one used up or
+## deleted, so get_reference() no longer finds it and a save leaves it out.
+func release_runtime_reference(reference: EsmReference) -> void:
+	if reference != null:
+		_runtime_references.erase(reference.instance_id)
 
 ## The references currently in a CELL: those filed in it that have not moved
 ## to another CELL, and those that have moved into it.
@@ -446,7 +674,7 @@ func get_references_in_cell(cell_form_id: int) -> Array[EsmReference]:
 	if reader == null:
 		return result
 	for placement in reader.get_cell_references(cell_form_id) + reader.get_cell_actors(cell_form_id):
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), cell_form_id)
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), cell_form_id)
 		if reference != null and not _relocated.has(reference):
 			result.append(reference)
 	for reference: EsmReference in _relocated_by_cell.get(cell_form_id, {}):
@@ -473,7 +701,7 @@ func get_all_placed_actor_references() -> Array[ActorReference]:
 	for placement in _get_placed_actor_placements():
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			int(placement.get("cell_form_id", 0))
 		) as ActorReference
 		if reference != null:
@@ -490,7 +718,7 @@ func get_all_placed_actor_instance_ids() -> PackedStringArray:
 		return _placed_actor_instance_ids.duplicate()
 	_placed_actor_ids_built = true
 	for placement in _get_placed_actor_placements():
-		_placed_actor_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+		_placed_actor_instance_ids.append(instance_id_for_form_id(int(placement.get("refr_form_id", 0))))
 	return _placed_actor_instance_ids.duplicate()
 
 ## Every placed DOOR REFR with an authored XTEL destination, independent of
@@ -501,7 +729,7 @@ func get_all_xtel_door_references() -> Array[DoorReference]:
 	for placement in _get_xtel_door_placements():
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			int(placement.get("cell_form_id", 0))
 		) as DoorReference
 		if reference != null and reference.has_teleport:
@@ -518,7 +746,7 @@ func get_all_xtel_door_instance_ids() -> PackedStringArray:
 		return _xtel_door_instance_ids.duplicate()
 	_xtel_door_ids_built = true
 	for placement in _get_xtel_door_placements():
-		_xtel_door_instance_ids.append("authored:%08X" % int(placement.get("refr_form_id", 0)))
+		_xtel_door_instance_ids.append(instance_id_for_form_id(int(placement.get("refr_form_id", 0))))
 	return _xtel_door_instance_ids.duplicate()
 
 ## Frame-sized construction access for data-only global consumers. Placement
@@ -529,7 +757,7 @@ func get_placed_actor_reference_batch(offset: int, limit: int) -> Array[ActorRef
 	var placements := _get_placed_actor_placements()
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as ActorReference
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), int(placement.get("cell_form_id", 0))) as ActorReference
 		if reference != null:
 			result.append(reference)
 	return result
@@ -539,7 +767,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 	var placements := _get_xtel_door_placements()
 	for index in range(offset, min(offset + limit, placements.size())):
 		var placement: Dictionary = placements[index]
-		var reference := _reference_from_placement(placement, "authored:%08X" % int(placement.get("refr_form_id", 0)), int(placement.get("cell_form_id", 0))) as DoorReference
+		var reference := _reference_from_placement(placement, instance_id_for_form_id(int(placement.get("refr_form_id", 0))), int(placement.get("cell_form_id", 0))) as DoorReference
 		if reference != null and reference.has_teleport:
 			result.append(reference)
 	return result
@@ -550,7 +778,7 @@ func get_xtel_door_reference_batch(offset: int, limit: int) -> Array[DoorReferen
 func get_authored_placement(reference: EsmReference) -> Dictionary:
 	if _authored_placement_by_id.is_empty():
 		for placement in _get_placed_actor_placements():
-			_authored_placement_by_id["authored:%08X" % int(placement.get("refr_form_id", 0))] = placement
+			_authored_placement_by_id[instance_id_for_form_id(int(placement.get("refr_form_id", 0)))] = placement
 	var placement: Dictionary = _authored_placement_by_id.get(reference.instance_id, {})
 	if placement.is_empty():
 		return {}
@@ -584,7 +812,7 @@ func get_space_form_id_for_reference(instance_id: String) -> int:
 	var cached: EsmReference = _authored_reference_cache.get(instance_id)
 	if cached != null:
 		return cached.current_space_form_id
-	var cell := get_filing_cell_form_id(_parse_authored_id(instance_id))
+	var cell := get_filing_cell_form_id(form_id_for_instance_id(instance_id))
 	return get_space_form_id_for_cell(cell) if cell != 0 else 0
 
 ## The space a CELL belongs to: its WRLD for an exterior grid or persistent
@@ -628,7 +856,7 @@ func get_persistent_references_for_worldspace(worldspace_form_id: int) -> Array[
 	for placement in reader.get_persistent_refs_for_worldspace(worldspace_form_id):
 		var reference := _reference_from_placement(
 			placement,
-			"authored:%08X" % int(placement.get("refr_form_id", 0)),
+			instance_id_for_form_id(int(placement.get("refr_form_id", 0))),
 			persistent_cell
 		)
 		if reference != null and not _relocated.has(reference):
@@ -711,7 +939,10 @@ func _reference_from_placement(placement: Dictionary, id: String, cell_id: int) 
 			or result is ActivatorReference or result is DoorReference or result is LightReference:
 		result.emittance_form_id = int(placement.get("emittance_form_id", 0))
 	_populate_terminal_lock(result)
+	# Building it ran the setters that mark a change; it matches the ESM.
+	result.dirty = false
 	_authored_reference_cache[id] = result
+	_apply_saved_entry(result)
 	return result
 
 ## A terminal's lock state starts from its base's DNAM.
@@ -743,12 +974,7 @@ func add_inventory_items(holder: EsmReference, item_base: EsmBase, count: int) -
 				if inventory.add_inventory_item(resolved):
 					added += resolved.count
 		return added
-	var item_reference := _create_inventory_item_reference(item_base, item_base.form_id, inventory.items.size())
-	if item_reference == null:
-		return 0
-	var item := InventoryItem.new()
-	item.item_reference = item_reference
-	item.count = count
+	var item := InventoryItem.make_stack(item_base, count)
 	return count if inventory.add_inventory_item(item) else 0
 
 ## The level leveled lists resolve at for `holder`: an actor's level, else 1.
@@ -757,10 +983,10 @@ static func _holder_level(holder: EsmReference) -> int:
 	return values.get_level() if values != null else 1
 
 ## An owner's Items (ActorBase.items, following the Inventory template flag;
-## a container's CNTO) are the authored seed for its inventory. Each COED's
-## owner and condition carry to the item. The live inventory is kept on the
-## owner reference as typed item references and is not rebuilt from the base
-## after the reference has been created.
+## a container's CNTO) are the authored seed for its inventory, as stacks.
+## Each COED's owner and condition carry to the stack. The live inventory is
+## kept on the owner reference and is not rebuilt from the base after the
+## reference has been created.
 func _populate_reference_inventory(reference: EsmReference) -> void:
 	if not (reference is ActorReference or reference is ContainerReference):
 		return
@@ -783,39 +1009,23 @@ func _populate_reference_inventory(reference: EsmReference) -> void:
 		if entry.item is LeveledItemBase:
 			var resolved := resolver.resolve(entry.item as LeveledItemBase, level, {"seed": owner_base.form_id ^ item_index})
 			for resolved_item in resolved:
-				resolved_item.instance_id = "inventory:%08X:%d" % [resolved_item.item_reference.base_form_id, item_index]
 				if count > 1:
 					resolved_item.count *= count
 				reference.contents.add_inventory_item(resolved_item)
 				item_index += 1
 			continue
-		var item_reference := _create_inventory_item_reference(entry.item, entry.item_form_id, item_index)
-		if item_reference == null or count <= 0:
+		if entry.item == null or count <= 0:
 			item_index += 1
 			continue
-		var item := InventoryItem.new()
-		item.item_reference = item_reference
-		item.count = count
-		item.instance_id = "inventory:%08X:%d" % [entry.item_form_id, item_index]
+		var item := InventoryItem.make_stack(entry.item, count)
 		item.owner_form_id = entry.owner_form_id
 		item.health_percent = entry.condition
 		inventory.add_item(item)
 		item_index += 1
 	if reference is NpcReference:
 		inventory.equip_default_armor()
-
-func _create_inventory_item_reference(item_base: EsmBase, form_id: int, index: int) -> EsmReference:
-	if item_base == null:
-		return null
-	var script_name := String(TYPE_TO_REFERENCE.get(item_base.record_type, "EsmReference"))
-	var script := _resource_script(script_name)
-	if script == null:
-		return null
-	var result: EsmReference = script.new()
-	result.base_form_id = form_id
-	result.base = item_base
-	result.instance_id = "inventory-ref:%08X:%d" % [form_id, index]
-	return result
+	# Filling it emitted inventory_changed; it matches the ESM.
+	inventory.changed_since_built = false
 
 func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 	result._rehydrating = true
@@ -2158,14 +2368,6 @@ func _sound_path(form_id: int) -> String:
 	if form_id == 0 or reader == null or not reader.has_method("get_sound_path"):
 		return ""
 	return String(reader.get_sound_path(form_id))
-
-func _parse_authored_id(id: String) -> int:
-	var suffix := id.trim_prefix("authored:")
-	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
-
-func _parse_prefixed_form_id(id: String, prefix: String) -> int:
-	var suffix := id.trim_prefix(prefix)
-	return ("0x" + suffix).hex_to_int() if suffix.length() == 8 else 0
 
 func _parse_source_uri(uri: String) -> Dictionary:
 	if not uri.begins_with("esm://"):

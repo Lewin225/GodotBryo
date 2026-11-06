@@ -38,6 +38,11 @@ var _markers_by_model: Dictionary = {}
 ## Canonical NIF path -> the actors waiting for that NIF's markers.
 var _waiting: Dictionary = {}
 
+## Drops the actors waiting to be seated, for loading a save into an open
+## game. The markers read from each furniture NIF are kept.
+func clear_game_state() -> void:
+	_waiting.clear()
+
 ## `actor` has started using `furniture`: seats it once the markers are known.
 func seat(actor: ActorReference, furniture: FurnitureReference) -> void:
 	# The furniture idles replace any idle the actor was asked to play.

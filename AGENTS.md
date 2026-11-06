@@ -305,9 +305,10 @@ adjacent-grid-cell exterior streaming, parallel to (not replacing)
 `CHECK_INTERVAL_SEC` and maintains a resident tile set using two
 hysteresis-guarded radii: `RADIUS_LOAD_FULL` (every placement resolved) and
 the wider `RADIUS_LOAD_DISTANT` (VWD-only). `activate(wrld_form_id)` starts
-streaming; `deactivate()` tears everything down; `set_paused(bool)` freezes
-streaming without freeing anything (used for interior visits — see its own
-doc comment in `world_streamer.gd` for why pausing has to separately handle
+streaming; `deactivate()` tears everything down; `set_streaming_paused(bool)`
+(`WorldStreamerV2`) freezes streaming without freeing anything (used for interior
+visits; not the game pause, `get_tree().paused`, see `GodotBryo/Servers/readme.md`)
+— see its own doc comment for why pausing has to separately handle
 RenderingServer-visible Nodes, `DirectGeometryBatch`'s raw RID geometry, and
 PhysicsServer3D collision, including Terrain3D's own internal collision
 body — three genuinely separate layers, not one visibility flag).

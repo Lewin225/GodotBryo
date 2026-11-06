@@ -21,6 +21,9 @@ var durations := PackedFloat32Array()
 var lips: Array[LipReader] = []
 ## False while its voice files load; the line has not begun.
 var started := false
+## True for a line replayed from a save after its begin script had run; the
+## begin script is not run again.
+var skip_begin_script := false
 ## The response being said, an index into info.responses.
 var response_index := 0
 ## Seconds the current response has been said.

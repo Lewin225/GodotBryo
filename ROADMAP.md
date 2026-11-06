@@ -37,7 +37,7 @@ a placeholder path.
 | 6 AI and combat | AI packages (Travel, Dialogue, Follow) on and off screen through `NpcSimulationServer`; no combat |
 | 7 Dialogue, quests, UI | Dialogue with voice, quests and objectives, terminals, message boxes; no Pip-Boy or inventory UI |
 | 8 VATS | Not started |
-| 9 Save/load | Not started (`Plans/Saving/reference_persistence.md`) |
+| 9 Save/load | Not started (`Plans/Saving/save_load.md`) |
 | 10 Content pass | Not started; the opening quest VCG01 plays start to finish |
 | 14 Physics | Physics items that can be picked up, and the player controller |
 

@@ -22,7 +22,7 @@ const FLAG_MATCH_PC_BELOW_MINIMUM := 0x02
 @export_custom(PROPERTY_HINT_FLAGS, "Never Resets:1,Match PC Below Minimum Level:2", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
 ## Runtime state with no ESM source: the zone's level, fixed by the first
 ## resolve_level() call; 0 until then. Used by ActorReference to choose from
-## leveled lists.
+## leveled lists. Saved through changed_fields.
 @export var resolved_level: int = 0
 
 
@@ -35,4 +35,5 @@ func resolve_level(player_level: int) -> int:
 	resolved_level = player_level
 	if (flags & FLAG_MATCH_PC_BELOW_MINIMUM) == 0:
 		resolved_level = maxi(player_level, minimum_level)
+	mark_changed("resolved_level")
 	return resolved_level
