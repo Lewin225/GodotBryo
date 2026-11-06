@@ -1,8 +1,8 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://b8r8qt3py4go2"]
 
-[ext_resource type="Script" path="res://launcher.gd" id="1_launcher"]
+[ext_resource type="Script" uid="uid://dg34gor6rhhjo" path="res://launcher.gd" id="1_launcher"]
 
-[node name="Launcher" type="MarginContainer"]
+[node name="Launcher" type="MarginContainer" unique_id=1981425138]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -14,105 +14,103 @@ theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 24
 script = ExtResource("1_launcher")
 
-[node name="Panel" type="VBoxContainer" parent="."]
+[node name="Panel" type="VBoxContainer" parent="." unique_id=789061148]
 custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 
-[node name="Notice" type="Label" parent="Panel"]
+[node name="Notice" type="Label" parent="Panel" unique_id=830941798]
 layout_mode = 2
 text = "GodotBryo is early and most of Fallout: New Vegas is missing: no combat, Pip-Boy or inventory yet, and plenty of bugs. A new game starts in Doc Mitchell's house.
 
 Pick FalloutNV.esm from your own copy of the game below."
 autowrap_mode = 3
 
-[node name="DataLabel" type="Label" parent="Panel"]
-unique_name_in_owner = true
-layout_mode = 2
-autowrap_mode = 3
-
-[node name="StatusLabel" type="Label" parent="Panel"]
-unique_name_in_owner = true
-layout_mode = 2
-autowrap_mode = 3
-
-[node name="SaveList" type="ItemList" parent="Panel"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 160)
-layout_mode = 2
-
-[node name="Storage" type="HBoxContainer" parent="Panel"]
-layout_mode = 2
-
-[node name="StorageLabel" type="Label" parent="Panel/Storage"]
-layout_mode = 2
-text = "Save storage:"
-
-[node name="StorageOption" type="OptionButton" parent="Panel/Storage"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="Buttons" type="HBoxContainer" parent="Panel"]
-layout_mode = 2
-
-[node name="ChooseButton" type="Button" parent="Panel/Buttons"]
+[node name="ChooseButton" type="Button" parent="Panel" unique_id=416218449]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Pick FalloutNV.esm..."
 
-[node name="NewGameButton" type="Button" parent="Panel/Buttons"]
+[node name="DataLabel" type="Label" parent="Panel" unique_id=1204579923]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="StatusLabel" type="Label" parent="Panel" unique_id=1367150205]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="HSeparator" type="HSeparator" parent="Panel" unique_id=1191683697]
+layout_mode = 2
+
+[node name="Storage" type="HBoxContainer" parent="Panel" unique_id=539425675]
+layout_mode = 2
+
+[node name="StorageLabel" type="Label" parent="Panel/Storage" unique_id=530398701]
+layout_mode = 2
+text = "Save storage:"
+
+[node name="StorageOption" type="OptionButton" parent="Panel/Storage" unique_id=1745963101]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="LoadButton" type="Button" parent="Panel/Storage" unique_id=1414773606]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+text = "Load"
+
+[node name="SaveList" type="ItemList" parent="Panel" unique_id=1544434068]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Panel" unique_id=1897394980]
+layout_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="Panel" unique_id=99619455]
+layout_mode = 2
+
+[node name="Start" type="HBoxContainer" parent="Panel" unique_id=1880174341]
+layout_mode = 2
+
+[node name="StartLabel" type="Label" parent="Panel/Start" unique_id=1858118409]
+layout_mode = 2
+text = "Start New :"
+
+[node name="StartOption" type="OptionButton" parent="Panel/Start" unique_id=2028967653]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NewGameButton" type="Button" parent="Panel/Start" unique_id=1124772363]
 unique_name_in_owner = true
 layout_mode = 2
 text = "New game"
 
-[node name="CustomStartButton" type="Button" parent="Panel/Buttons"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Start with script"
-
-[node name="LoadButton" type="Button" parent="Panel/Buttons"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Load"
-
-[node name="QuitButton" type="Button" parent="Panel/Buttons"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Quit"
-
-[node name="StartupScriptEdit" type="CodeEdit" parent="Panel"]
+[node name="StartupScriptEdit" type="CodeEdit" parent="Panel" unique_id=1213185414]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
-text = "; Skips the Doc Mitchell tutorial intro and completes VCG01
-CompleteAllObjectives VCG01
-SetStage VCG01 200
-
-; Player sex
-player.SexChange Male
-
-; SPECIAL attributes (40 points total)
-player.SetAV Strength 6
-player.SetAV Perception 5
-player.SetAV Endurance 6
-player.SetAV Charisma 4
-player.SetAV Intelligence 7
-player.SetAV Agility 6
-player.SetAV Luck 6
-
-; Skills (tag skill bonuses: +15 each)
-player.ModAV Guns 15
-player.ModAV Lockpick 15
-player.ModAV Speech 15
-
-; Destination
-COC TestTraps"
 placeholder_text = "Startup script (GECK / console commands)"
 gutters_draw_line_numbers = true
 
-[node name="EsmDialog" type="FileDialog" parent="."]
+[node name="HSeparator3" type="HSeparator" parent="Panel" unique_id=653685185]
+layout_mode = 2
+
+[node name="QuitButton" type="Button" parent="Panel" unique_id=810559842]
 unique_name_in_owner = true
-title = "Pick FalloutNV.esm"
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 8
+text = "Quit"
+
+[node name="EsmDialog" type="FileDialog" parent="." unique_id=1576453459]
+unique_name_in_owner = true
+title = "Open a File"
 file_mode = 0
 access = 2
 filters = PackedStringArray("FalloutNV.esm ; Fallout: New Vegas master file")

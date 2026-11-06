@@ -2,7 +2,8 @@ extends MarginContainer
 
 ## The main scene. Says how much is missing, shows which FalloutNV.esm the
 ## servers loaded, lets the player pick another, and starts a new game in Doc
-## Mitchell's house (game.tscn) or loads a save from the list (SaveServer's
+## Mitchell's house (game.tscn) with the startup script picked from a drop-down
+## and shown for editing, or loads a save from the list (SaveServer's
 ## backend; game.gd's load_save_id). A drop-down picks the save storage
 ## from SaveServer's registered backends (SaveServer.set_storage()).
 ##
@@ -14,12 +15,41 @@ extends MarginContainer
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const GameScript := preload("res://game.gd")
 const GAME_SCENE := "res://game.tscn"
+## Startup scripts offered by the start drop-down, by title. The chosen one
+## fills the script box, which New game runs (game.gd's startup_script).
+const TRAP_RANGE_SCRIPT := """; Skips the Doc Mitchell tutorial intro and completes VCG01
+CompleteAllObjectives VCG01
+SetStage VCG01 200
+
+; Player sex
+player.SexChange Male
+
+; SPECIAL attributes (40 points total)
+player.SetAV Strength 6
+player.SetAV Perception 5
+player.SetAV Endurance 6
+player.SetAV Charisma 4
+player.SetAV Intelligence 7
+player.SetAV Agility 6
+player.SetAV Luck 6
+
+; Skills (tag skill bonuses: +15 each)
+player.ModAV Guns 15
+player.ModAV Lockpick 15
+player.ModAV Speech 15
+
+; Destination
+COC TestTraps"""
+const STARTUP_SCRIPTS := {
+	"New Game": GameScript.DEFAULT_STARTUP_SCRIPT,
+	"Trap Range": TRAP_RANGE_SCRIPT,
+}
 
 @onready var _data_label: Label = %DataLabel
 @onready var _status_label: Label = %StatusLabel
 @onready var _choose_button: Button = %ChooseButton
 @onready var _new_game_button: Button = %NewGameButton
-@onready var _custom_start_button: Button = %CustomStartButton
+@onready var _start_option: OptionButton = %StartOption
 @onready var _startup_script_edit: CodeEdit = %StartupScriptEdit
 @onready var _quit_button: Button = %QuitButton
 @onready var _save_list: ItemList = %SaveList
@@ -34,7 +64,8 @@ func _ready() -> void:
 	_loaded_data_dir = GameDataSettings.get_data_dir()
 	_choose_button.pressed.connect(_on_choose_pressed)
 	_new_game_button.pressed.connect(_on_new_game_pressed)
-	_custom_start_button.pressed.connect(_on_custom_start_pressed)
+	_fill_start_options()
+	_start_option.item_selected.connect(_on_start_selected)
 	_quit_button.pressed.connect(get_tree().quit)
 	_load_button.pressed.connect(_on_load_pressed)
 	_save_list.item_activated.connect(func(_index: int) -> void: _on_load_pressed())
@@ -43,7 +74,7 @@ func _ready() -> void:
 	_storage_option.item_selected.connect(_on_storage_selected)
 	_esm_dialog.file_selected.connect(_on_esm_selected)
 	_new_game_button.disabled = true
-	_custom_start_button.disabled = true
+	_start_option.disabled = true
 	_startup_script_edit.editable = false
 	_show_configuration()
 	if _loaded_data_dir.is_empty():
@@ -70,7 +101,7 @@ func _show_configuration() -> void:
 func _on_esm_ready() -> void:
 	_status_label.text = "Ready."
 	_new_game_button.disabled = false
-	_custom_start_button.disabled = false
+	_start_option.disabled = false
 	_startup_script_edit.editable = true
 	_list_saves()
 
@@ -144,12 +175,21 @@ func _on_esm_selected(path: String) -> void:
 	get_tree().quit()
 
 
+## One entry per startup script, with the first selected and shown.
+func _fill_start_options() -> void:
+	_start_option.clear()
+	for title: String in STARTUP_SCRIPTS:
+		_start_option.add_item(title)
+	_start_option.select(0)
+	_on_start_selected(0)
+
+
+## Shows the chosen startup script in the script box, for editing before New game.
+func _on_start_selected(index: int) -> void:
+	_startup_script_edit.text = STARTUP_SCRIPTS[_start_option.get_item_text(index)]
+
+
 func _on_new_game_pressed() -> void:
-	GameScript.startup_script = ""
-	get_tree().change_scene_to_file(GAME_SCENE)
-
-
-func _on_custom_start_pressed() -> void:
 	var script := _startup_script_edit.text.strip_edges()
 	if script.is_empty():
 		_status_label.text = "Enter a startup script."

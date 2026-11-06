@@ -12,9 +12,15 @@ extends Node3D
 ## weather and sky, and the debug HUD.
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
-## Script run when starting a new game: sets up VCG01 and moves the player to
-## the bed in Doc Mitchell's house (reproducing VCG00 stage 0 / stage 100).
-const DEFAULT_STARTUP_SCRIPT := """SetStage VCG01 0
+## Script run when starting a new game, in place of VCG00 (the cemetery
+## intro): disables McMurphy and Jessup as VCG00 stage 0 does, runs stage 100's
+## cleanup, which starts VCG01, and moves the player to the bed in Doc
+## Mitchell's house as stage 0 does.
+const DEFAULT_STARTUP_SCRIPT := """; Skips the cemetery intro. Stage 0 disables McMurphy and Jessup
+McMurphyREF.Disable
+JessupREF.Disable
+; Stage 100's cleanup starts VCG01
+SetStage VCG00 100
 SetActiveQuest VCG01
 player.MoveTo VCG01PlayerStartMarkerREF"""
 const GameDataConfigScript := preload("res://game_data_config.gd")
