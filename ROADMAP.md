@@ -37,7 +37,7 @@ a placeholder path.
 | 6 AI and combat | AI packages (Travel, Dialogue, Follow) on and off screen through `NpcSimulationServer`; no combat |
 | 7 Dialogue, quests, UI | Dialogue with voice, quests and objectives, terminals, message boxes; no Pip-Boy or inventory UI |
 | 8 VATS | Not started |
-| 9 Save/load | Not started (`Plans/Saving/save_load.md`) |
+| 9 Save/load | Done (`Plans/Completed Plans/Saving/save_load.md`) |
 | 10 Content pass | Not started; the opening quest VCG01 plays start to finish |
 | 14 Physics | Physics items that can be picked up, and the player controller |
 
@@ -240,6 +240,8 @@ solid before calling the base game "complete."
   per cell.
 - **Exit criterion:** save mid-quest, reload, and all world/quest/inventory state is
   identical to pre-save.
+- **Status:** done (`Plans/Completed Plans/Saving/save_load.md`): JSON folder and git
+  backends, F5/F6, launcher list. Open items there are improvements.
 
 ## Phase 10 — Full Base-Game Content Pass
 

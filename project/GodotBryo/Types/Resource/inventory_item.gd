@@ -17,7 +17,7 @@ signal item_changed
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var base: EsmBase
 ## Not an ESM field: the item's own reference, a runtime reference from
 ## EsmServer.create_runtime_reference(); null for a stack. When the item becomes
-## a reference is not decided (Plans/Saving/save_load.md, Open), so nothing
+## a reference is not decided (Plans/Completed Plans/Saving/save_load.md, Open), so nothing
 ## sets it yet outside tests.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmReference", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE) var item_reference: EsmReference:
 	set(value):

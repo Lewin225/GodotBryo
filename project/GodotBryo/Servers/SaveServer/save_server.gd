@@ -199,7 +199,7 @@ func check_header(header: Dictionary) -> String:
 ## The caller pauses the game around it (get_tree().paused), so nothing acts
 ## on a half-applied save; SaveServer runs while paused. A coroutine; await
 ## it. Seeding the simulation and placing the player are the
-## game's (Plans/Saving/save_load.md, Loading). Entries an owner drops are
+## game's (Plans/Completed Plans/Saving/save_load.md, Loading). Entries an owner drops are
 ## added to `report`, and the load report is written to LOAD_REPORT_PATH.
 func apply_state(state: Dictionary) -> void:
 	var timings: Array[String] = []

@@ -144,7 +144,7 @@ func _ready() -> void:
 	if start is Dictionary:
 		push_error("game.gd: " + String(start["error"]))
 
-## Loads save `save_id` in the load order of Plans/Saving/save_load.md: the
+## Loads save `save_id` in the load order of Plans/Completed Plans/Saving/save_load.md: the
 ## save's sections applied (EsmServer's dirty bases, runtime and saved
 ## references, then quests, scripts, dialogue, time and weather), the
 ## player's reference possessed, the simulation seeded, and only then the

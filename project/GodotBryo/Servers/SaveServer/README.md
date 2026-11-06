@@ -1,6 +1,6 @@
 # SaveServer
 
-Saves and loads the game. The plan is `Plans/Saving/save_load.md`.
+Saves and loads the game. The plan is `Plans/Completed Plans/Saving/save_load.md`.
 
 ## Contract
 
