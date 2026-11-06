@@ -136,9 +136,11 @@ func _ready() -> void:
 			"the trait menu is 1084, allows iTraitMenuMaxNumTraits (2) and Done closes it (%d)" % trait_menu.max_traits())
 	trait_menu.queue_free()
 
-	# SexChange changes the NPC_ too.
+	# SexChange changes the NPC_ too (with argument or no-arg toggle).
 	script_server.run_debug_line("player.SexChange Male 1")
 	check(not player_base.is_female(), "player.SexChange Male clears it")
+	script_server.run_debug_line("player.SexChange")
+	check(player_base.is_female(), "player.SexChange with no argument toggles it")
 
 	# A dirty base is not rehydrated from the ESM.
 	player_base.full_name = "Changed"

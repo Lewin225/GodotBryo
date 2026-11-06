@@ -114,6 +114,20 @@ func _on_show_background_on_tab_scren_toggled(toggled_on: bool) -> void:
 [sub_resource type="Theme" id="Theme_ggi80"]
 TabContainer/styles/panel = SubResource("StyleBoxEmpty_463cl")
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7knny"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.101960786, 0.101960786, 0.101960786, 1)
+border_width_bottom = 2
+border_color = Color(0, 0, 0, 0.3)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 5
+
 [sub_resource type="CompositorEffect" id="CompositorEffect_7knny"]
 resource_local_to_scene = false
 resource_name = ""
@@ -363,10 +377,21 @@ layout_mode = 2
 
 [node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1298307156]
 layout_mode = 2
+split_offsets = PackedInt32Array(40)
+split_offset = 40
 
-[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=668789071]
-custom_minimum_size = Vector2(220, 0)
+[node name="Left" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=949132900]
+custom_minimum_size = Vector2(200, 0)
+custom_maximum_size = Vector2(800, -1)
 layout_mode = 2
+
+[node name="LineEdit" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=1376486747]
+layout_mode = 2
+placeholder_text = "Filter"
+
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=668789071]
+layout_mode = 2
+size_flags_vertical = 3
 
 [node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=1731338449]
 layout_mode = 2
@@ -379,9 +404,15 @@ bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=464048584]
-custom_minimum_size = Vector2(0, 70)
+[node name="ScrollContainer" type="ScrollContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1681806379]
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
+
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right/ScrollContainer" unique_id=464048584]
+custom_minimum_size = Vector2(200, 70)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
@@ -389,6 +420,8 @@ scroll_active = false
 [node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_colors/font_readonly_color = Color(0.8745098, 0.8745098, 0.8745098, 1)
+theme_override_styles/read_only = SubResource("StyleBoxFlat_7knny")
 
 [node name="SuggestionsPanel" type="PanelContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=194857299]
 visible = false

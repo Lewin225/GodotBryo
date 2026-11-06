@@ -3,10 +3,11 @@ extends Control
 ## Scene-authored runtime scripting workbench. Reads ScriptServer's debug API
 ## (instances, usage, console) rather than its internal state.
 
-@onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Instances
+@onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Left/Instances
+@onready var _filter: LineEdit = $Margin/VBox/VSplit/HSplit/Left/LineEdit
 @onready var _usage: RichTextLabel = $Margin/VBox/Usage
 @onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
-@onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Locals
+@onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/ScrollContainer/Locals
 @onready var _source: CodeEdit = $Margin/VBox/VSplit/HSplit/Right/Source
 @onready var _line: LineEdit = $Margin/VBox/ConsoleRow/Line
 @onready var _run: Button = $Margin/VBox/ConsoleRow/Run
@@ -17,6 +18,7 @@ extends Control
 
 var _engine: Node
 var _instances: Array = []
+var _filtered_instances: Array = []
 var _selected_reference: EsmReference = null
 ## The selected entry's reference or, for a quest script, its QuestBase.
 var _selected_key: Object = null
@@ -67,6 +69,9 @@ func _ready() -> void:
 	_line.text_submitted.connect(func(_text: String) -> void: _run_line())
 	_line.gui_input.connect(_on_line_gui_input)
 	_line.text_changed.connect(_on_line_text_changed)
+
+	_filter.clear_button_enabled = true
+	_filter.text_changed.connect(func(_new_text: String) -> void: _refresh())
 
 	_instances_list.item_selected.connect(_select_instance)
 	_refresh()
@@ -311,8 +316,24 @@ func _refresh() -> void:
 		_usage.text = "ScriptServer not found"
 		return
 	_instances = _engine.get_debug_instances()
+	_filtered_instances.clear()
 	_instances_list.clear()
+	var needle := _filter.text.strip_edges().to_lower()
+	var raw_hex := needle.trim_prefix("0x")
 	for entry in _instances:
+		if not needle.is_empty():
+			var name_str := String(entry.get("name", "")).to_lower()
+			var script_str := String(entry.get("script_name", "")).to_lower()
+			var quest: EsmBase = entry.get("quest") as EsmBase
+			var ref: EsmReference = entry.get("reference") as EsmReference
+			var id_match := (
+				_matches_form_id(int(entry.get("script_form_id", 0)), needle, raw_hex)
+				or (quest != null and _matches_form_id(quest.form_id, needle, raw_hex))
+				or (ref != null and _matches_form_id(ref.base_form_id, needle, raw_hex))
+			)
+			if not name_str.contains(needle) and not script_str.contains(needle) and not id_match:
+				continue
+		_filtered_instances.append(entry)
 		var state := ""
 		if entry["quest"] != null:
 			state = "  (quest)" if entry["loaded"] else "  (quest, stopped)"
@@ -328,10 +349,11 @@ func _refresh() -> void:
 
 
 func _select_instance(index: int) -> void:
-	if index < 0 or index >= _instances.size():
+	if index < 0 or index >= _filtered_instances.size():
 		return
-	_selected_key = _entry_key(_instances[index])
-	_selected_reference = _instances[index]["reference"]
+	var entry: Dictionary = _filtered_instances[index]
+	_selected_key = _entry_key(entry)
+	_selected_reference = entry["reference"]
 	_show_selected()
 
 
@@ -339,6 +361,7 @@ func _select_instance(index: int) -> void:
 func select_quest(quest: QuestBase) -> void:
 	_selected_key = quest
 	_selected_reference = null
+	_filter.text = ""
 	_refresh()
 	_show_selected()
 
@@ -346,6 +369,15 @@ func select_quest(quest: QuestBase) -> void:
 ## An entry's identity: its reference, or its quest for a quest script.
 static func _entry_key(entry: Dictionary) -> Object:
 	return entry["reference"] if entry["reference"] != null else entry["quest"]
+
+
+## Whether a FormID's 8-digit hex contains the filter text: `raw_hex` is the
+## filter without its `0x` prefix, `needle` the whole filter. 0 never matches.
+static func _matches_form_id(form_id: int, needle: String, raw_hex: String) -> bool:
+	if form_id == 0:
+		return false
+	var hex_str := "%08x" % form_id
+	return (not raw_hex.is_empty() and hex_str.contains(raw_hex)) or ("0x" + hex_str).contains(needle)
 
 
 func _show_selected() -> void:

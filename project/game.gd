@@ -2,27 +2,37 @@ extends Node3D
 
 ## The runtime entry point. Wires the scene's servers and nodes, then starts
 ## the game one of two ways: a new game gives the player controller the
-## player's reference and moves it to START_MARKER_EDITOR_ID (or `start_location`,
-## or DEFAULT_CELL_EDITOR_ID's COC marker); a loaded game (`load_save_id`)
-## applies the save through SaveServer first and places the player where the
-## save puts them.
+## player's reference and runs the startup script (`startup_script`, else
+## DEFAULT_STARTUP_SCRIPT) through ScriptServer, then moves the player to
+## `start_location` when set; a loaded game (`load_save_id`) applies the save
+## through SaveServer first and places the player where the save puts them.
 ##
 ## Loading follows the possessed reference (TransitionCoordinator). Game reacts
 ## to where the player ends up: interior/exterior environment, XCLL lighting,
 ## weather and sky, and the debug HUD.
 
 const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
-## Where a new game puts the player: VCG00 stage 0 does
-## `player.moveto VCG01PlayerStartMarkerREF`, the bed in Doc Mitchell's house.
-const START_MARKER_EDITOR_ID := "VCG01PlayerStartMarkerREF"
+## Script run when starting a new game, in place of VCG00 (the cemetery
+## intro): disables McMurphy and Jessup as VCG00 stage 0 does, runs stage 100's
+## cleanup, which starts VCG01, and moves the player to the bed in Doc
+## Mitchell's house as stage 0 does.
+const DEFAULT_STARTUP_SCRIPT := """; Skips the cemetery intro. Stage 0 disables McMurphy and Jessup
+McMurphyREF.Disable
+JessupREF.Disable
+; Stage 100's cleanup starts VCG01
+SetStage VCG00 100
+SetActiveQuest VCG01
+player.MoveTo VCG01PlayerStartMarkerREF"""
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
+## When non-empty, runs in ScriptServer on startup in place of DEFAULT_STARTUP_SCRIPT.
+static var startup_script := ""
 ## The save the next game loads instead of starting new; cleared when read.
 ## Set by the launcher's Load.
 static var load_save_id := ""
-## Where the next new game puts the player instead of START_MARKER_EDITOR_ID:
-## {space_form_id, position, rotation}, Gamebryo axes. Cleared when read; for
-## tests that start outside.
+## Where the next new game puts the player instead of where the startup script
+## does: {space_form_id, position, rotation}, Gamebryo axes. Cleared when read;
+## for tests that start outside.
 static var start_location: Dictionary = {}
 
 
@@ -123,26 +133,23 @@ func _ready() -> void:
 	player.possess(EsmServer.get_player_reference())
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
-	# VCG00, the cemetery intro, is not played: its stage 0 moves the player to
-	# VCG01PlayerStartMarkerREF and its last stage (100) ends with
-	# `SetStage VCG01 0`, which starts Doc Mitchell's opening; both are done
-	# here. The player starts with VCG01 (Ain't That a Kick in the Head) as the
-	# active quest.
-	var vcg01 := EsmServer.find_quest_by_editor_id("VCG01")
-	QuestServer.set_stage(vcg01, 0)
-	QuestServer.active_quest = vcg01
+	var script := startup_script if not startup_script.is_empty() else DEFAULT_STARTUP_SCRIPT
+	startup_script = ""
+	ScriptServer.run_result_script(script, player.possessed)
 	var location := start_location
 	start_location = {}
 	if not location.is_empty():
+		# Replaces any move the startup script queued for the player.
 		ScriptServer.move_reference(player.possessed, int(location["space_form_id"]), location["position"], location.get("rotation", Vector3.ZERO))
 		return
-	var marker := EsmServer.find_reference_by_editor_id(START_MARKER_EDITOR_ID)
-	if marker != null and player.possessed != null:
-		ScriptServer.move_reference(player.possessed, marker.current_space_form_id, marker.position, marker.rotation)
-		return
-	var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
-	if start is Dictionary:
-		push_error("game.gd: " + String(start["error"]))
+	# MoveTo and COC only queue a move, hence the pending-move check. This
+	# relies on the player reference starting in no space (space 0), as
+	# EsmServer creates it for a new game.
+	if player.possessed == null or (player.possessed.current_space_form_id == 0 and ScriptServer.get_pending_move(player.possessed).is_empty()):
+		push_error("game.gd: startup script did not place the player in a cell")
+		var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
+		if start is Dictionary:
+			push_error("game.gd: " + String(start["error"]))
 
 ## Loads save `save_id` in the load order of Plans/Completed Plans/Saving/save_load.md: the
 ## save's sections applied (EsmServer's dirty bases, runtime and saved

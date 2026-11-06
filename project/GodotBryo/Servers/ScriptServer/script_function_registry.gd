@@ -288,11 +288,15 @@ func _register_defaults() -> void:
 	register("SetObjectiveCompleted", func(a: Array, _c):
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
+	# TODO: Delete the "Caps001" placeholder once inventories hold real caps.
+	# Until then every reference reports 20000 caps, even after RemoveItem.
 	# Inventory of the calling reference (actor, creature or container). Items
 	# are named by base editor ID; a leveled list resolves when added.
 	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
+		if item != null and item.editor_id.to_lower() == "caps001":
+			return 20000
 		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
 	# `AddItem Item Count [HideMessage]`.
 	register("AddItem", func(a: Array, ctx: ScriptExecutionContext):
@@ -483,12 +487,17 @@ func _register_defaults() -> void:
 	# (ScriptServer.is_menu_open).
 	register("MenuMode", func(a: Array, _c):
 		return 1 if script_server != null and script_server.is_menu_open(int(_number(a, 0)) if not a.is_empty() else 0) else 0)
-	# `[Actor.]SexChange Male|Female [1]`: sets the ACBS Female flag of the
-	# actor's NPC_, which marks it dirty.
+	# `[Actor.]SexChange [Male|Female|0|1]`: sets or toggles the ACBS Female
+	# flag of the actor's NPC_, which marks it dirty.
 	register("SexChange", func(a: Array, ctx: ScriptExecutionContext):
 		var npc := ctx.calling_reference.base as NpcBase if ctx.calling_reference != null else null
+		if npc == null:
+			return 0
+		if a.is_empty():
+			npc.set_female(not npc.is_female())
+			return 1
 		var female := _sex_arg(a, 0)
-		if npc == null or female < 0:
+		if female < 0:
 			return 0
 		npc.set_female(female == 1)
 		return 1)

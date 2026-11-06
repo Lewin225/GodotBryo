@@ -243,6 +243,52 @@ func _check_quests_tab(game_node: Node) -> void:
 	var selected: PackedInt32Array = engine_tab._instances_list.get_selected_items()
 	check(selected.size() == 1 and engine_tab._instances[selected[0]]["quest"] == vmq01 and engine_tab._source.text.contains("VMQ01"),
 			"and selects VMQ01's script, with its source")
+
+	# Test Script Engine instances filter LineEdit
+	check(engine_tab._filter != null, "Script Engine instances filter LineEdit is resolved")
+	var unfiltered_count: int = engine_tab._instances_list.item_count
+	engine_tab._filter.text = "VMQ01"
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 1,
+			"filtering by 'VMQ01' matches VMQ01 instance")
+	engine_tab._select_instance(0)
+	check(engine_tab._selected_key == vmq01, "selecting index 0 from filtered list selects the filtered quest")
+	engine_tab._filter.text = "NonExistentScriptNameXYZ"
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == 0, "non-matching filter yields 0 instances")
+
+	# Search by script ID (hex formatted with 0x and partial). Several
+	# references can share a script, so check the entry is listed, not a count.
+	var first_entry: Dictionary = engine_tab._instances[0]
+	var script_form_id: int = int(first_entry["script_form_id"])
+	engine_tab._filter.text = "0x%08X" % script_form_id
+	engine_tab._refresh()
+	check(engine_tab._filtered_instances.has(first_entry), "filtering by script ID with '0x' lists its instance")
+	engine_tab._filter.text = "%06X" % (script_form_id & 0xFFFFFF)
+	engine_tab._refresh()
+	check(engine_tab._filtered_instances.has(first_entry), "filtering by partial hex script ID lists its instance")
+
+	# A partial hex like '0x005' also searches references' base FormIDs, which
+	# once crashed on references (they have base_form_id, not form_id).
+	engine_tab._filter.text = "0x005"
+	engine_tab._refresh()
+	var all_match := true
+	for entry: Dictionary in engine_tab._filtered_instances:
+		var ref: EsmReference = entry["reference"]
+		var quest: EsmBase = entry["quest"]
+		all_match = all_match and (
+			("%08x" % int(entry["script_form_id"])).contains("005")
+			or (ref != null and ("%08x" % ref.base_form_id).contains("005"))
+			or (quest != null and ("%08x" % quest.form_id).contains("005"))
+			or String(entry["name"]).to_lower().contains("0x005")
+			or String(entry["script_name"]).to_lower().contains("0x005"))
+	check(all_match and engine_tab._instances_list.item_count == engine_tab._filtered_instances.size(),
+			"filtering by '0x005' lists only entries whose script, base or quest FormID contains 005 (%d)" % engine_tab._filtered_instances.size())
+
+	engine_tab._filter.text = ""
+	engine_tab._refresh()
+	check(engine_tab._instances_list.item_count == unfiltered_count, "clearing filter restores all instances")
+
 	QuestServer.set_objective_displayed(vmq01, vmq01.objectives[0].index, false)
 	tabs.queue_free()
 
