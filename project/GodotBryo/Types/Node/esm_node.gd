@@ -162,12 +162,16 @@ func _on_reference_teleported(old_space_form_id: int, new_space_form_id: int) ->
 ## Streamers use this to keep a tile's collision inert while it is still being
 ## built, and to drop collision for paused content without tearing the nodes
 ## down. Static because it walks whatever subtree it is handed, including the
-## NIF-generated children that are not EsmNodes themselves.
+## NIF-generated children that are not EsmNodes themselves. A RigidBody3D is
+## frozen while its collision is off, since a body with no shapes still falls;
+## one marked `esm_always_frozen` (a STAT's) stays frozen.
 static func set_collision_disabled(node: Node, disabled: bool) -> void:
 	if not disabled and node is EsmNode and node.reference != null and node.reference.is_disabled():
 		disabled = true
 	if node is CollisionShape3D:
 		node.disabled = disabled
+	if node is RigidBody3D and not bool(node.get_meta("esm_always_frozen", false)):
+		node.freeze = disabled
 	for child in node.get_children():
 		set_collision_disabled(child, disabled)
 

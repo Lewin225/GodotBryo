@@ -15,13 +15,15 @@ const DEFAULT_CELL_EDITOR_ID := "GSDocMitchellHouse"
 ## Script run when starting a new game, in place of VCG00 (the cemetery
 ## intro): disables McMurphy and Jessup as VCG00 stage 0 does, runs stage 100's
 ## cleanup, which starts VCG01, and moves the player to the bed in Doc
-## Mitchell's house as stage 0 does.
+## Mitchell's house as stage 0 does. The player starts with 418 caps.
 const DEFAULT_STARTUP_SCRIPT := """; Skips the cemetery intro. Stage 0 disables McMurphy and Jessup
 McMurphyREF.Disable
 JessupREF.Disable
 ; Stage 100's cleanup starts VCG01
 SetStage VCG00 100
 SetActiveQuest VCG01
+; Starting caps
+player.AddItem Caps001 418 1
 player.MoveTo VCG01PlayerStartMarkerREF"""
 const GameDataConfigScript := preload("res://game_data_config.gd")
 
@@ -54,7 +56,6 @@ var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redun
 ## bound by the literal node name "Character" alone.
 @export var player: PlayerController
 var _interior_directional_light: DirectionalLight3D
-var inventory := Inventory.new()
 
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
 # (world_streaming_debug_tab.gd) -- StatsLabel removed here, no longer
@@ -244,17 +245,6 @@ func _process(_delta: float) -> void:
 		if not climate.is_empty():
 			celestial_controller.update(game_time_manager.game_hour, climate)
 			weather_manager.advance(_delta * game_time_manager.timescale / 3600.0)
-
-func debug_add_inventory_item(base_form_id: int) -> bool:
-	for entry in inventory.get_entries():
-		if int(entry.get("base_form_id", 0)) == base_form_id:
-			inventory.add_item(base_form_id, entry)
-			return true
-	return false
-
-func debug_drop_inventory_item(_base_form_id: int) -> bool:
-	push_warning("Drop inventory item is unavailable while the legacy registry is detached from CellStreamerV2")
-	return false
 
 ## PlaceAtMe's runtime owner.  The function registry delegates here so it
 ## never needs to know about active cell roots, mesh construction, or the

@@ -13,13 +13,14 @@ func _ready() -> void:
 	var inv_tab_script := load("res://inventory_debug_tab.gd")
 	var inv_tab: Control = inv_tab_script.new()
 
-	var named_item := { "base_form_id": 0x000E32F9, "full_name": "Bottle Cap", "editor_id": "Caps001", "weight": 0.0, "value": 1, "count": 100 }
-	var unnamed_item := { "base_form_id": 0x0010522B, "full_name": "", "editor_id": "DynamiteBoxRef", "weight": 5.0, "value": 20, "count": 2 }
-	var bare_item := { "base_form_id": 0x00123456, "full_name": "", "editor_id": "", "weight": 1.5, "value": 10, "count": 1 }
+	var named_item := _entry(0x000E32F9, "Bottle Cap", "Caps001")
+	var unnamed_item := _entry(0x0010522B, "", "DynamiteBoxRef")
+	var bare_item := InventoryItem.new()
+	bare_item.base_form_id = 0x00123456
 
-	check(inv_tab._resolve_item_name(named_item) == "Bottle Cap", "named item resolves full_name")
-	check(inv_tab._resolve_item_name(unnamed_item) == "DynamiteBoxRef", "empty full_name falls back to editor_id")
-	check(inv_tab._resolve_item_name(bare_item) == "Item 0x123456", "empty editor_id falls back to hex FormID")
+	check(inv_tab._item_name(named_item) == "Bottle Cap", "named item resolves full_name")
+	check(inv_tab._item_name(unnamed_item) == "DynamiteBoxRef", "empty full_name falls back to editor_id")
+	check(inv_tab._item_name(bare_item) == "Item 0x123456", "no base falls back to hex FormID")
 
 	inv_tab.free()
 
@@ -303,3 +304,12 @@ func _granted_count() -> int:
 func _finish() -> void:
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+## An inventory stack of a hand-made MISC base with this name and editor ID.
+func _entry(form_id: int, full_name: String, editor_id: String) -> InventoryItem:
+	var base := MiscBase.new()
+	base.form_id = form_id
+	base.full_name = full_name
+	base.editor_id = editor_id
+	return InventoryItem.make_stack(base, 1)
