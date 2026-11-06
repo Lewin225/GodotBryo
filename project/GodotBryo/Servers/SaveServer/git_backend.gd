@@ -30,6 +30,7 @@ var _last_commit: Dictionary = {}
 
 func _init(saves_root: String = "user://saves_git") -> void:
 	root = saves_root
+	title = "Git (a repository per playthrough)"
 
 
 ## Whether the git command runs.

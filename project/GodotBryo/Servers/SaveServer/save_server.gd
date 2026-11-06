@@ -68,6 +68,20 @@ func register_backend(backend_title: String, backend: SaveBackend) -> void:
 	backends[backend_title] = backend
 
 
+## Uses the backend registered as `storage` and keeps the choice in
+## SETTINGS_PATH. Returns false, changing nothing, when none is registered
+## under that name (git when git is not installed).
+func set_storage(storage: String) -> bool:
+	if not backends.has(storage):
+		return false
+	backend_name = storage
+	var settings := ConfigFile.new()
+	settings.load(SETTINGS_PATH)
+	settings.set_value("saves", "storage", storage)
+	settings.save(SETTINGS_PATH)
+	return true
+
+
 ## The backend in use, told the current playthrough.
 func get_backend() -> SaveBackend:
 	var backend: SaveBackend = backends.get(backend_name)

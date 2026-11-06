@@ -16,6 +16,7 @@ SaveServer.backend_name                             # "json_folder" or "git"; fr
 SaveServer.playthrough_id                           # set by start_playthrough() or a loaded header
 SaveServer.start_playthrough()                      # a new game's playthrough
 SaveServer.has_save(save_id) -> bool
+SaveServer.set_storage(name) -> bool                # picks and keeps the backend; the launcher's drop-down
 SaveServer.extra_sections                           # section name -> owner (time, weather)
 SaveServer.save_refusals                            # Array[Callable] returning a reason or ""
 SaveServer.report                                   # warnings and dropped entries of the last call
@@ -93,7 +94,7 @@ and the earlier quick saves stay in the history. A save is read by checking its 
 `<playthrough>/<save_id>`; a bare save_id is in the current playthrough. `delete()` removes the
 ref, and `git gc --auto` after a save reclaims what nothing reaches.
 
-Chosen with `user://save_settings.cfg`:
+Chosen with the launcher's storage drop-down (`set_storage()`), kept in `user://save_settings.cfg`:
 
 ```ini
 [saves]

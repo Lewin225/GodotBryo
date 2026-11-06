@@ -41,6 +41,17 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
 
+[node name="Storage" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+
+[node name="StorageLabel" type="Label" parent="Panel/Storage"]
+layout_mode = 2
+text = "Save storage:"
+
+[node name="StorageOption" type="OptionButton" parent="Panel/Storage"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="Buttons" type="HBoxContainer" parent="Panel"]
 layout_mode = 2
 

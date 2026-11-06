@@ -3,7 +3,8 @@ extends MarginContainer
 ## The main scene. Says how much is missing, shows which FalloutNV.esm the
 ## servers loaded, lets the player pick another, and starts a new game in Doc
 ## Mitchell's house (game.tscn) or loads a save from the list (SaveServer's
-## backend; game.gd's load_save_id).
+## backend; game.gd's load_save_id). A drop-down picks the save storage
+## from SaveServer's registered backends (SaveServer.set_storage()).
 ##
 ## The servers open the game data once, when they load, from
 ## GameDataConfig.resolve(). Choosing a different ESM saves its folder with
@@ -21,6 +22,7 @@ const GameScript := preload("res://game.gd")
 @onready var _quit_button: Button = %QuitButton
 @onready var _save_list: ItemList = %SaveList
 @onready var _load_button: Button = %LoadButton
+@onready var _storage_option: OptionButton = %StorageOption
 @onready var _esm_dialog: FileDialog = %EsmDialog
 
 var _loaded_data_dir := ""
@@ -34,6 +36,8 @@ func _ready() -> void:
 	_load_button.pressed.connect(_on_load_pressed)
 	_save_list.item_activated.connect(func(_index: int) -> void: _on_load_pressed())
 	_load_button.disabled = true
+	_fill_storage_options()
+	_storage_option.item_selected.connect(_on_storage_selected)
 	_esm_dialog.file_selected.connect(_on_esm_selected)
 	_new_game_button.disabled = true
 	_show_configuration()
@@ -77,6 +81,26 @@ func _list_saves() -> void:
 	_load_button.disabled = saves.is_empty()
 	if not saves.is_empty():
 		_save_list.select(0)
+
+
+## One entry per registered backend, named by its title, with the one in use
+## selected.
+func _fill_storage_options() -> void:
+	_storage_option.clear()
+	for backend_key: String in SaveServer.backends:
+		var backend: SaveBackend = SaveServer.backends[backend_key]
+		_storage_option.add_item(backend.title)
+		var index := _storage_option.item_count - 1
+		_storage_option.set_item_metadata(index, backend_key)
+		if backend_key == SaveServer.backend_name:
+			_storage_option.select(index)
+
+
+## Switches storage and lists the saves kept there.
+func _on_storage_selected(index: int) -> void:
+	SaveServer.set_storage(String(_storage_option.get_item_metadata(index)))
+	if EsmServer.is_ready():
+		_list_saves()
 
 
 func _on_load_pressed() -> void:

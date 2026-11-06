@@ -7,6 +7,8 @@ extends RefCounted
 ## save states already in the current format version; SaveServer migrates
 ## and checks them. Subclasses override every method.
 
+## The backend's name for the player, in the launcher's storage drop-down.
+var title := "Saves"
 ## Why the last call failed; empty after a success.
 var last_error := ""
 ## The playthrough being played, set by SaveServer. A backend that keeps

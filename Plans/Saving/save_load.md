@@ -411,7 +411,7 @@ out.
    player, Doc Mitchell's quest stage, Sunny's position and package, an opened container's
    contents, the time and the weather are as saved, and the exterior load has its terrain,
    distant objects and sky.
-7. **Quick save and quick load keys**, and the launcher's list of saves.
+7. **Quick save and quick load keys**, and the launcher's list of saves. Done (`dd718eb`).
    F6 `quick_load()` pauses the game, unloads the streamed world
    (`TransitionCoordinator.unload_world()`, terrain kept), and runs the launcher's load;
    `SaveServer.apply_state()` first calls `clear_game_state()` on ScriptServer (with ActorIdles
@@ -424,7 +424,7 @@ out.
    takes to start; measure NpcSimulationServer's navmesh load separately. Gate: quick load twice
    in Goodsprings; the second load reuses NifServer's trees and textures (its stats show no new
    parses) and the world matches the save.
-8. **Git storage.** A second backend, offered where git is installed: commit per save, branch on
+8. **Git storage.** Done (`786d2e8`). A second backend, offered where git is installed: commit per save, branch on
    saving from an earlier save. The save browser's branch view and remotes come after.
    `GitBackend`: one bare repository per playthrough under `user://saves_git` (the playthrough id
    is in the header, made at a new game), a commit per save with the save last written or read as
@@ -432,8 +432,9 @@ out.
    JsonFolderBackend. Chosen with `user://save_settings.cfg` `[saves] storage`. Measured on a
    231-file, 3.9 MB quick save: the first commit 63 ms, a later one 15 ms; packed, 269 KB.
    Checked by `tests/test_git_backend` (parents, branching, playthroughs apart, list, delete, a
-   one-file change adds 350 bytes) and `tests/test_quick_load` with `SAVE_BACKEND=git`. A
-   setting in the launcher is not in.
+   one-file change adds 350 bytes) and `tests/test_quick_load` with `SAVE_BACKEND=git`. The
+   launcher's storage drop-down, listing the registered backends, chooses it
+   (`SaveServer.set_storage()`); without git it is not listed.
 
 ## Open
 

@@ -24,6 +24,7 @@ var root := "user://saves"
 
 func _init(saves_root: String = "user://saves") -> void:
 	root = saves_root
+	title = "Full (a folder per save)"
 
 
 func write(save_id: String, state: Dictionary) -> Error:
