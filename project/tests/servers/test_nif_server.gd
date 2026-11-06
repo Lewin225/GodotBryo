@@ -20,6 +20,9 @@ const FACE_TRACK_KF := "meshes/characters/_male/idleanims/sitchaireata.kf"
 ## An Upper Body idle whose links carry three priorities: 13 on Bip01 and the
 ## legs, 30 on Bip01 Spine1, 33 on the head and arms.
 const PRIORITY_KF := "meshes/characters/_male/idleanims/2hrloiter.kf"
+## A seated special idle whose links pin Bip01 Pelvis, both calves and Bip01
+## NonAccum with the interpolator's static pose and no key data.
+const STATIC_POSE_KF := "meshes/characters/_male/idleanims/specialidle_cardpoint01.kf"
 ## Drives ##dgRubberBand:0's morpher (the weapon), no face.
 const RUBBER_BAND_KF := "meshes/characters/_male/1hpattackright.kf"
 ## 710 blocks / 2,111 built nodes, 12.8 ms per duplicate -- and an SCOL, so it
@@ -592,6 +595,30 @@ func test_kf_track_priorities() -> void:
 	_received_kf.clear()
 
 
+func test_kf_static_pose() -> void:
+	print("--- standalone KF: links pinned by a static pose ---")
+	NifServer.purge_all()
+	_received_kf.clear()
+	NifServer.request_kf(STATIC_POSE_KF, self, _on_kf_result)
+	await _drain_kf(1)
+	var library: AnimationLibrary = _received_kf[0] if _received_kf.size() == 1 else null
+	check(library != null, "the card point KF delivered")
+	if library == null:
+		return
+	var animation := library.get_animation(library.get_animation_list()[0])
+	for bone: String in ["Bip01 Pelvis", "Bip01 L Calf", "Bip01 R Calf", "Bip01 NonAccum"]:
+		var track := animation.find_track(NodePath(NifNamesScript.escape(bone)), Animation.TYPE_ROTATION_3D)
+		check(track != -1 and animation.track_get_key_count(track) == 1,
+			"%s has a one-key rotation track from its static pose" % bone)
+	var calf := animation.find_track(NodePath(NifNamesScript.escape("Bip01 L Calf")), Animation.TYPE_ROTATION_3D)
+	if calf != -1:
+		var bend := rad_to_deg((animation.track_get_key_value(calf, 0) as Quaternion).get_angle())
+		check(bend > 20.0, "the static calf rotation bends the knee (%.0f degrees)" % bend)
+	var priorities: Dictionary = animation.get_meta("nif_track_priorities", {})
+	check(int(priorities.get(NifNamesScript.escape("Bip01 L Calf"), -1)) == 50, "the pinned calf keeps its link's priority 50")
+	_received_kf.clear()
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_canonical_paths()
@@ -600,6 +627,7 @@ func _ready() -> void:
 	await test_inflight_dedup()
 	await test_kf_delivery_and_cache()
 	await test_kf_track_priorities()
+	await test_kf_static_pose()
 	await test_build_budget()
 	await test_missing_path()
 	await test_owner_gone()

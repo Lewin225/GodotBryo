@@ -62,6 +62,11 @@ for the actor's facial player. Each controlled block's priority byte (0 to 100 i
 KFs) is clip metadata: `nif_track_priorities`, track path → priority, and with face tracks
 `nif_face_track_priorities`, morph name → priority. No transform target is linked twice in one
 sequence with different priorities across the 4,765 shipped KFs (`native/tools/kf_priority_corpus`).
+A channel with no keys whose interpolator carries a set static value (not NIF's -FLT_MAX) is
+a one-key track holding that value; a static scale of 1 adds no track. Across the 4,765 KFs,
+53,157 links have no key data and only a static pose (in 4,256 files: the pelvis, neck, toes,
+fingers and NonAccum most often), and 39,596 more have keys on some channels and a static value
+on another (`native/tools/kf_static_pose_census`).
 Sequence names key the library --
 one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 sequences. Delivered
 libraries are shared immutable resources. NifServer caches them in memory and as compressed
