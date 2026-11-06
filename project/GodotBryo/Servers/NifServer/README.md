@@ -154,12 +154,40 @@ work, and NifServer offers no entry point for it.
 | declared bones as a flat list | unresolved named binds, no `Skeleton3D` |
 | sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
-| collision | one body per owning node, parented under that node |
+| collision | one body per owning node, parented under that node: a `StaticBody3D`, an `AnimatableBody3D` on an animated owner, or a `NifRigidBody` when the `bhkRigidBody`'s motion system moves (1, 2, 4, 8) |
 | `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
 | `NiBillboardNode` | a `NifBillboardNode` that orients itself, not material state |
 | a node type Godot has no equivalent for | a `Node3D` with its block type in metadata |
 | `NiStringExtraData` on a node | its string as `nif_extra_NiStringExtraData` (the last one when there are several), and every one by block name in the `nif_string_extra_data` dictionary (`{"Prn": "Bip01 Head"}`) |
 | `BSFurnitureMarker` positions | a `Marker3D` per position under the owning node, in file order (`FurnitureMarker0`, ...): its offset as the position (metres, like every position), the raw orientation (thousandths of a radian) and both posRef bytes in metadata, uninterpreted |
+
+**Moving bodies.** `NifSource.get_collision_bodies()` returns each `bhkRigidBody`'s
+`motion_system`, `quality_type`, `deactivator_type`, `solver_deactivation` and `layer` beside its
+mass, friction, restitution and damping. Of the 20,542 NIFs, 1,480 carry a body whose motion
+system moves (2,435 bodies at 4, 130 at 2, 2 at 8; `native/tools/nif_motion_census`), all owned
+by a `bhkCollisionObject`; every ragdoll bone (`bhkBlendCollisionObject`) is keyframed, 6. Such a
+body builds as a `NifRigidBody` with the body's mass (1 kg when 0), friction and restitution (scaled by
+`RESTITUTION_SCALE`, 0.25: Jolt bounces far more than the game at the authored values) as a
+`PhysicsMaterial`, damping replacing the project default, and `can_sleep` false only for
+deactivator type 1 (never). It becomes top level on entering the tree and moves its owning node
+to its interpolated transform each frame it is awake, so the meshes follow it. A file with one is
+not flattened by `prefer_static` (`nif_not_flattened_because` = `rigid body`). NifServer builds
+what the file says; a caller that must not move freezes the body (`EsmStaticNode` does, for
+the STAT models that carry one).
+
+**Joints.** A constraint between two bodies built as collision (not ragdoll bones) becomes a joint,
+a child of the constraint's first body (`entity_a_block`) at its pivot. `native/tools/nif_constraint_census`
+over all NIFs: 163 models carry a constraint on a moving body (90 of them armor ground models),
+mostly `bhkLimitedHingeConstraint` (about 225) and `bhkRagdollConstraint` (about 100), 31 wrapped in
+`bhkMalleableConstraint`, and one each of `bhkHingeConstraint` (`clutter\school\globe01.nif`),
+`bhkPrismaticConstraint` and `bhkStiffSpringConstraint`. A hinge, limited or free, is a
+`HingeJoint3D` turning about its local Z (the axle); a limited hinge's limits are shifted by its
+authored angle, since Havok measures between the perpendicular axes and Godot from the pose at
+creation. A ragdoll constraint is a `ConeTwistJoint3D` twisting about its local X, the cone angle
+as the swing span and the larger twist limit as the twist span; the plane limits stay in
+`nif_plane_limits`. Other types get no joint and are listed in the root's
+`nif_unjoined_constraints`. `NifSource` gives each constraint `entity_a_block`, `entity_b_block` and
+`limited`, and reads `bhkHingeConstraint` (and a malleable-wrapped hinge) as an unlimited `hinge`.
 
 **Shader flags.** `NifSource.get_nodes()` exposes the two raw FO3/FNV
 `BSShaderProperty` flag words (`shader_flags1` and `shader_flags2`, guarded by

@@ -136,10 +136,17 @@ struct CollisionShape {
 struct CollisionConstraint {
 	uint32_t block_index = 0;
 	std::string block_type; // bhkRagdollConstraint | bhkLimitedHingeConstraint | ...
-	std::string kind; // ragdoll | hinge | unsupported
+	std::string kind; // ragdoll | hinge | unsupported (prismatic, stiff spring, breakable)
 	// Set when the real descriptor came out of a bhkMalleableConstraint
 	// wrapper, which holds a ConstraintData whose own type selects it.
 	std::string wrapped_by;
+	// The two rigid bodies' block indices, in the constraint's entity order: A
+	// is the body the pivot_a / axis_a frame belongs to. -1 when absent.
+	int32_t entity_a_block = -1;
+	int32_t entity_b_block = -1;
+	// hinge: whether min_angle / max_angle bound it (bhkLimitedHingeConstraint);
+	// a bhkHingeConstraint turns freely.
+	bool limited = false;
 
 	float pivot_a[3] = { 0.0f, 0.0f, 0.0f };
 	float pivot_b[3] = { 0.0f, 0.0f, 0.0f };
@@ -171,6 +178,18 @@ struct CollisionBody {
 	float restitution = 0.0f;
 	float linear_damping = 0.0f;
 	float angular_damping = 0.0f;
+	// hkMotionType: 1 dynamic, 2 sphere inertia, 4 box inertia, 8 thin box
+	// move; 6 keyframed; 7 fixed. Placed items are 2, 4 or 8 almost always,
+	// statics 7, doors 6.
+	int motion_system = 0;
+	// hkQualityType: 1 fixed, 2 keyframed, 3 debris on almost every item.
+	int quality_type = 0;
+	// 1 never deactivates, 2 spatial (rests after settling).
+	int deactivator_type = 0;
+	// 1 off, 2 low to 5 max: how quickly a resting body is stopped.
+	int solver_deactivation = 0;
+	// The body's collision filter layer.
+	int layer = 0;
 	// bhkRigidBodyT's transform, both halves. Reading the translation without
 	// the rotation leaves a rotated collider sitting square to its mesh.
 	float translation[3] = { 0.0f, 0.0f, 0.0f }; // meters, bhkRigidBodyT only

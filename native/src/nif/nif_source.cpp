@@ -114,23 +114,33 @@ void fill_constraints(nifly::NiHeader &header, nifly::bhkRigidBody *body, Collis
 		cc.block_index = ref.index;
 		cc.block_type = header.GetBlockTypeStringById(ref.index);
 		cc.kind = "unsupported";
+		if (constraint->entityRefs.GetSize() > 0) {
+			cc.entity_a_block = static_cast<int32_t>(constraint->entityRefs.GetBlockRef(0));
+		}
+		if (constraint->entityRefs.GetSize() > 1) {
+			cc.entity_b_block = static_cast<int32_t>(constraint->entityRefs.GetBlockRef(1));
+		}
 
 		// bhkMalleableConstraint is a wrapper: it holds a ConstraintData whose
 		// own `type` selects which descriptor is live. 14 of skeleton.nif's 17
 		// constraints are this, so reading it as opaque loses most of the rig.
 		const nifly::RagdollDesc *ragdoll_desc = nullptr;
 		const nifly::LimitedHingeDesc *hinge_desc = nullptr;
+		const nifly::HingeDesc *free_hinge_desc = nullptr;
 		if (auto *malleable = dynamic_cast<nifly::bhkMalleableConstraint *>(constraint)) {
 			cc.wrapped_by = cc.block_type;
 			switch (malleable->subConstraint.type) {
 				case nifly::Ragdoll: ragdoll_desc = &malleable->subConstraint.desc5; break;
 				case nifly::LimitedHinge: hinge_desc = &malleable->subConstraint.desc3; break;
+				case nifly::Hinge: free_hinge_desc = &malleable->subConstraint.desc2; break;
 				default: break;
 			}
 		} else if (auto *ragdoll = dynamic_cast<nifly::bhkRagdollConstraint *>(constraint)) {
 			ragdoll_desc = &ragdoll->ragdoll;
 		} else if (auto *hinge = dynamic_cast<nifly::bhkLimitedHingeConstraint *>(constraint)) {
 			hinge_desc = &hinge->limitedHinge;
+		} else if (auto *free_hinge = dynamic_cast<nifly::bhkHingeConstraint *>(constraint)) {
+			free_hinge_desc = &free_hinge->hinge;
 		}
 
 		if (ragdoll_desc != nullptr) {
@@ -168,6 +178,21 @@ void fill_constraints(nifly::NiHeader &header, nifly::bhkRigidBody *body, Collis
 			cc.min_angle = d.minAngle;
 			cc.max_angle = d.maxAngle;
 			cc.max_friction = d.maxFriction;
+			cc.limited = true;
+		} else if (free_hinge_desc != nullptr) {
+			const auto &d = *free_hinge_desc;
+			cc.kind = "hinge";
+			cc.pivot_a[0] = d.pivotA.x * units::kHavokToMeters;
+			cc.pivot_a[1] = d.pivotA.y * units::kHavokToMeters;
+			cc.pivot_a[2] = d.pivotA.z * units::kHavokToMeters;
+			cc.pivot_b[0] = d.pivotB.x * units::kHavokToMeters;
+			cc.pivot_b[1] = d.pivotB.y * units::kHavokToMeters;
+			cc.pivot_b[2] = d.pivotB.z * units::kHavokToMeters;
+			cc.axis_a[0] = d.axleA.x; cc.axis_a[1] = d.axleA.y; cc.axis_a[2] = d.axleA.z;
+			cc.axis_b[0] = d.axleB.x; cc.axis_b[1] = d.axleB.y; cc.axis_b[2] = d.axleB.z;
+			cc.plane_a[0] = d.axleInA1.x; cc.plane_a[1] = d.axleInA1.y; cc.plane_a[2] = d.axleInA1.z;
+			cc.plane_b[0] = d.axleInB1.x; cc.plane_b[1] = d.axleInB1.y; cc.plane_b[2] = d.axleInB1.z;
+			cc.limited = false;
 		}
 		out.constraints.push_back(std::move(cc));
 	}
@@ -1103,6 +1128,11 @@ Document load(const uint8_t *data, size_t size) {
 						cb.restitution = body->restitution;
 						cb.linear_damping = body->linearDamping;
 						cb.angular_damping = body->angularDamping;
+						cb.motion_system = body->motionSystem;
+						cb.quality_type = body->qualityType;
+						cb.deactivator_type = body->deactivatorType;
+						cb.solver_deactivation = body->solverDeactivation;
+						cb.layer = body->collisionFilter.layer;
 						// bhkRigidBodyT carries its own transform; plain
 						// bhkRigidBody leaves it at the origin.
 						cb.translation[0] = body->translation.x * units::kHavokToMeters;

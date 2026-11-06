@@ -29,6 +29,9 @@ const VAULT_WINDOW := "meshes/dungeons/vault/accessories/vwindow01.nif"
 const DOC_MITCHELL_WINDOW := "meshes/dungeons/NV_CraftsmanHomesInterior/NVCraftsmanRmWallGlassB.nif"
 const INDUSTRIAL_RAYS := "meshes/effects/ambient/industrial/IndFXLightRays01.nif"
 const GOODSPRINGS_BEAM := "meshes/effects/ambient/FXLightBeamBrtW02.nif"
+const STIMPAK := "meshes/clutter/health/stimpak01.nif"
+const SODA_BOTTLE := "meshes/clutter/junk/sodabottleclosed01.nif"
+const GLOBE := "meshes/clutter/school/globe01.nif"
 
 var failures := 0
 
@@ -817,6 +820,98 @@ func test_prefer_static() -> void:
 		got.queue_free()
 
 
+## A bhkRigidBody whose motion system moves builds as a NifRigidBody with the
+## body's mass, material, damping and deactivation; it moves the node that owns
+## it; a fixed body stays a StaticBody3D; prefer_static does not flatten it.
+func test_moving_bodies() -> void:
+	print("--- moving rigid bodies ---")
+	for path in [STIMPAK, SODA_BOTTLE]:
+		var r: Dictionary = ArchiveServer.read(path)
+		var src := NifSource.new()
+		if not bool(r["found"]) or not src.load(PackedByteArray(r["data"])):
+			check(false, "loaded %s" % path.get_file())
+			continue
+		var data: Dictionary = src.get_collision_bodies()[0]
+		check(data.has("motion_system") and data.has("deactivator_type") and data.has("layer"),
+			"%s: NifSource returns the motion system, deactivation and layer (motion %d, layer %d)" % [path.get_file(), int(data.get("motion_system", -1)), int(data.get("layer", -1))])
+		var root: Node3D = await NifTreeBuilderScript.build(src, true)
+		var body := _find_first(root, "RigidBody3D") as NifRigidBody
+		check(body != null and _count(root, "StaticBody3D") == 0, "  its body is a NifRigidBody, not a StaticBody3D")
+		if body == null:
+			root.free()
+			continue
+		check(is_equal_approx(body.mass, float(data["mass"])), "  mass %.2f kg from the NIF" % body.mass)
+		check(is_equal_approx(body.physics_material_override.friction, float(data["friction"]))
+			and is_equal_approx(body.physics_material_override.bounce, float(data["restitution"]) * NifTreeBuilderScript.RESTITUTION_SCALE), "  friction from the NIF, restitution scaled")
+		check(body.linear_damp_mode == RigidBody3D.DAMP_MODE_REPLACE and is_equal_approx(body.linear_damp, float(data["linear_damping"])), "  linear damping replaces the default")
+		check(body.can_sleep == (int(data["deactivator_type"]) != 1) and body.motion_system == int(data["motion_system"]), "  deactivation and motion system kept")
+
+		var start := Vector3(3.0, 20.0, -2.0)
+		root.position = start
+		add_child(root)
+		check(body.top_level and body.global_position.is_equal_approx(start + (body.global_position - root.global_position)),
+			"  in the tree it is top level and keeps its place")
+		for i in 10:
+			await get_tree().physics_frame
+		await get_tree().process_frame
+		var owner_node := body.get_parent() as Node3D
+		check(body.global_position.y < start.y - 0.01, "  it falls under gravity (%.3f m)" % (start.y - body.global_position.y))
+		# Physics interpolation shows the owner between the last two ticks.
+		var lag := owner_node.global_position.distance_to(body.global_position)
+		check(owner_node.global_position.y < start.y - 0.01 and lag < 0.05,
+			"  and its owner follows it, within one tick (%.3f m behind)" % lag)
+		root.queue_free()
+
+	var barracks := NifSource.new()
+	var b: Dictionary = ArchiveServer.read("meshes/architecture/barracks/barracks01.nif")
+	if bool(b["found"]) and barracks.load(PackedByteArray(b["data"])):
+		var fixed: Node3D = await NifTreeBuilderScript.build(barracks, true)
+		check(_count(fixed, "RigidBody3D") == 0 and _count(fixed, "StaticBody3D") > 0, "a fixed body stays a StaticBody3D")
+		fixed.free()
+
+	var stim := NifSource.new()
+	var sr: Dictionary = ArchiveServer.read(STIMPAK)
+	if bool(sr["found"]) and stim.load(PackedByteArray(sr["data"])):
+		var flat: Node3D = await NifTreeBuilderScript.build(stim, true, true)
+		check(not bool(flat.get_meta("nif_flattened", true)) and String(flat.get_meta("nif_not_flattened_because", "")) == "rigid body",
+			"prefer_static does not flatten a rigid body, and says why")
+		flat.free()
+
+
+## Globe01.nif's globe (sphere inertia, 6 kg) hangs in its frame (box inertia,
+## 15 kg) on a bhkHingeConstraint: two NifRigidBodys and a HingeJoint3D joining
+## them; falling together, the globe stays in the frame.
+func test_constraint_joints() -> void:
+	print("--- constraints between moving bodies ---")
+	var r: Dictionary = ArchiveServer.read(GLOBE)
+	var src := NifSource.new()
+	if not bool(r["found"]) or not src.load(PackedByteArray(r["data"])):
+		check(false, "loaded globe01.nif")
+		return
+	var root: Node3D = await NifTreeBuilderScript.build(src, true)
+	var bodies: Array = root.find_children("*", "RigidBody3D", true, false)
+	var joints: Array = root.find_children("*", "HingeJoint3D", true, false)
+	check(bodies.size() == 2 and joints.size() == 1, "two rigid bodies and one hinge (%d, %d)" % [bodies.size(), joints.size()])
+	if bodies.size() != 2 or joints.size() != 1:
+		root.free()
+		return
+	var hinge := joints[0] as HingeJoint3D
+	check(hinge.get_node(hinge.node_a) in bodies and hinge.get_node(hinge.node_b) in bodies and hinge.node_a != hinge.node_b,
+		"the hinge joins the two bodies")
+	root.position = Vector3(0.0, 30.0, 0.0)
+	add_child(root)
+	var first := bodies[0] as RigidBody3D
+	var second := bodies[1] as RigidBody3D
+	var start_gap := first.global_position.distance_to(second.global_position)
+	var start_y := first.global_position.y
+	for i in 30:
+		await get_tree().physics_frame
+	var gap := first.global_position.distance_to(second.global_position)
+	check(first.global_position.y < start_y - 0.5, "the globe and frame fall (%.2f m)" % (start_y - first.global_position.y))
+	check(absf(gap - start_gap) < 0.02, "the globe stays in its frame (%.3f m apart, %.3f at the start)" % [gap, start_gap])
+	root.queue_free()
+
+
 func _set_owner_recursive(node: Node, scene_owner: Node) -> void:
 	for c in node.get_children():
 		c.owner = scene_owner
@@ -996,6 +1091,8 @@ func _ready() -> void:
 	await test_ragdoll()
 	await test_billboard()
 	await test_prefer_static()
+	await test_moving_bodies()
+	await test_constraint_joints()
 	test_shader_depth_flags()
 	await test_external_emittance_shapes()
 	test_dual_alpha_scissor()
