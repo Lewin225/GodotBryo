@@ -64,14 +64,14 @@ func _ready() -> void:
 		check(measured[key] == expected, "%s: %d (expected %d)" % [key, measured[key], expected])
 	_check_hair_color(node, doc)
 	_check_face_gen(node)
-	var player := node.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
-	check(player != null and player.current_animation == "locomotion__mtidle.kf", "the idle clip plays (%s)" % (player.current_animation if player != null else "no player"))
+	var animator := node.animator
+	check(animator.playing_clip() == "locomotion__mtidle.kf", "the idle clip plays (%s)" % animator.playing_clip())
 	_check_hitboxes(node)
 	var modifier := node.head_tracking.get_modifier() if node.head_tracking != null else null
 	check(modifier != null and modifier.bone_name == ActorHeadTracking.HEAD_BONE_NAME and modifier.get_parent() is Skeleton3D, "ActorHeadTracking owns the look-at modifier on Doc's %s" % ActorHeadTracking.HEAD_BONE_NAME)
 	await _check_facial_player(node, doc)
 	await _check_skin(node)
-	await _check_motion(node, player)
+	await _check_motion(node, animator)
 	await _check_creature(esm_server)
 	await _check_templated(esm_server)
 	await _check_leveled(esm_server)
@@ -198,9 +198,9 @@ func _head_mesh(node: EsmActorNode) -> MeshInstance3D:
 
 ## The animator follows the node's ActorMotion: each motion state plays its
 ## clip after a physics frame.
-func _check_motion(node: EsmActorNode, player: AnimationPlayer) -> void:
-	if node == null or player == null:
-		check(false, "Doc has an actor node and an animation player for the motion checks")
+func _check_motion(node: EsmActorNode, animator: ActorAnimator) -> void:
+	if node == null or animator == null:
+		check(false, "Doc has an actor node and an animator for the motion checks")
 		return
 	var motion := ActorMotion.new()
 	node.motion = motion
@@ -219,7 +219,7 @@ func _check_motion(node: EsmActorNode, player: AnimationPlayer) -> void:
 		motion.running = case[2]
 		await get_tree().physics_frame
 		await get_tree().physics_frame
-		check(player.current_animation == case[3], "velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], player.current_animation])
+		check(animator.playing_clip() == case[3], "velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], animator.playing_clip()])
 	node.motion = null
 
 func _equipment_settled(node: Node) -> bool:
@@ -325,10 +325,10 @@ func _check_creature(esm_server) -> void:
 			missing.append(path)
 	check(node.is_visual_built() and not parts.is_empty() and missing.is_empty() and skinned > 0,
 			"Rex builds his %d NIFZ parts, skinned to the skeleton (%d skinned meshes; missing %s)" % [parts.size(), skinned, missing])
-	var player := body.get_node_or_null(NodePath(ActorAnimator.PLAYER_NODE_NAME)) as AnimationPlayer if body != null else null
-	check(clips[0] > 0 and player != null and _playing_file(player) == "mtidle.kf",
-			"Rex loads %d clips from Creatures\\Dog and idles on mtidle.kf (%s)" % [clips[0], _playing_file(player)])
-	if player != null:
+	var animator := node.animator
+	check(clips[0] > 0 and _playing_file(animator) == "mtidle.kf",
+			"Rex loads %d clips from Creatures\\Dog and idles on mtidle.kf (%s)" % [clips[0], _playing_file(animator)])
+	if animator.get_kf_animator() != null:
 		var motion := ActorMotion.new()
 		node.motion = motion
 		var cases := [
@@ -345,16 +345,19 @@ func _check_creature(esm_server) -> void:
 			motion.running = case[2]
 			await get_tree().physics_frame
 			await get_tree().physics_frame
-			check(_playing_file(player) == case[3], "Rex with velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], _playing_file(player)])
+			check(_playing_file(animator) == case[3], "Rex with velocity %s, turn %.1f, running %s plays %s (%s)" % [case[0], case[1], case[2], case[3], _playing_file(animator)])
 		node.motion = null
 	controller.queue_free()
 
 
-## The KF file the player's current clip came from.
-func _playing_file(player: AnimationPlayer) -> String:
-	if player == null or player.current_animation.is_empty():
+## The KF file the animator's locomotion clip came from: the last part of its
+## clip name ("locomotion__mtidle.kf" -> "mtidle.kf").
+func _playing_file(animator: ActorAnimator) -> String:
+	var clip := animator.playing_clip()
+	if clip.is_empty():
 		return ""
-	return String(player.get_animation(player.current_animation).get_meta("nif_source_path", "")).get_file()
+	var parts := clip.split("__")
+	return parts[parts.size() - 1]
 
 
 ## Every placed actor whose template chain reaches a leveled list gets an actor

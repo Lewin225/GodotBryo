@@ -41,11 +41,16 @@ var _collections: Dictionary = {}
 ## Actor -> {IdleBase: Time.get_ticks_msec() when it last started}, for
 ## Replay Delay.
 var _last_played: Dictionary = {}
+## Actor -> the idle a script (PlayIdle) or a package event asked it to play
+## last; dialogue gestures do not replace it while it is the actor's special
+## idle (ASSUMPTION, see _play_dialogue_idle).
+var _scripted_idles: Dictionary = {}
 
 ## Drops every actor's idle state, for loading a save into an open game; the
 ## actors it names belong to the game being replaced.
 func clear_game_state() -> void:
 	_dialogue_idles.clear()
+	_scripted_idles.clear()
 	_ambient_next_msec.clear()
 	_collections.clear()
 	_last_played.clear()
@@ -58,10 +63,17 @@ func _connect_dialogue() -> void:
 	DialogueServer.response_started.connect(_on_response_started)
 	DialogueServer.line_finished.connect(_on_line_finished)
 
-## `actor` plays `idle`, replacing any idle asked for before.
-func play(actor: ActorReference, idle: IdleBase) -> void:
-	if actor == null or idle == null or actor.sit_state != FurnitureSeating.NOT_SITTING:
+## `actor` plays `idle`, replacing any idle asked for before. A seated actor
+## plays it over the furniture idles, which keep their own slot. `scripted`
+## marks an idle asked for by a script (PlayIdle) or a package event, which
+## dialogue gestures leave playing.
+func play(actor: ActorReference, idle: IdleBase, scripted := false) -> void:
+	if actor == null or idle == null:
 		return
+	if scripted:
+		_scripted_idles[actor] = idle
+	else:
+		_scripted_idles.erase(actor)
 	actor.special_idle = idle
 	actor.last_idle = idle
 	var animator := FurnitureSeating._animator_for(actor)
@@ -78,15 +90,28 @@ func play(actor: ActorReference, idle: IdleBase) -> void:
 		animator.idle_finished.connect(on_finished)
 	animator.play_idle(idle)
 
+## Whether `actor`'s special idle is one a script (PlayIdle) or a package
+## event asked for, not an ambient pick, collection or dialogue gesture.
+func is_playing_scripted(actor: ActorReference) -> bool:
+	return actor != null and actor.special_idle != null and actor.special_idle == _scripted_idles.get(actor)
+
+## Plays `actor`'s special idle again (its animator has just loaded), keeping
+## whether a script or package event asked for it.
+func replay(actor: ActorReference) -> void:
+	if actor == null or actor.special_idle == null:
+		return
+	play(actor, actor.special_idle, _scripted_idles.get(actor) == actor.special_idle)
+
 ## `actor`'s idle has ended: it returns to locomotion, facing as it did. (Only
 ## standing up from furniture turns the actor, FurnitureSeating; a gesture's
 ## torso yaw against locomotion's is the clips' frame, not a turn.)
 func finish(actor: ActorReference) -> void:
+	var idle := actor.special_idle
 	actor.special_idle = null
 	var animator := FurnitureSeating._animator_for(actor)
-	if animator == null or animator.get_idle() == null:
+	if animator == null or idle == null:
 		return
-	animator.stop_idle()
+	animator.stop_idle(idle)
 
 ## An actor standing idle with a 3D node (NpcController, each physics frame),
 ## within IDLE_ANIMATION_DISTANCE of the player and while no idle plays: its
@@ -229,7 +254,9 @@ func _near_player(actor: ActorReference) -> bool:
 ## and the listener its listener idle (LNAM) when it names one, else each its
 ## Idle Manager pick, which the idle tree's DialogueIdles serves while they
 ## talk (GetCurrentAIProcedure DIALOGUE, IsTalking, GetDialogueEmotion,
-## IsLastIdlePlayed). Any actor, the player's body included.
+## IsLastIdlePlayed). Any actor, the player's body included, unless it is
+## playing an idle a script or package event asked for (ASSUMPTION, see
+## _play_dialogue_idle).
 func _on_response_started(line: DialogueLine, _text: String) -> void:
 	var response := line.current_response()
 	if response == null:
@@ -241,6 +268,18 @@ func _on_response_started(line: DialogueLine, _text: String) -> void:
 ## has a KF and its Replay Delay has run out.
 func _play_dialogue_idle(actor: ActorReference, named_form_id: int) -> void:
 	if actor == null:
+		return
+	# ASSUMPTION: a dialogue gesture does not replace a special idle that a
+	# script (PlayIdle) or a package event (On Begin, End, Change) asked the
+	# actor to play; it does replace ambient picks, package idle collections
+	# and earlier gestures. Why: VCG01's wake-up, a package On Begin idle,
+	# loops until stage 5 replaces it, and Doc's lines to the player would
+	# otherwise give the player a listen gesture in its slot that ends it;
+	# ambient picks serve DialogueIdles while an actor talks, so they must give
+	# way. Seated actors still gesture: furniture idles are not special idles
+	# (FurnitureSeating). Not backed by any data or observation of the
+	# original; chosen so the opening plays.
+	if is_playing_scripted(actor):
 		return
 	var idle: IdleBase = null
 	if named_form_id != 0:

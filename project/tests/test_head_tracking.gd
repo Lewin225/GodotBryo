@@ -4,7 +4,8 @@ extends Node3D
 ## and Sunny Smiles physicalised in Doc's house: the default target is the
 ## nearest actor in front within range (indoors 200 units), not one behind;
 ## Look overrides it until StopLook; in conversation each looks at the other;
-## a package with Head Tracking Off turns the modifier off.
+## a package with Head Tracking Off, or no target, fades the modifier out and
+## turns it off; with a target it follows the target's look node.
 
 const FRAMES := 120 * 60
 
@@ -43,8 +44,8 @@ func _ready() -> void:
 
 	await _settle()
 	check(tracking.get_target() == sunny and tracking.get_modifier().active, "with Sunny 2 m in front, Doc looks at her (%s)" % _name(tracking.get_target()))
-	var aim := doc_node.find_child(ActorHeadTracking.AIM_NODE_NAME, true, false) as Node3D
-	check(aim.global_position.distance_to(_tracking(sunny_node).get_eye_position()) < 0.05, "his look point sits at her eyes (%.3f m off)" % aim.global_position.distance_to(_tracking(sunny_node).get_eye_position()))
+	var followed := tracking.get_modifier().get_node_or_null(tracking.get_modifier().target_node)
+	check(followed != null and followed == _tracking(sunny_node).get_look_node(), "his look-at follows her look node (%s)" % (followed.name if followed != null else "none"))
 
 	_place_beside(sunny, doc, doc_node, -2.0)
 	ScriptServer.apply_pending_moves()
@@ -89,7 +90,8 @@ func _ready() -> void:
 	doc.active_package = locked
 	doc.look_target = sunny
 	await _settle()
-	check(not tracking.get_modifier().active and tracking.get_target() == null, "a package with Head Tracking Off turns the modifier off, even over Look")
+	await _wait_until(func() -> bool: return not tracking.get_modifier().active)
+	check(not tracking.get_modifier().active and tracking.get_target() == null, "a package with Head Tracking Off fades the modifier out and turns it off, even over Look")
 	doc.active_package = null
 	doc.look_target = null
 
@@ -101,10 +103,9 @@ func _ready() -> void:
 	await _wait_until(func() -> bool: return doc_node.actor.animator.get_idle() != null and doc_node.actor.animator.get_idle().editor_id == "ChairDynamicIdle")
 	ScriptServer.apply_pending_moves()
 	await _settle()
-	var chair_position := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * chair.position
-	var head := tracking.get_eye_position()
-	var look_point := (doc_node.find_child(ActorHeadTracking.AIM_NODE_NAME, true, false) as Node3D).global_position
-	check(tracking.get_target() == null and look_point.distance_to(chair_position) > head.distance_to(chair_position), "seated with nothing to look at, his look point is out of the chair, not over its back (%.2f m from the chair against his head's %.2f)" % [look_point.distance_to(chair_position), head.distance_to(chair_position)])
+	await _wait_until(func() -> bool: return not tracking.get_modifier().active)
+	check(tracking.get_target() == null and not tracking.get_modifier().active and is_zero_approx(tracking.get_modifier().influence),
+			"seated with nothing to look at, his look-at has faded out and is off, so his head follows the seated idle (influence %.2f)" % tracking.get_modifier().influence)
 	ScriptServer.end_use(doc)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)

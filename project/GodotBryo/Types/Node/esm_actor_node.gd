@@ -204,7 +204,7 @@ func _apply_animation_state() -> void:
 		ScriptServer.furniture_seating.restore(actor_reference)
 	# An idle asked for while the animations loaded plays now.
 	if actor_reference.special_idle != null:
-		ScriptServer.actor_idles.play(actor_reference, actor_reference.special_idle)
+		ScriptServer.actor_idles.replay(actor_reference)
 
 func _exit_tree() -> void:
 	_cancel_visual_load()

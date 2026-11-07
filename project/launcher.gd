@@ -3,7 +3,8 @@ extends MarginContainer
 ## The main scene. Says how much is missing, shows which FalloutNV.esm the
 ## servers loaded, lets the player pick another, and starts a new game in Doc
 ## Mitchell's house (game.tscn) with the startup script picked from a drop-down
-## and shown for editing, or loads a save from the list (SaveServer's
+## and shown for editing, opens the animation viewer (animation_viewer.tscn),
+## or loads a save from the list (SaveServer's
 ## backend; game.gd's load_save_id). A drop-down picks the save storage
 ## from SaveServer's registered backends (SaveServer.set_storage()).
 ##
@@ -15,6 +16,7 @@ extends MarginContainer
 const GameDataConfigScript := preload("res://game_data_config.gd")
 const GameScript := preload("res://game.gd")
 const GAME_SCENE := "res://game.tscn"
+const ANIMATION_VIEWER_SCENE := "res://animation_viewer.tscn"
 ## Startup scripts offered by the start drop-down, by title. The chosen one
 ## fills the script box, which New game runs (game.gd's startup_script).
 const TRAP_RANGE_SCRIPT := """; Skips the Doc Mitchell tutorial intro and completes VCG01
@@ -52,6 +54,7 @@ const STARTUP_SCRIPTS := {
 @onready var _start_option: OptionButton = %StartOption
 @onready var _startup_script_edit: CodeEdit = %StartupScriptEdit
 @onready var _quit_button: Button = %QuitButton
+@onready var _animation_viewer_button: Button = %AnimationViewerButton
 @onready var _save_list: ItemList = %SaveList
 @onready var _load_button: Button = %LoadButton
 @onready var _storage_option: OptionButton = %StorageOption
@@ -67,6 +70,8 @@ func _ready() -> void:
 	_fill_start_options()
 	_start_option.item_selected.connect(_on_start_selected)
 	_quit_button.pressed.connect(get_tree().quit)
+	_animation_viewer_button.pressed.connect(func() -> void: get_tree().change_scene_to_file(ANIMATION_VIEWER_SCENE))
+	_animation_viewer_button.disabled = true
 	_load_button.pressed.connect(_on_load_pressed)
 	_save_list.item_activated.connect(func(_index: int) -> void: _on_load_pressed())
 	_load_button.disabled = true
@@ -101,6 +106,7 @@ func _show_configuration() -> void:
 func _on_esm_ready() -> void:
 	_status_label.text = "Ready."
 	_new_game_button.disabled = false
+	_animation_viewer_button.disabled = false
 	_start_option.disabled = false
 	_startup_script_edit.editable = true
 	_list_saves()

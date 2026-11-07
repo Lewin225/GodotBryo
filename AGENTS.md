@@ -375,6 +375,9 @@ viewport/Scene dock, no running game required:
   its MODL-style relative path.
 - **`cell_viewer.tscn`** (non-`@tool`, Play-mode) — free-fly interactive
   viewer through the real `GamebryoObjectRegistry` construction path.
+- **`animation_viewer.tscn`** (Play-mode; launcher: Animation viewer) — one
+  NPC_, picked by EditorID, on a floor: its KfAnimator's slots, locomotion,
+  IDLEs and weapon KFs, root motion modes, look-at and IK.
 - **`free_cam.gd`** — the shared no-clip free-fly camera controller these
   use.
 

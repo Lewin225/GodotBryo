@@ -134,6 +134,9 @@ func _ready() -> void:
 	player.possess(EsmServer.get_player_reference())
 	QuestServer.begin_game()
 	NpcSimulationServer.seed()
+	# The startup script's stages play idles on the player (VCG01 stage 0's
+	# wake-up), which need the player's actor built and animated.
+	await _wait_for_player_actor()
 	var script := startup_script if not startup_script.is_empty() else DEFAULT_STARTUP_SCRIPT
 	startup_script = ""
 	ScriptServer.run_result_script(script, player.possessed)
@@ -151,6 +154,27 @@ func _ready() -> void:
 		var start: Variant = transition_coordinator.center_on_cell([DEFAULT_CELL_EDITOR_ID])
 		if start is Dictionary:
 			push_error("game.gd: " + String(start["error"]))
+
+## Most a new game waits for the player's actor to build, milliseconds.
+const PLAYER_ACTOR_TIMEOUT_MSEC := 20000
+
+## Waits until the player's actor node has built its visual and loaded its
+## animation, or PLAYER_ACTOR_TIMEOUT_MSEC passes (with a warning).
+func _wait_for_player_actor() -> void:
+	var deadline := Time.get_ticks_msec() + PLAYER_ACTOR_TIMEOUT_MSEC
+	while not _player_actor_ready():
+		if Time.get_ticks_msec() > deadline:
+			push_warning("Game: the player's actor was not built and animated in time; running the startup script anyway")
+			return
+		await get_tree().process_frame
+
+
+func _player_actor_ready() -> bool:
+	var actor := player.actor
+	if actor == null or not actor.is_visual_built():
+		return false
+	return actor.animator != null and actor.animator.is_loaded()
+
 
 ## Loads save `save_id` in the load order of Plans/Completed Plans/Saving/save_load.md: the
 ## save's sections applied (EsmServer's dirty bases, runtime and saved

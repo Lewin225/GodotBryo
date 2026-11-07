@@ -150,13 +150,9 @@ func _on_stood(_idle: IdleBase, actor: ActorReference, animator: ActorAnimator) 
 	if actor.sit_state != STANDING_UP:
 		return
 	actor.sit_state = NOT_SITTING
-	var turn := animator.stop_idle()
-	# The exit idle leaves the body facing away from the furniture: the actor
-	# turns with it rather than the body snapping back to the old heading.
-	var body := _body_for(actor)
-	if body != null:
-		body.rotation.y -= turn
-		actor.rotation = EsmReferencePhysicaliser.authored_heading(body.rotation.y)
+	# The exit's root motion (ActorAnimator.root_moved) has already carried the
+	# actor off the furniture, facing away from it.
+	animator.stop_idle()
 
 ## Plays `idle` and calls `on_finished` with it when it ends.
 func _play(animator: ActorAnimator, idle: IdleBase, on_finished: Callable, from_end := false) -> void:
@@ -205,17 +201,6 @@ static func _animator_for(actor: ActorReference) -> ActorAnimator:
 	if actor_node == null or not actor_node.is_visual_built():
 		return null
 	return actor_node.animator
-
-## The node that carries `actor`'s heading: its NpcController, or the player
-## body for the possessed actor; null off screen.
-static func _body_for(actor: ActorReference) -> Node3D:
-	var controller := EsmNode.node_for(actor) as NpcController
-	if controller != null:
-		return controller
-	var player := ScriptServer.player_node as PlayerController
-	if player != null and player.possessed == actor:
-		return player
-	return null
 
 ## The tree's furniture markers in file order, placed in the space the tree is
 ## parented in (the furniture's placement space).

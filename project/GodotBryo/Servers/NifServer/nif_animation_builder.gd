@@ -56,6 +56,8 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 
 	var unhandled: PackedStringArray = []
 	var face_tracks := {}
+	var track_priorities := {}
+	var face_track_priorities := {}
 	for controlled in sequence.get("controlled_blocks", []):
 		var block := controlled as Dictionary
 		var interpolator: Dictionary = block.get("interpolator", {})
@@ -64,6 +66,7 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 			continue
 		if _is_face_track(block):
 			_add_face_track(face_tracks, block, start)
+			_add_priority(face_track_priorities, String(block["interpolator_id"]), block)
 			continue
 		if target.is_empty():
 			unhandled.append("<unnamed>:%s" % String(interpolator.get("kind", "")))
@@ -75,17 +78,36 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 			# representation.
 			unhandled.append(target + ":" + String(interpolator.get("kind", "")))
 			continue
-		_add_transform_tracks(animation, NifNamesScript.escape(target), interpolator, start)
+		var track_target := NifNamesScript.escape(target)
+		if _add_transform_tracks(animation, track_target, interpolator, start) > 0:
+			_add_priority(track_priorities, track_target, block)
 
 	animation.set_meta("nif_sequence_name", String(sequence.get("name", "")))
 	animation.set_meta("nif_accum_root", String(sequence.get("accum_root_name", "")))
 	animation.set_meta("nif_start_time", start)
 	animation.set_meta("nif_text_keys", sequence.get("text_keys", []))
+	animation.set_meta("nif_track_priorities", track_priorities)
 	if not face_tracks.is_empty():
 		animation.set_meta("nif_face_tracks", face_tracks)
+		animation.set_meta("nif_face_track_priorities", face_track_priorities)
 	if not unhandled.is_empty():
 		animation.set_meta("nif_unhandled_controller_targets", unhandled)
 	return animation
+
+
+## Records the link's priority byte under `key` (a track path or a morph
+## name). A key met twice keeps its first priority; no transform target in the
+## shipped KFs is linked twice in one sequence with different priorities.
+static func _add_priority(priorities: Dictionary, key: String, block: Dictionary) -> void:
+	if priorities.has(key):
+		return
+	priorities[key] = int(block.get("priority", 0))
+
+
+## Whether an interpolator's static value is set: NIF writes an unset one as
+## -FLT_MAX (still beyond 1e30 after the metre conversion).
+static func _is_set(value: float) -> bool:
+	return is_finite(value) and absf(value) < 1.0e30
 
 
 static func _is_face_track(block: Dictionary) -> bool:
@@ -122,12 +144,22 @@ static func _add_face_track(face_tracks: Dictionary, block: Dictionary, start: f
 
 ## Keys are already converted to Godot coordinates by NifSource. Times are
 ## rebased because Godot animation resources begin at zero while a sequence
-## records its own source start time as metadata.
+## records its own source start time as metadata. A channel without keys whose
+## interpolator has a set static value becomes a one-key track holding it: the
+## link pins that channel for the sequence. A static scale of 1 adds no track,
+## as a missing scale track leaves the bone at scale 1.
 static func _add_transform_tracks(animation: Animation, target: String,
 		interpolator: Dictionary, start: float) -> int:
 	var added := 0
 	var resampled := bool(interpolator.get("resampled", false))
+	var has_static := bool(interpolator.get("has_static_transform", false))
 	var position_keys: Array = interpolator.get("translation_keys", [])
+	var static_position: Vector3 = interpolator.get("translation", Vector3.ZERO)
+	if position_keys.is_empty() and has_static and _is_set(static_position.x):
+		var track := animation.add_track(Animation.TYPE_POSITION_3D)
+		animation.track_set_path(track, NodePath(target))
+		animation.position_track_insert_key(track, 0.0, static_position)
+		added += 1
 	if not position_keys.is_empty():
 		var track := animation.add_track(Animation.TYPE_POSITION_3D)
 		animation.track_set_path(track, NodePath(target))
@@ -137,6 +169,12 @@ static func _add_transform_tracks(animation: Animation, target: String,
 				Vector3(key["value"]))
 		added += 1
 	var rotation_keys: Array = interpolator.get("rotation_keys", [])
+	var static_rotation: Quaternion = interpolator.get("rotation", Quaternion.IDENTITY)
+	if rotation_keys.is_empty() and has_static and _is_set(static_rotation.w):
+		var track := animation.add_track(Animation.TYPE_ROTATION_3D)
+		animation.track_set_path(track, NodePath(target))
+		animation.rotation_track_insert_key(track, 0.0, static_rotation.normalized())
+		added += 1
 	if not rotation_keys.is_empty():
 		var track := animation.add_track(Animation.TYPE_ROTATION_3D)
 		animation.track_set_path(track, NodePath(target))
@@ -146,6 +184,12 @@ static func _add_transform_tracks(animation: Animation, target: String,
 				(key["value"] as Quaternion).normalized())
 		added += 1
 	var scale_keys: Array = interpolator.get("scale_keys", [])
+	var static_scale := float(interpolator.get("scale", 1.0))
+	if scale_keys.is_empty() and has_static and _is_set(static_scale) and not is_equal_approx(static_scale, 1.0):
+		var track := animation.add_track(Animation.TYPE_SCALE_3D)
+		animation.track_set_path(track, NodePath(target))
+		animation.scale_track_insert_key(track, 0.0, Vector3(static_scale, static_scale, static_scale))
+		added += 1
 	if not scale_keys.is_empty():
 		var track := animation.add_track(Animation.TYPE_SCALE_3D)
 		animation.track_set_path(track, NodePath(target))

@@ -55,7 +55,7 @@ func _ready() -> void:
 			break
 		await get_tree().process_frame
 	check(clips[0] > 0, "Doc's locomotion clips load (%d)" % clips[0])
-	var player := controller.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
+	var animator := controller.actor.animator
 
 	var reached := [false]
 	doc.move_target_reached.connect(func() -> void: reached[0] = true)
@@ -67,8 +67,8 @@ func _ready() -> void:
 		await get_tree().physics_frame
 		frames += 1
 		seen_moving = seen_moving or doc.is_moving
-		if player != null and player.current_animation != "":
-			walk_clips[player.current_animation] = true
+		if animator.playing_clip() != "":
+			walk_clips[animator.playing_clip()] = true
 	check(reached[0], "Doc reaches the target in %.1f s" % (frames / 60.0))
 	check(not doc.has_move_target, "the target is cleared on arrival")
 	check(seen_moving, "walking, his reference reports is_moving (IsMoving)")
@@ -81,7 +81,7 @@ func _ready() -> void:
 	check(not walk_clips.has("locomotion__male__mtbackward.kf") and not walk_clips.has("locomotion__male__mtleft.kf") and not walk_clips.has("locomotion__male__mtright.kf"), "Doc turns before walking: no backward or sideways clip")
 	for frame in 30:
 		await get_tree().physics_frame
-	check(player != null and player.current_animation == "locomotion__mtidle.kf", "Doc idles after arriving (%s)" % (player.current_animation if player != null else "no player"))
+	check(animator.playing_clip() == "locomotion__mtidle.kf", "Doc idles after arriving (%s)" % animator.playing_clip())
 
 	_check_avoidance_follows_enable_state(controller, doc)
 	await _check_seam_crossing(controller, doc)

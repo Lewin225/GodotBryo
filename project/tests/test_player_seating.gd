@@ -17,6 +17,8 @@ const PITCH_TOLERANCE_DEGREES := 8.0
 ## How far Doc's body is raised for the pitch check, metres.
 const RAISE_METERS := 4.0
 
+## Frames for the enter idle to play out after the move (its clip, about 2 s).
+const ENTER_FRAMES := 180
 var failures := 0
 
 func check(condition: bool, message: String) -> void:
@@ -46,12 +48,17 @@ func _ready() -> void:
 	var placement := ScriptServer.furniture_seating.get_placement(couch, player_ref.using_marker)
 	var seat := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * Vector3(placement["position"])
 	ScriptServer.apply_pending_moves()
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	# The enter's root motion (a tested guess, ActorAnimator) carries the body
+	# from the marker into the seat; seated, it holds still there.
+	for frame in ENTER_FRAMES:
+		await get_tree().physics_frame
 	var held_at := player.global_position
 	for frame in 60:
 		await get_tree().physics_frame
-	check(Vector2(held_at.x, held_at.z).distance_to(Vector2(seat.x, seat.z)) < 0.05 and player.global_position.distance_to(held_at) < 0.01, "the body is at the couch's marker and holds still (%.3f m from it, moved %.3f m)" % [Vector2(held_at.x, held_at.z).distance_to(Vector2(seat.x, seat.z)), player.global_position.distance_to(held_at)])
+	var from_marker := Vector2(held_at.x, held_at.z).distance_to(Vector2(seat.x, seat.z))
+	check(from_marker > 0.3 and player.global_position.distance_to(held_at) < 0.01, "the enter carries the body off the couch's marker into the seat, where it holds still (%.2f m from the marker, moved %.3f m)" % [from_marker, player.global_position.distance_to(held_at)])
+	var reference_at := EsmReferencePhysicaliser.GAMEBRYO_TO_GODOT_BASIS * player_ref.position
+	check(reference_at.distance_to(seat) < 0.05, "while the player's reference stays at the marker (%.3f m off)" % reference_at.distance_to(seat))
 	var head = player._head_transform()
 	check(player.camera_mode == 1 and head != null and player.camera_mount.global_position.distance_to((head as Transform3D).origin) < 0.3, "the camera follows the head (camera_mode %d, mount %.2f m from the eyes)" % [player.camera_mode, player.camera_mount.global_position.distance_to((head as Transform3D).origin) if head != null else -1.0])
 	check(player._head_transform() != null and (player._head_transform() as Transform3D).origin.y < held_at.y + 1.3, "seated, the head is low (%.2f m above the feet)" % ((player._head_transform() as Transform3D).origin.y - held_at.y if player._head_transform() != null else -1.0))
@@ -163,8 +170,8 @@ func _interact() -> InputEventAction:
 	return event
 
 func _player_animation(player: PlayerController) -> String:
-	var animation_player := player.find_child(ActorAnimator.PLAYER_NODE_NAME, true, false) as AnimationPlayer
-	return animation_player.current_animation if animation_player != null else ""
+	var animator := player.find_child("ActorAnimator", true, false) as ActorAnimator
+	return animator.playing_clip() if animator != null else ""
 
 func _run(line: String) -> int:
 	return int(ScriptServer.run_debug_line(line).get("result", -1))

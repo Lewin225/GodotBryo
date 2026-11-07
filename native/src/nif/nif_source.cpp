@@ -1268,6 +1268,7 @@ Document load(const uint8_t *data, size_t size) {
 			cb.controller_type = link.ctrlType.get();
 			cb.controller_id = link.ctrlID.get();
 			cb.interpolator_id = link.interpID.get();
+			cb.priority = link.priority;
 
 			// Older files carry offsets into a NiStringPalette instead.
 			if (cb.node_name.empty() && !link.stringPaletteRef.IsEmpty()) {

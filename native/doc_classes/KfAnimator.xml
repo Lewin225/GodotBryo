@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="KfAnimator" inherits="Node" api_type="extension" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
+	<brief_description>
+		Plays Gamebryo KF clips on a [Skeleton3D] in slots, resolving each bone by the clips' controlled block priorities.
+	</brief_description>
+	<description>
+		Plays several KF clips (NifServer [Animation]s, whose track paths are bone names and whose [code]nif_track_priorities[/code] metadata gives each track's controlled block priority) on the skeleton at [member skeleton_path]. Each slot, an animation group section number chosen by the caller, plays at most one clip, plus the clips it is fading out from.
+		For each bone channel (position, rotation, scale) the tracks that key it are taken highest priority first: a priority's tracks share the weight still unclaimed, and what is left passes to the next priority down. Weight no priority claims is shared among them in proportion, so a clip fading out alone holds its pose. Bones no clip keys, and bones in [member disabled_bones], are not written.
+		Poses are written with [method Skeleton3D.set_bone_pose_position] and its siblings, not as a [SkeletonModifier3D], so the skeleton's modifiers ([LookAtModifier3D], IK) apply on top of the written pose.
+		Clocks, fades and text keys advance every frame; poses are written every [member update_interval] frames. [signal clip_finished] and [signal text_key] are emitted once every slot has advanced, so a handler may play or stop clips.
+		Every start in a slot, played or [method announce]d, has a serial and emits [signal clip_started]; [method stop] and [method stop_all] emit [signal clip_stopped]. A clip played with a [code]source_serial[/code] follows the clip of that serial in the same slot of [member sync_source]. See [code]native/src/animation/README.md[/code].
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="announce">
+			<return type="int" />
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="path" type="String" />
+			<param index="2" name="animation" type="Animation" default="null" />
+			<param index="3" name="fade_seconds" type="float" default="0.2" />
+			<param index="4" name="keep_root" type="bool" default="false" />
+			<param index="5" name="speed" type="float" default="1.0" />
+			<description>
+				Records a start of the KF at [param path] in [param slot] that this animator does not play (its clip, [param animation], keys none of the skeleton's bones, or did not load and is [code]null[/code]), and emits [signal clip_started] for it, so a follower can play it. The slot's current clip fades out over [param fade_seconds] and the slot is left empty. Returns the start's serial.
+			</description>
+		</method>
+		<method name="consume_root_motion">
+			<return type="Transform3D" />
+			<description>
+				Returns the root clips' motion, in the skeleton's space, added up at each pose write since the last call, and resets it. A root clip that ends or is replaced between calls has its motion up to then included. Clips in [member root_motion_excluded_slot] are left out.
+			</description>
+		</method>
+		<method name="get_animation" qualifiers="const">
+			<return type="Animation" />
+			<param index="0" name="slot" type="int" />
+			<description>
+				Returns the slot's current clip, or [code]null[/code] when it plays none.
+			</description>
+		</method>
+		<method name="get_root_clip_serial" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the serial of the clip [method get_root_motion] is measured from, or [code]0[/code] for none. A new value means a new clip, from whose start the motion restarts.
+			</description>
+		</method>
+		<method name="get_root_clip_slot" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the slot of the clip [method get_root_motion] is measured from, or [code]-1[/code] for none.
+			</description>
+		</method>
+		<method name="get_root_motion" qualifiers="const">
+			<return type="Transform3D" />
+			<description>
+				Returns the root clip's root change since it started, in the skeleton's space; identity with no root clip or [constant ROOT_MOTION_NONE]. The root clip is the most recently started clip played with [code]keep_root[/code] outside [member root_motion_excluded_slot]. Updated when the pose is written.
+			</description>
+		</method>
+		<method name="get_slots" qualifiers="const">
+			<return type="PackedInt32Array" />
+			<description>
+				Returns the slots playing a clip.
+			</description>
+		</method>
+		<method name="get_start" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="slot" type="int" />
+			<description>
+				Returns the slot's latest start, played or announced, as [code]{path, animation, serial, keep_root, speed, played}[/code], where [code]played[/code] is [code]false[/code] for an announced start. Empty when the slot has none (never started, or stopped).
+			</description>
+		</method>
+		<method name="get_started_slots" qualifiers="const">
+			<return type="PackedInt32Array" />
+			<description>
+				Returns the slots with a start, played or announced.
+			</description>
+		</method>
+		<method name="get_time" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="slot" type="int" />
+			<description>
+				Returns the slot's current clip time in seconds, or [code]0[/code] when it plays none.
+			</description>
+		</method>
+		<method name="play">
+			<return type="int" />
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="animation" type="Animation" />
+			<param index="2" name="fade_seconds" type="float" default="0.2" />
+			<param index="3" name="keep_root" type="bool" default="false" />
+			<param index="4" name="speed" type="float" default="1.0" />
+			<param index="5" name="path" type="String" default="&quot;&quot;" />
+			<param index="6" name="source_serial" type="int" default="0" />
+			<description>
+				Starts [param animation] in [param slot]. It fades in over [param fade_seconds], in an empty slot too, while the slot's current clip fades out. The [code]Bip01[/code] and [code]Bip01 NonAccum[/code] tracks play only with [param keep_root]. [param path] is the clip's KF path, reported by [signal clip_started]. A non-zero [param source_serial] makes the clip follow the [member sync_source] clip of that serial in the same slot.
+				Returns the start's serial, or [code]0[/code] when [param animation] is [code]null[/code] or keys none of the skeleton's bones; then nothing starts and nothing is emitted.
+			</description>
+		</method>
+		<method name="seek">
+			<return type="void" />
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="time" type="float" />
+			<description>
+				Moves the slot's current clip to [param time] seconds, clamped to its length, and clears its finished state.
+			</description>
+		</method>
+		<method name="set_loop_section">
+			<return type="void" />
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="start" type="float" />
+			<param index="2" name="end" type="float" />
+			<param index="3" name="count" type="int" default="-1" />
+			<description>
+				Loops the slot's current clip between [param start] and [param end] seconds (its [code]StartLoop[/code] and [code]EndLoop[/code] text keys) [param count] times in all, then lets it play on to its end. A negative [param count] loops forever; a negative [param end] clears the section.
+			</description>
+		</method>
+		<method name="stop">
+			<return type="void" />
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="fade_seconds" type="float" default="0.2" />
+			<description>
+				Fades the slot's clip out over [param fade_seconds]; the slot is then empty. Emits [signal clip_stopped] when the slot had a start.
+			</description>
+		</method>
+		<method name="stop_all">
+			<return type="void" />
+			<description>
+				Empties every slot at once, without fades, and emits [signal clip_stopped] for each slot that had a start.
+			</description>
+		</method>
+		<method name="update_pose">
+			<return type="void" />
+			<description>
+				Writes the pose now, whatever [member update_interval].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="disabled_bones" type="PackedStringArray" setter="set_disabled_bones" getter="get_disabled_bones" default="PackedStringArray()">
+			Bone names this animator never writes, whatever keys them: they keep the pose they have. Takes effect at the next pose write.
+		</member>
+		<member name="hold_unkeyed_root" type="bool" setter="set_hold_unkeyed_root" getter="is_holding_unkeyed_root" default="false">
+			With a root clip that keys no [code]Bip01[/code], draws [code]Bip01[/code] at the clip's origin, unrotated, rather than leaving it where it was.
+		</member>
+		<member name="paused" type="bool" setter="set_paused" getter="is_paused" default="false">
+			Stops clip clocks, fades and text keys from advancing. Poses are still written, so [method seek] shows its frame.
+		</member>
+		<member name="root_motion_excluded_slot" type="int" setter="set_root_motion_excluded_slot" getter="get_root_motion_excluded_slot" default="-1">
+			A slot whose clips are never the root clip and are left out of [method consume_root_motion] (locomotion, which the controller moves), or [code]-1[/code] for none. Its clips are still drawn without their root motion when played with [code]keep_root[/code].
+		</member>
+		<member name="root_motion_mode" type="int" setter="set_root_motion_mode" getter="get_root_motion_mode" enum="KfAnimator.RootMotionMode" default="0">
+			Which part of a [code]keep_root[/code] clip's root bones is taken out of the drawn pose and reported as root motion. See [enum RootMotionMode].
+		</member>
+		<member name="skeleton_path" type="NodePath" setter="set_skeleton_path" getter="get_skeleton_path" default="NodePath(&quot;&quot;)">
+			The [Skeleton3D] the clips play on. Clips bind to its bones by name when they are played.
+		</member>
+		<member name="sync_source" type="NodePath" setter="set_sync_source" getter="get_sync_source" default="NodePath(&quot;&quot;)">
+			The [KfAnimator] that clips played with a [code]source_serial[/code] follow. A following clip takes the source clip's time, loop section and end each frame and emits no [signal text_key] or [signal clip_finished]; while the source has no clip of that serial it runs on its own clock and emits them. The follower reads the source's time as it stands when the follower processes, so give it a higher [member Node.process_priority] than the source.
+		</member>
+		<member name="tie_mode" type="int" setter="set_tie_mode" getter="get_tie_mode" enum="KfAnimator.TieMode" default="0">
+			How clips at the same priority on a bone channel share it. See [enum TieMode].
+		</member>
+		<member name="update_interval" type="int" setter="set_update_interval" getter="get_update_interval" default="1">
+			Frames between pose writes, at least 1. Clocks still advance every frame, so a skipped frame only delays the pose.
+		</member>
+	</members>
+	<signals>
+		<signal name="clip_finished">
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="animation" type="Animation" />
+			<description>
+				Emitted when a once-only clip (no loop mode, its loop section used up) reaches its end in [param slot]. The clip then holds its last frame until it is stopped or replaced.
+			</description>
+		</signal>
+		<signal name="clip_started">
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="path" type="String" />
+			<param index="2" name="animation" type="Animation" />
+			<param index="3" name="serial" type="int" />
+			<param index="4" name="fade_seconds" type="float" />
+			<param index="5" name="keep_root" type="bool" />
+			<param index="6" name="speed" type="float" />
+			<description>
+				Emitted for every start in [param slot], by [method play] or [method announce], with the start's KF [param path], its [param animation] (may be [code]null[/code] for an announced start) and its [param serial]. Emitted after the start is recorded, so [method get_start] already returns it.
+			</description>
+		</signal>
+		<signal name="clip_stopped">
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="fade_seconds" type="float" />
+			<description>
+				Emitted when [method stop] or [method stop_all] ends a slot that had a start.
+			</description>
+		</signal>
+		<signal name="text_key">
+			<param index="0" name="slot" type="int" />
+			<param index="1" name="key" type="String" />
+			<param index="2" name="time" type="float" />
+			<description>
+				Emitted when the current clip in [param slot] passes one of its text keys (NifServer's [code]nif_text_keys[/code]), with the key's text and its time in the clip, in seconds.
+			</description>
+		</signal>
+	</signals>
+	<constants>
+		<constant name="TIE_BLEND" value="0" enum="TieMode">
+			Clips at the same priority blend by their fade weights.
+		</constant>
+		<constant name="TIE_NEWEST" value="1" enum="TieMode">
+			Only the most recently started clip at a priority counts.
+		</constant>
+		<constant name="ROOT_MOTION_NONE" value="0" enum="RootMotionMode">
+			Nothing is taken; root tracks are drawn as keyed.
+		</constant>
+		<constant name="ROOT_MOTION_BIP01" value="1" enum="RootMotionMode">
+			[code]Bip01[/code]'s translation is taken.
+		</constant>
+		<constant name="ROOT_MOTION_BIP01_NONACCUM_YAW" value="2" enum="RootMotionMode">
+			[code]Bip01[/code]'s translation and [code]Bip01 NonAccum[/code]'s yaw about Z are taken.
+		</constant>
+		<constant name="ROOT_MOTION_NONACCUM" value="3" enum="RootMotionMode">
+			[code]Bip01 NonAccum[/code]'s translation in the XY plane and its yaw about Z are taken.
+		</constant>
+		<constant name="ROOT_MOTION_ROOT_TRANSFORM" value="4" enum="RootMotionMode">
+			The root as one transform, [code]Bip01[/code]'s translation then [code]Bip01 NonAccum[/code]'s facing measured against the stance yaw (90 degrees), its change since the clip started composed as a transform. The clip is drawn with all of it taken out: [code]Bip01[/code] at the origin, unrotated, and [code]NonAccum[/code] turned to the stance. A tested guess: the one reading that plays Doc Mitchell's chair enter, seated loop and exit correctly; not checked against the original game. Used by ActorAnimator.
+		</constant>
+	</constants>
+</class>

@@ -1,5 +1,6 @@
 #include "register_types.h"
 
+#include "animation/kf_animator.h"
 #include "bsa/archive_catalog_gd.h"
 #include "bsa/bsa_reader_gd.h"
 #include "esm/esm_reader_gd.h"
@@ -35,6 +36,7 @@ void initialize_nv_engine_module(ModuleInitializationLevel p_level) {
 	ClassDB::register_class<NifSource>();
 	ClassDB::register_class<TriReader>();
 	ClassDB::register_class<DirectGeometryBatch>();
+	ClassDB::register_class<KfAnimator>();
 }
 
 void uninitialize_nv_engine_module(ModuleInitializationLevel p_level) {
