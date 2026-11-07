@@ -20,7 +20,7 @@ extends Node
 ## or all. An idle of section 20 (Whole Body), once it plays, ends the idles in
 ## every other slot (the chair exit ends the seated loop, which would otherwise
 ## outrank standing when the exit ends). That rule is a tested guess: read from
-## the section's name and checked in _diag/kf_animator_test.tscn, not against
+## the section's name and checked in animation_viewer.tscn, not against
 ## the original game (Plans/Actors/animation_blending.md, Root bones). The IDLE's loop section is
 ## its StartLoop / EndLoop keys, played a random count between its Looping min
 ## and max, forever for LOOP_FOREVER.
@@ -38,7 +38,7 @@ extends Node
 ## the seat and turns it about 180 degrees, and the exit carries it back off. This reading of the
 ## KFs' root (Bip01's translation then NonAccum's facing, composed) is a tested
 ## guess: it plays Doc's chair enter, seated loop and exit correctly in
-## _diag/kf_animator_test.tscn, not checked against the original game
+## animation_viewer.tscn, not checked against the original game
 ## (Plans/Actors/animation_blending.md, Root bones).
 ##
 ## A creature (`load_locomotion` with `creature`) takes its clips from the KFs
@@ -89,6 +89,8 @@ var _animator: KfAnimator = null
 var _skeleton: Skeleton3D = null
 ## Locomotion clips by clip name (_clip_name()): NifServer's Animations.
 var _clips: Dictionary = {}
+## Each locomotion clip's KF path (NifServer canonical), by clip name.
+var _clip_paths: Dictionary = {}
 ## The locomotion clip playing in MOVEMENT_SLOT, or "".
 var _locomotion_clip := ""
 ## The idle play_idle last started that still plays or loads, or null.
@@ -208,9 +210,9 @@ func play_idle(idle: IdleBase, from_end := false) -> void:
 	_slot_generations[slot] = generation
 	_slot_idles[slot] = idle
 	_idle = idle
-	var path := idle.model_path.replace("\\", "/").to_lower()
+	var path := NifServer.canonical(idle.model_path)
 	var nif_server := get_tree().root.get_node_or_null("NifServer")
-	nif_server.request_kf(path, self, _on_idle_library_delivered.bind(slot, generation, idle, from_end))
+	nif_server.request_kf(path, self, _on_idle_library_delivered.bind(slot, generation, idle, from_end, path))
 
 ## Ends `idle` (its slot fades out, the others play on), or every idle when
 ## null. A looping idle ends here too.
@@ -330,7 +332,7 @@ static func _sample_face_track(pairs: PackedFloat32Array, time: float) -> float:
 func is_loaded() -> bool:
 	return not _loading and _animator != null and is_instance_valid(_animator)
 
-func _on_idle_library_delivered(raw_library: AnimationLibrary, slot: int, generation: int, idle: IdleBase, from_end: bool) -> void:
+func _on_idle_library_delivered(raw_library: AnimationLibrary, slot: int, generation: int, idle: IdleBase, from_end: bool, path: String) -> void:
 	if generation != int(_slot_generations.get(slot, 0)) or _animator == null or not is_instance_valid(_animator):
 		return
 	var animation: Animation = null
@@ -338,11 +340,15 @@ func _on_idle_library_delivered(raw_library: AnimationLibrary, slot: int, genera
 		animation = raw_library.get_animation(raw_library.get_animation_list()[0])
 	if animation == null or not _keys_a_bone(animation, true):
 		push_warning("ActorAnimator: could not play idle %s (%s)" % [idle.editor_id, idle.model_path])
+		# Announced all the same, with the clip when it loaded, for a
+		# KfClipSync follower that can play it (a clip keying only Camera1st,
+		# on the first-person skeleton).
+		_animator.announce(slot, path, animation, BLEND_SECONDS, true, 1.0)
 		_slot_idles.erase(slot)
 		idle_finished.emit(idle)
 		_end_finished_slots()
 		return
-	_animator.play(slot, animation, _fade_in(animation), true, 1.0)
+	_animator.play(slot, animation, _fade_in(animation), true, 1.0, path)
 	_slot_animations[slot] = animation
 	_finished_slots.erase(slot)
 	if slot == WHOLE_BODY_SECTION:
@@ -447,7 +453,7 @@ func _physics_process(_delta: float) -> void:
 func _play_locomotion(clip_name: String, fade: float) -> void:
 	if clip_name == _locomotion_clip or not _clips.has(clip_name):
 		return
-	_animator.play(MOVEMENT_SLOT, _clips[clip_name], fade, true, 1.0)
+	_animator.play(MOVEMENT_SLOT, _clips[clip_name], fade, true, 1.0, _clip_paths.get(clip_name, ""))
 	_locomotion_clip = clip_name
 
 ## Reports the idles' root motion since the last frame (root_moved): the
@@ -543,6 +549,7 @@ func cancel() -> void:
 	_pending_requests = 0
 	_requests_being_submitted = false
 	_clips.clear()
+	_clip_paths.clear()
 	_locomotion_clip = ""
 	if _animator != null and is_instance_valid(_animator):
 		_animator.queue_free()
@@ -601,6 +608,7 @@ func _add_clips(source_path: String, raw_library: AnimationLibrary) -> void:
 			while _clips.has(clip_name):
 				clip_name += "_"
 			_clips[clip_name] = animation
+			_clip_paths[clip_name] = NifServer.canonical(source_path)
 			var file_name := source_path.get_file().get_basename()
 			if _creature and sequence_index == 0 and not _creature_clips.has(file_name):
 				_creature_clips[file_name] = clip_name

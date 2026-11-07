@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://chvlkwavy0ked"]
+
+[ext_resource type="Script" uid="uid://bn31vq8d1y5k7" path="res://GodotBryo/Types/Node/first_person_rig.gd" id="1_rig"]
+[ext_resource type="Script" uid="uid://clwbgfjmrx1vm" path="res://GodotBryo/Types/Node/kf_clip_sync.gd" id="2_sync"]
+
+[node name="FirstPersonRig" type="Node3D" unique_id=1850198129]
+script = ExtResource("1_rig")
+
+[node name="SkeletonModel" type="Node3D" parent="." unique_id=837082071]
+
+[node name="Meshes" type="Node3D" parent="." unique_id=1745185732]
+
+[node name="KfAnimator" type="KfAnimator" parent="." unique_id=1826033474]
+
+[node name="KfClipSync" type="Node" parent="." unique_id=1428926085 node_paths=PackedStringArray("follower")]
+script = ExtResource("2_sync")
+follower = NodePath("../KfAnimator")
+debug_log = true

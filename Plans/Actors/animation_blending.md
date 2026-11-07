@@ -208,7 +208,7 @@ from is whatever was written with `set_bone_pose_*` beforehand. So:
 
 ### Test scene
 
-`project/_diag/kf_animator_test.tscn`: one actor (a humanoid NPC_ by EditorID) on a floor with a
+`project/animation_viewer.tscn`: one actor (a humanoid NPC_ by EditorID) on a floor with a
 camera, built without a cell or streaming so it starts and stops in seconds. It carries a
 `LookAtModifier3D` and an IK modifier on the skeleton, toggled, to check they apply over the
 animated pose at every update interval. Debug controls pick a
@@ -251,7 +251,7 @@ clip's start and end (keys, or the interpolator's static pose), yaw about the pa
 
 ### Tried in the test scene
 
-`_diag/kf_animator_test.tscn`, "Sit, card point, stand" (`Chair_ForwardEnter.kf`, the seated loop
+`animation_viewer.tscn`, "Sit, card point, stand" (`Chair_ForwardEnter.kf`, the seated loop
 `DynamicIdle_ChairSit.kf`, `SpecialIdle_CardPoint01.kf` over it, `Chair_ForwardExit.kf`), under
 KfAnimator's root motion modes, each clip measured from its own start:
 
@@ -276,7 +276,7 @@ frame of an actor on the seat facing out.
 
 ### Tested guesses, in the game
 
-Both are implemented and played correctly in `_diag/kf_animator_test.tscn`; neither is checked
+Both are implemented and played correctly in `animation_viewer.tscn`; neither is checked
 against the original game, and the code says so where it acts on them.
 
 - **Root motion (Root transform).** The root is one transform, Bip01's translation then

@@ -533,7 +533,8 @@ func _register_defaults() -> void:
 		var idle := _base_arg(a, 0) as IdleBase
 		if actor == null or idle == null:
 			return 0
-		script_server.actor_idles.play(actor, idle)
+		# Scripted: dialogue gestures leave it playing (ASSUMPTION, ActorIdles).
+		script_server.actor_idles.play(actor, idle, true)
 		return 1)
 	# `[Actor.]PickIdle`: the actor plays the idle the Idle Manager picks for it
 	# from its skeleton's idle tree (ScriptServer's ActorIdles); 0 when none.

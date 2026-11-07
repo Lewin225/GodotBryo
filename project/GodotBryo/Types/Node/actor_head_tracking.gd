@@ -8,8 +8,8 @@ extends Node
 ## actor node hands it the skeleton once the visual is built (set_skeleton).
 ##
 ## Every `evaluation_seconds` it chooses a target, the first rule that applies:
-## 1. none, the modifier off so the head follows the animation, when the
-##    active package has Head Tracking Off or the actor is not alive;
+## 1. none, when the active package has Head Tracking Off or the actor is not
+##    alive;
 ## 2. the actor's `look_target` (script Look, until StopLook);
 ## 3. the other side of the conversation it is in, unless its Dialogue package
 ##    has No Headtracking; or, while a line is being said (DialogueServer
@@ -24,22 +24,29 @@ extends Node
 ## The player's body is an actor like any other: it chooses by the same rules,
 ## and others aim at its head bone.
 ## Distances are in Gamebryo units and default to the game settings the GECK
-## lists (fAIMaxHeadTrackDistance and the rest; not in FalloutNV.esm). The head
-## aims at the target's head bone when it has one, else its position plus
-## `eye_height`; with no target, at `default_target_position` ahead of the body
-## (carried with the hips, so seated it is ahead of the seated body). A line's
-## look holds for `line_linger_seconds` after it ends.
+## lists (fAIMaxHeadTrackDistance and the rest; not in FalloutNV.esm). The
+## modifier follows the target's look node (get_look_node(): its look_point, or
+## its head bone), retargeted only when the target changes; a target with no
+## ActorHeadTracking in the tree is aimed at through the aim node, placed at its
+## position plus `eye_height` at each choice. With no target the modifier's
+## influence fades out over `turn_duration` and the modifier is then off, so
+## the head follows the animation and nothing is solved. A line's look holds
+## for `line_linger_seconds` after it ends.
 
 ## The modifier's node name under the skeleton.
 const MODIFIER_NODE_NAME := "Look Target"
-## The point the modifier aims at, a child of the skeleton.
+## The point the modifier aims at for a target with no look node, a child of
+## the skeleton.
 const AIM_NODE_NAME := "Look Point"
+## This actor's eyes for others to aim at: a BoneAttachment3D on the head bone.
+const EYE_NODE_NAME := "Eye Point"
 ## The bone the head turns on.
 const HEAD_BONE_NAME := "Bip01 Head"
 const UNITS_TO_METERS := 1.0 / 70.0
 
 @export_group("Look At")
-## Where the head looks when it tracks nothing, in the skeleton's space.
+## The body's forward point, in the skeleton's space: with the head, it gives
+## which way the body faces for choosing a target in front.
 @export var default_target_position := Vector3(0.04669869, 1.0496129, 1.6604441)
 ## Seconds to turn to a new target.
 @export var turn_duration := 1.0
@@ -78,6 +85,9 @@ static var _instances: Array[ActorHeadTracking] = []
 
 var _modifier: LookAtModifier3D = null
 var _aim: Node3D = null
+var _eye: BoneAttachment3D = null
+## The node the modifier follows now, or null.
+var _followed: Node3D = null
 var _skeleton: Skeleton3D = null
 var _target: EsmReference = null
 var _default_target: EsmReference = null
@@ -137,6 +147,8 @@ func set_skeleton(skeleton: Skeleton3D) -> void:
 	if existing != null:
 		_modifier = existing
 		_aim = skeleton.get_node_or_null(NodePath(AIM_NODE_NAME)) as Node3D
+		_eye = skeleton.get_node_or_null(NodePath(EYE_NODE_NAME)) as BoneAttachment3D
+		_followed = null
 		return
 	if skeleton.find_bone(HEAD_BONE_NAME) == -1:
 		EsmActorNode._warn_once("ActorHeadTracking: skeleton has no %s bone" % HEAD_BONE_NAME)
@@ -146,6 +158,11 @@ func set_skeleton(skeleton: Skeleton3D) -> void:
 	aim.position = default_target_position
 	skeleton.add_child(aim)
 	_aim = aim
+	var eye := BoneAttachment3D.new()
+	eye.name = EYE_NODE_NAME
+	eye.bone_name = HEAD_BONE_NAME
+	skeleton.add_child(eye)
+	_eye = eye
 	var modifier := LookAtModifier3D.new()
 	modifier.name = MODIFIER_NODE_NAME
 	modifier.bone_name = HEAD_BONE_NAME
@@ -162,9 +179,11 @@ func set_skeleton(skeleton: Skeleton3D) -> void:
 	# (look_at_modifier_3d.cpp halves them).
 	modifier.primary_limit_angle = deg_to_rad(left_right_limit_degrees)
 	modifier.secondary_limit_angle = deg_to_rad(up_down_limit_degrees)
+	modifier.influence = 0.0
+	modifier.active = false
 	skeleton.add_child(modifier)
-	modifier.target_node = modifier.get_path_to(aim)
 	_modifier = modifier
+	_followed = null
 
 ## The look-at modifier on the current skeleton, or null before one is set.
 func get_modifier() -> LookAtModifier3D:
@@ -189,13 +208,28 @@ func get_conversation_partner() -> EsmReference:
 func get_left_right_reach() -> float:
 	return deg_to_rad(left_right_limit_degrees) / 2.0
 
-## Where this actor's eyes are, in the world: its head bone, else the actor
-## node plus eye_height. For other actors aiming at it.
+## Runtime state with no ESM source. A node standing for this actor's eyes,
+## set by whatever controls the actor (PlayerController passes its camera, the
+## view the player sees from, which a camera clip can move away from the
+## body's head); null uses the head bone.
+var look_point: Node3D = null
+
+## The node standing for this actor's eyes, which other actors' modifiers
+## follow: look_point when set, else the head bone's attachment; null before the
+## skeleton is set.
+func get_look_node() -> Node3D:
+	if look_point != null and is_instance_valid(look_point):
+		return look_point
+	if is_instance_valid(_eye):
+		return _eye
+	return null
+
+## Where this actor's eyes are, in the world: its look node, else the actor
+## node plus eye_height.
 func get_eye_position() -> Vector3:
-	if is_instance_valid(_skeleton):
-		var bone := _skeleton.find_bone(HEAD_BONE_NAME)
-		if bone != -1:
-			return (_skeleton.global_transform * _skeleton.get_bone_global_pose(bone)).origin
+	var look_node := get_look_node()
+	if look_node != null:
+		return look_node.global_position
 	var actor_node := get_parent() as Node3D
 	return actor_node.global_position + Vector3.UP * eye_height if actor_node != null else Vector3.ZERO
 
@@ -206,7 +240,19 @@ func _process(delta: float) -> void:
 	if _evaluate_in <= 0.0:
 		_evaluate_in = evaluation_seconds
 		_choose()
-	_aim_at_target()
+	_fade(delta)
+
+## Moves the modifier's influence towards 1 with a target, 0 without, over
+## turn_duration; the modifier is off once it reaches 0.
+func _fade(delta: float) -> void:
+	var goal := 1.0 if _target != null else 0.0
+	if is_equal_approx(_modifier.influence, goal):
+		if goal == 0.0 and _modifier.active:
+			_modifier.active = false
+		return
+	_modifier.active = true
+	var step := delta / turn_duration if turn_duration > 0.0 else 1.0
+	_modifier.influence = move_toward(_modifier.influence, goal, step)
 
 ## Applies the rules (see the class description) to choose `_target`.
 func _choose() -> void:
@@ -238,8 +284,17 @@ func _current_line_partner() -> EsmReference:
 	return null
 
 func _set_tracking(enabled: bool, target: EsmReference) -> void:
-	_modifier.active = enabled
-	_target = target
+	_target = target if enabled else null
+	if _target == null:
+		return
+	var look_node := _look_node_of(_target)
+	if look_node == null:
+		# A target with no look node: the aim node, placed now.
+		_aim.global_position = _eye_position_of(_target)
+		look_node = _aim
+	if look_node != _followed:
+		_followed = look_node
+		_modifier.target_node = _modifier.get_path_to(look_node)
 
 ## The other side of the conversation `actor` is in, unless the speaker's
 ## active package is a Dialogue package with No Headtracking.
@@ -302,14 +357,7 @@ func _qualifies(actor: ActorReference, other: EsmReference, range_units: float) 
 	var hit := (get_parent() as Node3D).get_world_3d().direct_space_state.intersect_ray(query)
 	return hit.is_empty()
 
-func _aim_at_target() -> void:
-	if _target == null:
-		_aim.global_position = _default_aim_position()
-		return
-	_aim.global_position = _eye_position_of(_target)
-
-## Where the head looks when it tracks nothing: default_target_position,
-## carried with the body by how far the hips (Bip01 NonAccum) have moved and
+## The body's forward point: default_target_position, carried with the body by how far the hips (Bip01 NonAccum) have moved and
 ## turned from their rest pose, so a seated actor (its body turned within the
 ## skeleton by the furniture idles) looks ahead of its body, not behind it.
 func _default_aim_position() -> Vector3:
@@ -326,6 +374,14 @@ func _body_frame() -> Transform3D:
 ## one in the tree, else its position plus eye_height.
 func get_eye_position_of(reference: EsmReference) -> Vector3:
 	return _eye_position_of(reference)
+
+## `reference`'s look node, when it has an ActorHeadTracking in the tree, else
+## null.
+func _look_node_of(reference: EsmReference) -> Node3D:
+	for other_tracking in _instances:
+		if other_tracking._actor() == reference:
+			return other_tracking.get_look_node()
+	return null
 
 ## See get_eye_position_of.
 func _eye_position_of(reference: EsmReference) -> Vector3:

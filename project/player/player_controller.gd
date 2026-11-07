@@ -17,6 +17,24 @@ extends CharacterBody3D
 
 ## Controls the processing of input events
 @export var input_enabled:bool = true
+## The first-person viewmodel: wears the possessed actor's meshes and is placed
+## at the camera each frame. Null shows no viewmodel.
+@export var first_person_rig: FirstPersonRig
+## Moves the camera with first_person_rig's Camera1st bone: the bone's change
+## from its rest pose (position and rotation) applied on top of the camera's
+## own transform, so a clip that keys Camera1st (VCG01's wake-up) moves the view.
+@export var camera_follows_rig := true
+
+## How mouse look turns the view. BODY: yaw turns the body (and the
+## first-person rig with it), pitch the camera. HEAD: the body keeps its
+## heading and yaw and pitch turn the camera about its own position, after the
+## rig's Camera1st change, so a clip that moves the camera away from the body
+## (VCG01's wake-up) is looked around in place rather than swung around the
+## body.
+enum LookMode {
+	BODY,
+	HEAD,
+}
  
 @export_group("Mouse & Look")
 @export var mouse_sensitivity: float = 0.003
@@ -99,8 +117,6 @@ extends CharacterBody3D
 @export_group("Camera Base")
 ## Vertical (Y) camera follow speed — keep high for crisp step/crouch response.
 @export var camera_follow_speed: float = 25.0
-## Horizontal (X/Z) camera follow speed — lower values smooth out lateral jitter.
-@export var camera_xz_follow_speed: float = 14.0
 @export var camera_aim_smooth_speed: float = 40.0
 @export var camera_eye_height: float = 1.5
 
@@ -200,7 +216,18 @@ var _last_yaw := 0.0
 var knocked_timer_ms: int = 0
 var aim_smooth: Vector3 = Vector3.ZERO
 var camera_lerp_position: Vector3 = Vector3.ZERO
+## How far the camera's eye target sits above the body this frame, metres: the
+## first-person rig is placed this far below the camera.
+var _camera_eye_height := 0.0
 var camera_pitch: float = 0.0
+## The current LookMode: HEAD while the possessed actor plays an idle a script
+## or package event asked for (ActorIdles.is_playing_scripted: VCG01's
+## wake-up), else BODY; ambient picks and dialogue gestures leave it BODY, so
+## the player can turn while gesturing back at a bark.
+var look_mode := LookMode.BODY
+## HEAD: the yaw mouse look has added on top of the body's heading, radians;
+## folded into the body's heading when the mode returns to BODY.
+var _head_yaw := 0.0
 var gravity_project: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var gravity_multiplier: float = 1.4:
 	set(val):
@@ -325,7 +352,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and camera_mode == 0 \
 			and ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_LOOKING):
-		rotation.y -= event.relative.x * mouse_sensitivity
+		if look_mode == LookMode.HEAD:
+			_head_yaw -= event.relative.x * mouse_sensitivity
+		else:
+			rotation.y -= event.relative.x * mouse_sensitivity
 		var max_pitch := deg_to_rad(pitch_limit_degrees)
 		camera_pitch = clampf(camera_pitch - (event.relative.y * mouse_sensitivity), -max_pitch, max_pitch)
 
@@ -333,8 +363,21 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if is_teleporting or not camera:
 		return
+	_update_look_mode()
 	_update_head_camera(delta)
 	_update_camera_transform(delta)
+
+
+## HEAD while the possessed actor plays a scripted idle, else BODY. Back in BODY
+## the head's yaw becomes the body's heading, so the view does not jump.
+func _update_look_mode() -> void:
+	var mode := LookMode.HEAD if ScriptServer.actor_idles.is_playing_scripted(possessed) else LookMode.BODY
+	if mode == look_mode:
+		return
+	look_mode = mode
+	if mode == LookMode.BODY:
+		rotation.y += _head_yaw
+		_head_yaw = 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -711,7 +754,7 @@ func _apply_push_forces(delta: float) -> void:
 func _update_camera_transform(delta: float) -> void:
 	var zoom_action: StringName = input_actions.get("zoom", &"zoom")
 	var zoom_active := InputMap.has_action(zoom_action) and Input.is_action_pressed(zoom_action)
-	var target_aim := Vector3(camera_pitch, rotation.y, 0.0)
+	var target_aim := Vector3(camera_pitch, rotation.y + _head_yaw, 0.0)
 	aim_smooth = lerp(aim_smooth, target_aim, clampf(delta * camera_aim_smooth_speed, 0.0, 1.0)) if zoom_active else target_aim
 
 	camera.fov = lerpf(camera.fov, (75.0-(float(zoom_active)*50)), delta*5)
@@ -737,14 +780,13 @@ func _update_camera_transform(delta: float) -> void:
 	eye_y -= _current_bridge_dip
 
 	var target_pos := Vector3(interp_pos.x, eye_y, interp_pos.z)
+	_camera_eye_height = eye_y - interp_pos.y
 
-	# Decouple horizontal and vertical smoothing:
-	# Y follows quickly so steps and crouching snap cleanly;
-	# X/Z follows slowly to dampen residual jitter.
-	var xz_t: float = clampf(delta * camera_xz_follow_speed, 0.0, 1.0)
+	# X/Z takes the interpolated body position directly; Y follows it at
+	# camera_follow_speed, smoothing steps, stairs, landing and crouch.
 	var y_t: float = clampf(delta * camera_follow_speed, 0.0, 1.0)
-	camera_lerp_position.x = lerpf(camera_lerp_position.x, target_pos.x, xz_t)
-	camera_lerp_position.z = lerpf(camera_lerp_position.z, target_pos.z, xz_t)
+	camera_lerp_position.x = target_pos.x
+	camera_lerp_position.z = target_pos.z
 	camera_lerp_position.y = lerpf(camera_lerp_position.y, target_pos.y, y_t)
 
 	# 2. Procedural Sine-Wave Head-Bobbing
@@ -804,6 +846,28 @@ func _update_camera_transform(delta: float) -> void:
 			_current_roll_lean + shake_rot.z
 		)
 
+	# The first-person rig moves with the camera, after it, in the same frame;
+	# then the camera takes the rig's Camera1st change from rest, which moves
+	# the view and not the rig.
+	if camera_mode == 0 and look_mode == LookMode.HEAD:
+		# Placed by the body's heading alone; the look is added after the
+		# rig's camera change, about the camera's own position.
+		camera.global_rotation = Vector3(
+			_current_pitch_lean + shake_rot.x,
+			rotation.y + shake_rot.y,
+			_current_roll_lean + shake_rot.z
+		)
+	if first_person_rig != null:
+		# In BODY mode the arms follow the view's pitch; in HEAD mode the
+		# look is the camera's alone.
+		var rig_pitch := aim_smooth.x if look_mode == LookMode.BODY else 0.0
+		first_person_rig.place_at_camera(camera, _camera_eye_height, rig_pitch)
+		if camera_mode == 0 and camera_follows_rig:
+			camera.global_transform = first_person_rig.camera_offset() * camera.global_transform
+	if camera_mode == 0 and look_mode == LookMode.HEAD:
+		var look := Basis(Vector3.UP, aim_smooth.y - rotation.y) * Basis(Vector3.RIGHT, aim_smooth.x)
+		camera.global_basis = camera.global_basis * look
+
 
 # --- Public Interface ---
 
@@ -833,6 +897,12 @@ func possess(actor_reference: ActorReference) -> void:
 	# moves this body from the first possession on.
 	if actor != null and not actor.animator.root_moved.is_connected(_on_root_moved):
 		actor.animator.root_moved.connect(_on_root_moved, CONNECT_DEFERRED)
+	# The first-person rig wears the possessed actor's meshes.
+	if first_person_rig != null and actor != null:
+		first_person_rig.follow(actor)
+	# Other actors look at the player's view, not the body's head.
+	if actor != null and actor.head_tracking != null:
+		actor.head_tracking.look_point = camera
 	if actor != null and possessed != null and actor.reference != possessed:
 		actor.placed_by_parent = true
 		actor.configure(possessed)
@@ -1003,6 +1073,7 @@ func place_body(target_global_position: Vector3, yaw: float) -> void:
 	teleport(target_global_position)
 	rotation.y = yaw
 	camera_pitch = 0.0
+	_head_yaw = 0.0
 
 ## Whether the possessed actor is sitting, sitting down or standing up
 ## (ActorReference.sit_state, FurnitureSeating).

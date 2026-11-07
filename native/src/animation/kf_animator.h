@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/skeleton3d.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/node_path.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -14,50 +15,18 @@
 
 namespace godot {
 
-// Plays several KF clips on one Skeleton3D at once and resolves each bone by
-// the clips' controlled block priorities (Plans/Actors/animation_blending.md).
+// Plays several KF clips on one Skeleton3D at once, one per slot (an animation
+// group section), and resolves each bone channel by the clips' controlled
+// block priorities: highest first, each priority's clips sharing the weight
+// still unclaimed. Writes poses with Skeleton3D::set_bone_pose_*, so the
+// skeleton's modifiers apply on top. Reports root motion
+// (root_motion_mode), every start and stop (clip_started, clip_stopped), and
+// can follow another KfAnimator's clocks (sync_source).
 //
-// A clip is a NifServer Animation: tracks whose paths are skeleton bone names,
-// and `nif_track_priorities` metadata (track path -> priority). Each slot (an
-// animation group section number, chosen by the caller) plays at most one
-// clip, plus the clip it is fading out from. Every update, each bone channel
-// (position, rotation, scale) takes the playing tracks that key it, highest
-// priority first: a priority's tracks share the weight still unclaimed (their
-// fade weights, at most all of it), and what is left passes to the next
-// priority down; weight none claims is shared among them in proportion, so a
-// clip fading out alone holds its pose. With tie_mode NEWEST only the
-// most recently started clip at a priority counts.
-//
-// Poses are written with Skeleton3D::set_bone_pose_*, as AnimationMixer does,
-// not as a SkeletonModifier3D: Skeleton3D restores every pose after its
-// modifiers each frame, so the pose written here is what the skeleton's
-// modifiers (IK, LookAtModifier3D) start from and it stays put on frames the
-// update interval skips. Bones no clip keys are not written.
-//
-// Clip clocks, fades and text keys advance every frame; poses are written every
-// `update_interval` frames.
-//
-// Root motion (root_motion_mode). Every clip played with keep_root is drawn
-// without its root change since it started; the root clip's (the most recently
-// started such clip outside root_motion_excluded_slot) is reported as
-// get_root_motion(), in the skeleton's space,
-// for the caller to move the actor by, so a clip fading out after it stays where
-// the actor took it. Which part is taken is the mode, each one way of
-// reading the KFs' Bip01 / Bip01 NonAccum split
-// (Plans/Actors/animation_blending.md, Root bones):
-//   NONE: nothing is taken.
-//   BIP01: Bip01's translation.
-//   BIP01_NONACCUM_YAW: Bip01's translation and NonAccum's yaw about Z.
-//   NONACCUM: NonAccum's translation in the XY plane and its yaw about Z.
-//   ROOT_TRANSFORM: the root as one transform, Bip01's translation then
-//     NonAccum's facing (the yaw of its X axis from Bip01's +Y, the stance
-//     facing), its change since the clip started composed as a transform; the
-//     clip is drawn with all of it taken out (Bip01 at the origin, unrotated,
-//     whether or not the clip keys it; NonAccum
-//     turned to face +Y), so a clip authored away from its start (the chair
-//     exit, starting on the seat) needs no move of its own.
-// With hold_unkeyed_root, a root clip that keys no Bip01 has Bip01 drawn at the
-// clip's origin, unrotated, rather than left where it was.
+// The module's README (native/src/animation/README.md) describes slots,
+// priorities, root motion and sync mode; the class reference is
+// native/doc_classes/KfAnimator.xml. Plans/Actors/animation_blending.md and
+// Plans/Actors/first_person.md hold the findings behind them.
 class KfAnimator : public Node {
 	GDCLASS(KfAnimator, Node)
 
@@ -87,6 +56,8 @@ public:
 	int get_tie_mode() const;
 	void set_root_motion_mode(int p_mode);
 	int get_root_motion_mode() const;
+	void set_disabled_bones(const PackedStringArray &p_bones);
+	PackedStringArray get_disabled_bones() const;
 	void set_hold_unkeyed_root(bool p_hold);
 	bool is_holding_unkeyed_root() const;
 	// The root clip's root change since it started, skeleton space; identity
@@ -105,13 +76,35 @@ public:
 	void set_root_motion_excluded_slot(int p_slot);
 	int get_root_motion_excluded_slot() const;
 
+	// The KfAnimator that clips played with a source_serial follow.
+	void set_sync_source(const NodePath &p_path);
+	NodePath get_sync_source() const;
+
 	// Starts `animation` in `slot`, fading in over `fade_seconds` (in an empty
 	// slot too) while the slot's current clip fades out. Bip01 and Bip01 NonAccum tracks play
-	// only with `keep_root`.
-	void play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root, float p_speed);
+	// only with `keep_root`. `path` is the clip's KF path, reported by
+	// clip_started; a non-zero `source_serial` makes the clip follow the
+	// sync_source clip of that serial. Returns the start's serial, 0 when the
+	// animation is null or keys none of the skeleton's bones (nothing starts and
+	// nothing is emitted).
+	int64_t play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root, float p_speed,
+			const String &p_path, int64_t p_source_serial);
+	// Records a start of the KF at `path` (loaded as `animation`, or null) in
+	// `slot` that this animator does not play, and emits clip_started for it:
+	// the slot's current clip fades out over `fade_seconds` and the slot is
+	// left empty. Returns the serial.
+	int64_t announce(int p_slot, const String &p_path, const Ref<Animation> &p_animation, float p_fade_seconds,
+			bool p_keep_root, float p_speed);
 	// Fades the slot's clip out over `fade_seconds`; the slot is then empty.
+	// Emits clip_stopped when the slot had a start.
 	void stop(int p_slot, float p_fade_seconds);
 	void stop_all();
+	// The slot's latest start, played or announced: {path, animation, serial,
+	// keep_root, speed, played}; empty when the slot has none (never started,
+	// or stopped). `played` is false for an announced start.
+	Dictionary get_start(int p_slot) const;
+	// The slots with a start, played or announced.
+	PackedInt32Array get_started_slots() const;
 	// Moves the slot's current clip to `time` seconds.
 	void seek(int p_slot, float p_time);
 	// Loops the slot's current clip between `start` and `end` seconds (its
@@ -166,12 +159,26 @@ private:
 		// negative loops forever.
 		int loops_left = -1;
 		bool finished = false;
+		// The sync_source clip this one follows (its serial), 0 for none.
+		uint64_t source_serial = 0;
+	};
+
+	// A start in a slot, played or announced.
+	struct Start {
+		uint64_t serial = 0;
+		String path;
+		Ref<Animation> animation;
+		bool keep_root = false;
+		float speed = 1.0f;
+		bool played = false;
 	};
 
 	struct Slot {
 		Clip current;
 		bool has_current = false;
 		std::vector<Clip> fading;
+		Start start;
+		bool has_start = false;
 	};
 
 	// A signal raised while advancing, emitted once every slot has advanced:
@@ -194,6 +201,11 @@ private:
 	};
 
 	Skeleton3D *_skeleton() const;
+	KfAnimator *_source() const;
+	const Clip *_source_clip(int p_slot, uint64_t p_serial) const;
+	bool _follow_source(int p_slot, Clip &r_clip) const;
+	void _end_current(Slot &r_slot, float p_fade_seconds);
+	void _record_start(int p_slot, const Start &p_start, float p_fade_seconds);
 	bool _bind(Clip &r_clip, bool p_keep_root) const;
 	void _advance(float p_delta);
 	void _advance_clip(int p_slot, Clip &r_clip, float p_delta, bool p_is_current);
@@ -209,11 +221,13 @@ private:
 
 	std::vector<Event> _events;
 	NodePath _skeleton_path;
+	NodePath _sync_source_path;
 	int _update_interval = 1;
 	bool _paused = false;
 	int _tie_mode = TIE_BLEND;
 	int _root_motion_mode = ROOT_MOTION_NONE;
 	bool _hold_unkeyed_root = false;
+	PackedStringArray _disabled_bones;
 	Transform3D _root_motion;
 	uint64_t _root_serial = 0;
 	// consume_root_motion(): the motion added up, the clip and slot last

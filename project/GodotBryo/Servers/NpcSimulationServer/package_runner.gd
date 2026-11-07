@@ -445,7 +445,8 @@ func _run_event(actor: ActorReference, event: PackageEventCollection) -> void:
 	if event.topic != null:
 		DialogueServer.say(actor, event.topic, null)
 	if event.idle != null:
-		ScriptServer.actor_idles.play(actor, event.idle)
+		# Scripted: dialogue gestures leave it playing (ASSUMPTION, ActorIdles).
+		ScriptServer.actor_idles.play(actor, event.idle, true)
 
 func _warn_once(message: String) -> void:
 	if _warned.has(message):

@@ -46,6 +46,7 @@ int channel_of(Animation::TrackType p_type) {
 } // namespace
 
 void KfAnimator::_bind_methods() {
+	// Properties.
 	ClassDB::bind_method(D_METHOD("set_skeleton_path", "path"), &KfAnimator::set_skeleton_path);
 	ClassDB::bind_method(D_METHOD("get_skeleton_path"), &KfAnimator::get_skeleton_path);
 	ClassDB::bind_method(D_METHOD("set_update_interval", "frames"), &KfAnimator::set_update_interval);
@@ -54,49 +55,74 @@ void KfAnimator::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_paused"), &KfAnimator::is_paused);
 	ClassDB::bind_method(D_METHOD("set_tie_mode", "mode"), &KfAnimator::set_tie_mode);
 	ClassDB::bind_method(D_METHOD("get_tie_mode"), &KfAnimator::get_tie_mode);
+	ClassDB::bind_method(D_METHOD("set_disabled_bones", "bones"), &KfAnimator::set_disabled_bones);
+	ClassDB::bind_method(D_METHOD("get_disabled_bones"), &KfAnimator::get_disabled_bones);
 	ClassDB::bind_method(D_METHOD("set_root_motion_mode", "mode"), &KfAnimator::set_root_motion_mode);
 	ClassDB::bind_method(D_METHOD("get_root_motion_mode"), &KfAnimator::get_root_motion_mode);
-	ClassDB::bind_method(D_METHOD("set_hold_unkeyed_root", "hold"), &KfAnimator::set_hold_unkeyed_root);
-	ClassDB::bind_method(D_METHOD("is_holding_unkeyed_root"), &KfAnimator::is_holding_unkeyed_root);
-	ClassDB::bind_method(D_METHOD("get_root_motion"), &KfAnimator::get_root_motion);
-	ClassDB::bind_method(D_METHOD("get_root_clip_serial"), &KfAnimator::get_root_clip_serial);
-	ClassDB::bind_method(D_METHOD("get_root_clip_slot"), &KfAnimator::get_root_clip_slot);
-	ClassDB::bind_method(D_METHOD("consume_root_motion"), &KfAnimator::consume_root_motion);
 	ClassDB::bind_method(D_METHOD("set_root_motion_excluded_slot", "slot"), &KfAnimator::set_root_motion_excluded_slot);
 	ClassDB::bind_method(D_METHOD("get_root_motion_excluded_slot"), &KfAnimator::get_root_motion_excluded_slot);
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "root_motion_excluded_slot"), "set_root_motion_excluded_slot",
-			"get_root_motion_excluded_slot");
-	ClassDB::bind_method(D_METHOD("play", "slot", "animation", "fade_seconds", "keep_root", "speed"),
-			&KfAnimator::play, DEFVAL(0.2f), DEFVAL(false), DEFVAL(1.0f));
+	ClassDB::bind_method(D_METHOD("set_hold_unkeyed_root", "hold"), &KfAnimator::set_hold_unkeyed_root);
+	ClassDB::bind_method(D_METHOD("is_holding_unkeyed_root"), &KfAnimator::is_holding_unkeyed_root);
+	ClassDB::bind_method(D_METHOD("set_sync_source", "path"), &KfAnimator::set_sync_source);
+	ClassDB::bind_method(D_METHOD("get_sync_source"), &KfAnimator::get_sync_source);
+
+	// Playing.
+	ClassDB::bind_method(D_METHOD("play", "slot", "animation", "fade_seconds", "keep_root", "speed", "path", "source_serial"),
+			&KfAnimator::play, DEFVAL(0.2f), DEFVAL(false), DEFVAL(1.0f), DEFVAL(String()), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("announce", "slot", "path", "animation", "fade_seconds", "keep_root", "speed"),
+			&KfAnimator::announce, DEFVAL(Ref<Animation>()), DEFVAL(0.2f), DEFVAL(false), DEFVAL(1.0f));
 	ClassDB::bind_method(D_METHOD("stop", "slot", "fade_seconds"), &KfAnimator::stop, DEFVAL(0.2f));
 	ClassDB::bind_method(D_METHOD("stop_all"), &KfAnimator::stop_all);
 	ClassDB::bind_method(D_METHOD("seek", "slot", "time"), &KfAnimator::seek);
 	ClassDB::bind_method(D_METHOD("set_loop_section", "slot", "start", "end", "count"), &KfAnimator::set_loop_section,
 			DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("update_pose"), &KfAnimator::update_pose);
+
+	// State.
 	ClassDB::bind_method(D_METHOD("get_animation", "slot"), &KfAnimator::get_animation);
 	ClassDB::bind_method(D_METHOD("get_time", "slot"), &KfAnimator::get_time);
 	ClassDB::bind_method(D_METHOD("get_slots"), &KfAnimator::get_slots);
-	ClassDB::bind_method(D_METHOD("update_pose"), &KfAnimator::update_pose);
+	ClassDB::bind_method(D_METHOD("get_start", "slot"), &KfAnimator::get_start);
+	ClassDB::bind_method(D_METHOD("get_started_slots"), &KfAnimator::get_started_slots);
+	ClassDB::bind_method(D_METHOD("get_root_motion"), &KfAnimator::get_root_motion);
+	ClassDB::bind_method(D_METHOD("get_root_clip_serial"), &KfAnimator::get_root_clip_serial);
+	ClassDB::bind_method(D_METHOD("get_root_clip_slot"), &KfAnimator::get_root_clip_slot);
+	ClassDB::bind_method(D_METHOD("consume_root_motion"), &KfAnimator::consume_root_motion);
 
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "skeleton_path", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Skeleton3D"),
 			"set_skeleton_path", "get_skeleton_path");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "update_interval", PROPERTY_HINT_RANGE, "1,120,1"),
+	ADD_GROUP("Playback", "");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "update_interval", PROPERTY_HINT_RANGE, "1,120,1,suffix:frames"),
 			"set_update_interval", "get_update_interval");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused"), "set_paused", "is_paused");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "tie_mode", PROPERTY_HINT_ENUM, "Blend,Newest"),
 			"set_tie_mode", "get_tie_mode");
-
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "root_motion_mode", PROPERTY_HINT_ENUM, "None,Bip01,Bip01 + NonAccum Yaw,NonAccum,Root Transform"),
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "disabled_bones"), "set_disabled_bones",
+			"get_disabled_bones");
+	ADD_GROUP("Root Motion", "");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "root_motion_mode", PROPERTY_HINT_ENUM,
+						 "None,Bip01,Bip01 + NonAccum Yaw,NonAccum,Root Transform"),
 			"set_root_motion_mode", "get_root_motion_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "root_motion_excluded_slot"), "set_root_motion_excluded_slot",
+			"get_root_motion_excluded_slot");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "hold_unkeyed_root"), "set_hold_unkeyed_root", "is_holding_unkeyed_root");
+	ADD_GROUP("Sync", "");
+	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "sync_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "KfAnimator"),
+			"set_sync_source", "get_sync_source");
+
+	BIND_ENUM_CONSTANT(TIE_BLEND);
+	BIND_ENUM_CONSTANT(TIE_NEWEST);
 	BIND_ENUM_CONSTANT(ROOT_MOTION_NONE);
 	BIND_ENUM_CONSTANT(ROOT_MOTION_BIP01);
 	BIND_ENUM_CONSTANT(ROOT_MOTION_BIP01_NONACCUM_YAW);
 	BIND_ENUM_CONSTANT(ROOT_MOTION_NONACCUM);
 	BIND_ENUM_CONSTANT(ROOT_MOTION_ROOT_TRANSFORM);
-	BIND_ENUM_CONSTANT(TIE_BLEND);
-	BIND_ENUM_CONSTANT(TIE_NEWEST);
 
+	ADD_SIGNAL(MethodInfo("clip_started", PropertyInfo(Variant::INT, "slot"), PropertyInfo(Variant::STRING, "path"),
+			PropertyInfo(Variant::OBJECT, "animation", PROPERTY_HINT_RESOURCE_TYPE, "Animation"),
+			PropertyInfo(Variant::INT, "serial"), PropertyInfo(Variant::FLOAT, "fade_seconds"),
+			PropertyInfo(Variant::BOOL, "keep_root"), PropertyInfo(Variant::FLOAT, "speed")));
+	ADD_SIGNAL(MethodInfo("clip_stopped", PropertyInfo(Variant::INT, "slot"), PropertyInfo(Variant::FLOAT, "fade_seconds")));
 	ADD_SIGNAL(MethodInfo("clip_finished", PropertyInfo(Variant::INT, "slot"),
 			PropertyInfo(Variant::OBJECT, "animation", PROPERTY_HINT_RESOURCE_TYPE, "Animation")));
 	ADD_SIGNAL(MethodInfo("text_key", PropertyInfo(Variant::INT, "slot"), PropertyInfo(Variant::STRING, "key"),
@@ -126,6 +152,14 @@ void KfAnimator::set_skeleton_path(const NodePath &p_path) {
 
 NodePath KfAnimator::get_skeleton_path() const {
 	return _skeleton_path;
+}
+
+void KfAnimator::set_sync_source(const NodePath &p_path) {
+	_sync_source_path = p_path;
+}
+
+NodePath KfAnimator::get_sync_source() const {
+	return _sync_source_path;
 }
 
 void KfAnimator::set_update_interval(int p_frames) {
@@ -158,6 +192,14 @@ void KfAnimator::set_root_motion_mode(int p_mode) {
 
 int KfAnimator::get_root_motion_mode() const {
 	return _root_motion_mode;
+}
+
+void KfAnimator::set_disabled_bones(const PackedStringArray &p_bones) {
+	_disabled_bones = p_bones;
+}
+
+PackedStringArray KfAnimator::get_disabled_bones() const {
+	return _disabled_bones;
 }
 
 void KfAnimator::set_hold_unkeyed_root(bool p_hold) {
@@ -210,6 +252,76 @@ Skeleton3D *KfAnimator::_skeleton() const {
 	return Object::cast_to<Skeleton3D>(get_node_or_null(_skeleton_path));
 }
 
+KfAnimator *KfAnimator::_source() const {
+	if (_sync_source_path.is_empty()) {
+		return nullptr;
+	}
+	KfAnimator *source = Object::cast_to<KfAnimator>(get_node_or_null(_sync_source_path));
+	return source == this ? nullptr : source;
+}
+
+// The clip of `serial` in `slot`, current or fading out; null when there is
+// none.
+const KfAnimator::Clip *KfAnimator::_source_clip(int p_slot, uint64_t p_serial) const {
+	auto found = _slots.find(p_slot);
+	if (found == _slots.end()) {
+		return nullptr;
+	}
+	const Slot &slot = found->second;
+	if (slot.has_current && slot.current.serial == p_serial) {
+		return &slot.current;
+	}
+	for (const Clip &clip : slot.fading) {
+		if (clip.serial == p_serial) {
+			return &clip;
+		}
+	}
+	return nullptr;
+}
+
+// Sets a following clip's time, loop section and end from its source clip.
+// False when the clip follows none or the source no longer has it.
+bool KfAnimator::_follow_source(int p_slot, Clip &r_clip) const {
+	if (r_clip.source_serial == 0) {
+		return false;
+	}
+	const KfAnimator *source = _source();
+	if (source == nullptr) {
+		return false;
+	}
+	const Clip *followed = source->_source_clip(p_slot, r_clip.source_serial);
+	if (followed == nullptr) {
+		return false;
+	}
+	r_clip.time = std::min(followed->time, r_clip.length);
+	r_clip.loop_start = followed->loop_start;
+	r_clip.loop_end = followed->loop_end;
+	r_clip.loops_left = followed->loops_left;
+	r_clip.finished = followed->finished;
+	return true;
+}
+
+// Ends the slot's current clip: it fades out over `fade_seconds` (it is
+// dropped at once for 0) and the slot has no current clip.
+void KfAnimator::_end_current(Slot &r_slot, float p_fade_seconds) {
+	if (r_slot.has_current && p_fade_seconds > 0.0f) {
+		Clip outgoing = r_slot.current;
+		outgoing.weight_rate = -outgoing.weight / p_fade_seconds;
+		r_slot.fading.push_back(outgoing);
+	}
+	r_slot.has_current = false;
+	r_slot.current = Clip();
+}
+
+// Makes `start` the slot's latest start and emits clip_started for it.
+void KfAnimator::_record_start(int p_slot, const Start &p_start, float p_fade_seconds) {
+	Slot &slot = _slots[p_slot];
+	slot.start = p_start;
+	slot.has_start = true;
+	emit_signal("clip_started", p_slot, p_start.path, p_start.animation, static_cast<int64_t>(p_start.serial), p_fade_seconds,
+			p_start.keep_root, p_start.speed);
+}
+
 // Maps the clip's transform tracks to skeleton bones and reads each track's
 // priority. False when no track names a bone.
 bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
@@ -256,9 +368,10 @@ bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
 	return !r_clip.tracks.empty();
 }
 
-void KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root, float p_speed) {
+int64_t KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root,
+		float p_speed, const String &p_path, int64_t p_source_serial) {
 	if (p_animation.is_null()) {
-		return;
+		return 0;
 	}
 	Clip clip;
 	clip.animation = p_animation;
@@ -267,44 +380,91 @@ void KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_fad
 	clip.loops = p_animation->get_loop_mode() != Animation::LOOP_NONE;
 	clip.serial = _next_serial++;
 	clip.keep_root = p_keep_root;
+	clip.source_serial = static_cast<uint64_t>(std::max<int64_t>(p_source_serial, 0));
 	if (!_bind(clip, p_keep_root)) {
-		return;
+		return 0;
 	}
 	Slot &slot = _slots[p_slot];
 	const bool fade = p_fade_seconds > 0.0f;
-	if (slot.has_current) {
-		Clip outgoing = slot.current;
-		outgoing.weight_rate = fade ? -outgoing.weight / p_fade_seconds : 0.0f;
-		if (fade) {
-			slot.fading.push_back(outgoing);
-		}
-	}
+	_end_current(slot, p_fade_seconds);
 	// A clip fades in whether or not it replaces one: in an empty slot it rises
 	// over whatever lower priorities hold its bones, rather than snapping.
 	clip.weight = fade ? 0.0f : 1.0f;
 	clip.weight_rate = fade ? 1.0f / p_fade_seconds : 0.0f;
 	slot.current = clip;
 	slot.has_current = true;
-	_emit_text_keys(p_slot, slot.current, -1.0f, 0.0f);
+	if (!_follow_source(p_slot, slot.current)) {
+		_emit_text_keys(p_slot, slot.current, -1.0f, 0.0f);
+	}
+	Start start;
+	start.serial = clip.serial;
+	start.path = p_path;
+	start.animation = p_animation;
+	start.keep_root = p_keep_root;
+	start.speed = p_speed;
+	start.played = true;
+	_record_start(p_slot, start, p_fade_seconds);
+	return static_cast<int64_t>(clip.serial);
+}
+
+int64_t KfAnimator::announce(int p_slot, const String &p_path, const Ref<Animation> &p_animation, float p_fade_seconds,
+		bool p_keep_root, float p_speed) {
+	auto found = _slots.find(p_slot);
+	if (found != _slots.end()) {
+		_end_current(found->second, p_fade_seconds);
+	}
+	Start start;
+	start.serial = _next_serial++;
+	start.path = p_path;
+	start.animation = p_animation;
+	start.keep_root = p_keep_root;
+	start.speed = p_speed;
+	_record_start(p_slot, start, p_fade_seconds);
+	return static_cast<int64_t>(start.serial);
 }
 
 void KfAnimator::stop(int p_slot, float p_fade_seconds) {
 	auto found = _slots.find(p_slot);
-	if (found == _slots.end() || !found->second.has_current) {
+	if (found == _slots.end()) {
 		return;
 	}
 	Slot &slot = found->second;
-	if (p_fade_seconds > 0.0f) {
-		Clip outgoing = slot.current;
-		outgoing.weight_rate = -outgoing.weight / p_fade_seconds;
-		slot.fading.push_back(outgoing);
+	_end_current(slot, p_fade_seconds);
+	if (!slot.has_start) {
+		return;
 	}
-	slot.has_current = false;
-	slot.current = Clip();
+	slot.has_start = false;
+	slot.start = Start();
+	emit_signal("clip_stopped", p_slot, p_fade_seconds);
 }
 
 void KfAnimator::stop_all() {
+	PackedInt32Array started;
+	for (const auto &entry : _slots) {
+		if (entry.second.has_start) {
+			started.push_back(entry.first);
+		}
+	}
 	_slots.clear();
+	for (int i = 0; i < started.size(); i++) {
+		emit_signal("clip_stopped", started[i], 0.0f);
+	}
+}
+
+Dictionary KfAnimator::get_start(int p_slot) const {
+	Dictionary start;
+	auto found = _slots.find(p_slot);
+	if (found == _slots.end() || !found->second.has_start) {
+		return start;
+	}
+	const Start &recorded = found->second.start;
+	start["path"] = recorded.path;
+	start["animation"] = recorded.animation;
+	start["played"] = recorded.played;
+	start["serial"] = static_cast<int64_t>(recorded.serial);
+	start["keep_root"] = recorded.keep_root;
+	start["speed"] = recorded.speed;
+	return start;
 }
 
 void KfAnimator::seek(int p_slot, float p_time) {
@@ -347,6 +507,16 @@ float KfAnimator::get_time(int p_slot) const {
 		return 0.0f;
 	}
 	return found->second.current.time;
+}
+
+PackedInt32Array KfAnimator::get_started_slots() const {
+	PackedInt32Array slots;
+	for (const auto &entry : _slots) {
+		if (entry.second.has_start) {
+			slots.push_back(entry.first);
+		}
+	}
+	return slots;
 }
 
 PackedInt32Array KfAnimator::get_slots() const {
@@ -394,6 +564,11 @@ void KfAnimator::_advance_clip(int p_slot, Clip &r_clip, float p_delta, bool p_i
 	r_clip.weight = std::clamp(r_clip.weight + r_clip.weight_rate * p_delta, 0.0f, 1.0f);
 	if (r_clip.weight >= 1.0f && r_clip.weight_rate > 0.0f) {
 		r_clip.weight_rate = 0.0f;
+	}
+	// A clip following its source takes the source's clock; the source emits
+	// the events.
+	if (_follow_source(p_slot, r_clip)) {
+		return;
 	}
 	if (r_clip.finished) {
 		return;
@@ -536,6 +711,13 @@ void KfAnimator::_write_pose() {
 	const bool takes_bip01 = _root_motion_mode == ROOT_MOTION_BIP01 || _root_motion_mode == ROOT_MOTION_BIP01_NONACCUM_YAW;
 	const bool takes_non_accum = _root_motion_mode == ROOT_MOTION_NONACCUM;
 	std::vector<std::vector<Sample>> channels(static_cast<size_t>(bone_count) * CHANNEL_COUNT);
+	std::vector<bool> disabled(static_cast<size_t>(bone_count), false);
+	for (int i = 0; i < _disabled_bones.size(); i++) {
+		const int bone = skeleton->find_bone(_disabled_bones[i]);
+		if (bone != -1) {
+			disabled[static_cast<size_t>(bone)] = true;
+		}
+	}
 	auto add_clip = [&](const Clip &clip) {
 		if (clip.weight <= WEIGHT_EPSILON) {
 			return;
@@ -557,7 +739,7 @@ void KfAnimator::_write_pose() {
 		const Quaternion yaw_removed(Vector3(0.0f, 0.0f, 1.0f), -clip_yaw);
 		const double time = clip.time;
 		for (const BoundTrack &bound : clip.tracks) {
-			if (bound.bone >= bone_count) {
+			if (bound.bone >= bone_count || disabled[static_cast<size_t>(bound.bone)]) {
 				continue;
 			}
 			Sample sample;
