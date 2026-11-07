@@ -85,6 +85,20 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 
 ## Shape
 
+### Paths
+
+- Two paths animate a weapon: classic (the holder's KF clips drive the parts) and procedural
+  (a WeaponPrefab's own logic drives them; VR is one user). This plan is the classic path;
+  [weapon_prefabs.md](../WeaponPrefabs/weapon_prefabs.md) is the procedural one.
+- The path is a client setting, respected per possessor: each client's possessed actor uses its
+  own setting; every other holder uses classic.
+- Both paths share `EsmWeaponNode` and its state resource (ammo, jam, cycle) and fire through
+  the same ProjectileServer request. Only what moves the parts, trigger and muzzle differs.
+- WeaponPrefabs are procedural only: on the classic path a weapon always builds from its NIF.
+- The procedural path needs at least IK hands on its holder, and is designed to tie into a
+  procedurally animated skeleton. Design projects (not code to port): `/home/lewin/godot-npc-anim/`,
+  `/home/lewin/godot-desktop-and-vr-interactions/`.
+
 ### Weapon node and state
 
 - A weapon in the world is a reference and an EsmNode, whether held, on the back or dropped.
@@ -182,6 +196,8 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 7. Sounds: the node's sound player nodes, triggered by `Sound:` text keys.
 8. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
    `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.
+9. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the
+   procedural weapon path.
 
 ## Later
 
