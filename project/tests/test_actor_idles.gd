@@ -26,6 +26,8 @@ extends Node3D
 ## How long any wait may take, milliseconds.
 const TIMEOUT_MSEC := 30000
 
+## Frames to wait for an ended idle to fade out (0.2 s, with margin).
+const FADE_FRAMES := 30
 var failures := 0
 
 func check(condition: bool, message: String) -> void:
@@ -49,7 +51,7 @@ func _ready() -> void:
 		NpcSimulationServer.package_runner.untrack(actor)
 	NpcSimulationServer.local_navigation.set_local_cells(doc.current_space_form_id, PackedInt32Array([doc.current_space_form_id]))
 	var doc_node := EsmReferencePhysicaliser.new().physicalise(doc, self) as NpcController
-	await _wait_until(func() -> bool: return doc_node.actor != null and doc_node.actor.is_visual_built() and doc_node.actor.animator.get_idle() == null and doc_node.actor.find_child("LocomotionAnimationPlayer", true, false) != null)
+	await _wait_until(func() -> bool: return doc_node.actor != null and doc_node.actor.is_visual_built() and doc_node.actor.animator.get_idle() == null and doc_node.actor.animator.get_kf_animator() != null)
 	var animator := doc_node.actor.animator
 	var mirror := EsmServer.find_base_by_editor_id("VCG01DocGiveMirror") as IdleBase
 
@@ -61,6 +63,10 @@ func _ready() -> void:
 	check(doc.special_idle == null and animator.get_idle() == null, "when the 3 s clip ends the idle is cleared and he returns to locomotion")
 	await _wait_until(func() -> bool: return _player_clip(doc_node) != ActorAnimator.IDLE_CLIP_NAME and _player_clip(doc_node) != "")
 	check(_player_clip(doc_node).begins_with("locomotion"), "and plays a locomotion clip again (%s)" % _player_clip(doc_node))
+	# The ended idle fades out over ActorAnimator.BLEND_SECONDS (the mirror
+	# clip's seated pose under it) before he stands in locomotion alone.
+	for frame in FADE_FRAMES:
+		await get_tree().process_frame
 
 	var standing_pelvis := _pelvis_height(doc_node)
 	var standing_heading := doc_node.rotation.y
@@ -93,8 +99,14 @@ func _ready() -> void:
 	var chair := EsmServer.find_reference_by_editor_id("DocMitchellChairREF") as FurnitureReference
 	ScriptServer.begin_use(doc, chair)
 	await _wait_until(func() -> bool: return doc.sit_state == FurnitureSeating.SITTING)
+	var seated_loop: IdleBase = animator.get_idle()
 	ScriptServer.run_debug_line("DocMitchellREF.PlayIdle VCG01DocGiveMirror")
-	check(doc.sit_state == FurnitureSeating.SITTING and doc.special_idle == null and animator.get_idle() != mirror, "seated, he does not play it: the furniture idles own his body")
+	await _wait_until(func() -> bool: return animator.get_idles().values().has(mirror))
+	check(doc.sit_state == FurnitureSeating.SITTING and doc.special_idle == mirror and animator.get_idles().values().has(seated_loop),
+		"seated, he plays it over the seated loop, which keeps its slot (%s)" % [animator.get_idles().values().map(func(i: IdleBase) -> String: return i.editor_id)])
+	await _wait_until(func() -> bool: return doc.special_idle == null)
+	check(doc.sit_state == FurnitureSeating.SITTING and animator.get_idles().values() == [seated_loop],
+		"when it ends he is still seated, the seated loop playing alone")
 	ScriptServer.end_use(doc)
 	await _wait_until(func() -> bool: return doc.sit_state == FurnitureSeating.NOT_SITTING)
 
@@ -325,10 +337,9 @@ func _check_face_tracks(doc: ActorReference, doc_node: NpcController) -> void:
 	check(clip_largest > 0.5, "NPCSmokingIdle's clip sets Oh (up to %.2f)" % clip_largest)
 	check(face_largest > 0.5, "and his face shows it (Oh up to %.2f)" % face_largest)
 
-## The animation Doc's locomotion AnimationPlayer is playing, or "".
+## The clip Doc's animator reports playing (ActorAnimator.playing_clip()), or "".
 func _player_clip(node: NpcController) -> String:
-	var player := node.actor.find_child("LocomotionAnimationPlayer", true, false) as AnimationPlayer
-	return String(player.current_animation) if player != null else ""
+	return node.actor.animator.playing_clip() if node.actor != null and node.actor.animator != null else ""
 
 func _name(base: EsmBase) -> String:
 	return base.editor_id if base != null else "none"

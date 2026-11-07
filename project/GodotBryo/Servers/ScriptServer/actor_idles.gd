@@ -58,9 +58,10 @@ func _connect_dialogue() -> void:
 	DialogueServer.response_started.connect(_on_response_started)
 	DialogueServer.line_finished.connect(_on_line_finished)
 
-## `actor` plays `idle`, replacing any idle asked for before.
+## `actor` plays `idle`, replacing any idle asked for before. A seated actor
+## plays it over the furniture idles, which keep their own slot.
 func play(actor: ActorReference, idle: IdleBase) -> void:
-	if actor == null or idle == null or actor.sit_state != FurnitureSeating.NOT_SITTING:
+	if actor == null or idle == null:
 		return
 	actor.special_idle = idle
 	actor.last_idle = idle
@@ -82,11 +83,12 @@ func play(actor: ActorReference, idle: IdleBase) -> void:
 ## standing up from furniture turns the actor, FurnitureSeating; a gesture's
 ## torso yaw against locomotion's is the clips' frame, not a turn.)
 func finish(actor: ActorReference) -> void:
+	var idle := actor.special_idle
 	actor.special_idle = null
 	var animator := FurnitureSeating._animator_for(actor)
-	if animator == null or animator.get_idle() == null:
+	if animator == null or idle == null:
 		return
-	animator.stop_idle()
+	animator.stop_idle(idle)
 
 ## An actor standing idle with a 3D node (NpcController, each physics frame),
 ## within IDLE_ANIMATION_DISTANCE of the player and while no idle plays: its

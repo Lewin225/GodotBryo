@@ -144,6 +144,7 @@ func _ready() -> void:
 	agent.velocity_computed.connect(_on_velocity_computed)
 	_update_avoidance()
 	agent.link_reached.connect(_on_link_reached)
+	actor.animator.root_moved.connect(_on_root_moved, CONNECT_DEFERRED)
 	body.collision_layer = ACTOR_COLLISION_LAYER
 	body.collision_mask = 0
 	ground_ray.collision_mask = 1
@@ -210,6 +211,17 @@ func _physics_process(delta: float) -> void:
 	_placement_write_timer -= delta
 	if _placement_write_timer <= 0.0:
 		_placement_write_timer = placement_write_seconds
+		_write_placement()
+
+## An idle's root motion (ActorAnimator.root_moved, in this controller's
+## space): moves the controller, its capsule and visual with it. Standing, it
+## writes the reference's placement; seated, sitting down or standing up the
+## reference stays at the furniture marker (where FurnitureSeating placed it, and
+## where a restored sit starts from). Root motion as the actor's movement is a
+## tested guess (ActorAnimator).
+func _on_root_moved(motion: Transform3D) -> void:
+	transform = transform * motion
+	if _actor != null and _actor.sit_state == FurnitureSeating.NOT_SITTING:
 		_write_placement()
 
 ## Walk or run speed for this actor: the export times SpeedMult / 100 times

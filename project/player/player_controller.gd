@@ -829,6 +829,10 @@ func possess(actor_reference: ActorReference) -> void:
 	# this controller is the possessed actor's body, so the actor node does not
 	# register as the reference's node or follow its teleports (as an
 	# NpcController's actor node does not).
+	# The actor node is not yet assigned at _ready; its animator's root motion
+	# moves this body from the first possession on.
+	if actor != null and not actor.animator.root_moved.is_connected(_on_root_moved):
+		actor.animator.root_moved.connect(_on_root_moved, CONNECT_DEFERRED)
 	if actor != null and possessed != null and actor.reference != possessed:
 		actor.placed_by_parent = true
 		actor.configure(possessed)
@@ -1115,6 +1119,19 @@ func request_activate() -> void:
 	var target := interact_ray.current_target as EsmNode
 	if target != null and target.reference != null:
 		ScriptServer.activate(target.reference, possessed)
+
+## An idle's root motion (ActorAnimator.root_moved, in this controller's
+## space): moves the body directly, not through move_and_slide (sitting down
+## overlaps the furniture's collision). Standing, it writes `possessed`;
+## seated, sitting down or standing up the reference stays at the furniture
+## marker, as an NpcController's does. The turn is not a turn rate: `_last_yaw`
+## follows it. Root motion as the actor's movement is a tested guess
+## (ActorAnimator).
+func _on_root_moved(motion: Transform3D) -> void:
+	transform = transform * motion
+	_last_yaw = rotation.y
+	if not is_seated():
+		_sync_possessed()
 
 func _sync_possessed() -> void:
 	if frozen or possessed == null or possessed.current_space_form_id == 0:
