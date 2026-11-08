@@ -343,6 +343,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_MOVEMENT):
 			request_activate()
 		return
+	if _weapon_input(event):
+		return
 	if debug_click_shake and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		return
 		# Incedibly annoying
@@ -360,7 +362,41 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera_pitch = clampf(camera_pitch - (event.relative.y * mouse_sensitivity), -max_pitch, max_pitch)
 
 
+## Fire, reload (held: holster) and the weapon hotkeys, as control inputs on
+## the possessed actor's node. True when `event` was one of them.
+func _weapon_input(event: InputEvent) -> bool:
+	if actor == null or not ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_FIGHTING):
+		return false
+	if event.is_action_pressed(&"fire"):
+		actor.fire()
+		return true
+	if event.is_action_pressed(&"reload"):
+		_reload_pressed_msec = Time.get_ticks_msec()
+		return true
+	if event.is_action_released(&"reload"):
+		if _reload_pressed_msec >= 0:
+			actor.reload()
+		_reload_pressed_msec = -1
+		return true
+	for index in WEAPON_HOTKEYS.size():
+		if event.is_action_pressed(WEAPON_HOTKEYS[index]):
+			actor.equip_slot(index)
+			return true
+	return false
+
+
+## Holsters once reload has been held for HOLSTER_HOLD_SECONDS.
+func _update_holster_hold() -> void:
+	if _reload_pressed_msec < 0 or actor == null:
+		return
+	if Time.get_ticks_msec() - _reload_pressed_msec < HOLSTER_HOLD_SECONDS * 1000.0:
+		return
+	_reload_pressed_msec = -1
+	actor.holster()
+
+
 func _process(delta: float) -> void:
+	_update_holster_hold()
 	if is_teleporting or not camera:
 		return
 	_update_look_mode()
@@ -879,6 +915,16 @@ var possessed: ActorReference = null
 var frozen := false
 ## While a UI has focus the body neither moves nor takes look/interact input.
 var _input_suspended := false
+## Holding reload this long holsters the drawn weapon instead of reloading.
+const HOLSTER_HOLD_SECONDS := 0.5
+## The weapon hotkey actions, hotkey_1 to hotkey_9 then hotkey_0: the Nth
+## draws weapon slot N - 1 (EsmActorNode.equip_slot()).
+const WEAPON_HOTKEYS: Array[StringName] = [
+	&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5",
+	&"hotkey_6", &"hotkey_7", &"hotkey_8", &"hotkey_9", &"hotkey_0",
+]
+## When reload was pressed (ticks msec), -1 when it is up or already holstered.
+var _reload_pressed_msec := -1
 
 ## Takes control of `actor`: scripts' `player` becomes its reference, and
 ## body-level commands act on this body.

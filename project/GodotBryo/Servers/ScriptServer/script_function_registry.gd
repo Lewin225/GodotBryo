@@ -289,11 +289,15 @@ func _register_defaults() -> void:
 		return _change_objective(a, "set_objective_completed", "SetObjectiveCompleted"))
 
 	# Inventory of the calling reference (actor, creature or container). Items
-	# are named by base editor ID; a leveled list resolves when added.
+	# are named by base editor ID; a leveled list resolves when added. An
+	# actor's equipped weapons are in its weapon slots, out of the inventory,
+	# and count as items it has.
 	register("GetItemCount", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
-		return inventory.get_item_count(item.form_id) if inventory != null and item != null else 0)
+		if inventory == null or item == null:
+			return 0
+		return inventory.get_item_count(item.form_id) + _weapon_slots_of(ctx.calling_reference, item.form_id).size())
 	# `AddItem Item Count [HideMessage]`.
 	register("AddItem", func(a: Array, ctx: ScriptExecutionContext):
 		var esm_server := EsmReference.get_esm_server()
@@ -307,7 +311,16 @@ func _register_defaults() -> void:
 		var item := _base_arg(a, 0)
 		if inventory == null or item == null:
 			return 0
-		return 1 if _remove_items(inventory, item.form_id, maxi(int(_number(a, 1)), 1)) > 0 else 0)
+		var count := maxi(int(_number(a, 1)), 1)
+		var removed := _remove_items(inventory, item.form_id, count)
+		# Then from the weapon slots: the inventory's units go first.
+		var actor := ctx.calling_reference as ActorReference
+		for slot in _weapon_slots_of(actor, item.form_id):
+			if removed >= count:
+				break
+			if actor.remove_weapon(slot):
+				removed += 1
+		return 1 if removed > 0 else 0)
 	# `RemoveAllItems [TargetContainer] [RetainOwnership]`: moves every item to
 	# the target's inventory, or removes them when there is no target.
 	register("RemoveAllItems", func(a: Array, ctx: ScriptExecutionContext):
@@ -315,6 +328,11 @@ func _register_defaults() -> void:
 		if inventory == null:
 			return 0
 		var target := _inventory_of(a[0] as EsmReference) if not a.is_empty() and a[0] is EsmReference else null
+		# Equipped weapons go too: back to the inventory first.
+		var actor := ctx.calling_reference as ActorReference
+		if actor != null:
+			for slot: ActorReference.WeaponSlot in [ActorReference.WeaponSlot.RIGHT_HIP, ActorReference.WeaponSlot.LEFT_HIP, ActorReference.WeaponSlot.BACK]:
+				actor.unequip_weapon(slot)
 		var moving := inventory.get_items()
 		inventory.clear()
 		if target != null:
@@ -343,12 +361,17 @@ func _register_defaults() -> void:
 		for owned in inventory.get_equipped_items():
 			if owned.base_form_id == item.form_id:
 				inventory.unequip_item(owned)
+		var actor := ctx.calling_reference as ActorReference
+		for slot in _weapon_slots_of(actor, item.form_id):
+			actor.unequip_weapon(slot)
 		return 1)
 	register("GetEquipped", func(a: Array, ctx: ScriptExecutionContext):
 		var inventory := _inventory_of(ctx.calling_reference)
 		var item := _base_arg(a, 0)
 		if inventory == null or item == null:
 			return 0
+		if not _weapon_slots_of(ctx.calling_reference, item.form_id).is_empty():
+			return 1
 		for owned in inventory.get_equipped_items():
 			if owned.base_form_id == item.form_id:
 				return 1
@@ -902,6 +925,14 @@ func _variable_value(instance: ScriptInstance, script_form_id: int, variable: Va
 const DISTANCE_OTHER_SPACE := 1.0e10
 
 ## A reference's live inventory (actor, creature, container), or null.
+## The weapon slots of `reference` (an actor) holding a weapon of the base
+## `base_form_id`; none for a non-actor.
+static func _weapon_slots_of(reference: EsmReference, base_form_id: int) -> Array[ActorReference.WeaponSlot]:
+	var actor := reference as ActorReference
+	if actor == null:
+		return []
+	return actor.get_weapon_slots_of(base_form_id)
+
 static func _inventory_of(ref: EsmReference) -> Inventory:
 	return ref.get("contents") as Inventory if ref != null and "contents" in ref else null
 

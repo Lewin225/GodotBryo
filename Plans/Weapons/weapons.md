@@ -101,6 +101,12 @@ are creature attacks; their model is part of the creature.
   `Weapon` (the bone the model hangs from); a rigid `Backpack` node, sibling of the gun part,
   carries NiStringExtraData `UPB` = `Bip01 Spine2`. Meaning inferred: the backpack hangs from
   `Bip01 Spine2`, the rest from `Weapon`. Not checked on other NIFs.
+- Across the 362 NIFs under `meshes\weapons\`: 1,606 `UPB` strings, 17 of them a bone name of
+  `_male\skeleton.nif`, every one `Bip01 Spine2` on a node named `Backpack` (the heavy weapons and
+  the Shishkebab). Every one of the 180 `Prn` strings is `Weapon`. NifServer keeps them as
+  `nif_string_extra_data` on the node.
+- `Backpack` nodes sit at the weapon root's origin (minigun, flamer, Shishkebab); their shapes
+  carry the offset.
 - `lasergatling.nif`'s muzzle is `##ProjectileNode`, not `ProjectileNode`.
 - WEAP DNAM Flags 1 bit 0x10 (xEdit: "Hide Backpack") is set on the 7 heavy weapons of animation
   type 8 (Minigun and unique, Gatling Laser, Flamer, Grenade Machinegun and unique,
@@ -154,8 +160,7 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
   `WeaponReference`, so it survives the node.
 - An equipped weapon leaves the inventory: it is a world reference held in an equip slot, so a VR
   player can throw it and an NPC can drop it when shot. Unequipping frees the node and puts the
-  reference back in the inventory (`InventoryItem.item_reference`). A save writes held weapons in
-  the inventory (Equip slots).
+  reference back in the inventory (`InventoryItem.item_reference`).
 - Scripts that count or check a held weapon (`GetItemCount`, `GetEquipped` and the like) must
   still see it: they read the inventory and the equip slots. Not checked: how many scripts do.
 - The node takes inputs (fire, reload, ...) as signals. It works with no actor holding it.
@@ -185,10 +190,20 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
   the left hip at the holster clip's `prn:` key, and from it at the equip clip's.
 - With a heavy weapon's backpack on the back slot, a long gun goes to the inventory. A second back
   slot is possible later, not planned.
+- An equip request is `InventoryItem.is_equipped` set on a weapon (EquipItem, the player's UI): the
+  weapon then leaves the inventory for its slot (a stack entry first splits one runtime reference
+  off).
+- Drawing: a draw or fire input with nothing drawn draws the last drawn weapon; a slot's hotkey
+  draws that slot's weapon (holstering the drawn one).
+- Controllers drive the actor through control inputs on `EsmActorNode`: `equip_slot(index)`,
+  `draw()`, `holster()`, `fire()`, `reload()`; PlayerController now, NpcController later. They will
+  become one input packet type. The player's map: `fire` (left mouse), `reload` (R; held 0.5 s
+  holsters), `hotkey_1` to `hotkey_9` and `hotkey_0`.
 - In classic mode the slots bind to hotkeys 1 to 3; the slots can be disabled (one weapon, as
   vanilla). The slots are actor state on the `ActorReference`, saved whatever the mode, since the
-  mode can change at any point. A save holds each held weapon's reference in the inventory and
-  each slot as that reference's instance_id; loading rehydrates the slots from it.
+  mode can change at any point. Each slot field holds its `WeaponReference`, saved as the
+  instance_id; the reference itself is saved with EsmServer's runtime (or changed placed)
+  references, so no inventory round-trip is needed.
 - An actor without a body (low-detail simulation) keeps its slots as instance_ids only and builds
   no weapon nodes: it cannot fight.
 - Classic play draws one at a time; the others stay holstered and visible. (The original hides a
@@ -253,11 +268,17 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
    buttons); a jam clears itself through the jam clip; reload with no holder fills to the clip
    size. Its own KfAnimator plays the `_male` clips on its parts: KfAnimator node targets, and
    NifServer visibility tracks (`NiVisController` bool blocks). Float and point3 tracks: #93.
-2. Holding: the holster clip (`prn:` target, `Weapon` pose, visibility tracks) and the NIF's
-   `Prn` and `UPB` attach bones parent the weapon node and its backpack; the three equip slots on
-   the actor (the mirrored stub for the second pistol), holstered and drawn; equipping takes the
-   reference out of the inventory into a slot, unequipping puts it back; script item queries see
-   the slots.
+2. Holding, in order:
+   a. Slots: slot fields on `ActorReference` (instance_ids, the drawn and last drawn slot); an
+      `ActorWeaponSlots` node in `esm_actor_node.tscn` building a BoneAttachment3D per slot
+      (holster clip bone and `Weapon` pose; the mirrored left hip) and one on `Weapon` for the
+      drawn weapon; each slot's `EsmWeaponNode` from the physicaliser. `ActorEquipment` stops
+      building weapons.
+   b. Equip and unequip: `is_equipped` on a weapon moves it from the inventory into its slot;
+      unequipping puts it back.
+   c. Holster and draw (snapped; motion in step 6): the holster clip's visibility tracks, the
+      heavy weapons' `Backpack` on its `UPB` bone; draw and fire inputs, hotkeys 1 to 3.
+   d. Script item queries (GetItemCount, GetEquipped, UnequipItem) see the slots.
 3. WEAP `DNAM` and `CRDT` fields (fire rate, spread, projectiles, ammo use, attack and reload
    speed, flags), census and field docs per AGENTS.md.
 4. Viewmodel: resolve `WNAM`, load it for the player in first person, fall back to `MODL`, hang it
@@ -275,6 +296,10 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 
 ## Later
 
+- After weapons: the player's actor node stops being authored in `player.tscn` and is built for
+  the possessed reference, as an NPC's is; then the actor node needs one path for its reference
+  (today one set after `_ready()` skips the watches there and in the rehydrate path, covered in
+  `_start_visual_load()`).
 - The procedural weapon path, VR included: a separate rig system for the actor
   ([../WeaponPrefabs/weapon_prefabs.md](../WeaponPrefabs/weapon_prefabs.md)). VR weapons may need
   several clips at once.

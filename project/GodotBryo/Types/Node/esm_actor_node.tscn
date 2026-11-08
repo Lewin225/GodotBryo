@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://dlpesfwq8drrt" path="res://GodotBryo/Types/Node/actor_equipment.gd" id="4_equipment"]
 [ext_resource type="Script" path="res://GodotBryo/Types/Node/actor_head_tracking.gd" id="5_head_tracking"]
 [ext_resource type="Script" path="res://GodotBryo/Types/Node/actor_facial_player.gd" id="6_facial_player"]
+[ext_resource type="Script" path="res://GodotBryo/Types/Node/actor_weapon_slots.gd" id="7_weapon_slots"]
 
 [node name="EsmActorNode" type="Node3D" unique_id=654429205]
 script = ExtResource("1")
@@ -24,3 +25,6 @@ script = ExtResource("5_head_tracking")
 
 [node name="ActorFacialPlayer" type="Node" parent="."]
 script = ExtResource("6_facial_player")
+
+[node name="ActorWeaponSlots" type="Node" parent="."]
+script = ExtResource("7_weapon_slots")

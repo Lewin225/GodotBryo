@@ -42,6 +42,21 @@ func physicalise(ref: EsmReference, parent: Node3D = null, initial_visual_detail
 		parent.add_child(root)
 	return root
 
+## Builds the node of a weapon an actor holds (ActorWeaponSlots): its holder
+## places it, so it neither registers for its reference nor follows its
+## placement, and its body stays frozen with collision off.
+func physicalise_held(weapon: WeaponReference) -> EsmWeaponNode:
+	if weapon == null:
+		return null
+	var node := _make_node(weapon) as EsmWeaponNode
+	if node == null:
+		return null
+	node.placed_by_parent = true
+	node.is_held = true
+	node.configure(weapon)
+	node.name = _node_name(weapon)
+	return node
+
 ## Build one derived SCOL part as an ordinary StaticReference. Parts have no
 ## REFR identity of their own, so their synthetic ID is traceability-only.
 func physicalise_scol_part(part: Dictionary, index: int) -> Node3D:

@@ -163,6 +163,11 @@ var animator: ActorAnimator:
 var equipment: ActorEquipment:
 	get:
 		return get_node_or_null(^"ActorEquipment") as ActorEquipment
+## The child that hangs the actor's weapons on its body (looked up as skinning
+## is).
+var weapon_slots: ActorWeaponSlots:
+	get:
+		return get_node_or_null(^"ActorWeaponSlots") as ActorWeaponSlots
 ## The child that turns the head (looked up as skinning is).
 var head_tracking: ActorHeadTracking:
 	get:
@@ -181,12 +186,74 @@ func _ready() -> void:
 	animator.load_failed.connect(animation_load_failed.emit)
 	equipment.committed.connect(_on_equipment_committed)
 	equipment.watch(reference as ActorReference)
+	weapon_slots.watch(reference as ActorReference)
 	apply_process_thread_group()
 	if not Engine.is_editor_hint():
 		var debug_label := ActorDebugLabel.new()
 		debug_label.name = "ActorDebugLabel"
 		add_child(debug_label)
 	_queue_rehydrate_and_build()
+
+
+## Control inputs: what a controller (PlayerController, NpcController) asks the
+## actor to do. They act on the actor reference's weapon slots and the drawn
+## weapon's node. Each returns whether it did anything.
+
+## The weapon slots by number: 0 the right hip, 1 the left hip, 2 the back.
+const WEAPON_SLOTS_BY_INDEX: Array[ActorReference.WeaponSlot] = [
+	ActorReference.WeaponSlot.RIGHT_HIP, ActorReference.WeaponSlot.LEFT_HIP, ActorReference.WeaponSlot.BACK,
+]
+
+
+## Draws the weapon in slot `index` (WEAPON_SLOTS_BY_INDEX), holstering the
+## drawn one. False for an empty or unknown slot.
+func equip_slot(index := 0) -> bool:
+	var actor_reference := reference as ActorReference
+	if actor_reference == null or index < 0 or index >= WEAPON_SLOTS_BY_INDEX.size():
+		return false
+	return actor_reference.draw_weapon(WEAPON_SLOTS_BY_INDEX[index])
+
+
+## Draws the weapon drawn last.
+func draw() -> bool:
+	var actor_reference := reference as ActorReference
+	return actor_reference != null and actor_reference.draw_weapon()
+
+
+## Holsters the drawn weapon.
+func holster() -> bool:
+	var actor_reference := reference as ActorReference
+	if actor_reference == null or actor_reference.drawn_weapon_slot == ActorReference.WeaponSlot.NONE:
+		return false
+	actor_reference.holster_weapon()
+	return true
+
+
+## Fires the drawn weapon; with nothing drawn, draws the weapon drawn last.
+func fire() -> bool:
+	var weapon := _drawn_weapon_node()
+	if weapon == null:
+		return draw()
+	return weapon.fire()
+
+
+## Reloads the drawn weapon; with nothing drawn, draws the weapon drawn last.
+func reload() -> bool:
+	var weapon := _drawn_weapon_node()
+	if weapon == null:
+		return draw()
+	return weapon.reload()
+
+
+## The drawn weapon's node, or null when nothing is drawn or it is not built.
+func _drawn_weapon_node() -> EsmWeaponNode:
+	var actor_reference := reference as ActorReference
+	if actor_reference == null or weapon_slots == null:
+		return null
+	var drawn := actor_reference.get_drawn_weapon()
+	if drawn == null:
+		return null
+	return weapon_slots.get_weapon_node(drawn)
 
 
 ## Animations have (re)loaded: shows the state the actor is already in.
@@ -221,6 +288,8 @@ func _reference_changed() -> void:
 	_cancel_visual_load()
 	if equipment != null:
 		equipment.forget_body()
+	if weapon_slots != null:
+		weapon_slots.forget_body()
 	if animator != null:
 		animator.cancel()
 	_active_record = null
@@ -265,6 +334,7 @@ func _rehydrate_and_build() -> void:
 	if _loading or _humanoid_visual_built:
 		return
 	equipment.watch(reference as ActorReference)
+	weapon_slots.watch(reference as ActorReference)
 	if _load_requested or _is_editor_preview():
 		_start_visual_load(reference.base)
 
@@ -320,6 +390,12 @@ func _start_visual_load(reference_base: ActorBase) -> void:
 	_load_generation += 1
 	_loading = true
 	equipment.forget_body()
+	weapon_slots.forget_body()
+	# The reference being loaded: one set after _ready (PlayerController's
+	# possess(): configure() then load_actor()) reaches here without the
+	# rehydrate path that also watches it.
+	equipment.watch(reference as ActorReference)
+	weapon_slots.watch(reference as ActorReference)
 	_active_record = reference_base
 	_trait_record = _template_source(reference_base, ActorBase.TEMPLATE_USE_TRAITS)
 	_model_record = _model_source(reference_base)
@@ -849,6 +925,7 @@ func _commit_staged_body(body: Node3D, generation: int) -> void:
 	_apply_possessed_first_person_render_mode()
 	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
 	equipment.set_body(body, skeleton, _is_female)
+	weapon_slots.set_body(skeleton)
 	facial_player.set_body(body)
 	animator.load_locomotion(_model_record.animation_search_paths(), body, skeleton, _model_record is CreatureBase)
 	visual_load_completed.emit()
@@ -987,6 +1064,8 @@ func _editor_apply_actor_data() -> void:
 func unload_actor() -> void:
 	_cancel_visual_load()
 	equipment.clear()
+	weapon_slots.forget_body()
+	weapon_slots.watch(null)
 	animator.cancel()
 	_active_record = null
 	_trait_record = null

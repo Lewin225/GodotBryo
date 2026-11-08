@@ -44,6 +44,12 @@ enum Action { NONE, RELOAD, JAM }
 @export_tool_button("Toggle aim") var _aim_button := toggle_aim
 @export_tool_button("Jam") var _jam_button := jam
 
+## The NIF string extra data naming the bone a part hangs from: `Backpack`
+## carries `UPB` = `Bip01 Spine2` on 17 weapon NIFs (the heavy weapons and the
+## Shishkebab); no other `UPB` of the 1,606 on the 362 weapon NIFs is a bone
+## name.
+const BONE_PART_KEY := "UPB"
+
 ## The model's muzzle node; null before the model loads or when it has none.
 var muzzle: Node3D
 ## The model's shell ejection node; null before the model loads or when it has
@@ -53,6 +59,13 @@ var shell_ejection: Node3D
 var sighting: Node3D
 ## Whether the weapon is aimed (its aim clip playing).
 var is_aiming := false
+## Whether an actor holds the weapon (ActorWeaponSlots): its model sits in the
+## holder's frame (a bone's) with no placement turn, and its body stays frozen
+## with collision off and never writes a resting place to the reference.
+var is_held := false:
+	set(value):
+		is_held = value
+		_apply_held()
 
 ## Plays the clips on the model's parts: the template scene's WeaponAnimator
 ## (esm_weapon_node.tscn), node_root set to the model when it loads.
@@ -132,6 +145,29 @@ func jam() -> void:
 	_play_action(Action.JAM, get_weapon_base().jam_clip_path())
 
 
+## The model's parts that hang from a bone of `skeleton` rather than from the
+## weapon: part node -> bone name. Empty before the model loads.
+func get_bone_parts(skeleton: Skeleton3D) -> Dictionary:
+	var result := {}
+	var visual := _visual_node(VisualDetail.FULL)
+	if visual == null or skeleton == null:
+		return result
+	for part: Node in visual.find_children("*", "Node3D", true, false):
+		var strings: Dictionary = part.get_meta("nif_string_extra_data", {})
+		var bone := String(strings.get(BONE_PART_KEY, "")).strip_edges()
+		if not bone.is_empty() and skeleton.find_bone(bone) != -1:
+			result[part] = bone
+	return result
+
+
+## The model's part whose authored NIF name is `nif_name`, or null.
+func get_part(nif_name: String) -> Node3D:
+	var visual := _visual_node(VisualDetail.FULL)
+	if visual == null:
+		return null
+	return _find_nif_node(visual, nif_name)
+
+
 ## The action playing.
 func get_action() -> Action:
 	return _action
@@ -197,8 +233,50 @@ func _finish_action() -> void:
 		jam_cleared.emit()
 
 
+## Puts the model in the holder's frame and stops its physics while held.
+func _apply_held() -> void:
+	var visual := _visual_node(VisualDetail.FULL)
+	if visual == null:
+		return
+	if is_held:
+		visual.transform = Transform3D.IDENTITY
+	if body != null:
+		body.freeze = true
+	hold_bodies(visual, is_held)
+
+
+## Stops (`held`) or restarts every rigid body under `root` and turns their
+## collision off or on. A NifRigidBody is top level and moves the node owning
+## its meshes to itself each frame it is not asleep, which a frozen body is
+## not: held, it would pin those meshes where it was built. Not processing, it
+## leaves them to follow the holder's bone. A model can have several: the
+## minigun's Backpack has its own.
+static func hold_bodies(root: Node, held: bool) -> void:
+	for found: Node in root.find_children("*", "RigidBody3D", true, false):
+		var rigid := found as RigidBody3D
+		if held:
+			rigid.freeze = true
+		rigid.process_mode = Node.PROCESS_MODE_DISABLED if held else Node.PROCESS_MODE_INHERIT
+	set_collision_disabled(root, held)
+
+
+## A held weapon's body is never released.
+func _release_when_surroundings_built() -> void:
+	if is_held:
+		return
+	super._release_when_surroundings_built()
+
+
+## A held weapon never writes a resting place.
+func _settle() -> void:
+	if is_held:
+		return
+	super._settle()
+
+
 func _on_nif_visual_ready(tree: Node3D) -> void:
 	super._on_nif_visual_ready(tree)
+	_apply_held()
 	if _animator == null:
 		return
 	if not _animator.clip_finished.is_connected(_on_clip_finished):

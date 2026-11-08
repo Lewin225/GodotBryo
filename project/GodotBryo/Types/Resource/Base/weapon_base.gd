@@ -23,6 +23,27 @@ extends EsmBase
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var grip_animation: int = 255
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "FormListBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var biped_model_list: Resource
 
+## Where a holstered weapon of a family hangs, from its `<family>holster.kf`
+## `prn:` key (census of the 16 `_male` holster clips): `Bip01 Pelvis` (1gt,
+## 1hm, 1hp, 1lm, 1md) a hip slot, `Bip01 Spine2` (2ha, 2hl, 2hm, 2hr) the back.
+## 2hh keeps the weapon on `Bip01 R Hand`, its backpack on `Bip01 Spine2`, so it
+## takes the back slot; h2h keeps it on `Bip01 R ForeTwist`.
+const LONG_FAMILIES := ["2ha", "2hh", "2hl", "2hm", "2hr"]
+
+
+## Whether the weapon holsters in the back slot (a long gun, or a heavy weapon's
+## backpack) rather than a hip slot.
+func holsters_on_back() -> bool:
+	return LONG_FAMILIES.has(animation_family)
+
+
+## The holster clip's path, "" when the weapon has no family.
+func holster_clip_path() -> String:
+	if animation_family.is_empty():
+		return ""
+	return CLIP_FOLDER + animation_family + "holster.kf"
+
+
 ## The third-person clip library: the weapon's parts follow its `_male` clips.
 const CLIP_FOLDER := "meshes\\characters\\_male\\"
 ## DNAM Attack Animation values (xEdit's enum) to the clip name after the

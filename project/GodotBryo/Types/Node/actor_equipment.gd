@@ -25,6 +25,8 @@ const EQUIPMENT_NODE_NAME := "Equipment"
 
 ## The inventory being watched: the actor reference's `contents`.
 var inventory: Inventory = null
+## The actor reference whose weapon slots are watched.
+var _reference: ActorReference = null
 
 var _body: Node3D = null
 var _skeleton: Skeleton3D = null
@@ -42,11 +44,15 @@ var _observed_resources: Array[Resource] = []
 ## The committed set's bone attachments, children of the skeleton.
 var _attachments: Array[BoneAttachment3D] = []
 
-## Watches `reference`'s inventory and projects what it has equipped.
+## Watches `reference`'s inventory and weapon slots and projects what it has
+## equipped.
 func watch(reference: ActorReference) -> void:
 	_stop_watching_inventory()
 	if reference == null:
 		return
+	_reference = reference
+	if not reference.weapon_slots_changed.is_connected(_project_from_inventory):
+		reference.weapon_slots_changed.connect(_project_from_inventory)
 	if reference.contents == null:
 		reference.contents = Inventory.new()
 	inventory = reference.contents
@@ -136,6 +142,9 @@ func _exit_tree() -> void:
 func _stop_watching_inventory() -> void:
 	if inventory != null and is_instance_valid(inventory) and inventory.inventory_changed.is_connected(_project_from_inventory):
 		inventory.inventory_changed.disconnect(_project_from_inventory)
+	if _reference != null and _reference.weapon_slots_changed.is_connected(_project_from_inventory):
+		_reference.weapon_slots_changed.disconnect(_project_from_inventory)
+	_reference = null
 
 func _project_from_inventory() -> void:
 	if inventory == null or not is_instance_valid(inventory):
@@ -145,11 +154,31 @@ func _project_from_inventory() -> void:
 		var item_base := item.base
 		if item_base is ArmorBase:
 			projected.armor_items.append(item)
-		elif item_base is WeaponBase:
-			projected.weapon_item = item
-		else:
+		elif not item_base is WeaponBase:
 			projected.diagnostics.append("Equipped item has no supported typed resource")
+	# An equipped weapon is in a weapon slot, out of the inventory. Its world
+	# model is EsmWeaponNode's (ActorWeaponSlots); here only its biped models.
+	var worn := _worn_weapon()
+	if worn != null:
+		projected.weapon_item = InventoryItem.make_reference(worn)
 	equipment_state = projected
+
+## The slotted weapon whose biped models show: the drawn one, else one with a
+## BIPL list. `# ASSUMPTION` a holstered hand-to-hand weapon (held on the
+## forearm, h2hholster) stays worn.
+func _worn_weapon() -> WeaponReference:
+	if _reference == null:
+		return null
+	var drawn := _reference.get_drawn_weapon()
+	if drawn != null:
+		return drawn
+	for slot: ActorReference.WeaponSlot in [ActorReference.WeaponSlot.RIGHT_HIP, ActorReference.WeaponSlot.LEFT_HIP, ActorReference.WeaponSlot.BACK]:
+		var weapon := _reference.get_weapon(slot)
+		var base := weapon.base as WeaponBase if weapon != null else null
+		if base != null and base.biped_model_list != null:
+			return weapon
+	return null
+
 
 func _connect_state_signals() -> void:
 	_disconnect_state_signals()
@@ -184,7 +213,8 @@ func _on_resource_changed() -> void:
 
 ## The NIFs to load: the accepted armour (later armour loses to earlier armour
 ## occupying the same biped slots), each armour's biped model list, and the
-## weapon's biped models or, without them, its world model.
+## drawn weapon's biped models (BIPL: power fists, gloves). Its world model is
+## the weapon node's (ActorWeaponSlots).
 func _model_descriptors() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var state := equipment_state
@@ -221,8 +251,6 @@ func _model_descriptors() -> Array[Dictionary]:
 				if addon != null:
 					var addon_path := addon.female_biped_model if _is_female else addon.male_biped_model
 					_add_descriptor(result, addon_path, addon, addon.biped_flags, "BIPL", "weapon")
-		if not result.any(func(item): return String(item.get("kind", "")) == "weapon"):
-			_add_descriptor(result, weapon.model_path, weapon, 0, "MODL", "weapon")
 	return result
 
 func _add_descriptor(target: Array[Dictionary], path: String, source: EsmBase, biped_flags: int, field: String, kind: String) -> void:
