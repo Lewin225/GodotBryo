@@ -11,6 +11,8 @@ for weapon sounds) and decides how to pick among several files.
 
 ```gdscript
 SoundServer.get_streams(sound: SoundBase) -> Array[AudioStream]  # every file the FNAM names
+SoundServer.get_paths(sound: SoundBase) -> PackedStringArray     # their archive paths, same order
+SoundServer.get_stream_chunk(path, start_frame := -1, end_frame := -1, looping := false) -> AudioStream
 ```
 
 - A SOUN's `FNAM` (`SoundBase.file_name`) is relative to `sound\`. It names a `.wav` or `.ogg`
@@ -21,6 +23,11 @@ SoundServer.get_streams(sound: SoundBase) -> Array[AudioStream]  # every file th
   `AudioStreamOggVorbis.load_from_buffer`); a missing or undecodable file is cached as null and
   left out, with a warning.
 - Decoding runs on the calling thread, the first time a file is asked for.
+- `get_stream_chunk()` cuts frames `start_frame` up to `end_frame` (-1: the file's start or end)
+  out of a PCM .wav as its own stream, looping over all of it with `looping`, and caches it by
+  (path, start, end, looping), so callers share one copy. A SOUN's SNDD loop points are sample
+  frames (WPNMinigunSpinLPM's 3505 to 68400 equal its .wav's `smpl` loop). An .ogg cannot be cut:
+  null.
 
 ## Census
 

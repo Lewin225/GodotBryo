@@ -518,22 +518,16 @@ func _stop_loop_sound() -> void:
 			player.stop()
 
 
-## A copy of `stream` that loops between `sound`'s loop points, or over its
-## whole length when it has none (the cached stream is shared and left as it
-## is). The part after the loop end plays only when the loop stops.
-static func _looping_copy(stream: AudioStream, sound: SoundBase) -> AudioStream:
-	var copy := stream.duplicate() as AudioStream
-	var wav := copy as AudioStreamWAV
-	if wav != null:
-		var frames := int(wav.get_length() * wav.mix_rate)
-		var has_points := sound != null and sound.loop_end > sound.loop_begin and sound.loop_end <= frames
-		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		wav.loop_begin = sound.loop_begin if has_points else 0
-		wav.loop_end = sound.loop_end if has_points else frames
-	var ogg := copy as AudioStreamOggVorbis
-	if ogg != null:
-		ogg.loop = true
-	return copy
+## `sound`'s loop: SoundServer's cached looping chunk of its first file,
+## between its loop points, or the whole file when it has none.
+static func _loop_chunk(sound: SoundBase) -> AudioStream:
+	var paths := SoundServer.get_paths(sound)
+	if paths.is_empty():
+		return null
+	var has_points := sound.loop_end > sound.loop_begin
+	var start := sound.loop_begin if has_points else -1
+	var end := sound.loop_end if has_points else -1
+	return SoundServer.get_stream_chunk(paths[0], start, end, true)
 
 
 ## The SOUN of a clip key's EditorID, null when there is none.
@@ -555,7 +549,7 @@ func _make_sound_player(sound: SoundBase, looping := false) -> AudioStreamPlayer
 	player.max_polyphony = SOUND_POLYPHONY
 	var streams := SoundServer.get_streams(sound)
 	if looping and not streams.is_empty():
-		player.stream = _looping_copy(streams[0], sound)
+		player.stream = _loop_chunk(sound)
 		streams = []
 	if streams.size() == 1:
 		player.stream = streams[0]
