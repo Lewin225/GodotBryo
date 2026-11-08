@@ -15,6 +15,9 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 ## ##Shock01:0) are not faces.
 const FACE_MORPHER_CONTROLLER := "NiGeomMorpherController"
 const FACE_MORPHER_NODE := "HeadAnims:0"
+## A visibility track's path is its target's escaped name with this property:
+## a discrete bool value track, and its priority is recorded under that path.
+const VISIBILITY_SUFFIX := ":visible"
 
 
 ## One library per file: 4,981 shipped KFs have one sequence, but 33 contain
@@ -71,6 +74,11 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 		if target.is_empty():
 			unhandled.append("<unnamed>:%s" % String(interpolator.get("kind", "")))
 			continue
+		if _is_visibility_block(block):
+			var visibility_target := NifNamesScript.escape(target)
+			_add_visibility_track(animation, visibility_target, interpolator, start)
+			_add_priority(track_priorities, visibility_target + VISIBILITY_SUFFIX, block)
+			continue
 		if String(interpolator.get("kind", "")) != "transform":
 			# Property/controller semantics are intentionally not inferred here.
 			# The raw source remains available through NifSource for their future
@@ -93,6 +101,32 @@ static func _build_sequence(sequence: Dictionary) -> Animation:
 	if not unhandled.is_empty():
 		animation.set_meta("nif_unhandled_controller_targets", unhandled)
 	return animation
+
+
+## Whether a controlled block drives a node's visibility: a bool interpolator
+## on an NiVisController (1,677 of the corpus's 1,779 bool blocks; the rest
+## drive particle emitters and stay unhandled).
+static func _is_visibility_block(block: Dictionary) -> bool:
+	var interpolator: Dictionary = block.get("interpolator", {})
+	if String(interpolator.get("kind", "")) != "bool":
+		return false
+	return String(block.get("controller_type", "")) == "NiVisController"
+
+
+## Adds a discrete value track `<target>:visible` from a bool interpolator's
+## keys, or its static value as one key at 0 when it has none (1,243 of the
+## corpus's bool blocks).
+static func _add_visibility_track(animation: Animation, target: String,
+		interpolator: Dictionary, start: float) -> void:
+	var track := animation.add_track(Animation.TYPE_VALUE)
+	animation.track_set_path(track, NodePath(target + VISIBILITY_SUFFIX))
+	animation.value_track_set_update_mode(track, Animation.UPDATE_DISCRETE)
+	var keys: Array = interpolator.get("float_keys", [])
+	if keys.is_empty():
+		animation.track_insert_key(track, 0.0, float(interpolator.get("static_float", 1.0)) != 0.0)
+		return
+	for key in keys:
+		animation.track_insert_key(track, maxf(float(key["time"]) - start, 0.0), float(key["value"]) != 0.0)
 
 
 ## Records the link's priority byte under `key` (a track path or a morph
