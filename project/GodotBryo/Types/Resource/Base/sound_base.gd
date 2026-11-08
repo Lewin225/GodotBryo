@@ -8,7 +8,7 @@ extends EsmBase
 ##
 ## Not read yet (xEdit labels): OBND Object Bounds; RNAM Random Chance %; SNDD
 ## static attenuation, start and stop time, attenuation curve, reverb
-## attenuation, priority and loop points (SNDX carries none of the last five);
+## attenuation and priority (SNDX carries none of the last three);
 ## ANAM Attenuation Curve; GNAM Reverb Attenuation Control; HNAM Priority.
 
 ## SNDD / SNDX flags, xEdit's names.
@@ -33,3 +33,11 @@ const FLAG_2D := 0x40
 ## SNDD / SNDX offset 4: Flags (FLAG_NAMES). Read; not used yet (Loop and 2D
 ## by sound players).
 @export_custom(PROPERTY_HINT_FLAGS, FLAG_NAMES, PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags: int = 0
+## SNDD offset 28: Loop Points Begin, in sample frames; SNDX has none. Set (End
+## above Begin) on 36 of the 3,540 SNDD, none of them flagged Loop (517 are,
+## with no loop points); WPNMinigunSpinLPM's, 3505 to 68400, match its .wav's
+## smpl loop. Read; used by EsmWeaponNode for a shoot loop.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_begin: int = 0
+## SNDD offset 32: Loop Points End, in sample frames. Read; used with
+## loop_begin.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var loop_end: int = 0

@@ -1131,6 +1131,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		sound_base.maximum_attenuation_distance = _u8(sound_data, 1) * 100.0
 		sound_base.frequency_adjustment = _i8(sound_data, 2)
 		sound_base.flags = _u32(sound_data, 4)
+		sound_base.loop_begin = _i32(sound_data, 28)
+		sound_base.loop_end = _i32(sound_data, 32)
 	elif result is MiscBase:
 		var misc: MiscBase = result
 		misc.model_path = _string(_subrecord(raw, "MODL"))

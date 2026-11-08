@@ -97,6 +97,8 @@ var is_held := false:
 @onready var _sounds: Node3D = $Sounds
 ## SOUN -> its AudioStreamPlayer3D, built on first use.
 var _sound_players := {}
+## SOUN -> the looping player of a shoot loop (NAM7).
+var _loop_players := {}
 ## SOUN EditorID (lower case) -> its SoundBase, null when none, for clip keys.
 var _key_sounds := {}
 
@@ -116,6 +118,9 @@ var _trigger_held := false
 var _fired_this_pull := false
 ## Ticks (msec) before which the next shot cannot fire.
 var _next_shot_msec := 0
+## Whether a spin clip is held in its firing loop (from the pull that started
+## it until the release).
+var _spinning := false
 
 
 ## The reference as a WeaponReference; null when the node holds another type.
@@ -148,6 +153,7 @@ func set_trigger(held: bool) -> void:
 		_pull_trigger()
 		return
 	_stop_attack_loop()
+	_stop_loop_sound()
 
 
 ## Fires one shot now if the weapon can (the inspector's Fire button): spends a
@@ -162,12 +168,13 @@ func fire() -> bool:
 	if Time.get_ticks_msec() < _next_shot_msec:
 		return false
 	if weapon.loaded_ammo_count <= 0:
+		_stop_loop_sound()
 		play_sound(base.no_ammo_sound)
 		dry_fired.emit()
 		return false
 	weapon.loaded_ammo_count -= 1
 	_next_shot_msec = Time.get_ticks_msec() + int(shot_interval() * 1000.0)
-	play_sound(base.shoot_sound)
+	_play_shot_sound(base)
 	var path := base.attack_clip_path()
 	if not _attack_clip_playing(path):
 		_play(SLOT_ACTION, path)
@@ -176,12 +183,16 @@ func fire() -> bool:
 
 
 ## Whether the attack clip at `path` is the action slot's clip and keeps
-## playing across shots: a looping clip, or a spin clip.
+## playing across shots: a looping clip, or a spin clip from the pull that
+## started it until the release (after it, its spin-down ends and a new pull
+## starts it again).
 func _attack_clip_playing(path: String) -> bool:
 	var clip: Animation = _clips.get(path)
 	if clip == null or _animator == null or String(_animator.get_start(SLOT_ACTION).get("path", "")) != path:
 		return false
-	return clip.loop_mode != Animation.LOOP_NONE or _spin_section(clip) != Vector2()
+	if _spin_section(clip) != Vector2():
+		return _spinning
+	return clip.loop_mode != Animation.LOOP_NONE
 
 
 ## A spin clip's `Fire` and `Loop` key times (seconds from its start); empty for
@@ -248,6 +259,7 @@ func _start_spin() -> bool:
 		return false
 	_play(SLOT_ACTION, path)
 	_animator.set_loop_section(SLOT_ACTION, spin.x, spin.y, -1)
+	_spinning = true
 	return true
 
 
@@ -282,6 +294,7 @@ func _stop_attack_loop() -> void:
 		return
 	if _spin_section(clip) != Vector2():
 		_animator.set_loop_section(SLOT_ACTION, 0.0, -1.0, 0)
+		_spinning = false
 		return
 	if clip.loop_mode != Animation.LOOP_NONE:
 		_animator.stop(SLOT_ACTION, FADE_SECONDS)
@@ -386,6 +399,7 @@ func get_action() -> Action:
 
 
 func _play_action(action: Action, path: String) -> void:
+	_stop_loop_sound()
 	_action = action
 	_action_path = path
 	_action_clip = null
@@ -479,6 +493,49 @@ func play_sound(sound: SoundBase) -> void:
 		player.play()
 
 
+## A shot's sound: an automatic weapon with Shoot 3D Looping (NAM7) runs that
+## loop while it fires, in place of a sound per shot; any other plays Shoot 3D
+## (SNAM) per shot. `# ASSUMPTION` the loop replaces SNAM: 37 of the 97
+## automatic WEAP have NAM7 (the minigun only it), 58 SNAM alone, and nothing
+## says how the 8 with both play.
+func _play_shot_sound(base: WeaponBase) -> void:
+	if not is_automatic() or base.shoot_loop_sound == null:
+		play_sound(base.shoot_sound)
+		return
+	var player := _loop_players.get(base.shoot_loop_sound) as AudioStreamPlayer3D
+	if player == null:
+		player = _make_sound_player(base.shoot_loop_sound, true)
+		_loop_players[base.shoot_loop_sound] = player
+	if player.stream != null and not player.playing:
+		player.play()
+
+
+## Stops a running shoot loop: the trigger released, the weapon dry, or an
+## action (reload, jam, equip) begun.
+func _stop_loop_sound() -> void:
+	for player: AudioStreamPlayer3D in _loop_players.values():
+		if player != null and player.playing:
+			player.stop()
+
+
+## A copy of `stream` that loops between `sound`'s loop points, or over its
+## whole length when it has none (the cached stream is shared and left as it
+## is). The part after the loop end plays only when the loop stops.
+static func _looping_copy(stream: AudioStream, sound: SoundBase) -> AudioStream:
+	var copy := stream.duplicate() as AudioStream
+	var wav := copy as AudioStreamWAV
+	if wav != null:
+		var frames := int(wav.get_length() * wav.mix_rate)
+		var has_points := sound != null and sound.loop_end > sound.loop_begin and sound.loop_end <= frames
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_begin = sound.loop_begin if has_points else 0
+		wav.loop_end = sound.loop_end if has_points else frames
+	var ogg := copy as AudioStreamOggVorbis
+	if ogg != null:
+		ogg.loop = true
+	return copy
+
+
 ## The SOUN of a clip key's EditorID, null when there is none.
 func _key_sound(editor_id: String) -> SoundBase:
 	var key := editor_id.to_lower()
@@ -491,12 +548,15 @@ func _key_sound(editor_id: String) -> SoundBase:
 ## distances in metres: `# ASSUMPTION` the minimum is Godot's unit size (full
 ## volume within it) and the maximum where it falls silent; the original's
 ## attenuation curve (SNDD) is not read.
-func _make_sound_player(sound: SoundBase) -> AudioStreamPlayer3D:
+func _make_sound_player(sound: SoundBase, looping := false) -> AudioStreamPlayer3D:
 	var player := AudioStreamPlayer3D.new()
 	player.name = NifNames.escape(sound.editor_id) if not sound.editor_id.is_empty() else "Sound"
 	# Shots overlap: a new one does not cut the last.
 	player.max_polyphony = SOUND_POLYPHONY
 	var streams := SoundServer.get_streams(sound)
+	if looping and not streams.is_empty():
+		player.stream = _looping_copy(streams[0], sound)
+		streams = []
 	if streams.size() == 1:
 		player.stream = streams[0]
 	elif streams.size() > 1:

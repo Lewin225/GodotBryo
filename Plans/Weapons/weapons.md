@@ -76,6 +76,15 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
 - SOUN FNAM is relative to `sound\`: a file, or a folder whose files are the choices (621 SOUN
   used by weapons and keys: a .wav on 347, a folder on 274). Their files are PCM 16-bit, 4 .ogg.
 
+### Reload variants and shoot loops
+
+- Reload clips have no chambered or partial-magazine variant: each reload id has one clip
+  (`<family>reload<letter>`, plus `sneak` and `pa` versions); the only others are `xstart`,
+  `ystart`, `zstart` (ids 20 to 22, the weapons that load a round at a time). The 9mm pistol's is
+  `1hpreloadl` (id 11).
+- Of 97 automatic WEAP, 37 have NAM7 Shoot 3D Looping (the minigun only that, no SNAM), 58 SNAM
+  and no NAM7, 8 both. 20 WEAP with NAM7 are not automatic.
+
 ### Attack clip keys
 
 - Across the 590 attack clips in `_male` and `_1stperson`: `hit` on 488, `eject` on 80, `fire` and

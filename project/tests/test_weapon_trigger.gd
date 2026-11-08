@@ -40,8 +40,13 @@ func _check_automatic() -> void:
 	var reference := minigun.get_weapon_reference()
 	var base := minigun.get_weapon_base()
 	check(minigun.is_automatic(), "the minigun is automatic (Flags 1 0x%02x)" % base.flags1)
-	reference.loaded_ammo_count = 200
 	await _warm_clip(minigun, base.attack_clip_path())
+	reference.loaded_ammo_count = 0
+	minigun.set_trigger(true)
+	await _frames(10)
+	minigun.set_trigger(false)
+	check(minigun.get_animator().get_start(EsmWeaponNode.SLOT_ACTION).is_empty(), "empty, a pull does not start its spin clip")
+	reference.loaded_ammo_count = 200
 	var animator := minigun.get_animator()
 	var spin := EsmWeaponNode._spin_section(minigun._clips.get(base.attack_clip_path()))
 	check(spin.x > 0.0 and spin.y > spin.x, "its attack clip is a spin clip (Fire %.2f s, Loop %.2f s)" % [spin.x, spin.y])
@@ -60,6 +65,9 @@ func _check_automatic() -> void:
 	var expected := base.attack_shots_per_second * held_seconds
 	check(fired >= expected * 0.7 and fired <= expected * 1.3 + 1.0,
 			"spun up and held for %.2f s it fires %d rounds (%.1f shots/s gives %.0f)" % [held_seconds, fired, base.attack_shots_per_second, expected])
+	var loop_player := minigun._loop_players.get(base.shoot_loop_sound) as AudioStreamPlayer3D
+	check(base.shoot_sound == null and loop_player != null and loop_player.playing,
+			"firing runs its shoot loop (NAM7 %s; it has no SNAM)" % (base.shoot_loop_sound.editor_id if base.shoot_loop_sound != null else "none"))
 	check(latest <= spin.y + 0.05, "held, its clip stays inside the Fire to Loop section (latest %.2f s)" % latest)
 	minigun.set_trigger(false)
 	var after := reference.loaded_ammo_count
@@ -67,6 +75,18 @@ func _check_automatic() -> void:
 	check(animator.get_time(EsmWeaponNode.SLOT_ACTION) > spin.y or animator.get_start(EsmWeaponNode.SLOT_ACTION).is_empty(),
 			"released, the clip plays on past Loop (%.2f s)" % animator.get_time(EsmWeaponNode.SLOT_ACTION))
 	check(reference.loaded_ammo_count == after, "released, it stops firing")
+	check(loop_player != null and not loop_player.playing, "and its shoot loop stops")
+	var wav := loop_player.stream as AudioStreamWAV if loop_player != null else null
+	check(wav != null and wav.loop_begin == base.shoot_loop_sound.loop_begin and wav.loop_end == base.shoot_loop_sound.loop_end and wav.loop_end > wav.loop_begin,
+			"the shoot loop runs between its SNDD loop points (%s to %s)" % [wav.loop_begin if wav != null else -1, wav.loop_end if wav != null else -1])
+	await _wait_until(func() -> bool: return animator.get_time(EsmWeaponNode.SLOT_ACTION) >= animator.get_animation(EsmWeaponNode.SLOT_ACTION).length - 0.01)
+	var serial_before := int(animator.get_start(EsmWeaponNode.SLOT_ACTION).get("serial", 0))
+	minigun.set_trigger(true)
+	await _frames(3)
+	var restarted := animator.get_start(EsmWeaponNode.SLOT_ACTION)
+	check(int(restarted.get("serial", 0)) != serial_before and animator.get_time(EsmWeaponNode.SLOT_ACTION) < spin.x,
+			"pulled again after the spin-down, the spin clip starts again (%.2f s)" % animator.get_time(EsmWeaponNode.SLOT_ACTION))
+	minigun.set_trigger(false)
 
 
 func _check_semi_automatic() -> void:
