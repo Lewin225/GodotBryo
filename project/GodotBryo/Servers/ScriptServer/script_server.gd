@@ -47,6 +47,10 @@ signal reference_teleported(reference: EsmReference, old_space_form_id: int, new
 ## The reference `player` resolves to in scripts. Null while no actor is
 ## possessed by the player.
 var player_reference: EsmReference = null
+## Set by TGM / TDM. Not Read by anything yet: the engine has no damage
+## system, so neither mode changes what happens to the player.
+var god_mode := false
+var demigod_mode := false
 ## The player's physics body, for body-level commands (ToggleCollision).
 var player_node: Node = null:
 	set(value):

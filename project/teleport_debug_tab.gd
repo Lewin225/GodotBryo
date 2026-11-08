@@ -283,7 +283,7 @@ func teleport_to(editor_id: String) -> void:
 		_status_label.text = "[color=#e06c75]ScriptServer not found[/color]"
 		return
 
-	# Send command directly to the scripting engine (matches scripting_debug_tab _run_line)
+	# Runs the console's own CenterOnCell (ConsoleSession runs lines the same way)
 	var cmd := "coc " + editor_id
 	var reply: Dictionary = _engine.run_debug_line(cmd)
 	if not bool(reply.get("ok", false)):

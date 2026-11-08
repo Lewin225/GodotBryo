@@ -482,6 +482,9 @@ func _handle_noclip_movement(delta: float) -> void:
 		vertical_input += 1.0
 	if InputMap.has_action(crouch_action) and Input.is_action_pressed(crouch_action):
 		vertical_input -= 1.0
+	if is_typing():
+		input_vector = Vector2.ZERO
+		vertical_input = 0.0
 
 	var cam_basis := camera.global_transform.basis if camera else global_transform.basis
 	var move_dir := (cam_basis.x * input_vector.x + cam_basis.z * input_vector.y + Vector3.UP * vertical_input)
@@ -493,6 +496,13 @@ func _handle_noclip_movement(delta: float) -> void:
 
 	velocity = move_dir * cur_speed
 	global_position += velocity * delta
+
+
+## Whether a text field (the console, a debug tab's input) has keyboard
+## focus. Movement keys are polled, so without this typing would also walk.
+func is_typing() -> bool:
+	var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+	return focus is LineEdit or focus is TextEdit
 
 
 # --- Movement & Slope Physics ---
@@ -509,13 +519,14 @@ func _handle_movement(delta: float) -> void:
 	if not InputMap.has_action(forward_action): forward_action = &"ui_up"
 	if not InputMap.has_action(backward_action): backward_action = &"ui_down"
 
-	var input_vector := Input.get_vector(left_action, right_action, forward_action, backward_action)
+	var typing := is_typing()
+	var input_vector := Vector2.ZERO if typing else Input.get_vector(left_action, right_action, forward_action, backward_action)
 	_move_input = Vector2(input_vector.x, -input_vector.y)
 	var move_direction := (transform.basis * Vector3(input_vector.x, 0.0, input_vector.y)).normalized()
 
 	var jump_action: StringName = input_actions.get("jump", &"jump")
 	if not InputMap.has_action(jump_action): jump_action = &"ui_accept"
-	var jump_requested: bool = Input.is_action_pressed(jump_action) if auto_jump else Input.is_action_just_pressed(jump_action)
+	var jump_requested: bool = not typing and (Input.is_action_pressed(jump_action) if auto_jump else Input.is_action_just_pressed(jump_action))
 	var can_jump: bool = (is_grounded or _coyote_timer > 0.0) and not is_on_steep_slope and _jump_cooldown_timer <= 0.0
 
 	if jump_requested and can_jump:
@@ -685,7 +696,7 @@ func _handle_crouching(space_state: PhysicsDirectSpaceState3D) -> void:
 		return
 
 	var crouch_action: StringName = input_actions.get("crouch", &"crouch")
-	var duck_requested := InputMap.has_action(crouch_action) and Input.is_action_pressed(crouch_action)
+	var duck_requested := InputMap.has_action(crouch_action) and Input.is_action_pressed(crouch_action) and not is_typing()
 
 	# Only allow transitions between crouching and standing while grounded
 	if is_grounded:
@@ -964,6 +975,11 @@ func _open_script_menu(menu_id: int, params: Dictionary = {}) -> bool:
 		ScriptServer.MENU_TRAITS: menu = trait_menu
 	if menu == null or possessed == null:
 		return false
+	# A menu that is showing stays as it is: opening it again would enter menu
+	# mode again, and closing leaves it once, so the game stayed in menu mode
+	# (cursor free, GameMode blocks stopped) after the menu closed.
+	if menu.visible:
+		return true
 	menu.open(possessed, params)
 	_set_input_suspended(true)
 	return true

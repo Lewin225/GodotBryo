@@ -85,8 +85,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	check(bool(reply.get("ok", false)) and not NifServer.run_in_next_drain.is_valid(), "DebugCopyBench 1 runs inside NifServer's drain")
-	var split: PackedStringArray = load("res://scripting_debug_tab.gd").split_statements('DebugNpcLog 5 | DebugSetLowLevelSpeed 1000|| x | if a || b | MessageBox "a | b"')
-	check(split == PackedStringArray(["DebugNpcLog 5", "DebugSetLowLevelSpeed 1000|| x", "if a || b", 'MessageBox "a | b"']), "the Script Engine console splits a line at | but not at || or inside quotes: %s" % split)
+	var split: PackedStringArray = ConsoleSession.split_statements('DebugNpcLog 5 | DebugSetLowLevelSpeed 1000|| x | if a || b | MessageBox "a | b"')
+	check(split == PackedStringArray(["DebugNpcLog 5", "DebugSetLowLevelSpeed 1000|| x", "if a || b", 'MessageBox "a | b"']), "the console splits a line at | but not at || or inside quotes: %s" % split)
 	ScriptServer.run_debug_line("DebugCopyBench 4")
 	for frame in 95:
 		await get_tree().process_frame

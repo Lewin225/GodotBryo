@@ -1,20 +1,17 @@
 extends Control
 
-## Scene-authored runtime scripting workbench. Reads ScriptServer's debug API
-## (instances, usage, console) rather than its internal state.
+## Scene-authored script inspector. Reads ScriptServer's debug API (instances,
+## usage) rather than its internal state. Script lines run in the console
+## (ConsoleOverlay, `), not here; Target in Console makes the selected
+## reference the console's target.
 
-@onready var _instances_list: ItemList = $Margin/VBox/VSplit/HSplit/Left/Instances
-@onready var _filter: LineEdit = $Margin/VBox/VSplit/HSplit/Left/LineEdit
+@onready var _instances_list: ItemList = $Margin/VBox/HSplit/Left/Instances
+@onready var _filter: LineEdit = $Margin/VBox/HSplit/Left/LineEdit
 @onready var _usage: RichTextLabel = $Margin/VBox/Usage
-@onready var _details: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/Details
-@onready var _locals: RichTextLabel = $Margin/VBox/VSplit/HSplit/Right/ScrollContainer/Locals
-@onready var _source: CodeEdit = $Margin/VBox/VSplit/HSplit/Right/Source
-@onready var _line: LineEdit = $Margin/VBox/ConsoleRow/Line
-@onready var _run: Button = $Margin/VBox/ConsoleRow/Run
-@onready var _clear: Button = $Margin/VBox/ConsoleRow.get_node_or_null("Clear")
-@onready var _output: TextEdit = $Margin/VBox/VSplit/Output
-@onready var _suggestions_panel: PanelContainer = get_node_or_null("SuggestionsPanel")
-@onready var _suggestions_list: RichTextLabel = get_node_or_null("SuggestionsPanel/Margin/SuggestionsList")
+@onready var _details: RichTextLabel = $Margin/VBox/HSplit/Right/Details
+@onready var _console_target: Button = $Margin/VBox/HSplit/Right/ConsoleTarget
+@onready var _locals: RichTextLabel = $Margin/VBox/HSplit/Right/ScrollContainer/Locals
+@onready var _source: CodeEdit = $Margin/VBox/HSplit/Right/Source
 
 var _engine: Node
 var _instances: Array = []
@@ -23,22 +20,8 @@ var _selected_reference: EsmReference = null
 ## The selected entry's reference or, for a quest script, its QuestBase.
 var _selected_key: Object = null
 
-# Command history state
-var _history: Array[String] = []
-var _history_index: int = -1
-var _current_input_buffer: String = ""
-
-# Autocomplete state
-var _suggestions: Array[String] = []
-var _suggestion_index: int = 0
-var _token_start: int = 0
-var _token_prefix: String = ""
-var _navigating_suggestions: bool = false
-
-
 ## The instance list rebuilds at most this often while the tab is shown: with
-## hundreds of script instances a rebuild every frame costs ~10 ms. Running a
-## console line refreshes it at once.
+## hundreds of script instances a rebuild every frame costs ~10 ms.
 const REFRESH_INTERVAL_SEC := 0.25
 var _refresh_timer := 0.0
 
@@ -46,29 +29,10 @@ func _ready() -> void:
 	_engine = get_tree().root.get_node_or_null("ScriptServer")
 	_source.editable = false
 	_source.gutters_draw_line_numbers = true
-	_output.editable = false
 
 	_setup_highlighter()
 
-	if _suggestions_panel != null:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color("#1e2227")
-		sb.border_color = Color("#4b5263")
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(4)
-		sb.shadow_color = Color(0, 0, 0, 0.45)
-		sb.shadow_size = 8
-		sb.shadow_offset = Vector2(0, 4)
-		_suggestions_panel.add_theme_stylebox_override("panel", sb)
-		_suggestions_panel.hide()
-
-	_run.pressed.connect(_run_line)
-	if _clear:
-		_clear.pressed.connect(func() -> void: _output.text = "")
-
-	_line.text_submitted.connect(func(_text: String) -> void: _run_line())
-	_line.gui_input.connect(_on_line_gui_input)
-	_line.text_changed.connect(_on_line_text_changed)
+	_console_target.pressed.connect(_target_in_console)
 
 	_filter.clear_button_enabled = true
 	_filter.text_changed.connect(func(_new_text: String) -> void: _refresh())
@@ -100,205 +64,6 @@ func _setup_highlighter() -> void:
 		hl.add_keyword_color(kw, Color("#c678dd"))
 
 	_source.syntax_highlighter = hl
-
-
-func _on_line_text_changed(_new_text: String) -> void:
-	_update_suggestions_panel()
-
-
-func _update_suggestions_panel() -> void:
-	if _suggestions_panel == null:
-		return
-
-	var text := _line.text
-	var caret := _line.caret_column
-	var left_text := text.substr(0, caret)
-
-	if left_text.strip_edges().is_empty():
-		_suggestions.clear()
-		_suggestion_index = 0
-		_navigating_suggestions = false
-		_suggestions_panel.hide()
-		return
-
-	var token_start := maxi(left_text.rfind(" "), left_text.rfind("\t")) + 1
-	var token := left_text.substr(token_start)
-	_token_start = token_start
-	_token_prefix = token.to_lower().strip_edges()
-	_suggestions.clear()
-
-	var candidates := _get_contextual_candidates(left_text)
-
-	# 1. Prefix matches
-	if not _token_prefix.is_empty():
-		for c in candidates:
-			if c.to_lower().begins_with(_token_prefix):
-				if not _suggestions.has(c):
-					_suggestions.append(c)
-					if _suggestions.size() >= 8:
-						break
-
-	# 2. Substring matches if under 8
-	if _suggestions.size() < 8 and not _token_prefix.is_empty():
-		for c in candidates:
-			if not _suggestions.has(c) and c.to_lower().find(_token_prefix) != -1:
-				_suggestions.append(c)
-				if _suggestions.size() >= 8:
-					break
-
-	# 3. If token is empty (just typed command + space, e.g. "coc "): show top candidates
-	if _token_prefix.is_empty():
-		for c in candidates:
-			if not _suggestions.has(c):
-				_suggestions.append(c)
-				if _suggestions.size() >= 8:
-					break
-
-	# If exact single match is already typed and nothing else matches
-	if _suggestions.is_empty() or (_suggestions.size() == 1 and _suggestions[0].to_lower() == _token_prefix):
-		_suggestions.clear()
-		_suggestion_index = 0
-		_navigating_suggestions = false
-		_suggestions_panel.hide()
-		return
-
-	if _suggestion_index >= _suggestions.size():
-		_suggestion_index = 0
-
-	_render_suggestions_panel()
-
-
-func _render_suggestions_panel() -> void:
-	if _suggestions_panel == null or _suggestions.is_empty():
-		if _suggestions_panel != null:
-			_suggestions_panel.hide()
-		return
-
-	var rows: PackedStringArray = []
-	for i in _suggestions.size():
-		var c := _suggestions[i]
-		if _navigating_suggestions and i == _suggestion_index:
-			rows.append("[color=#61afef][b]▶  %s[/b][/color]" % c)
-		else:
-			rows.append("[color=#abb2bf]    %s[/color]" % c)
-
-	rows.append("[color=#5c6370][font_size=11]↑/↓ to select  •  Tab/Enter to apply  •  Esc to dismiss[/font_size][/color]")
-	if _suggestions_list != null:
-		_suggestions_list.text = "\n".join(rows)
-
-	# Position floating panel directly below _line without affecting the flow of the UI
-	var line_pos := _line.global_position
-	var line_size := _line.size
-	_suggestions_panel.global_position = Vector2(line_pos.x, line_pos.y + line_size.y + 4.0)
-	_suggestions_panel.custom_minimum_size = Vector2(maxf(line_size.x, 260.0), 0)
-	_suggestions_panel.reset_size()
-	_suggestions_panel.show()
-
-
-func _on_line_gui_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed):
-		return
-
-	var key_event := event as InputEventKey
-
-	# Handle interactive suggestion navigation when suggestions panel is visible
-	if _suggestions_panel != null and _suggestions_panel.visible and not _suggestions.is_empty():
-		if key_event.keycode == KEY_DOWN and not key_event.is_echo():
-			if not _navigating_suggestions:
-				_navigating_suggestions = true
-				_suggestion_index = 0
-			else:
-				_suggestion_index = (_suggestion_index + 1) % _suggestions.size()
-			_render_suggestions_panel()
-			accept_event()
-			return
-		elif key_event.keycode == KEY_UP and not key_event.is_echo():
-			if not _navigating_suggestions:
-				_navigating_suggestions = true
-				_suggestion_index = _suggestions.size() - 1
-			else:
-				_suggestion_index = (_suggestion_index - 1 + _suggestions.size()) % _suggestions.size()
-			_render_suggestions_panel()
-			accept_event()
-			return
-		elif key_event.keycode == KEY_TAB and not key_event.is_echo():
-			_apply_selected_suggestion()
-			accept_event()
-			return
-		elif (key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER) and not key_event.is_echo():
-			if _navigating_suggestions:
-				_apply_selected_suggestion()
-				accept_event()
-				return
-		elif key_event.keycode == KEY_ESCAPE and not key_event.is_echo():
-			_suggestions.clear()
-			_navigating_suggestions = false
-			_suggestions_panel.hide()
-			accept_event()
-			return
-
-	# Handle History navigation (Up / Down) when not navigating suggestions
-	if key_event.keycode == KEY_UP and not key_event.is_echo():
-		if _history.is_empty():
-			return
-		if _history_index == -1:
-			_current_input_buffer = _line.text
-			_history_index = _history.size() - 1
-		elif _history_index > 0:
-			_history_index -= 1
-		_line.text = _history[_history_index]
-		_line.caret_column = _line.text.length()
-		_update_suggestions_panel()
-		accept_event()
-		return
-	elif key_event.keycode == KEY_DOWN and not key_event.is_echo():
-		if _history_index != -1:
-			if _history_index < _history.size() - 1:
-				_history_index += 1
-				_line.text = _history[_history_index]
-			else:
-				_history_index = -1
-				_line.text = _current_input_buffer
-			_line.caret_column = _line.text.length()
-			_update_suggestions_panel()
-			accept_event()
-			return
-	elif key_event.keycode == KEY_TAB and not key_event.is_echo():
-		_handle_tab_completion()
-		accept_event()
-		return
-
-
-func _apply_selected_suggestion() -> void:
-	if _suggestions.is_empty():
-		return
-	var chosen_idx := clampi(_suggestion_index, 0, _suggestions.size() - 1)
-	var completed_word := _suggestions[chosen_idx]
-
-	var right_text := _line.text.substr(_line.caret_column)
-	var prefix_text := _line.text.substr(0, _token_start)
-	var suffix := " " if right_text.is_empty() or not right_text.begins_with(" ") else ""
-
-	_line.text = prefix_text + completed_word + suffix + right_text
-	_line.caret_column = (prefix_text + completed_word + suffix).length()
-
-	_suggestions.clear()
-	_navigating_suggestions = false
-	if _suggestions_panel != null:
-		_suggestions_panel.hide()
-
-
-func _handle_tab_completion() -> void:
-	_update_suggestions_panel()
-	if not _suggestions.is_empty():
-		_apply_selected_suggestion()
-
-
-func _get_contextual_candidates(left_text: String) -> Array[String]:
-	var game_node: Node = get_tree().root.get_node_or_null("Game") if is_inside_tree() else null
-	return ScriptCandidateProvider.get_contextual_candidates(
-		left_text, _engine, _selected_reference, _instances, game_node
-	)
 
 
 func _process(delta: float) -> void:
@@ -381,8 +146,9 @@ static func _matches_form_id(form_id: int, needle: String, raw_hex: String) -> b
 
 
 func _show_selected() -> void:
+	_console_target.disabled = _selected_reference == null
 	if _selected_key == null:
-		_details.text = "[color=#7f848e]Select a scripted reference or quest. Console commands run with no calling reference unless a reference is selected.[/color]"
+		_details.text = "[color=#7f848e]Select a scripted reference or quest.[/color]"
 		_locals.text = ""
 		_source.text = ""
 		return
@@ -417,55 +183,8 @@ func _show_selected() -> void:
 		return
 
 
-func _run_line() -> void:
-	if _engine == null:
-		return
-	var cmd := _line.text.strip_edges()
-	if cmd.is_empty():
-		return
-
-	# Record history
-	if _history.is_empty() or _history.back() != cmd:
-		_history.append(cmd)
-	_history_index = -1
-	_current_input_buffer = ""
-
-	for statement in split_statements(cmd):
-		var reply: Dictionary = _engine.run_debug_line(statement, _selected_reference)
-		_output.text += "> " + statement + "\n" + ("OK" if bool(reply.get("ok", false)) else "ERROR") + ": " + String(reply.get("message", ""))
-		if reply.has("result"):
-			_output.text += ": " + str(reply["result"])
-		_output.text += "\n"
-	_output.scroll_vertical = _output.get_line_count()
-	_line.clear()
-	_refresh()
-
-## Splits a console line into statements at each `|`, so several commands run
-## from one line. A `||` (logical or) and a `|` inside quotes do not split.
-static func split_statements(line: String) -> PackedStringArray:
-	var statements := PackedStringArray()
-	var current := ""
-	var in_quotes := false
-	var index := 0
-	while index < line.length():
-		var character := line[index]
-		if character == "\"":
-			in_quotes = not in_quotes
-		var is_or := index + 1 < line.length() and line[index + 1] == "|"
-		if character == "|" and not in_quotes and is_or:
-			current += "||"
-			index += 2
-			continue
-		if character == "|" and not in_quotes:
-			_add_statement(statements, current)
-			current = ""
-		else:
-			current += character
-		index += 1
-	_add_statement(statements, current)
-	return statements
-
-static func _add_statement(statements: PackedStringArray, text: String) -> void:
-	var statement := text.strip_edges()
-	if not statement.is_empty():
-		statements.append(statement)
+## Opens the console with the selected reference as its target.
+func _target_in_console() -> void:
+	var console := get_tree().get_first_node_in_group(&"console") as ConsoleOverlay
+	if console != null and _selected_reference != null:
+		console.target_reference(_selected_reference)

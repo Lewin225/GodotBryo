@@ -1,0 +1,197 @@
+[gd_scene format=3 uid="uid://cffhvlbxajo24"]
+
+[ext_resource type="Script" uid="uid://dthrsk1i3caj8" path="res://console/console_overlay.gd" id="1_console"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.0784314, 0.0862745, 0.101961, 0.94)
+border_width_bottom = 2
+border_color = Color(0.380392, 0.686275, 0.937255, 0.6)
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 10
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="SystemFont" id="SystemFont_mono"]
+font_names = PackedStringArray("Menlo", "Consolas", "DejaVu Sans Mono", "Monospace")
+subpixel_positioning = 0
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_input"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
+bg_color = Color(0.117647, 0.133333, 0.152941, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.294118, 0.321569, 0.388235, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_suggestions"]
+bg_color = Color(0.117647, 0.133333, 0.152941, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.294118, 0.321569, 0.388235, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StandardMaterial3D" id="Material_target_box"]
+render_priority = 127
+no_depth_test = true
+shading_mode = 0
+albedo_color = Color(0.898039, 0.752941, 0.482353, 1)
+
+[node name="Console" type="CanvasLayer" unique_id=69052629]
+layer = 50
+script = ExtResource("1_console")
+
+[node name="Panel" type="PanelContainer" parent="." unique_id=1613132505]
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 0.45
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Margin" type="MarginContainer" parent="Panel" unique_id=1863715193]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin" unique_id=209376498]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Header" type="HBoxContainer" parent="Panel/Margin/VBox" unique_id=273594289]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Panel/Margin/VBox/Header" unique_id=2130299682]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.380392, 0.686275, 0.937255, 1)
+text = "Console"
+
+[node name="Hint" type="Label" parent="Panel/Margin/VBox/Header" unique_id=495658725]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.360784, 0.388235, 0.439216, 1)
+text = "` or Esc closes  ·  hold ` and type, let go to run"
+horizontal_alignment = 2
+
+[node name="Output" type="RichTextLabel" parent="Panel/Margin/VBox" unique_id=1839801829]
+layout_mode = 2
+size_flags_vertical = 3
+focus_mode = 2
+theme_override_colors/default_color = Color(0.670588, 0.698039, 0.74902, 1)
+theme_override_fonts/normal_font = SubResource("SystemFont_mono")
+theme_override_fonts/bold_font = SubResource("SystemFont_mono")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_font_sizes/bold_font_size = 14
+bbcode_enabled = true
+scroll_following = true
+context_menu_enabled = true
+selection_enabled = true
+
+[node name="Signature" type="RichTextLabel" parent="Panel/Margin/VBox" unique_id=325937996]
+visible = false
+layout_mode = 2
+theme_override_colors/default_color = Color(0.670588, 0.698039, 0.74902, 1)
+theme_override_fonts/normal_font = SubResource("SystemFont_mono")
+theme_override_fonts/bold_font = SubResource("SystemFont_mono")
+theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/bold_font_size = 13
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="TargetRow" type="HBoxContainer" parent="Panel/Margin/VBox" unique_id=1114403900]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Target" type="RichTextLabel" parent="Panel/Margin/VBox/TargetRow" unique_id=57481726]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_fonts/normal_font = SubResource("SystemFont_mono")
+theme_override_fonts/bold_font = SubResource("SystemFont_mono")
+theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/bold_font_size = 13
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="ClearTarget" type="Button" parent="Panel/Margin/VBox/TargetRow" unique_id=611261260]
+visible = false
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Clear the target (prid none): commands without a Ref. prefix then have no calling reference."
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "✕ Clear"
+
+[node name="InputRow" type="HBoxContainer" parent="Panel/Margin/VBox" unique_id=881187123]
+layout_mode = 2
+
+[node name="Prompt" type="Label" parent="Panel/Margin/VBox/InputRow" unique_id=1985457411]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.380392, 0.686275, 0.937255, 1)
+theme_override_fonts/font = SubResource("SystemFont_mono")
+theme_override_font_sizes/font_size = 15
+text = "›"
+
+[node name="Line" type="LineEdit" parent="Panel/Margin/VBox/InputRow" unique_id=66409093]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = SubResource("SystemFont_mono")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBox_input")
+theme_override_styles/focus = SubResource("StyleBox_input")
+placeholder_text = "player.AddItem Stimpack 100"
+keep_editing_on_text_submit = true
+caret_blink = true
+
+[node name="Buttons" type="HFlowContainer" parent="Panel/Margin/VBox" unique_id=1840213377]
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 4
+
+[node name="Suggestions" type="PanelContainer" parent="." unique_id=720874478]
+visible = false
+offset_right = 420.0
+offset_bottom = 40.0
+theme_override_styles/panel = SubResource("StyleBox_suggestions")
+
+[node name="Margin" type="MarginContainer" parent="Suggestions" unique_id=728096811]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="List" type="RichTextLabel" parent="Suggestions/Margin" unique_id=379492484]
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/default_color = Color(0.670588, 0.698039, 0.74902, 1)
+theme_override_fonts/normal_font = SubResource("SystemFont_mono")
+theme_override_fonts/bold_font = SubResource("SystemFont_mono")
+theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/bold_font_size = 13
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
+
+[node name="TargetBox" type="MeshInstance3D" parent="." unique_id=2139607116]
+visible = false
+material_override = SubResource("Material_target_box")
+cast_shadow = 0
