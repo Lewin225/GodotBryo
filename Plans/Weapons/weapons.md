@@ -57,9 +57,41 @@ are creature attacks; their model is part of the creature.
 
 - `_male\skeleton.nif` has one `Weapon` node, under `Bip01 R Hand`, and no holster nodes.
 - `1hpequip`, `1hpunequip` and `2haequip` key `Weapon` (27, 30, 79 rotation keys).
-- No node in `_male\skeleton.nif` is named with `holster`, `back` or `side`. Holstered pistols and
-  rifles on the back are seen in play, so the points exist somewhere: possibly nodes on body or
-  clothing NIFs (placed per outfit against clipping), or named otherwise. Not checked.
+- No holster node exists: the third-person skeleton's non-bone nodes are `Weapon`, `Camera3rd`,
+  `HeadAnims`; no node on the 849 NIFs under `characters\` and `armor\` is one.
+- Holstering is a text key: `prn: <bone>` parents the `Weapon` node to that bone. Each
+  `<family>holster.kf` is 0.10 to 0.17 s and holds `Weapon` static at the holster offset, in that
+  bone's space (`1hpholster` (0.0, 0.0, -0.2), `2hrholster` (0.3, -0.1, -0.1)), and keys `##`
+  parts (hiding a laser sight beam, for one).
+
+  | `prn:` target | `_male\` holster clips |
+  |---|---|
+  | `Bip01 Pelvis` | 1gt, 1hm, 1hp, 1lm, 1md |
+  | `Bip01 Spine2` | 2ha, 2hl, 2hm, 2hr, pa2ha, pa2hm, pa2hr, pasneak2ha, pasneak2hr |
+  | `Bip01 R ForeTwist` | h2h |
+  | `Bip01 R Hand` | 2hh |
+
+  `1mdholster` first keys `prn: Bip01 R Hand  -at none`, then `prn: Bip01 Pelvis`. The
+  `_1stperson\` holster clips key `Prn: Bip01 Translate`. Meaning of `-at none`: not known.
+- Equip and unequip clips move `Weapon` only 0.1 to 0.3 units in its parent's space: the hand
+  carries the weapon to the holster.
+- Not checked: the `prn:` keys in equip clips (the reparent back to the hand).
+- `2hhholster` keeps `Weapon` on `Bip01 R Hand` and keys bool (visibility) tracks on
+  `##FlamerGun`, `##GatlingLaserGun`, `##MinigunGun`, `##RIL`: the held part is hidden, not
+  moved. Bool values not read.
+
+### Heavy weapons and backpacks
+
+- `minigun.nif`, `flamer.nif`, `lasergatling.nif`: the root carries NiStringExtraData `Prn` =
+  `Weapon` (the bone the model hangs from); a rigid `Backpack` node, sibling of the gun part,
+  carries NiStringExtraData `UPB` = `Bip01 Spine2`. Meaning inferred: the backpack hangs from
+  `Bip01 Spine2`, the rest from `Weapon`. Not checked on other NIFs.
+- `lasergatling.nif`'s muzzle is `##ProjectileNode`, not `ProjectileNode`.
+- WEAP DNAM Flags 1 bit 0x10 (xEdit: "Hide Backpack") is set on the 7 heavy weapons of animation
+  type 8 (Minigun and unique, Gatling Laser, Flamer, Grenade Machinegun and unique,
+  `HVBrokenWeapMinigun`) and on the Shishkebab; on no other WEAP. What it hides: not known (the
+  heavy weapons' backpacks are drawn).
+- No heavy weapon has a BIPL: the backpack is part of the weapon NIF.
 - `EsmReferencePhysicaliser._make_node()` builds an `EsmItemNode` for a `WeaponReference`.
 
 ### FireWeapon
@@ -104,8 +136,13 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 - A weapon in the world is a reference and an EsmNode, whether held, on the back or dropped.
   Returning it to an inventory, or leaving it dropped until its cell unloads, frees the node.
 - The node runs the weapon: loaded ammo, jammed, cycle state. The state is held on the weapon's
-  resource, so it survives the node. Stowing hands it to the `InventoryItem`; drawing hands it
-  back.
+  `WeaponReference`, so it survives the node.
+- An equipped weapon leaves the inventory: it is a world reference held in an equip slot, so a VR
+  player can throw it and an NPC can drop it when shot. Unequipping frees the node and puts the
+  reference back in the inventory (`InventoryItem.item_reference`). A save writes held weapons in
+  the inventory (Equip slots).
+- Scripts that count or check a held weapon (`GetItemCount`, `GetEquipped` and the like) must
+  still see it: they read the inventory and the equip slots. Not checked: how many scripts do.
 - The node takes inputs (fire, reload, ...) as signals. It works with no actor holding it.
 - The weapon spends ammo, plays its sounds, ejects shells (`ShellCasingNode`, on 32 of the 66
   gun NIFs) and drops spent magazines, all internally. It reads ammo from its holder's inventory (`get_item_count(form_id)`, as script
@@ -116,12 +153,29 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 
 ### Equip slots
 
-- An actor has three weapon slots: two short guns on the belt and one long gun on the back. Each
-  holds a weapon node, holstered or drawn.
-- A slot hangs from the holster point where one exists (skeleton, body or clothing NIF). A slot
-  with none (likely the second pistol) is a stub node the actor node adds at an offset from a bone
-  when the body is delivered.
-  `# ASSUMPTION`
+- An actor has three weapon slots: from the data, a right-hip short gun and a back long gun; ours,
+  a left-hip short gun. Each holds a weapon node, holstered or drawn.
+- The right-hip slot and the back slot are the holster clips' `prn:` bone and `Weapon` pose:
+  `Bip01 Pelvis` for short guns, `Bip01 Spine2` for long guns, read from the weapon family's
+  holster clip.
+- A heavy weapon's `Backpack` hangs from `Bip01 Spine2` (`UPB`) and takes the back slot; its gun
+  stays on the hand, hidden while holstered.
+- Holstering plays the family's holster clip on the actor and the weapon. Its `prn:` target picks
+  the slot (`Bip01 Pelvis` a hip slot, `Bip01 Spine2` the back slot, `Bip01 R Hand` stays in the
+  hand), its `Weapon` pose is the slot offset, and its visibility tracks hide parts. No table per
+  family.
+- The left-hip slot is ours, not vanilla: the right-hip slot's bone and pose mirrored, made when
+  the body is delivered. `# ASSUMPTION`. A holster goes to its clip's slot, else (a short gun) the
+  left hip, else the inventory. The vanilla clips reach only the right hip and back: a weapon snaps to
+  the left hip at the holster clip's `prn:` key, and from it at the equip clip's.
+- With a heavy weapon's backpack on the back slot, a long gun goes to the inventory. A second back
+  slot is possible later, not planned.
+- In classic mode the slots bind to hotkeys 1 to 3; the slots can be disabled (one weapon, as
+  vanilla). The slots are actor state on the `ActorReference`, saved whatever the mode, since the
+  mode can change at any point. A save holds each held weapon's reference in the inventory and
+  each slot as that reference's instance_id; loading rehydrates the slots from it.
+- An actor without a body (low-detail simulation) keeps its slots as instance_ids only and builds
+  no weapon nodes: it cannot fight.
 - Classic play draws one at a time; the others stay holstered and visible. (The original hides a
   holstered pistol when a long gun is drawn: it has one active item slot.)
 - The procedural path draws any pair of one-handed short guns, one short gun two-handed, or a long
@@ -162,7 +216,7 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
   call it; nothing else creates projectiles.
 - A request: `fire(weapon base, shooter, muzzle transform, aim point, seed)`. It carries everything
   the server needs and nothing it must ask back for. The seed draws spread and projectile count.
-- Muzzle: the shooter's model's `ProjectileNode`. The server converts its Gamebryo forward to
+- Muzzle: the shooter's model's `ProjectileNode` (`##ProjectileNode` on the Gatling Laser). The server converts its Gamebryo forward to
   Godot once. With no `ProjectileNode`, the calling reference's transform. `# ASSUMPTION`
 - Direction: muzzle to aim point. With no aim point, the muzzle's forward (the reference's -Z in
   the fallback).
@@ -181,9 +235,11 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 1. `EsmWeaponNode` on its own (`esm_weapon_node.gd`, extends `EsmItemNode`): the physicaliser's
    `_make_node()` dispatches a `WeaponReference` to it (today an `EsmItemNode`); placed from the
    asset browser for editor testing, with no actor. State resource.
-2. Holding: find the holster points (body and clothing NIF census); the three equip slots on the
-   actor (a bone-offset stub where a point is missing), holstered and drawn; the stow and draw
-   hand-off with the `InventoryItem`.
+2. Holding: the holster clip (`prn:` target, `Weapon` pose, visibility tracks) and the NIF's
+   `Prn` and `UPB` attach bones parent the weapon node and its backpack; the three equip slots on
+   the actor (the mirrored stub for the second pistol), holstered and drawn; equipping takes the
+   reference out of the inventory into a slot, unequipping puts it back; script item queries see
+   the slots.
 3. WEAP `DNAM` and `CRDT` fields (fire rate, spread, projectiles, ammo use, attack and reload
    speed, flags), census and field docs per AGENTS.md.
 4. Viewmodel: resolve `WNAM`, load it for the player in first person, fall back to `MODL`, hang it
