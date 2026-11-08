@@ -2,7 +2,9 @@
 
 This is not a decomp
 
-An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, using godot's native tooling. Targeting New Vegas for now, then fo3, then skyrim. It also works as a asset browser and exporter via an included godot editor plugin. Built with claude, codex, qwen3:8b and ornith:9B as interns implementing design docs, but not "port gamebryo no mistakes". structure, contracts, design decisions and research you can blame me for.
+An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, using godot's native tooling. Targeting New Vegas for now, then fo3, then skyrim. It also works as a asset browser and exporter via an included godot editor plugin. 
+
+Built with claude, codex, qwen3:8b and ornith:9B as interns implementing design docs, but not "port gamebryo no mistakes". structure, contracts, design decisions and research you can blame me for.
 
 What's working - in short.
 - **Actors**(NPC/Creatures) - Will render, execute packages and simulate/navigate anywhere in the world. But will not do combat
