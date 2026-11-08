@@ -18,5 +18,6 @@ script = ExtResource("2_sync")
 follower = NodePath("../KfAnimator")
 debug_log = true
 
-[node name="Viewmodel" type="Node3D" parent="."]
+[node name="Viewmodel" type="Node3D" parent="." node_paths=PackedStringArray("rig_animator")]
 script = ExtResource("3_viewmodel")
+rig_animator = NodePath("../KfAnimator")

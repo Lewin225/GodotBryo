@@ -676,6 +676,10 @@ func _finish_if_ready() -> void:
 		_play_locomotion(idle_clip, 0.0)
 	else:
 		push_warning("ActorAnimator: default idle clip was not loaded: " + idle_clip)
+	# A weapon drawn before the clips loaded (a save loaded with one drawn, a
+	# body rebuilt) takes its stance now: set_weapon_family() had no animator.
+	if not _weapon_family.is_empty():
+		_play_weapon_clip(WEAPON_STANCE_SLOT, WeaponBase.CLIP_FOLDER + _weapon_family + "aim.kf", 0, null)
 	load_completed.emit(_clips.size())
 
 func _ensure_animator() -> KfAnimator:

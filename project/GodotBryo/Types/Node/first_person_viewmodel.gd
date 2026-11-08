@@ -13,9 +13,19 @@ extends Node3D
 ## drawn, and only here: an actor's own weapon node shows the world model. Its
 ## rigid bodies and collision are removed; it casts no shadow, as the rig's
 ## other meshes do not.
+##
+## Its parts animate: a KfAnimator with node targets on the model follows the
+## rig's KfAnimator (`rig_animator`) in the weapon slots, playing the rig's own
+## clips (the `_1stperson` versions, which key the weapon's parts) on the rig's
+## clock. Following, it emits no text keys: the actor's weapon does.
 
 ## The rig bone the viewmodel hangs from.
 const WEAPON_BONE := "Weapon"
+## The rig's slots whose clips the viewmodel's parts follow.
+const FOLLOWED_SLOTS: Array[int] = [ActorAnimator.WEAPON_STANCE_SLOT, ActorAnimator.WEAPON_ACTION_SLOT]
+
+## The rig's KfAnimator, whose weapon-slot clips the parts follow.
+@export var rig_animator: KfAnimator
 
 ## The weapon the viewmodel is a copy of, null when none is drawn.
 var weapon: WeaponReference = null
@@ -33,6 +43,15 @@ var _attachment: BoneAttachment3D = null
 var _requested_path := ""
 ## Bone attachments holding parts moved off the model, freed with it.
 var _part_holders: Array[BoneAttachment3D] = []
+## Plays the rig's weapon-slot clips on the model's parts.
+var _parts_animator: KfAnimator = null
+
+
+func _ready() -> void:
+	if rig_animator == null:
+		return
+	rig_animator.clip_started.connect(_on_rig_clip_started)
+	rig_animator.clip_stopped.connect(_on_rig_clip_stopped)
 
 
 ## Copies `actor`'s drawn weapon onto `skeleton` from now on; a null actor or
@@ -103,6 +122,46 @@ func _on_model_delivered(tree: Node3D, path: String) -> void:
 	tree.transform = Transform3D.IDENTITY
 	model = tree
 	_hang_bone_parts(tree)
+	_animate_parts(tree)
+
+
+## Points the parts animator at `tree` and plays the rig's current weapon-slot
+## clips on it, so a clip already playing when the model arrives shows.
+func _animate_parts(tree: Node3D) -> void:
+	if rig_animator == null:
+		return
+	if _parts_animator == null:
+		_parts_animator = KfAnimator.new()
+		_parts_animator.name = "PartsAnimator"
+		add_child(_parts_animator)
+		_parts_animator.sync_source = _parts_animator.get_path_to(rig_animator)
+		# Reads the rig's clock as it stands this frame: after the rig's.
+		_parts_animator.process_priority = rig_animator.process_priority + 1
+	_parts_animator.stop_all()
+	_parts_animator.node_root = _parts_animator.get_path_to(tree)
+	for slot in FOLLOWED_SLOTS:
+		var start := rig_animator.get_start(slot)
+		if bool(start.get("played", false)):
+			_follow(slot, start["animation"], String(start["path"]), int(start["serial"]), 0.0)
+
+
+func _on_rig_clip_started(slot: int, path: String, animation: Animation, serial: int, fade: float,
+		_keep_root: bool, _speed: float) -> void:
+	if FOLLOWED_SLOTS.has(slot) and model != null:
+		_follow(slot, animation, path, serial, fade)
+
+
+func _on_rig_clip_stopped(slot: int, fade: float) -> void:
+	if FOLLOWED_SLOTS.has(slot) and _parts_animator != null:
+		_parts_animator.stop(slot, fade)
+
+
+## Plays the rig's clip on the parts, with no fade in whatever the rig's: the
+## parts are mechanical (EsmWeaponNode.START_FADE_SECONDS).
+func _follow(slot: int, animation: Animation, path: String, serial: int, _fade: float) -> void:
+	if _parts_animator == null or animation == null:
+		return
+	_parts_animator.play(slot, animation, EsmWeaponNode.START_FADE_SECONDS, false, 1.0, path, serial)
 
 
 ## Moves the model's parts that name a rig bone (the heavy weapons' Backpack,
@@ -154,6 +213,9 @@ func _clear() -> void:
 	if model != null and is_instance_valid(model):
 		model.queue_free()
 	model = null
+	if _parts_animator != null:
+		_parts_animator.stop_all()
+		_parts_animator.node_root = NodePath()
 	for holder in _part_holders:
 		if is_instance_valid(holder):
 			holder.queue_free()
