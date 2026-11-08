@@ -3,12 +3,14 @@
 
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/node_path.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/core/object_id.hpp>
 
 #include <map>
 #include <vector>
@@ -21,7 +23,9 @@ namespace godot {
 // still unclaimed. Writes poses with Skeleton3D::set_bone_pose_*, so the
 // skeleton's modifiers apply on top. Reports root motion
 // (root_motion_mode), every start and stop (clip_started, clip_stopped), and
-// can follow another KfAnimator's clocks (sync_source).
+// can follow another KfAnimator's clocks (sync_source). With no skeleton it
+// plays on the Node3Ds under node_root instead (a weapon's parts), including
+// their visibility tracks.
 //
 // The module's README (native/src/animation/README.md) describes slots,
 // priorities, root motion and sync mode; the class reference is
@@ -48,6 +52,11 @@ public:
 
 	void set_skeleton_path(const NodePath &p_path);
 	NodePath get_skeleton_path() const;
+	// The node whose Node3D descendants (and itself) are the targets when
+	// skeleton_path resolves to no skeleton: a track binds to the node named
+	// as its path.
+	void set_node_root(const NodePath &p_path);
+	NodePath get_node_root() const;
 	void set_update_interval(int p_frames);
 	int get_update_interval() const;
 	void set_paused(bool p_paused);
@@ -123,9 +132,11 @@ protected:
 	void _notification(int p_what);
 
 private:
-	// One track of a clip bound to a skeleton bone.
+	// One track of a clip bound to a skeleton bone, or to a Node3D under
+	// node_root (`node`, with `bone` -1).
 	struct BoundTrack {
 		int bone = -1;
+		ObjectID node;
 		int track = -1;
 		Animation::TrackType type = Animation::TYPE_POSITION_3D;
 		int priority = 0;
@@ -201,6 +212,9 @@ private:
 	};
 
 	Skeleton3D *_skeleton() const;
+	Node3D *_node_root() const;
+	bool _bind_nodes(Clip &r_clip) const;
+	void _write_node_pose();
 	KfAnimator *_source() const;
 	const Clip *_source_clip(int p_slot, uint64_t p_serial) const;
 	bool _follow_source(int p_slot, Clip &r_clip) const;
@@ -221,6 +235,7 @@ private:
 
 	std::vector<Event> _events;
 	NodePath _skeleton_path;
+	NodePath _node_root_path;
 	NodePath _sync_source_path;
 	int _update_interval = 1;
 	bool _paused = false;
