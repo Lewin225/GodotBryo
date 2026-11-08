@@ -7,7 +7,9 @@ extends Node3D
 ## none); its state survives a save round trip. With no holder, the 10mm pistol
 ## fires (spending a round and playing 1hpattackright on its parts), reloads
 ## to its clip size, clears a jam by itself and aims; 1hpaim keys none of its
-## parts but does key the .357 revolver's, which plays it.
+## parts but does key the .357 revolver's, which plays it. WeaponBase reads
+## DNAM, CRDT and NAM0: the 10mm pistol's and minigun's values as the raw
+## bytes give them.
 
 const PISTOL := "Weap10mmPistol"
 const MINIGUN := "WeapMinigun"
@@ -62,11 +64,29 @@ func _ready() -> void:
 		var data := SaveFields.write(weapon)
 		check(int(data.get("loaded_ammo_count", -1)) == 9 and bool(data.get("is_jammed", false)), "loaded ammo and jammed are saved fields")
 
+	_check_base_fields(esm_server)
 	if pistol is EsmWeaponNode:
 		await _check_inputs(pistol)
 
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+## Expected values read from FalloutNV.esm's raw DNAM, CRDT and NAM0 bytes.
+func _check_base_fields(esm_server: Node) -> void:
+	var pistol := esm_server.find_base_by_editor_id(PISTOL) as WeaponBase
+	check(is_equal_approx(pistol.min_spread, 0.8) and is_equal_approx(pistol.spread, 0.5) and pistol.projectile_count == 1,
+			"10mm spread 0.8 / 0.5, one projectile")
+	check(is_equal_approx(pistol.attack_shots_per_second, 2.75) and is_equal_approx(pistol.reload_time, 1.3) and is_equal_approx(pistol.max_range, 768.0),
+			"10mm 2.75 shots/s, reload 1.3 s, max range 768")
+	check(pistol.projectile_form_id == 0x0002CD5F and pistol.ammo_form_id == 0x001537E6 and pistol.ammo != null,
+			"10mm projectile 0002CD5F, ammo 001537E6 resolved (%s)" % (pistol.ammo.get_class() if pistol.ammo != null else "none"))
+	check(pistol.critical_damage == 22 and (pistol.flags1 & WeaponBase.FLAG1_IS_AUTOMATIC) == 0, "10mm critical damage 22, not automatic")
+	var minigun := esm_server.find_base_by_editor_id(MINIGUN) as WeaponBase
+	check(minigun.flags1 == 0x52 and (minigun.flags1 & WeaponBase.FLAG1_IS_AUTOMATIC) != 0 and (minigun.flags1 & WeaponBase.FLAG1_HIDE_BACKPACK) != 0,
+			"minigun Flags 1 0x52: automatic, Hide Backpack")
+	check(minigun.flags2 == 0x908 and is_equal_approx(minigun.fire_rate, 20.0) and is_equal_approx(minigun.critical_chance_multiplier, 0.5),
+			"minigun Flags 2 0x908, fire rate 20, crit % mult 0.5")
 
 
 func _check_inputs(pistol: EsmWeaponNode) -> void:

@@ -41,6 +41,15 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
 - A clip keys only some weapons' parts: `1hpaim` keys the .357 revolver's and That Gun's parts,
   none of the 10mm pistol's.
 
+### WEAP data
+
+- Every WEAP in the six ESMs (502) has a DNAM of at least 136 bytes (136 to 204; xEdit marks
+  offset 36 on optional) and a 16-byte CRDT. 288 have NAM0: 143 an AMMO, 145 a FLST of AMMO.
+- `WeaponBase` reads DNAM (Animation Multiplier, Reach, Flags 1, Ammo Use, spreads, Sight FOV,
+  Projectile, Projectile Count, ranges, Flags 2, Animation Attack Multiplier, Fire Rate, Attack
+  Shots/Sec, Reload Time, Jam Time, Aim Arc, semi-automatic delays), CRDT and NAM0. Rumble, VATS
+  and mod fields are not read.
+
 ### World model and viewmodel
 
 WEAP `MODL` (world model) against the STAT that `WNAM` names (first-person model), over the 378
