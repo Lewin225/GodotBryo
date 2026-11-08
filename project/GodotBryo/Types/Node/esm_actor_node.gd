@@ -1028,6 +1028,13 @@ func _set_hitbox_enabled(bone: PhysicalBone3D, enabled: bool) -> void:
 		bone.process_mode = Node.PROCESS_MODE_DISABLED
 
 
+## Reapplies the possessed actor's first-person render mode (shadows only) to
+## every mesh under the actor node, including ones added after the body was
+## built (ActorWeaponSlots' weapons).
+func refresh_first_person_render_mode() -> void:
+	_apply_possessed_first_person_render_mode()
+
+
 func _apply_possessed_first_person_render_mode() -> void:
 	for child in find_children("*", "MeshInstance3D", true, false):
 		var mesh := child as MeshInstance3D

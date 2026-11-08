@@ -136,6 +136,14 @@ func _check_late_reference() -> void:
 	check(player.weapon_right_hip != null, "the player's reference holds the 10mm")
 	var node := await _node_of(actor.weapon_slots, player.weapon_right_hip)
 	check(node != null, "an actor node given its reference late hangs the player's 10mm")
+	actor.possessed_first_person = true
+	actor.refresh_first_person_render_mode()
+	player.draw_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
+	for frame in 30:
+		await get_tree().process_frame
+	var meshes := node.find_children("*", "MeshInstance3D", true, false) if node != null else []
+	check(not meshes.is_empty() and meshes.all(func(mesh: MeshInstance3D) -> bool: return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY),
+			"in first person the possessed actor's drawn weapon shows only its shadow")
 	player.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
 	actor.queue_free()
 

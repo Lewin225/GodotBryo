@@ -126,6 +126,11 @@ func _hang(weapon: WeaponReference, slot: ActorReference.WeaponSlot) -> void:
 	_own_in_editor(attachment)
 	for part: Node in _bone_parts.get(weapon, []):
 		_own_in_editor(part.get_parent())
+	# The possessed actor shows only its shadow in first person; a weapon hung
+	# after the body was built takes that too.
+	var actor := get_parent() as EsmActorNode
+	if actor != null:
+		actor.refresh_first_person_render_mode()
 
 
 ## A new model came: the parts moved from the old one go with it.

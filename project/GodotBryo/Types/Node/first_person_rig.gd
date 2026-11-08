@@ -35,6 +35,9 @@ extends Node3D
 ## Scene dock and its bones can be selected: clear the preview before saving,
 ## or the built skeleton is saved into the scene.
 ##
+## Viewmodel (FirstPersonViewmodel) shows the actor's drawn weapon on the
+## skeleton's Weapon bone.
+##
 ## follow() copies every skinned mesh under the actor's Body onto this
 ## skeleton once the actor is built and its equipment attached, and again when
 ## the equipment changes. A copy shares the mesh, Skin (binds by bone name, with
@@ -185,6 +188,7 @@ func follow(actor: EsmActorNode) -> void:
 	_actor = actor
 	if actor == null:
 		_clear_meshes()
+		_follow_weapon()
 		_sync()
 		return
 	if not actor.visual_load_completed.is_connected(_refresh):
@@ -194,7 +198,15 @@ func follow(actor: EsmActorNode) -> void:
 	if not actor.animation_load_completed.is_connected(_on_animation_loaded):
 		actor.animation_load_completed.connect(_on_animation_loaded)
 	_refresh()
+	_follow_weapon()
 	_sync()
+
+
+## Has the Viewmodel child copy the actor's drawn weapon onto the skeleton.
+func _follow_weapon() -> void:
+	var viewmodel := get_node_or_null(^"Viewmodel") as FirstPersonViewmodel
+	if viewmodel != null:
+		viewmodel.follow(_actor, skeleton)
 
 
 func _on_animation_loaded(_clip_count: int) -> void:
@@ -237,6 +249,7 @@ func _on_skeleton_delivered(tree: Node3D) -> void:
 	if Engine.is_editor_hint() and get_tree().edited_scene_root != null:
 		_own_for_editor(tree, get_tree().edited_scene_root)
 	_refresh()
+	_follow_weapon()
 	_sync()
 
 
@@ -255,6 +268,9 @@ func _on_equipment_committed(_body: Node3D) -> void:
 ## Copies the actor's meshes when the actor is built, its equipment attached
 ## and the skeleton ready.
 func _refresh() -> void:
+	# The actor's reference may have changed since follow() (configure() after
+	# it, in PlayerController.possess()): the viewmodel reads it again.
+	_follow_weapon()
 	if skeleton == null or _actor == null or not _actor.is_visual_built() or _actor.equipment.is_loading():
 		return
 	var body := _actor.get_node_or_null(NodePath(EsmActorNode.BODY_NODE_NAME)) as Node3D

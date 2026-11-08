@@ -224,9 +224,11 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 
 - The world model (`MODL`) leads: it always exists, it is what drops in the world, and the
   reference, the state resource and the weapon's script sit on it. It hangs on the holding actor.
-- The viewmodel (`WNAM` STAT) is loaded only when the possessor needs it: the player in first
-  person, where the first-person rig sits. The node owns it. A missing model falls back to the
-  other.
+- The viewmodel (`WNAM` STAT's model, else `MODL`) sits on the possessor: the first-person rig's
+  `FirstPersonViewmodel` watches the followed actor's drawn weapon and copies it onto the rig's
+  `Weapon` bone, its physics removed and its `Backpack` on the rig's `Bip01 Spine2`. Only the
+  player's rig builds one. The possessed actor's own world-model weapon shows only its shadow in
+  first person, as its body does.
 - NPC-only weapons need no viewmodel in v0.
 - Hand-to-hand weapons with no `WNAM` equip as cosmetic models.
 
@@ -292,15 +294,15 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
    speed, flags), census and field docs per AGENTS.md.
 4. Viewmodel: resolve `WNAM`, load it for the player in first person, fall back to `MODL`, hang it
    on the rig.
-5. Clip names from family and ids; rules for reload ids 17 to 19 (no clip) and the anim types that
-   share a family (3/4, 5/7).
-6. KfAnimator: sync source per slot, `Node3D` targets. The weapon's animator as clock; weapon
-   actions (equip, fire, reload, jam) on actor, rig and models; the clock switching version with
+5. KfAnimator: sync source per slot (`Node3D` targets came with step 1). The weapon's animator as
+   clock; weapon actions (equip, fire, reload, jam) on actor, rig and models; the clock switching version with
    the viewmodel.
-7. Sounds: the node's sound player nodes, triggered by `Sound:` text keys.
-8. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
+   Clip names (from step 1: attack, reload, jam, aim, holster paths) and the rules left: reload
+   ids 17 to 19 (no clip), the anim types that share a family (3/4, 5/7).
+6. Sounds: the node's sound player nodes, triggered by `Sound:` text keys.
+7. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
    `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.
-9. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the
+8. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the
    procedural weapon path.
 
 ## Later
