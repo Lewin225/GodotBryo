@@ -1,5 +1,7 @@
 # GodotBryo
 
+This is not a decomp
+
 An attempt at a from-scratch *modernised* [1][2][3] replacement for Gamebryo, using godot's native tooling. Targeting New Vegas for now, then fo3, then skyrim. It also works as a asset browser and exporter via an included godot editor plugin. Built with claude, codex, qwen3:8b and ornith:9B as interns implementing design docs, but not "port gamebryo no mistakes". structure, contracts, design decisions and research you can blame me for.
 
 What's working - in short.
@@ -33,7 +35,7 @@ There are some open 1:1 projects here, if you're looking for that
  * https://github.com/LootJunkieAzza/NVForever
  * https://openmw.org/ (Morrowind, but they're working on new vegas in a branch)
 
-Rather than the (currently very popular) decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources, it's not just using the godot renderer, gamebryo is g o n e. This means you can yoink the project's components into your own godot project for whatever devious plan you might have
+Rather than the decomp route, this aims to load everything from the game's *data* in at runtime, into real godot objects, scene prefabs and resources. This means you can yoink the project's components into your own godot project for whatever devious plan you might have
 
 ```
 [1]*OpenMW's source was read to help answer a few questions that the geck
