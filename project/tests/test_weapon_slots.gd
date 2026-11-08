@@ -11,7 +11,8 @@ extends Node3D
 ## hangs from Bip01 Spine2, its holstered gun stays on the right hand hidden
 ## (2hhholster), and shows when drawn. The actor node's control inputs:
 ## equip_slot() draws a slot, fire() with nothing drawn draws the last drawn
-## and with a weapon drawn fires it, holster() holsters. An actor node given
+## and with a weapon drawn fires it, holster() holsters (as ActorInput packets
+## handed to apply_input()). An actor node given
 ## its reference after it is ready (PlayerController.possess(): configure()
 ## then load_actor()) hangs that reference's weapons.
 
@@ -152,10 +153,15 @@ func _check_late_reference() -> void:
 func _check_control_inputs(doc: ActorReference, actor: EsmActorNode, slots: ActorWeaponSlots) -> void:
 	ScriptServer.run_debug_line("DocMitchellREF.EquipItem %s" % PISTOL)
 	doc.holster_weapon()
-	check(actor.equip_slot(0) and doc.drawn_weapon_slot == ActorReference.WeaponSlot.RIGHT_HIP, "equip_slot(0) draws the right hip")
-	check(actor.holster() and doc.drawn_weapon_slot == ActorReference.WeaponSlot.NONE, "holster() holsters it")
-	check(not actor.equip_slot(7), "equip_slot() of a slot that does not exist does nothing")
-	check(actor.fire() and doc.drawn_weapon_slot == ActorReference.WeaponSlot.RIGHT_HIP, "fire() with nothing drawn draws the last drawn")
+	actor.apply_input(_packet({"equip_slot": 0}))
+	check(doc.drawn_weapon_slot == ActorReference.WeaponSlot.RIGHT_HIP, "an input with equip_slot 0 draws the right hip")
+	actor.apply_input(_packet({"holster": true}))
+	check(doc.drawn_weapon_slot == ActorReference.WeaponSlot.NONE, "holster turning on holsters it")
+	actor.apply_input(_packet({"equip_slot": 7}))
+	check(doc.drawn_weapon_slot == ActorReference.WeaponSlot.NONE, "an equip_slot that does not exist does nothing")
+	actor.apply_input(_packet({"fire": true}))
+	check(doc.drawn_weapon_slot == ActorReference.WeaponSlot.RIGHT_HIP, "fire turning on with nothing drawn draws the last drawn")
+	actor.apply_input(_packet({}))
 	var pistol := doc.weapon_right_hip
 	var node := await _node_of(slots, pistol)
 	for frame in FRAMES:
@@ -164,9 +170,20 @@ func _check_control_inputs(doc: ActorReference, actor: EsmActorNode, slots: Acto
 		await get_tree().process_frame
 	await _wait_until(func() -> bool: return node.get_action() == EsmWeaponNode.Action.NONE)
 	pistol.loaded_ammo_count = 3
-	check(actor.fire() and pistol.loaded_ammo_count == 2, "fire() with the pistol drawn, once its equip clip ends, fires it")
-	actor.holster()
+	actor.apply_input(_packet({"fire": true}))
+	check(pistol.loaded_ammo_count == 2, "fire turning on with the pistol drawn, once its equip clip ends, fires it")
+	actor.apply_input(_packet({}))
+	actor.apply_input(_packet({"holster": true}))
+	actor.apply_input(_packet({}))
 	doc.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
+
+
+## An ActorInput with `fields` set.
+static func _packet(fields: Dictionary) -> ActorInput:
+	var input := ActorInput.new()
+	for field: String in fields:
+		input.set(field, fields[field])
+	return input
 
 
 func _check_heavy(doc: ActorReference, slots: ActorWeaponSlots) -> void:

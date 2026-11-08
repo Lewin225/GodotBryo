@@ -41,6 +41,7 @@ func _ready() -> void:
 	check(shoot_player != null and (shoot_player.stream is AudioStreamRandomizer) == (shoot_streams.size() > 1),
 			"with an AudioStreamRandomizer exactly when the SOUN names several files")
 	reference.loaded_ammo_count = 0
+	await get_tree().create_timer(node.shot_interval() + 0.05).timeout
 	node.fire()
 	check(node._sound_players.has(base.no_ammo_sound), "firing empty plays the no-ammo sound")
 

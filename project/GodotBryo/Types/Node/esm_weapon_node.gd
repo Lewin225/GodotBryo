@@ -12,6 +12,8 @@ extends EsmItemNode
 ## Plan: Plans/Weapons/weapons.md.
 
 signal fired
+## A pull with nothing loaded: the no-ammo sound played.
+signal dry_fired
 signal reloaded
 signal jam_cleared
 ## A clip's `prn: <bone>` text key: the weapon moves to that bone (Bip01 R Hand,
@@ -46,14 +48,21 @@ const SOUND_KEY_PREFIX := "sound:"
 const SOUND_POLYPHONY := 4
 ## Game units per metre, for a SOUN's attenuation distances.
 const UNITS_PER_METRE := 70.0
+## A spin clip's text keys: its first shot, and the end of its firing loop.
+const SPIN_FIRE_KEY := "fire"
+const SPIN_LOOP_KEY := "loop"
 ## The text key naming the bone a clip moves the weapon to: `prn: Bip01 R Hand`.
 const PARENT_KEY_PREFIX := "prn:"
-## Seconds a clip fades in and out over.
+## Seconds a clip fades out over when stopped.
 const FADE_SECONDS := 0.1
+## Seconds a clip fades in over: none. The parts are mechanical: a slide
+## crossfaded from the last shot's held end pose would barely move (its travel
+## falls inside the fade), so each clip starts at full weight.
+const START_FADE_SECONDS := 0.0
 
-## The action a weapon is playing: reload and jam clips play one at a time and
-## block the other inputs. Attacks do not block (fire rate comes with WEAP's
-## DNAM fields; attackloop clips loop and never finish).
+## The action a weapon is playing: reload, jam, equip and unequip clips play
+## one at a time and block the other inputs. Attacks are not actions: the
+## trigger's shot interval paces them, and a looping attack clip never ends.
 enum Action { NONE, RELOAD, JAM, EQUIP, UNEQUIP }
 
 @export_tool_button("Fire") var _fire_button := fire
@@ -97,9 +106,16 @@ var _key_sounds := {}
 ## Clip paths delivered by NifServer -> their Animation; a null value is a
 ## clip that failed to load.
 var _clips := {}
-## The action playing, and its clip's path ("" when it has none).
+## The action playing, its clip's path ("" when it has none) and its clip once
+## it plays: only that clip reaching its end finishes the action.
 var _action := Action.NONE
 var _action_path := ""
+var _action_clip: Animation = null
+## Whether the holder holds the trigger, and whether this pull has fired.
+var _trigger_held := false
+var _fired_this_pull := false
+## Ticks (msec) before which the next shot cannot fire.
+var _next_shot_msec := 0
 
 
 ## The reference as a WeaponReference; null when the node holds another type.
@@ -114,21 +130,161 @@ func get_weapon_base() -> WeaponBase:
 	return reference.base as WeaponBase
 
 
-## Fires one round: spends a loaded round and plays the attack clip. Does
-## nothing while a reload or jam plays, while jammed, or with nothing loaded.
-## True when it fired.
+## The trigger, held (true) or released, set by the holder each frame from its
+## input. Held, an automatic weapon (Flags 1 Is Automatic) fires every 1 /
+## Attack Shots/Sec seconds; any other fires once per pull, no sooner than that
+## after its last shot. A looping attack clip (attackloop) plays while it is
+## held and stops when it is released. A spin clip (one with `Fire` and `Loop`
+## text keys: the 42 attackspin clips) plays once per pull: no shot before its
+## `Fire` key, its `Fire` to `Loop` section repeated while held, and on release
+## it plays on to its end. `# ASSUMPTION` that reading of the spin clips' keys:
+## the data gives only their names and times (Fire before Loop in all 42).
+func set_trigger(held: bool) -> void:
+	if held == _trigger_held:
+		return
+	_trigger_held = held
+	if held:
+		_fired_this_pull = false
+		_pull_trigger()
+		return
+	_stop_attack_loop()
+
+
+## Fires one shot now if the weapon can (the inspector's Fire button): spends a
+## loaded round and plays the attack clip. Does nothing while a reload, jam or
+## equip plays, while jammed, before the shot interval has passed or with
+## nothing loaded (which plays the no-ammo sound). True when it fired.
 func fire() -> bool:
 	var weapon := get_weapon_reference()
-	if weapon == null or _action != Action.NONE or weapon.is_jammed:
+	var base := get_weapon_base()
+	if weapon == null or base == null or _action != Action.NONE or weapon.is_jammed:
+		return false
+	if Time.get_ticks_msec() < _next_shot_msec:
 		return false
 	if weapon.loaded_ammo_count <= 0:
-		play_sound(get_weapon_base().no_ammo_sound)
+		play_sound(base.no_ammo_sound)
+		dry_fired.emit()
 		return false
 	weapon.loaded_ammo_count -= 1
-	play_sound(get_weapon_base().shoot_sound)
-	_play(SLOT_ACTION, get_weapon_base().attack_clip_path())
+	_next_shot_msec = Time.get_ticks_msec() + int(shot_interval() * 1000.0)
+	play_sound(base.shoot_sound)
+	var path := base.attack_clip_path()
+	if not _attack_clip_playing(path):
+		_play(SLOT_ACTION, path)
 	fired.emit()
 	return true
+
+
+## Whether the attack clip at `path` is the action slot's clip and keeps
+## playing across shots: a looping clip, or a spin clip.
+func _attack_clip_playing(path: String) -> bool:
+	var clip: Animation = _clips.get(path)
+	if clip == null or _animator == null or String(_animator.get_start(SLOT_ACTION).get("path", "")) != path:
+		return false
+	return clip.loop_mode != Animation.LOOP_NONE or _spin_section(clip) != Vector2()
+
+
+## A spin clip's `Fire` and `Loop` key times (seconds from its start); empty for
+## a clip without both.
+static func _spin_section(clip: Animation) -> Vector2:
+	if clip == null:
+		return Vector2()
+	var start := float(clip.get_meta("nif_start_time", 0.0))
+	var fire_time := -1.0
+	var loop_time := -1.0
+	for key: Dictionary in clip.get_meta("nif_text_keys", []):
+		var value := String(key.get("value", "")).strip_edges().to_lower()
+		if value == SPIN_FIRE_KEY:
+			fire_time = float(key.get("time", 0.0)) - start
+		elif value == SPIN_LOOP_KEY:
+			loop_time = float(key.get("time", 0.0)) - start
+	if fire_time < 0.0 or loop_time <= fire_time:
+		return Vector2()
+	return Vector2(fire_time, loop_time)
+
+
+## Whether a spin clip playing in the action slot has reached its `Fire` key;
+## true when no spin clip plays.
+func _spun_up() -> bool:
+	var base := get_weapon_base()
+	if base == null or _animator == null:
+		return true
+	var path := base.attack_clip_path()
+	var spin := _spin_section(_clips.get(path))
+	if spin == Vector2() or String(_animator.get_start(SLOT_ACTION).get("path", "")) != path:
+		return true
+	return _animator.get_time(SLOT_ACTION) >= spin.x
+
+
+## Seconds between shots: 1 / Attack Shots/Sec, 0 when it is not set.
+func shot_interval() -> float:
+	var base := get_weapon_base()
+	if base == null or base.attack_shots_per_second <= 0.0:
+		return 0.0
+	return 1.0 / base.attack_shots_per_second
+
+
+func is_automatic() -> bool:
+	var base := get_weapon_base()
+	return base != null and (base.flags1 & WeaponBase.FLAG1_IS_AUTOMATIC) != 0
+
+
+func _process(_delta: float) -> void:
+	if _trigger_held:
+		_pull_trigger()
+
+
+## A spin clip's first shot waits for its `Fire` key: the pull starts the clip
+## with its firing loop set, and the shots come once it has spun up. False when
+## the attack clip is no spin clip, or one is already playing.
+func _start_spin() -> bool:
+	var base := get_weapon_base()
+	var weapon := get_weapon_reference()
+	if base == null or weapon == null or _animator == null or _action != Action.NONE or weapon.is_jammed:
+		return false
+	var path := base.attack_clip_path()
+	var spin := _spin_section(_clips.get(path))
+	if spin == Vector2() or _attack_clip_playing(path):
+		return false
+	_play(SLOT_ACTION, path)
+	_animator.set_loop_section(SLOT_ACTION, spin.x, spin.y, -1)
+	return true
+
+
+## Fires while the trigger is held: every shot interval when automatic, once
+## per pull otherwise.
+func _pull_trigger() -> void:
+	# Empty, a pull clicks once (fire() plays the no-ammo sound), automatic or
+	# not; holding on does not click again.
+	var weapon := get_weapon_reference()
+	if weapon != null and weapon.loaded_ammo_count <= 0:
+		if not _fired_this_pull:
+			fire()
+			_fired_this_pull = true
+		return
+	if _fired_this_pull and not is_automatic():
+		return
+	if _start_spin() or not _spun_up():
+		return
+	if fire():
+		_fired_this_pull = true
+
+
+## On release: stops a looping attack clip; lets a spin clip play on from its
+## loop section to its end (the spin-down).
+func _stop_attack_loop() -> void:
+	var base := get_weapon_base()
+	if base == null or _animator == null:
+		return
+	var path := base.attack_clip_path()
+	var clip: Animation = _clips.get(path)
+	if clip == null or String(_animator.get_start(SLOT_ACTION).get("path", "")) != path:
+		return
+	if _spin_section(clip) != Vector2():
+		_animator.set_loop_section(SLOT_ACTION, 0.0, -1.0, 0)
+		return
+	if clip.loop_mode != Animation.LOOP_NONE:
+		_animator.stop(SLOT_ACTION, FADE_SECONDS)
 
 
 ## Reloads: plays the reload clip and fills the clip when it ends. Does nothing
@@ -232,6 +388,7 @@ func get_action() -> Action:
 func _play_action(action: Action, path: String) -> void:
 	_action = action
 	_action_path = path
+	_action_clip = null
 	if path.is_empty():
 		_finish_action()
 		return
@@ -249,9 +406,11 @@ func _play(slot: int, path: String) -> void:
 	var clip: Animation = _clips[path]
 	var serial := 0
 	if clip != null and _animator != null:
-		serial = _animator.play(slot, clip, FADE_SECONDS, false, 1.0, path, 0)
-	if serial == 0 and slot == SLOT_ACTION and _action_path == path:
-		_finish_action()
+		serial = _animator.play(slot, clip, START_FADE_SECONDS, false, 1.0, path, 0)
+	if slot == SLOT_ACTION and _action_path == path:
+		_action_clip = clip if serial != 0 else null
+		if serial == 0:
+			_finish_action()
 
 
 func _on_clip_delivered(library: AnimationLibrary, slot: int, path: String) -> void:
@@ -266,10 +425,14 @@ func _on_clip_delivered(library: AnimationLibrary, slot: int, path: String) -> v
 		_play(slot, path)
 
 
-func _on_clip_finished(slot: int, _animation: Animation) -> void:
-	if slot == SLOT_ACTION and _action != Action.NONE:
-		_animator.stop(SLOT_ACTION, FADE_SECONDS)
-		_finish_action()
+## An action ends when its own clip reaches its end (the closing `end` key: the
+## reload and jam clips mark no earlier finish), not when another clip in the
+## slot does, nor when it is replaced.
+func _on_clip_finished(slot: int, animation: Animation) -> void:
+	if slot != SLOT_ACTION or _action == Action.NONE or animation == null or animation != _action_clip:
+		return
+	_animator.stop(SLOT_ACTION, FADE_SECONDS)
+	_finish_action()
 
 
 ## Ends the action: a reload fills the clip, a jam clears.
@@ -277,6 +440,7 @@ func _finish_action() -> void:
 	var finished := _action
 	_action = Action.NONE
 	_action_path = ""
+	_action_clip = null
 	var weapon := get_weapon_reference()
 	var base := get_weapon_base()
 	if weapon == null or base == null:

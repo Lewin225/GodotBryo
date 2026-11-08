@@ -5,9 +5,11 @@ extends Node3D
 ## weapon stays on the pelvis until the clip's prn: key, then hangs from the
 ## Weapon bone. Drawn, the actor's stance slot plays 1hpaim. Firing plays
 ## 1hpattackright on the weapon; the actor follows it on the weapon's clock, and
-## a first-person rig following the actor plays _1stperson/1hpattackright.
+## a first-person rig following the actor plays _1stperson/1hpattackright, and
+## its viewmodel's parts follow the rig's clip on the rig's clock.
 ## Holstering plays 1hpunequip, returns the weapon to the pelvis and ends the
-## stance.
+## stance. An actor whose weapon is already drawn when its animations load (a
+## loaded save) takes the stance once they have.
 
 const PISTOL := "Weap10mmPistol"
 const FRAMES := 900
@@ -62,7 +64,9 @@ func _ready() -> void:
 	check(family_clip == "locomotion/1hpforward.kf" and actor.animator._clips.has(actor.animator._clip_name(actor.animator._root_path + family_clip, 0)),
 			"walking with the 10mm drawn picks the loaded locomotion/1hpforward.kf (%s)" % family_clip)
 	pistol.loaded_ammo_count = 5
-	check(actor.fire(), "the actor fires")
+	actor.apply_input(_fire_input(true))
+	check(pistol.loaded_ammo_count == 4, "the actor fires (fire turning on)")
+	actor.apply_input(_fire_input(false))
 	await _wait_until(func() -> bool: return String(body_animator.get_start(ActorAnimator.WEAPON_ACTION_SLOT).get("path", "")).ends_with("1hpattackright.kf"))
 	await _wait_frames(5)
 	check(String(body_animator.get_start(ActorAnimator.WEAPON_ACTION_SLOT).get("path", "")).ends_with("1hpattackright.kf"), "the actor follows the attack clip")
@@ -72,6 +76,14 @@ func _ready() -> void:
 	var rig_start := rig_animator.get_start(ActorAnimator.WEAPON_ACTION_SLOT)
 	check(String(rig_start.get("path", "")).contains("_1stperson") and String(rig_start.get("path", "")).ends_with("1hpattackright.kf"),
 			"the first-person rig follows with _1stperson/1hpattackright (%s)" % rig_start.get("path", ""))
+	var viewmodel := rig.get_node("Viewmodel") as FirstPersonViewmodel
+	await _wait_until(func() -> bool: return viewmodel._parts_animator != null and bool(viewmodel._parts_animator.get_start(ActorAnimator.WEAPON_ACTION_SLOT).get("played", false)))
+	var parts_animator := viewmodel._parts_animator
+	var parts_start := parts_animator.get_start(ActorAnimator.WEAPON_ACTION_SLOT) if parts_animator != null else {}
+	check(String(parts_start.get("path", "")) == String(rig_start.get("path", "")), "the viewmodel's parts play the rig's clip (%s)" % parts_start.get("path", ""))
+	await _wait_frames(2)
+	check(parts_animator != null and is_equal_approx(parts_animator.get_time(ActorAnimator.WEAPON_ACTION_SLOT), rig_animator.get_time(ActorAnimator.WEAPON_ACTION_SLOT)),
+			"on the rig's clock (%.3f, %.3f)" % [parts_animator.get_time(ActorAnimator.WEAPON_ACTION_SLOT) if parts_animator != null else -1.0, rig_animator.get_time(ActorAnimator.WEAPON_ACTION_SLOT)])
 
 	doc.holster_weapon()
 	await _wait_until(func() -> bool: return node.get_action() == EsmWeaponNode.Action.NONE and _bone_of(node) == "Bip01 Pelvis")
@@ -79,8 +91,29 @@ func _ready() -> void:
 	await _wait_frames(30)
 	check(body_animator.get_start(ActorAnimator.WEAPON_STANCE_SLOT).is_empty(), "and ends the stance")
 	doc.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
+	await _check_drawn_before_load()
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+func _check_drawn_before_load() -> void:
+	var sunny := EsmServer.find_reference_by_editor_id("SunnyRef") as ActorReference
+	ScriptServer.run_debug_line("SunnyRef.EquipItem %s" % PISTOL)
+	check(sunny.draw_weapon(ActorReference.WeaponSlot.RIGHT_HIP), "Sunny's 10mm is drawn on her reference before she is built")
+	var controller := EsmReferencePhysicaliser.new().physicalise(sunny, self) as NpcController
+	await _wait_until(func() -> bool: return controller.actor != null and controller.actor.animator.is_loaded())
+	var animator := controller.actor.animator.get_kf_animator()
+	await _wait_until(func() -> bool: return bool(animator.get_start(ActorAnimator.WEAPON_STANCE_SLOT).get("played", false)))
+	var stance := animator.get_start(ActorAnimator.WEAPON_STANCE_SLOT)
+	check(String(stance.get("path", "")).ends_with("1hpaim.kf") and bool(stance.get("played", false)),
+			"once her animations load she takes the 1hpaim stance (%s)" % stance.get("path", ""))
+	sunny.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
+
+
+static func _fire_input(held: bool) -> ActorInput:
+	var input := ActorInput.new()
+	input.fire = held
+	return input
 
 
 func _bone_of(node: Node) -> String:

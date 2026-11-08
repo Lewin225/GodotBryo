@@ -195,54 +195,60 @@ func _ready() -> void:
 	_queue_rehydrate_and_build()
 
 
-## Control inputs: what a controller (PlayerController, NpcController) asks the
-## actor to do. They act on the actor reference's weapon slots and the drawn
-## weapon's node. Each returns whether it did anything.
+## Control inputs: a controller (PlayerController, NpcController) hands the
+## actor an ActorInput every frame (apply_input()). They act on the actor
+## reference's weapon slots and the drawn weapon's node.
 
 ## The weapon slots by number: 0 the right hip, 1 the left hip, 2 the back.
 const WEAPON_SLOTS_BY_INDEX: Array[ActorReference.WeaponSlot] = [
 	ActorReference.WeaponSlot.RIGHT_HIP, ActorReference.WeaponSlot.LEFT_HIP, ActorReference.WeaponSlot.BACK,
 ]
 
+## The last frame's input, for the inputs that act when they turn on.
+var _last_input := ActorInput.new()
+## The weapon whose trigger the input last held, released when another is
+## drawn.
+var _trigger_weapon: EsmWeaponNode = null
 
-## Draws the weapon in slot `index` (WEAPON_SLOTS_BY_INDEX), holstering the
-## drawn one. False for an empty or unknown slot.
-func equip_slot(index := 0) -> bool:
+
+## This frame's input: draws equip_slot's weapon; on reload, draw or holster
+## turning on, reloads (or draws), draws or holsters; holds the drawn weapon's
+## trigger while fire is held (drawing the last drawn when fire turns on with
+## nothing drawn).
+func apply_input(input: ActorInput) -> void:
 	var actor_reference := reference as ActorReference
-	if actor_reference == null or index < 0 or index >= WEAPON_SLOTS_BY_INDEX.size():
-		return false
-	return actor_reference.draw_weapon(WEAPON_SLOTS_BY_INDEX[index])
-
-
-## Draws the weapon drawn last.
-func draw() -> bool:
-	var actor_reference := reference as ActorReference
-	return actor_reference != null and actor_reference.draw_weapon()
-
-
-## Holsters the drawn weapon.
-func holster() -> bool:
-	var actor_reference := reference as ActorReference
-	if actor_reference == null or actor_reference.drawn_weapon_slot == ActorReference.WeaponSlot.NONE:
-		return false
-	actor_reference.holster_weapon()
-	return true
-
-
-## Fires the drawn weapon; with nothing drawn, draws the weapon drawn last.
-func fire() -> bool:
+	if input == null or actor_reference == null:
+		return
+	if input.equip_slot >= 0 and input.equip_slot < WEAPON_SLOTS_BY_INDEX.size():
+		actor_reference.draw_weapon(WEAPON_SLOTS_BY_INDEX[input.equip_slot])
+	if input.holster and not _last_input.holster:
+		actor_reference.holster_weapon()
+	if input.draw and not _last_input.draw:
+		actor_reference.draw_weapon()
 	var weapon := _drawn_weapon_node()
-	if weapon == null:
-		return draw()
-	return weapon.fire()
+	if input.reload and not _last_input.reload:
+		if weapon != null:
+			weapon.reload()
+		else:
+			actor_reference.draw_weapon()
+	if input.fire and not _last_input.fire and weapon == null:
+		actor_reference.draw_weapon()
+	if _trigger_weapon != weapon and _trigger_weapon != null and is_instance_valid(_trigger_weapon):
+		_trigger_weapon.set_trigger(false)
+	_trigger_weapon = weapon
+	if weapon != null:
+		weapon.set_trigger(input.fire)
+	_last_input = _copy_input(input)
 
 
-## Reloads the drawn weapon; with nothing drawn, draws the weapon drawn last.
-func reload() -> bool:
-	var weapon := _drawn_weapon_node()
-	if weapon == null:
-		return draw()
-	return weapon.reload()
+static func _copy_input(input: ActorInput) -> ActorInput:
+	var copy := ActorInput.new()
+	copy.fire = input.fire
+	copy.reload = input.reload
+	copy.draw = input.draw
+	copy.holster = input.holster
+	copy.equip_slot = input.equip_slot
+	return copy
 
 
 ## The drawn weapon's node, or null when nothing is drawn or it is not built.

@@ -76,6 +76,12 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
 - SOUN FNAM is relative to `sound\`: a file, or a folder whose files are the choices (621 SOUN
   used by weapons and keys: a .wav on 347, a folder on 274). Their files are PCM 16-bit, 4 .ogg.
 
+### Attack clip keys
+
+- Across the 590 attack clips in `_male` and `_1stperson`: `hit` on 488, `eject` on 80, `fire` and
+  `loop` on 42 (the attackspin clips: `Fire` before `Loop` in all), `hold` and `release` on 21.
+  Reload (188) and jam (175) clips mark their end only with their closing `end` key.
+
 ### World model and viewmodel
 
 WEAP `MODL` (world model) against the STAT that `WNAM` names (first-person model), over the 378
@@ -230,10 +236,17 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
   off).
 - Drawing: a draw or fire input with nothing drawn draws the last drawn weapon; a slot's hotkey
   draws that slot's weapon (holstering the drawn one).
-- Controllers drive the actor through control inputs on `EsmActorNode`: `equip_slot(index)`,
-  `draw()`, `holster()`, `fire()`, `reload()`; PlayerController now, NpcController later. They will
-  become one input packet type. The player's map: `fire` (left mouse), `reload` (R; held 0.5 s
-  holsters), `hotkey_1` to `hotkey_9` and `hotkey_0`.
+- Controllers hand the actor an input packet every frame: `ActorInput` (fire, reload, draw,
+  holster held; equip_slot) to `EsmActorNode.apply_input()`. Reload, draw and holster act when
+  they turn on; fire is the drawn weapon's trigger. PlayerController now, NpcController later.
+  The player's map: `fire` (left mouse), `reload` (R; held 0.5 s holsters), `hotkey_1` to
+  `hotkey_9` and `hotkey_0`.
+- The trigger: automatic weapons (Flags 1 Is Automatic) fire every 1 / Attack Shots/Sec while
+  held; others once per pull, no sooner than that after the last shot. A looping attack clip
+  (attackloop) plays while held; a spin clip (`Fire` and `Loop` keys: the 42 attackspin clips)
+  fires from its `Fire` key, loops `Fire` to `Loop` while held and plays on to its end on release
+  (`# ASSUMPTION`, from the keys' names and order). Reload, jam and equip end only when their own
+  clip ends (every reload and jam clip's only end marker is its closing `end` key).
 - In classic mode the slots bind to hotkeys 1 to 3; the slots can be disabled (one weapon, as
   vanilla). The slots are actor state on the `ActorReference`, saved whatever the mode, since the
   mode can change at any point. Each slot field holds its `WeaponReference`, saved as the
