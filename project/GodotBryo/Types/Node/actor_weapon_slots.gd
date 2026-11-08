@@ -15,6 +15,12 @@ extends Node
 ## mirrored across the body. A part naming a bone (EsmWeaponNode
 ## get_bone_parts(): the heavy weapons' Backpack) hangs from that bone
 ## whether the weapon is drawn or holstered.
+##
+## A weapon is an unskinned model whose NIF root names its bone in `Prn`
+## (`Weapon`), like the equipment ActorEquipment hangs from its `Prn` bone (the
+## Pip-Boy, hats). Weapons mount themselves here instead: their bone changes at
+## the clips' `prn:` keys, and doing it here gives the slots the original does
+## not have (the left hip). Other equipment takes ActorEquipment's path.
 
 ## The bone a drawn weapon hangs from, under the right hand.
 const DRAWN_BONE := "Weapon"

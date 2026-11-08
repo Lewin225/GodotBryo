@@ -12,6 +12,8 @@ extends Node
 signal committed(body: Node3D)
 
 const EQUIPMENT_NODE_NAME := "Equipment"
+## The NIF string extra data naming the bone a model hangs from.
+const PARENT_BONE_KEY := "Prn"
 
 ## The equipped armour and weapon, projected from the inventory. Setting it
 ## refreshes the models once the body is built.
@@ -320,13 +322,20 @@ func _complete(generation: int) -> void:
 		_tag_meshes(tree, descriptor)
 	_commit(equipment, _desired_signature)
 
-## Attaches an unskinned model to the bone it belongs on: a weapon to the
-## right hand (or the nearest bone the skeleton has), hair, head and eyewear
-## to the head. False for anything else.
+## Attaches an unskinned model to the bone it belongs on: the bone its NIF's
+## file root names in a `Prn` string (the Pip-Boy's Bip01 L ForeTwist, a hat's
+## Bip01 Head), found to be the correct behaviour. Without one, or with a bone
+## the skeleton lacks: a weapon to the right hand (or the nearest bone the
+## skeleton has), hair, head and eyewear to the head. False for anything else.
+## Equipped weapons do not come here: ActorWeaponSlots mounts them itself, for
+## their slots and their `prn:` moves.
 func _attach_unskinned(tree: Node3D, equipment: Node3D, descriptor: Dictionary, index: int) -> bool:
 	var path := String(descriptor.path).to_lower().replace("/", "\\")
 	var candidates: Array[String] = []
-	if String(descriptor.kind) == "weapon":
+	var named_bone := _root_parent_bone(tree)
+	if not named_bone.is_empty() and _skeleton.find_bone(named_bone) != -1:
+		candidates = [named_bone]
+	elif String(descriptor.kind) == "weapon":
 		candidates = ["Weapon", "Bip01 R Hand", "Bip01 R Forearm", "Bip01 Spine"]
 	elif path.contains("\\hair\\") or path.contains("\\head\\") or path.contains("shades") or path.contains("glasses") or path.contains("hat"):
 		candidates = ["HeadAnims", "Bip01 Head"]
@@ -350,6 +359,20 @@ func _attach_unskinned(tree: Node3D, equipment: Node3D, descriptor: Dictionary, 
 	_move_tree(tree, attachment, "Attached_%d" % index)
 	tree.transform = Transform3D.IDENTITY
 	return true
+
+## The bone the NIF's file root names in its `Prn` string extra data, "" when
+## it has none.
+static func _root_parent_bone(tree: Node3D) -> String:
+	var nodes: Array[Node] = [tree]
+	nodes.append_array(tree.find_children("*", "Node3D", true, false))
+	for node in nodes:
+		if bool(node.get_meta("nif_file_root", false)) or node == tree:
+			var strings: Dictionary = node.get_meta("nif_string_extra_data", {})
+			var bone := String(strings.get(PARENT_BONE_KEY, "")).strip_edges()
+			if not bone.is_empty():
+				return bone
+	return ""
+
 
 func _tag_meshes(root: Node3D, descriptor: Dictionary) -> void:
 	for child in root.find_children("*", "MeshInstance3D", true, false):
