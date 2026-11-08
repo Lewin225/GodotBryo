@@ -14,7 +14,7 @@ What's working - in short.
 - **Transitions** : Instant swap between exterior and interior spaces, interior to interior near instant, world to world is fast, but could be better
 - **Stutter** : Very minimal(but only tested on an nvme) Profiled every major update with tracy(cpu) and nvidia insight(gpu). I hunt this frequently because I hate it
 - **Animation** : Animation data is upscaled to play nice at high framerates, included model, bone, kf and lipsync animations
-- **Saving** : Two built in save backends (Git or Plain Json), with an interface to add your own. godotbyro key's extra save data, so fos support wasn't a concern, you can add it though
+- **Saving** : Two built in save backends (Git or Plain Json), with an interface to add your own. godotbyro keys extra save data, so fos support wasn't a concern, you can add it though
 
 Major missing pieces right now
 - **Inventory** - All actors and containers get one, but there's no container ui right now
