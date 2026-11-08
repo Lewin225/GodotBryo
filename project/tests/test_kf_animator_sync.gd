@@ -15,6 +15,8 @@ extends Node3D
 ## follower has), played on the source, plays its own clip on the follower;
 ## SAME_CLIP plays the source's clip as it is.
 ## disabled_bones: a disabled bone keeps its pose while a clip keys it.
+## slot_sync_sources: a slot follows its own source while another slot follows
+## sync_source.
 
 const TIMEOUT_MSEC := 30000
 const SLOT := 1
@@ -47,6 +49,7 @@ func check(condition: bool, message: String) -> void:
 func _ready() -> void:
 	await _check_built_clips()
 	await _check_clip_sync()
+	await _check_slot_sync_sources()
 	if failures == 0:
 		print("ALL CHECKS PASSED")
 	else:
@@ -177,6 +180,29 @@ func _check_built_clips() -> void:
 	check(not skeleton.get_bone_pose_rotation(spine).is_equal_approx(Quaternion.IDENTITY), "re-enabled, it is written")
 	source.queue_free()
 	follower.queue_free()
+
+
+func _check_slot_sync_sources() -> void:
+	var default_source := _animator(_skeleton())
+	var weapon := _animator(_skeleton())
+	var follower := _animator(_skeleton())
+	const WEAPON_SLOT := 65
+	follower.sync_source = follower.get_path_to(default_source)
+	follower.slot_sync_sources = {WEAPON_SLOT: follower.get_path_to(weapon)}
+	follower.process_priority = maxi(default_source.process_priority, weapon.process_priority) + 1
+	var clip := _clip(3.0)
+	var default_serial := default_source.play(SLOT, clip, 0.0, false, 1.0, "default.kf")
+	await _frames(20)
+	var weapon_serial := weapon.play(WEAPON_SLOT, clip, 0.0, false, 1.0, "weapon.kf")
+	follower.play(SLOT, clip, 0.0, false, 1.0, "default.kf", default_serial)
+	follower.play(WEAPON_SLOT, clip, 0.0, false, 1.0, "weapon.kf", weapon_serial)
+	await _frames(10)
+	check(is_equal_approx(follower.get_time(WEAPON_SLOT), weapon.get_time(WEAPON_SLOT)) and not is_equal_approx(follower.get_time(WEAPON_SLOT), default_source.get_time(SLOT)),
+			"the weapon slot follows its slot source (%.3f, weapon %.3f)" % [follower.get_time(WEAPON_SLOT), weapon.get_time(WEAPON_SLOT)])
+	check(is_equal_approx(follower.get_time(SLOT), default_source.get_time(SLOT)),
+			"the other slot follows sync_source (%.3f, %.3f)" % [follower.get_time(SLOT), default_source.get_time(SLOT)])
+	for animator in [default_source, weapon, follower]:
+		animator.queue_free()
 
 
 func _load(path: String) -> Animation:

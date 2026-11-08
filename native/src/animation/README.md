@@ -70,6 +70,8 @@ a weapon's `##` parts.
   node's `visible`: the highest priority clip keying it wins, the newest at a tie.
 - `Bip01` and `Bip01 NonAccum` tracks are skipped; there is no root motion and `disabled_bones`
   does not apply.
+- A clip that keys none of the nodes still plays: its clock and events are kept, so a holder can
+  follow a weapon's clip that keys none of that weapon's parts.
 
 ## Events
 
@@ -118,6 +120,8 @@ One KfAnimator can follow another (`sync_source`):
   emits both.
 - The follower reads the source's time as it stands when the follower processes: give it a higher
   `process_priority` (KfClipSync does).
+- `slot_sync_sources` (slot -> KfAnimator) overrides `sync_source` for its slots: an actor's weapon
+  action slot follows the weapon's animator while its other slots run on their own clocks.
 - Which clip the follower plays for a start is the caller's choice. `KfClipSync`
   (`project/GodotBryo/Types/Node/kf_clip_sync.gd`) remaps the path (`_male` to `_1stperson`) or
   plays the source's own clip.

@@ -74,6 +74,8 @@ void KfAnimator::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_holding_unkeyed_root"), &KfAnimator::is_holding_unkeyed_root);
 	ClassDB::bind_method(D_METHOD("set_sync_source", "path"), &KfAnimator::set_sync_source);
 	ClassDB::bind_method(D_METHOD("get_sync_source"), &KfAnimator::get_sync_source);
+	ClassDB::bind_method(D_METHOD("set_slot_sync_sources", "sources"), &KfAnimator::set_slot_sync_sources);
+	ClassDB::bind_method(D_METHOD("get_slot_sync_sources"), &KfAnimator::get_slot_sync_sources);
 
 	// Playing.
 	ClassDB::bind_method(D_METHOD("play", "slot", "animation", "fade_seconds", "keep_root", "speed", "path", "source_serial"),
@@ -120,6 +122,8 @@ void KfAnimator::_bind_methods() {
 	ADD_GROUP("Sync", "");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "sync_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "KfAnimator"),
 			"set_sync_source", "get_sync_source");
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "slot_sync_sources", PROPERTY_HINT_DICTIONARY_TYPE, "int;NodePath"),
+			"set_slot_sync_sources", "get_slot_sync_sources");
 
 	BIND_ENUM_CONSTANT(TIE_BLEND);
 	BIND_ENUM_CONSTANT(TIE_NEWEST);
@@ -179,6 +183,14 @@ void KfAnimator::set_sync_source(const NodePath &p_path) {
 
 NodePath KfAnimator::get_sync_source() const {
 	return _sync_source_path;
+}
+
+void KfAnimator::set_slot_sync_sources(const Dictionary &p_sources) {
+	_slot_sync_sources = p_sources;
+}
+
+Dictionary KfAnimator::get_slot_sync_sources() const {
+	return _slot_sync_sources;
 }
 
 void KfAnimator::set_update_interval(int p_frames) {
@@ -279,11 +291,17 @@ Node3D *KfAnimator::_node_root() const {
 	return Object::cast_to<Node3D>(get_node_or_null(_node_root_path));
 }
 
-KfAnimator *KfAnimator::_source() const {
-	if (_sync_source_path.is_empty()) {
+// The KfAnimator `slot`'s following clips follow: its slot_sync_sources entry,
+// else sync_source; null for none or this animator.
+KfAnimator *KfAnimator::_source(int p_slot) const {
+	NodePath path = _sync_source_path;
+	if (_slot_sync_sources.has(p_slot)) {
+		path = _slot_sync_sources[p_slot];
+	}
+	if (path.is_empty()) {
 		return nullptr;
 	}
-	KfAnimator *source = Object::cast_to<KfAnimator>(get_node_or_null(_sync_source_path));
+	KfAnimator *source = Object::cast_to<KfAnimator>(get_node_or_null(path));
 	return source == this ? nullptr : source;
 }
 
@@ -312,7 +330,7 @@ bool KfAnimator::_follow_source(int p_slot, Clip &r_clip) const {
 	if (r_clip.source_serial == 0) {
 		return false;
 	}
-	const KfAnimator *source = _source();
+	const KfAnimator *source = _source(p_slot);
 	if (source == nullptr) {
 		return false;
 	}
@@ -457,7 +475,11 @@ int64_t KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_
 	clip.serial = _next_serial++;
 	clip.keep_root = p_keep_root;
 	clip.source_serial = static_cast<uint64_t>(std::max<int64_t>(p_source_serial, 0));
-	if (!_bind(clip, p_keep_root)) {
+	// With node targets a clip plays even when it keys none of the nodes: it
+	// still has a clock and events (a weapon's clip, followed by its holder,
+	// whose parts it may not key: 1hpequip keys none of the 10mm pistol's).
+	const bool clock_only = _skeleton() == nullptr && _node_root() != nullptr;
+	if (!_bind(clip, p_keep_root) && !clock_only) {
 		return 0;
 	}
 	Slot &slot = _slots[p_slot];

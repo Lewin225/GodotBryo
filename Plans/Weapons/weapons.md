@@ -50,6 +50,21 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
   Shots/Sec, Reload Time, Jam Time, Aim Arc, semi-automatic delays), CRDT and NAM0. Rumble, VATS
   and mod fields are not read.
 
+### Weapon actions
+
+- xEdit's Animation Type names: 3 Pistol - Ballistic, 4 Pistol - Energy, 5 Rifle - Ballistic, 7
+  Rifle - Energy; each pair shares a clip family (1hp, 2hr).
+- Reload Animation is xEdit's ReloadA to ReloadZ: 17 to 19 are R, S, W. Across the six ESMs' 502
+  WEAP: 0 on 266, 1 to 16 on 223, 20 to 22 on 13; none uses 17 to 19.
+- Priorities (pistol): `mtidle` 10 everywhere; `mtforward` and `1hpforward` legs 30, `1hpforward`
+  spine 31 and right arm 35; `1hpaim` legs 25, spine and left arm 30, right arm 35; `1hpequip`,
+  `1hpattackright` and `1hpreloada` legs 26 to 27 (under locomotion's 30) and upper body 55 to
+  65.
+- Equip and unequip clips key `prn:` where the weapon changes bone: `1hpequip` `prn: Bip01 R
+  Hand` at 0.13 s of 0.37, `1hpunequip` `prn: Bip01 Pelvis` at 0.20 of 0.47, `2hrunequip`
+  `prn: Bip01 Spine2` at 0.80 of 0.83, `2hhequip` and `2hhunequip` `prn: Bip01 R Hand` at 0.97 of
+  1.00. They also key `Attach` / `Detach` and `Enum: Equip` / `Enum: Unequip`.
+
 ### World model and viewmodel
 
 WEAP `MODL` (world model) against the STAT that `WNAM` names (first-person model), over the 378
@@ -235,9 +250,9 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 ### Clips
 
 - The weapon is the clock and the only source of clip events (sounds, text keys): the actor, the
-  rig and each model following it emit none, so a sound plays once. While the viewmodel is loaded
-  the clock plays the first-person version and emits its keys; otherwise the third-person one.
-- In first person the possessed actor's third-person animator can be disabled; it is not visible.
+  rig and each model following it emit none, so a sound plays once. The clock plays the
+  third-person (`_male`) version. First-person timing is left for later: if the view's sounds are
+  too far off, the possessed actor's third-person animator can be disabled in first person.
 - The weapon names the clip (family plus attack, reload or jam id). Each follower resolves it in
   its own library: the actor in `_male\` (or its `sneak` or `pa` version), the rig in
   `_1stperson\`.
@@ -295,10 +310,11 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 4. Viewmodel: resolve `WNAM`, load it for the player in first person, fall back to `MODL`, hang it
    on the rig.
 5. KfAnimator: sync source per slot (`Node3D` targets came with step 1). The weapon's animator as
-   clock; weapon actions (equip, fire, reload, jam) on actor, rig and models; the clock switching version with
-   the viewmodel.
-   Clip names (from step 1: attack, reload, jam, aim, holster paths) and the rules left: reload
-   ids 17 to 19 (no clip), the anim types that share a family (3/4, 5/7).
+   clock; weapon actions (equip, fire, reload, jam) on actor, rig and models.
+   Built: `slot_sync_sources`; WEAPON_STANCE_SLOT 64 and WEAPON_ACTION_SLOT 65 (`# ASSUMPTION`);
+   the actor follows the weapon's action slot and plays `<family>aim` and the family's locomotion
+   while drawn; equip and unequip move the weapon at their `prn:` keys; a node-target clip keying
+   no node plays as a clock.
 6. Sounds: the node's sound player nodes, triggered by `Sound:` text keys.
 7. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
    `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.

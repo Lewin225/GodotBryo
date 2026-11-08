@@ -39,8 +39,10 @@ const FLAG2_NO_JAM_AFTER_RELOAD := 0x04
 ## DNAM offset 41: Attack Animation (xEdit's enum, 255 DEFAULT). Read; used
 ## by attack_clip_path().
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var attack_animation: int = 255
-## DNAM offset 15: Reload Animation (0 to 16 a to q, 20 to 22 x to z). Read;
-## used by reload_clip_path() and jam_clip_path().
+## DNAM offset 15: Reload Animation, xEdit's ReloadA to ReloadZ: 0 to 16 a to
+## q, 17 to 19 r, s, w, 20 to 22 x to z. No WEAP in the six ESMs uses 17 to 19
+## (and no archive has a clip for them). Read; used by reload_clip_path() and
+## jam_clip_path().
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var reload_animation: int = 255
 ## DNAM offset 13: Grip Animation (230 to 235 HandGrip1 to 6, 255 DEFAULT).
 ## Read; not used yet.
@@ -124,6 +126,20 @@ const LONG_FAMILIES := ["2ha", "2hh", "2hl", "2hm", "2hr"]
 ## backpack) rather than a hip slot.
 func holsters_on_back() -> bool:
 	return LONG_FAMILIES.has(animation_family)
+
+
+## The equip (draw) clip's path, "" when the weapon has no family.
+func equip_clip_path() -> String:
+	if animation_family.is_empty():
+		return ""
+	return CLIP_FOLDER + animation_family + "equip.kf"
+
+
+## The unequip (holster) clip's path, "" when the weapon has no family.
+func unequip_clip_path() -> String:
+	if animation_family.is_empty():
+		return ""
+	return CLIP_FOLDER + animation_family + "unequip.kf"
 
 
 ## The holster clip's path, "" when the weapon has no family.

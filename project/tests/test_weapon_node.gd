@@ -7,7 +7,7 @@ extends Node3D
 ## none); its state survives a save round trip. With no holder, the 10mm pistol
 ## fires (spending a round and playing 1hpattackright on its parts), reloads
 ## to its clip size, clears a jam by itself and aims; 1hpaim keys none of its
-## parts but does key the .357 revolver's, which plays it. WeaponBase reads
+## parts and plays as a clock, and keys the .357 revolver's. WeaponBase reads
 ## DNAM, CRDT and NAM0: the 10mm pistol's and minigun's values as the raw
 ## bytes give them.
 
@@ -116,8 +116,8 @@ func _check_inputs(pistol: EsmWeaponNode) -> void:
 
 	pistol.aim(true)
 	await _wait_frames(30)
-	check(pistol.is_aiming and pistol._animator.get_start(EsmWeaponNode.SLOT_AIM).is_empty(),
-			"the 10mm aims; 1hpaim keys none of its parts, so nothing plays")
+	check(pistol.is_aiming and bool(pistol._animator.get_start(EsmWeaponNode.SLOT_AIM).get("played", false)),
+			"the 10mm aims: 1hpaim keys none of its parts but plays as a clock")
 	pistol.aim(false)
 	check(not pistol.is_aiming, "aim(false) lowers the weapon")
 

@@ -14,6 +14,11 @@ extends EsmItemNode
 signal fired
 signal reloaded
 signal jam_cleared
+## A clip's `prn: <bone>` text key: the weapon moves to that bone (Bip01 R Hand,
+## the hand; another, its holster point). Equip and unequip clips carry one.
+signal parent_key(bone: String)
+## An equip (drawn true) or unequip clip ended, or could not play.
+signal equip_finished(drawn: bool)
 
 ## NIF node the shot leaves from. Present on every pistol, automatic, rifle and
 ## launcher model.
@@ -27,17 +32,21 @@ const SHELL_EJECTION_NODE := "ShellCasingNode"
 ## and rifle models; on no launcher or non-gun.
 const SIGHTING_NODE := "##SightingNode"
 
-## KfAnimator slot of the aim clip, under the actions.
-const SLOT_AIM := 0
-## KfAnimator slot of attack, reload and jam clips.
-const SLOT_ACTION := 1
+## KfAnimator slot of the aim clip, under the actions: the holder's stance
+## slot.
+const SLOT_AIM := ActorAnimator.WEAPON_STANCE_SLOT
+## KfAnimator slot of equip, attack, reload and jam clips: the holder's action
+## slot, which follows this one.
+const SLOT_ACTION := ActorAnimator.WEAPON_ACTION_SLOT
+## The text key naming the bone a clip moves the weapon to: `prn: Bip01 R Hand`.
+const PARENT_KEY_PREFIX := "prn:"
 ## Seconds a clip fades in and out over.
 const FADE_SECONDS := 0.1
 
 ## The action a weapon is playing: reload and jam clips play one at a time and
 ## block the other inputs. Attacks do not block (fire rate comes with WEAP's
 ## DNAM fields; attackloop clips loop and never finish).
-enum Action { NONE, RELOAD, JAM }
+enum Action { NONE, RELOAD, JAM, EQUIP, UNEQUIP }
 
 @export_tool_button("Fire") var _fire_button := fire
 @export_tool_button("Reload") var _reload_button := reload
@@ -168,6 +177,32 @@ func get_part(nif_name: String) -> Node3D:
 	return _find_nif_node(visual, nif_name)
 
 
+## Draws the weapon: plays its equip clip, whose `prn:` key moves it to the
+## hand (parent_key). False when it has no equip clip.
+func play_equip() -> bool:
+	return _play_equip_action(Action.EQUIP, get_weapon_base().equip_clip_path() if get_weapon_base() != null else "")
+
+
+## Holsters the weapon: plays its unequip clip, whose `prn:` key moves it to its
+## holster point. False when it has no unequip clip.
+func play_unequip() -> bool:
+	return _play_equip_action(Action.UNEQUIP, get_weapon_base().unequip_clip_path() if get_weapon_base() != null else "")
+
+
+## The KfAnimator playing the weapon's clips: the clock its holder follows.
+func get_animator() -> KfAnimator:
+	return _animator
+
+
+func _play_equip_action(action: Action, path: String) -> bool:
+	if path.is_empty() or _animator == null:
+		return false
+	# Drawing or holstering replaces whatever action plays.
+	_action = Action.NONE
+	_play_action(action, path)
+	return true
+
+
 ## The action playing.
 func get_action() -> Action:
 	return _action
@@ -231,6 +266,15 @@ func _finish_action() -> void:
 	elif finished == Action.JAM:
 		weapon.is_jammed = false
 		jam_cleared.emit()
+	elif finished == Action.EQUIP or finished == Action.UNEQUIP:
+		equip_finished.emit(finished == Action.EQUIP)
+
+
+func _on_text_key(slot: int, key: String, _time: float) -> void:
+	var text := key.strip_edges()
+	if slot != SLOT_ACTION or not text.to_lower().begins_with(PARENT_KEY_PREFIX):
+		return
+	parent_key.emit(text.substr(PARENT_KEY_PREFIX.length()).strip_edges())
 
 
 ## Puts the model in the holder's frame and stops its physics while held.
@@ -281,6 +325,8 @@ func _on_nif_visual_ready(tree: Node3D) -> void:
 		return
 	if not _animator.clip_finished.is_connected(_on_clip_finished):
 		_animator.clip_finished.connect(_on_clip_finished)
+	if not _animator.text_key.is_connected(_on_text_key):
+		_animator.text_key.connect(_on_text_key)
 	# In the editor the template scene's children belong to the instance, so
 	# the Scene dock hides them; owned by the edited scene they show, as the
 	# actor's do.

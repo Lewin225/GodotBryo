@@ -73,7 +73,8 @@ func _ready() -> void:
 
 	check(doc.draw_weapon(ActorReference.WeaponSlot.RIGHT_HIP), "drawing the right hip")
 	pistol_node = await _node_of(slots, pistol)
-	check(_bone_of(pistol_node) == "Weapon" and pistol_node.transform.is_equal_approx(Transform3D.IDENTITY), "puts the 10mm on the Weapon bone")
+	await _wait_until(func() -> bool: return _bone_of(pistol_node) == "Weapon")
+	check(_bone_of(pistol_node) == "Weapon" and pistol_node.transform.is_equal_approx(Transform3D.IDENTITY), "puts the 10mm on the Weapon bone, at its equip clip's prn: key")
 	doc.holster_weapon()
 	check(doc.draw_weapon(), "drawing with no slot draws the last drawn")
 	check(doc.drawn_weapon_slot == ActorReference.WeaponSlot.RIGHT_HIP, "the last drawn is the right hip, drawn above")
@@ -161,8 +162,9 @@ func _check_control_inputs(doc: ActorReference, actor: EsmActorNode, slots: Acto
 		if node.muzzle != null:
 			break
 		await get_tree().process_frame
+	await _wait_until(func() -> bool: return node.get_action() == EsmWeaponNode.Action.NONE)
 	pistol.loaded_ammo_count = 3
-	check(actor.fire() and pistol.loaded_ammo_count == 2, "fire() with the pistol drawn fires it")
+	check(actor.fire() and pistol.loaded_ammo_count == 2, "fire() with the pistol drawn, once its equip clip ends, fires it")
 	actor.holster()
 	doc.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
 
@@ -189,7 +191,7 @@ func _check_heavy(doc: ActorReference, slots: ActorWeaponSlots) -> void:
 			"the Backpack keeps its authored transform under the spine; its own rigid body does not move it (%s)" % (backpack.transform if backpack != null else "none"))
 	check(gun != null and not gun.visible, "its gun is hidden while holstered")
 	doc.draw_weapon(ActorReference.WeaponSlot.BACK)
-	await get_tree().process_frame
+	await _wait_until(func() -> bool: return node.get_action() == EsmWeaponNode.Action.NONE and _bone_of(node) == "Weapon")
 	check(_bone_of(node) == "Weapon" and gun != null and gun.visible, "drawn, it is on the Weapon bone with its gun shown")
 	check(backpack != null and is_instance_valid(backpack) and (backpack.get_parent() as BoneAttachment3D).bone_name == "Bip01 Spine2", "and its Backpack stays on the spine")
 	doc.unequip_weapon(ActorReference.WeaponSlot.BACK)

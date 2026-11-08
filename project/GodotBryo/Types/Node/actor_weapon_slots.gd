@@ -18,6 +18,10 @@ extends Node
 
 ## The bone a drawn weapon hangs from, under the right hand.
 const DRAWN_BONE := "Weapon"
+## A held weapon's KfAnimator processes before the actor's (priority 0).
+const WEAPON_PROCESS_PRIORITY := -1
+## The bone a `prn:` key names to move the weapon into the hand.
+const HAND_BONE := "Bip01 R Hand"
 ## The text key naming a holster clip's bone: `prn: Bip01 Pelvis`.
 const PARENT_KEY_PREFIX := "prn:"
 ## The holster clip's track holding the weapon's pose.
@@ -39,6 +43,12 @@ var _skeleton: Skeleton3D
 var _nodes := {}
 ## Weapon reference -> the parts moved from its model to a bone.
 var _bone_parts := {}
+## Weapon reference -> whether it hangs in the hand. It follows the drawn slot
+## through the weapon's equip and unequip clips: at their `prn:` key, or at
+## once when the weapon cannot play one.
+var _in_hand := {}
+## Weapons whose equip or unequip clip is playing.
+var _moving := {}
 ## Holster clips requested and not yet delivered.
 var _requested := {}
 
@@ -85,7 +95,84 @@ func refresh() -> void:
 		if not wanted.has(weapon):
 			_free_node(weapon)
 	for weapon: WeaponReference in wanted:
+		_update_hand(weapon, wanted[weapon])
 		_hang(weapon, wanted[weapon])
+	_tell_animator()
+
+
+## Starts `weapon`'s equip or unequip clip when its slot was drawn or holstered
+## since it last hung; a weapon just built takes its place at once.
+func _update_hand(weapon: WeaponReference, slot: ActorReference.WeaponSlot) -> void:
+	var drawn := slot == _reference.drawn_weapon_slot
+	var node := _nodes.get(weapon) as EsmWeaponNode
+	if node == null or not _in_hand.has(weapon):
+		_in_hand[weapon] = drawn
+		return
+	if bool(_in_hand[weapon]) == drawn or _moving.has(weapon):
+		return
+	var started := node.play_equip() if drawn else node.play_unequip()
+	if started:
+		_moving[weapon] = true
+	else:
+		_in_hand[weapon] = drawn
+
+
+## The actor's animator plays the drawn weapon family's locomotion and stance.
+func _tell_animator() -> void:
+	var actor := get_parent() as EsmActorNode
+	if actor == null or actor.animator == null:
+		return
+	var drawn := _reference.get_drawn_weapon() if _reference != null else null
+	var base := drawn.base as WeaponBase if drawn != null else null
+	actor.animator.set_weapon_family(base.animation_family if base != null else "")
+
+
+## The weapon's clip moved it (`prn:` key): into the hand for Bip01 R Hand,
+## else to its holster point.
+func _on_parent_key(bone: String, weapon: WeaponReference) -> void:
+	_in_hand[weapon] = bone == HAND_BONE
+	_rehang(weapon)
+
+
+func _on_equip_finished(drawn: bool, weapon: WeaponReference) -> void:
+	_moving.erase(weapon)
+	_in_hand[weapon] = drawn
+	refresh()
+
+
+func _rehang(weapon: WeaponReference) -> void:
+	var slot := _reference.get_weapon_slot(weapon) if _reference != null else ActorReference.WeaponSlot.NONE
+	if slot != ActorReference.WeaponSlot.NONE:
+		_hang(weapon, slot)
+
+
+## Connects to `node`'s KfAnimator once the node is in the tree (it is the
+## template scene's child, found on ready).
+func _follow_weapon_animator(weapon: WeaponReference, node: EsmWeaponNode) -> void:
+	var weapon_animator := node.get_animator()
+	if weapon_animator == null or weapon_animator.clip_started.is_connected(_on_weapon_clip_started):
+		return
+	# The actor's animator reads the weapon's clock as it stands when the
+	# actor's processes: the weapon's goes first.
+	weapon_animator.process_priority = WEAPON_PROCESS_PRIORITY
+	weapon_animator.clip_started.connect(_on_weapon_clip_started.bind(weapon))
+	weapon_animator.clip_stopped.connect(_on_weapon_clip_stopped)
+
+
+## The weapon's action slot started a clip: the actor's animator follows it.
+func _on_weapon_clip_started(slot: int, path: String, _animation: Animation, serial: int,
+		_fade: float, _keep_root: bool, _speed: float, weapon: WeaponReference) -> void:
+	var actor := get_parent() as EsmActorNode
+	var node := _nodes.get(weapon) as EsmWeaponNode
+	if slot != ActorAnimator.WEAPON_ACTION_SLOT or actor == null or actor.animator == null or node == null:
+		return
+	actor.animator.follow_weapon_action(path, serial, node.get_animator())
+
+
+func _on_weapon_clip_stopped(slot: int, fade: float) -> void:
+	var actor := get_parent() as EsmActorNode
+	if slot == ActorAnimator.WEAPON_ACTION_SLOT and actor != null and actor.animator != null:
+		actor.animator.stop_weapon_action(fade)
 
 
 ## Hangs `weapon`'s node at its point for `slot`: the drawn bone when the slot is
@@ -93,7 +180,7 @@ func refresh() -> void:
 func _hang(weapon: WeaponReference, slot: ActorReference.WeaponSlot) -> void:
 	var bone := DRAWN_BONE
 	var pose := Transform3D.IDENTITY
-	if slot != _reference.drawn_weapon_slot:
+	if not bool(_in_hand.get(weapon, slot == _reference.drawn_weapon_slot)):
 		var point := _holster_point(weapon.base as WeaponBase)
 		if point.is_empty():
 			return
@@ -111,12 +198,15 @@ func _hang(weapon: WeaponReference, slot: ActorReference.WeaponSlot) -> void:
 			return
 		_nodes[weapon] = node
 		node.visual_detail_applied.connect(_on_weapon_visual.bind(weapon))
+		node.parent_key.connect(_on_parent_key.bind(weapon))
+		node.equip_finished.connect(_on_equip_finished.bind(weapon))
 	var attachment := _attachment(bone, bone_index)
 	if node.get_parent() != attachment:
 		if node.get_parent() != null:
 			node.get_parent().remove_child(node)
 		attachment.add_child(node)
 	node.transform = pose
+	_follow_weapon_animator(weapon, node)
 	# A weapon with biped models (power fists, gloves) is worn through them
 	# (ActorEquipment); its world model would show twice.
 	var base := weapon.base as WeaponBase
@@ -149,7 +239,7 @@ func _apply_part_visibility(weapon: WeaponReference, slot: ActorReference.Weapon
 	var point := _holster_point(weapon.base as WeaponBase)
 	if node == null or point.is_empty():
 		return
-	var holstered := slot != _reference.drawn_weapon_slot
+	var holstered := not bool(_in_hand.get(weapon, slot == _reference.drawn_weapon_slot))
 	var keyed: Dictionary = point["hidden"]
 	for part_name: String in keyed:
 		var part := node.get_part(part_name)
@@ -289,6 +379,8 @@ func _attachment(bone: String, bone_index: int) -> BoneAttachment3D:
 func _free_node(weapon: WeaponReference) -> void:
 	var node := _nodes.get(weapon) as Node
 	_nodes.erase(weapon)
+	_in_hand.erase(weapon)
+	_moving.erase(weapon)
 	for part: Node in _bone_parts.get(weapon, []):
 		if is_instance_valid(part):
 			part.queue_free()
