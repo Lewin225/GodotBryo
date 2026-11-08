@@ -15,7 +15,8 @@ const OGG_EXTENSION := ".ogg"
 var _streams := {}
 ## Folder path -> the archive paths of the sound files directly in it.
 var _folders := {}
-## [path, start frame, end frame, looping] -> the chunk's AudioStream; null
+## [path, start frame, end frame, looping, loop begin frame] -> the chunk's
+## AudioStream; null
 ## for one that cannot be cut.
 var _chunks := {}
 
@@ -44,20 +45,21 @@ func get_paths(sound: SoundBase) -> PackedStringArray:
 
 
 ## The frames from `start_frame` up to `end_frame` of the .wav at `path`, as its
-## own stream; -1 for the file's start or end. With `looping` the whole chunk
-## loops. Cut once and cached: every caller asking for the same chunk shares
-## it. Null for a file that is missing, not 8- or 16-bit PCM (an .ogg cannot be
-## cut by frame), or a range outside it.
-func get_stream_chunk(path: String, start_frame := -1, end_frame := -1, looping := false) -> AudioStream:
-	var key := [path, start_frame, end_frame, looping]
+## own stream; -1 for the file's start or end. With `looping` the chunk loops
+## from `loop_begin_frame` (a frame of the file; -1 the chunk's start) to its
+## end, so what comes before plays once (a wind-up). Cut once and cached: every
+## caller asking for the same chunk shares it. Null for a file that is missing,
+## not 8- or 16-bit PCM (an .ogg cannot be cut by frame), or a range outside it.
+func get_stream_chunk(path: String, start_frame := -1, end_frame := -1, looping := false, loop_begin_frame := -1) -> AudioStream:
+	var key := [path, start_frame, end_frame, looping, loop_begin_frame]
 	if _chunks.has(key):
 		return _chunks[key]
-	var chunk := _cut(_stream(path) as AudioStreamWAV, start_frame, end_frame, looping)
+	var chunk := _cut(_stream(path) as AudioStreamWAV, start_frame, end_frame, looping, loop_begin_frame)
 	_chunks[key] = chunk
 	return chunk
 
 
-static func _cut(source: AudioStreamWAV, start_frame: int, end_frame: int, looping: bool) -> AudioStreamWAV:
+static func _cut(source: AudioStreamWAV, start_frame: int, end_frame: int, looping: bool, loop_begin_frame: int) -> AudioStreamWAV:
 	if source == null:
 		return null
 	var bytes_per_sample := 0
@@ -81,7 +83,7 @@ static func _cut(source: AudioStreamWAV, start_frame: int, end_frame: int, loopi
 	chunk.data = source.data.slice(first * bytes_per_frame, last * bytes_per_frame)
 	if looping:
 		chunk.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		chunk.loop_begin = 0
+		chunk.loop_begin = clampi(loop_begin_frame - first, 0, last - first - 1) if loop_begin_frame >= 0 else 0
 		chunk.loop_end = last - first
 	return chunk
 

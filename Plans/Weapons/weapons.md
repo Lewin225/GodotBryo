@@ -352,7 +352,10 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
    (every stream a SOUN's FNAM names), SoundBase FNAM and SNDD / SNDX, WeaponBase's sound fields;
    EsmWeaponNode plays shoot, no ammo, equip, unequip and clip-key sounds from players under its
    template's Sounds node, several files in an AudioStreamRandomizer. Not yet: Shoot 2D for the
-   player, the distant and looping shoot sounds, the attenuation curve.
+   player, the distant shoot sound, the attenuation curve. Built since: an automatic weapon's
+   NAM7 shoot loop from SoundServer's cached chunks (`get_stream_chunk()`): with SNDD loop points
+   its wind-up plays once, the loop repeats between the points, and its wind-down plays on
+   release; without, the whole file loops.
 7. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
    `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.
 8. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the

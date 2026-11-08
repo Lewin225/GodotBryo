@@ -76,13 +76,16 @@ func _check_automatic() -> void:
 			"released, the clip plays on past Loop (%.2f s)" % animator.get_time(EsmWeaponNode.SLOT_ACTION))
 	check(reference.loaded_ammo_count == after, "released, it stops firing")
 	check(loop_player != null and not loop_player.playing, "and its shoot loop stops")
+	var wind_down := minigun._wind_down_players.get(base.shoot_loop_sound) as AudioStreamPlayer3D
+	var tail := wind_down.stream as AudioStreamWAV if wind_down != null else null
+	check(wind_down != null and wind_down.playing and tail != null and tail.loop_mode == AudioStreamWAV.LOOP_DISABLED,
+			"releasing plays its wind-down once (%d frames after the loop end)" % (tail.data.size() / 2 if tail != null else -1))
 	var wav := loop_player.stream as AudioStreamWAV if loop_player != null else null
 	var sound := base.shoot_loop_sound
-	var loop_frames := sound.loop_end - sound.loop_begin
-	check(wav != null and wav.loop_mode == AudioStreamWAV.LOOP_FORWARD and wav.loop_end == loop_frames and wav.data.size() == loop_frames * 2,
-			"the shoot loop is the chunk between its SNDD loop points (%d frames, %d to %d)" % [wav.loop_end if wav != null else -1, sound.loop_begin, sound.loop_end])
+	check(wav != null and wav.loop_mode == AudioStreamWAV.LOOP_FORWARD and wav.loop_begin == sound.loop_begin and wav.loop_end == sound.loop_end and wav.data.size() == sound.loop_end * 2,
+			"the shoot loop plays its wind-up once, then loops %d to %d (chunk of %d frames)" % [wav.loop_begin if wav != null else -1, wav.loop_end if wav != null else -1, wav.data.size() / 2 if wav != null else -1])
 	var paths := SoundServer.get_paths(sound)
-	check(not paths.is_empty() and SoundServer.get_stream_chunk(paths[0], sound.loop_begin, sound.loop_end, true) == wav,
+	check(not paths.is_empty() and SoundServer.get_stream_chunk(paths[0], -1, sound.loop_end, true, sound.loop_begin) == wav,
 			"SoundServer's cache hands every caller the same chunk")
 	await _wait_until(func() -> bool: return animator.get_time(EsmWeaponNode.SLOT_ACTION) >= animator.get_animation(EsmWeaponNode.SLOT_ACTION).length - 0.01)
 	var serial_before := int(animator.get_start(EsmWeaponNode.SLOT_ACTION).get("serial", 0))

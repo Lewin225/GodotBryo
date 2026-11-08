@@ -97,8 +97,10 @@ var is_held := false:
 @onready var _sounds: Node3D = $Sounds
 ## SOUN -> its AudioStreamPlayer3D, built on first use.
 var _sound_players := {}
-## SOUN -> the looping player of a shoot loop (NAM7).
+## SOUN -> the looping player of a shoot loop (NAM7), and the player of its
+## wind-down.
 var _loop_players := {}
+var _wind_down_players := {}
 ## SOUN EditorID (lower case) -> its SoundBase, null when none, for clip keys.
 var _key_sounds := {}
 
@@ -511,23 +513,51 @@ func _play_shot_sound(base: WeaponBase) -> void:
 
 
 ## Stops a running shoot loop: the trigger released, the weapon dry, or an
-## action (reload, jam, equip) begun.
+## action (reload, jam, equip) begun. A loop with loop points then plays its
+## wind-down.
 func _stop_loop_sound() -> void:
-	for player: AudioStreamPlayer3D in _loop_players.values():
-		if player != null and player.playing:
-			player.stop()
+	for sound: SoundBase in _loop_players:
+		var player := _loop_players[sound] as AudioStreamPlayer3D
+		if player == null or not player.playing:
+			continue
+		player.stop()
+		_play_wind_down(sound)
 
 
-## `sound`'s loop: SoundServer's cached looping chunk of its first file,
-## between its loop points, or the whole file when it has none.
+func _play_wind_down(sound: SoundBase) -> void:
+	var player := _wind_down_players.get(sound) as AudioStreamPlayer3D
+	if player == null:
+		player = _make_sound_player(sound)
+		player.stream = _wind_down_chunk(sound)
+		_wind_down_players[sound] = player
+	if player.stream != null:
+		player.play()
+
+
+## `sound`'s loop, from SoundServer's cached chunks of its first file: with
+## loop points, the file up to the loop end, looping from the loop begin, so its
+## wind-up (the frames before) plays once and the loop follows on the sample;
+## without, the whole file looping.
 static func _loop_chunk(sound: SoundBase) -> AudioStream:
 	var paths := SoundServer.get_paths(sound)
 	if paths.is_empty():
 		return null
-	var has_points := sound.loop_end > sound.loop_begin
-	var start := sound.loop_begin if has_points else -1
-	var end := sound.loop_end if has_points else -1
-	return SoundServer.get_stream_chunk(paths[0], start, end, true)
+	if not _has_loop_points(sound):
+		return SoundServer.get_stream_chunk(paths[0], -1, -1, true)
+	return SoundServer.get_stream_chunk(paths[0], -1, sound.loop_end, true, sound.loop_begin)
+
+
+## `sound`'s wind-down: the frames after its loop end, played once when the
+## loop stops; null for a sound without loop points.
+static func _wind_down_chunk(sound: SoundBase) -> AudioStream:
+	var paths := SoundServer.get_paths(sound)
+	if paths.is_empty() or not _has_loop_points(sound):
+		return null
+	return SoundServer.get_stream_chunk(paths[0], sound.loop_end, -1)
+
+
+static func _has_loop_points(sound: SoundBase) -> bool:
+	return sound != null and sound.loop_end > sound.loop_begin
 
 
 ## The SOUN of a clip key's EditorID, null when there is none.
