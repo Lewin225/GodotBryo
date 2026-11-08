@@ -4,12 +4,16 @@ extends Node3D
 ## its world model loads with the muzzle, shell ejection and sighting nodes
 ## found (the 10mm pistol has all three, the Minigun's muzzle is nested under
 ## ##MinigunGun, the Gatling Laser's is named ##ProjectileNode, the cleaver has
-## none); its state survives a save round trip.
+## none); its state survives a save round trip. With no holder, the 10mm pistol
+## fires (spending a round and playing 1hpattackright on its parts), reloads
+## to its clip size, clears a jam by itself and aims; 1hpaim keys none of its
+## parts but does key the .357 revolver's, which plays it.
 
 const PISTOL := "Weap10mmPistol"
 const MINIGUN := "WeapMinigun"
 const CLEAVER := "WeapNVCleaver"
 const GATLING_LASER := "WeapGatlingLaser"
+const REVOLVER := "WeapNV357Revolver"
 
 var failures := 0
 
@@ -58,8 +62,70 @@ func _ready() -> void:
 		var data := SaveFields.write(weapon)
 		check(int(data.get("loaded_ammo_count", -1)) == 9 and bool(data.get("is_jammed", false)), "loaded ammo and jammed are saved fields")
 
+	if pistol is EsmWeaponNode:
+		await _check_inputs(pistol)
+
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+func _check_inputs(pistol: EsmWeaponNode) -> void:
+	var weapon: WeaponReference = pistol.get_weapon_reference()
+	var base: WeaponBase = pistol.get_weapon_base()
+	check(base.attack_clip_path().ends_with("1hpattackright.kf") and base.reload_clip_path().ends_with("1hpreloada.kf"),
+			"the 10mm pistol's clips are 1hpattackright and 1hpreloada (%s, %s)" % [base.attack_clip_path(), base.reload_clip_path()])
+	weapon.is_jammed = false
+	weapon.loaded_ammo_count = 0
+	check(not pistol.fire(), "an empty weapon does not fire")
+
+	check(pistol.reload(), "reload starts")
+	check(await _wait_for(pistol.reloaded), "the reload ends")
+	check(weapon.loaded_ammo_count == base.clip_size, "the reload fills the clip (%d of %d)" % [weapon.loaded_ammo_count, base.clip_size])
+
+	check(pistol.fire(), "a loaded weapon fires")
+	check(weapon.loaded_ammo_count == base.clip_size - 1, "firing spends one round")
+	await _wait_frames(30)
+	var attack: Dictionary = pistol._animator.get_start(EsmWeaponNode.SLOT_ACTION)
+	check(bool(attack.get("played", false)) and String(attack.get("path", "")) == base.attack_clip_path(),
+			"the attack clip plays on the weapon's parts")
+
+	pistol.jam()
+	check(weapon.is_jammed and not pistol.fire(), "a jammed weapon does not fire")
+	check(await _wait_for(pistol.jam_cleared), "the jam clip ends")
+	check(not weapon.is_jammed, "the jam clears with no input")
+
+	pistol.aim(true)
+	await _wait_frames(30)
+	check(pistol.is_aiming and pistol._animator.get_start(EsmWeaponNode.SLOT_AIM).is_empty(),
+			"the 10mm aims; 1hpaim keys none of its parts, so nothing plays")
+	pistol.aim(false)
+	check(not pistol.is_aiming, "aim(false) lowers the weapon")
+
+	var revolver := await _place(EsmServer, REVOLVER)
+	if revolver is EsmWeaponNode:
+		revolver.aim(true)
+		await _wait_frames(30)
+		var aim: Dictionary = revolver._animator.get_start(EsmWeaponNode.SLOT_AIM)
+		check(bool(aim.get("played", false)), "the .357 revolver's aim plays 1hpaim on its parts")
+	else:
+		check(false, "the .357 revolver physicalises as an EsmWeaponNode")
+
+
+## Whether `event` fires within 10 seconds.
+func _wait_for(event: Signal) -> bool:
+	var state := {"fired": false}
+	var on_event := func(_a = null, _b = null) -> void: state["fired"] = true
+	event.connect(on_event, CONNECT_ONE_SHOT)
+	for i in 600:
+		if state["fired"]:
+			return true
+		await get_tree().process_frame
+	return state["fired"]
+
+
+func _wait_frames(count: int) -> void:
+	for i in count:
+		await get_tree().process_frame
 
 
 ## A runtime reference of the WEAP `editor_id`, physicalised under this node,

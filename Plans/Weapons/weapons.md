@@ -26,6 +26,21 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
   `1hpreloada`: `Sound: WPNPistol10mmReloadOut` at 0.20 s first person, 0.07 s third person;
   `Blend:3` against `Blend:2`.
 
+### Clip names
+
+- DNAM Attack Animation (offset 41; xEdit's enum: 26 AttackLeft, 32 AttackRight, 38 Attack3 ...
+  162 AttackThrow8, 255 DEFAULT) names the attack clip after the family: `1hp` + 32 is
+  `1hpattackright.kf` (the 10mm pistol). DEFAULT is on 4 guns; which clip it stands for is not in
+  the data.
+- Every WEAP in the six ESMs, against `characters\_male\`: every `<family>aim.kf` exists; the gun
+  families' reload and jam clips exist (1hp 108 of 108 reloads, 106 of 108 jams; 2ha and 2hr all),
+  as do nearly all gun attacks. Melee, thrown and creature weapons have no reload or jam clips
+  (`h2h`, `1hm`, `2hm`, `1gt`, `1lm`, `1md`) and most of their attack names (`1hmattackleft`,
+  `2hmattackleft`, `h2hattack5`) have no file: those families name attacks otherwise. 2hr misses
+  17 attacks (turrets, `2hrattackloop`); 2hh misses 6 reloads (Securitron and creature weapons).
+- A clip keys only some weapons' parts: `1hpaim` keys the .357 revolver's and That Gun's parts,
+  none of the 10mm pistol's.
+
 ### World model and viewmodel
 
 WEAP `MODL` (world model) against the STAT that `WNAM` names (first-person model), over the 378
@@ -233,8 +248,11 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 ## Order
 
 1. `EsmWeaponNode` on its own (`esm_weapon_node.gd`, extends `EsmItemNode`): the physicaliser's
-   `_make_node()` dispatches a `WeaponReference` to it (today an `EsmItemNode`); placed from the
-   asset browser for editor testing, with no actor. State resource.
+   `_make_node()` dispatches a `WeaponReference` to it; placed from the asset browser for editor
+   testing, with no actor. State on `WeaponReference`. Inputs fire, reload, aim (inspector
+   buttons); a jam clears itself through the jam clip; reload with no holder fills to the clip
+   size. Its own KfAnimator plays the `_male` clips on its parts: KfAnimator node targets, and
+   NifServer visibility tracks (`NiVisController` bool blocks). Float and point3 tracks: #93.
 2. Holding: the holster clip (`prn:` target, `Weapon` pose, visibility tracks) and the NIF's
    `Prn` and `UPB` attach bones parent the weapon node and its backpack; the three equip slots on
    the actor (the mirrored stub for the second pistol), holstered and drawn; equipping takes the

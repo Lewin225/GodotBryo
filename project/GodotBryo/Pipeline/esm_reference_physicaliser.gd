@@ -8,7 +8,7 @@ extends RefCounted
 
 const DoorNodeScript := preload("res://GodotBryo/Types/Node/esm_door_node.gd")
 const ItemNodeScript := preload("res://GodotBryo/Types/Node/esm_item_node.gd")
-const WeaponNodeScript := preload("res://GodotBryo/Types/Node/esm_weapon_node.gd")
+const WeaponNodeScene := preload("res://GodotBryo/Types/Node/esm_weapon_node.tscn")
 const StaticNodeScript := preload("res://GodotBryo/Types/Node/esm_static_node.gd")
 const LightNodeScript := preload("res://GodotBryo/Types/Node/esm_light_node.gd")
 const ActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_activator_node.gd")
@@ -76,7 +76,7 @@ func _make_node(ref: EsmReference) -> EsmNode:
 	if ref is LeveledItemReference:
 		return LeveledItemPreviewNodeScript.new()
 	if ref is WeaponReference:
-		return WeaponNodeScript.new()
+		return WeaponNodeScene.instantiate()
 	if ref is MiscReference or ref is AlchemyReference \
 			or ref is AmmoReference or ref is KeyReference \
 			or ref is ArmorReference \
