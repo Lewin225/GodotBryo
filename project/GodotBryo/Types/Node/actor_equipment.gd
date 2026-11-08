@@ -163,14 +163,16 @@ func _project_from_inventory() -> void:
 		projected.weapon_item = InventoryItem.make_reference(worn)
 	equipment_state = projected
 
-## The slotted weapon whose biped models show: the drawn one, else one with a
-## BIPL list. `# ASSUMPTION` a holstered hand-to-hand weapon (held on the
-## forearm, h2hholster) stays worn.
+## The slotted weapon whose biped models show: one with a BIPL list, the drawn
+## one first; null when none has one, so drawing or holstering any other weapon
+## leaves the equipment as it is. `# ASSUMPTION` a holstered hand-to-hand
+## weapon (held on the forearm, h2hholster) stays worn.
 func _worn_weapon() -> WeaponReference:
 	if _reference == null:
 		return null
 	var drawn := _reference.get_drawn_weapon()
-	if drawn != null:
+	var drawn_base := drawn.base as WeaponBase if drawn != null else null
+	if drawn_base != null and drawn_base.biped_model_list != null:
 		return drawn
 	for slot: ActorReference.WeaponSlot in [ActorReference.WeaponSlot.RIGHT_HIP, ActorReference.WeaponSlot.LEFT_HIP, ActorReference.WeaponSlot.BACK]:
 		var weapon := _reference.get_weapon(slot)
