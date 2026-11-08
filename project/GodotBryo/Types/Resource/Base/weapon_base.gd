@@ -50,6 +50,32 @@ const FLAG2_NO_JAM_AFTER_RELOAD := 0x04
 ## BIPL: the FLST of biped models worn while equipped (power fists, gloves).
 ## Read; used by ActorEquipment.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "FormListBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var biped_model_list: Resource
+## SNAM (first): Sound - Gun - Shoot 3D (SNAM on 256 of the six ESMs' 502
+## WEAP). Read; used by EsmWeaponNode when it fires.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var shoot_sound: SoundBase
+## SNAM (second): Sound - Gun - Shoot Dist, the far sound. Read; not used yet.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var shoot_distant_sound: SoundBase
+## XNAM: Sound - Gun - Shoot 2D (on 194). Read; not used yet (the player's own
+## shot in first person).
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var shoot_2d_sound: SoundBase
+## NAM7: Sound - Gun - Shoot 3D Looping (on 57). Read; not used yet
+## (automatic fire).
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var shoot_loop_sound: SoundBase
+## TNAM: Sound - Melee - Swing / Gun - No Ammo (on 227). Read; used by
+## EsmWeaponNode when it fires empty.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var no_ammo_sound: SoundBase
+## NAM6: Sound - Block (on 102). Read; not used yet.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var block_sound: SoundBase
+## UNAM: Sound - Idle (on 30). Read; not used yet.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var idle_sound: SoundBase
+## NAM9: Sound - Equip (on 377). Read; used by EsmWeaponNode when drawn.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var equip_sound: SoundBase
+## NAM8: Sound - Unequip (on 377). Read; used by EsmWeaponNode when holstered.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var unequip_sound: SoundBase
+## YNAM: Sound - Pick Up (on 224). Read; not used yet.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var pick_up_sound: SoundBase
+## ZNAM: Sound - Drop (on 224). Read; not used yet.
+@export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var drop_sound: SoundBase
 ## NAM0: the AMMO it fires, or a FLST of AMMO it accepts (143 and 145 of the
 ## 288 WEAP with NAM0 in the six ESMs; 214 of the 502 have none). Read; not used yet (the
 ## weapon node's reload, Plans/Weapons/weapons.md step 7).

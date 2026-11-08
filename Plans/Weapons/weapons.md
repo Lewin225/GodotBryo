@@ -65,6 +65,17 @@ From the archives and FalloutNV.esm plus the five DLC ESMs. One-off census tools
   `prn: Bip01 Spine2` at 0.80 of 0.83, `2hhequip` and `2hhunequip` `prn: Bip01 R Hand` at 0.97 of
   1.00. They also key `Attach` / `Detach` and `Enum: Equip` / `Enum: Unequip`.
 
+### Sounds
+
+- WEAP sound fields across the six ESMs' 502 WEAP: NAM9 Equip and NAM8 Unequip on 377, SNAM
+  (Shoot 3D, then Shoot Dist) on 256, TNAM Swing / No Ammo on 227, YNAM Pick Up and ZNAM Drop on
+  224, XNAM Shoot 2D on 194, NAM6 Block on 102, NAM7 Shoot 3D Looping on 57, UNAM Idle on 30,
+  WMS1 / WMS2 (mods) on 17.
+- 2,069 `Sound:` text keys in the `_male` and `_1stperson` KFs (436 distinct); 1,731 name a SOUN
+  EditorID, the rest quest scenes'.
+- SOUN FNAM is relative to `sound\`: a file, or a folder whose files are the choices (621 SOUN
+  used by weapons and keys: a .wav on 347, a folder on 274). Their files are PCM 16-bit, 4 .ogg.
+
 ### World model and viewmodel
 
 WEAP `MODL` (world model) against the STAT that `WNAM` names (first-person model), over the 378
@@ -315,7 +326,11 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
    the actor follows the weapon's action slot and plays `<family>aim` and the family's locomotion
    while drawn; equip and unequip move the weapon at their `prn:` keys; a node-target clip keying
    no node plays as a clock.
-6. Sounds: the node's sound player nodes, triggered by `Sound:` text keys.
+6. Sounds: the node's sound player nodes, triggered by `Sound:` text keys. Built: SoundServer
+   (every stream a SOUN's FNAM names), SoundBase FNAM and SNDD / SNDX, WeaponBase's sound fields;
+   EsmWeaponNode plays shoot, no ammo, equip, unequip and clip-key sounds from players under its
+   template's Sounds node, several files in an AudioStreamRandomizer. Not yet: Shoot 2D for the
+   player, the distant and looping shoot sounds, the attenuation curve.
 7. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
    `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.
 8. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the
@@ -323,10 +338,16 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 
 ## Later
 
+- The first-person rig copies only skinned meshes: rigid equipment on a `Prn` bone (the Pip-Boy
+  arm) does not show in first person. It needs copying onto the same rig bone.
 - After weapons: the player's actor node stops being authored in `player.tscn` and is built for
   the possessed reference, as an NPC's is; then the actor node needs one path for its reference
   (today one set after `_ready()` skips the watches there and in the rehydrate path, covered in
   `_start_visual_load()`).
+  Parked with it: on an interior exit (a fresh save into Goodsprings) the player's body skeleton
+  and meshes are freed or leave the tree, so `player_controller.gd` `_on_head_skeleton_updated()`
+  reads a skeleton outside the tree and `FirstPersonRig._process()` assigns a freed source mesh.
+  Not reproduced; cause not known.
 - The procedural weapon path, VR included: a separate rig system for the actor
   ([../WeaponPrefabs/weapon_prefabs.md](../WeaponPrefabs/weapon_prefabs.md)). VR weapons may need
   several clips at once.

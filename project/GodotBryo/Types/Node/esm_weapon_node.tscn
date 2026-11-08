@@ -6,3 +6,5 @@
 script = ExtResource("1")
 
 [node name="WeaponAnimator" type="KfAnimator" parent="."]
+
+[node name="Sounds" type="Node3D" parent="."]

@@ -38,6 +38,14 @@ const SLOT_AIM := ActorAnimator.WEAPON_STANCE_SLOT
 ## KfAnimator slot of equip, attack, reload and jam clips: the holder's action
 ## slot, which follows this one.
 const SLOT_ACTION := ActorAnimator.WEAPON_ACTION_SLOT
+## The text key naming a sound a clip plays: `Sound: WPNPistol10mmReloadOut`, a
+## SOUN EditorID (1,731 of the 2,069 such keys in the `_male` and `_1stperson`
+## KFs name one; the rest are quest scenes').
+const SOUND_KEY_PREFIX := "sound:"
+## How many plays of one sound overlap.
+const SOUND_POLYPHONY := 4
+## Game units per metre, for a SOUN's attenuation distances.
+const UNITS_PER_METRE := 70.0
 ## The text key naming the bone a clip moves the weapon to: `prn: Bip01 R Hand`.
 const PARENT_KEY_PREFIX := "prn:"
 ## Seconds a clip fades in and out over.
@@ -76,6 +84,13 @@ var is_held := false:
 		is_held = value
 		_apply_held()
 
+## The template scene's node the sound players are built under.
+@onready var _sounds: Node3D = $Sounds
+## SOUN -> its AudioStreamPlayer3D, built on first use.
+var _sound_players := {}
+## SOUN EditorID (lower case) -> its SoundBase, null when none, for clip keys.
+var _key_sounds := {}
+
 ## Plays the clips on the model's parts: the template scene's WeaponAnimator
 ## (esm_weapon_node.tscn), node_root set to the model when it loads.
 @onready var _animator: KfAnimator = $WeaponAnimator
@@ -107,8 +122,10 @@ func fire() -> bool:
 	if weapon == null or _action != Action.NONE or weapon.is_jammed:
 		return false
 	if weapon.loaded_ammo_count <= 0:
+		play_sound(get_weapon_base().no_ammo_sound)
 		return false
 	weapon.loaded_ammo_count -= 1
+	play_sound(get_weapon_base().shoot_sound)
 	_play(SLOT_ACTION, get_weapon_base().attack_clip_path())
 	fired.emit()
 	return true
@@ -180,12 +197,16 @@ func get_part(nif_name: String) -> Node3D:
 ## Draws the weapon: plays its equip clip, whose `prn:` key moves it to the
 ## hand (parent_key). False when it has no equip clip.
 func play_equip() -> bool:
+	if get_weapon_base() != null:
+		play_sound(get_weapon_base().equip_sound)
 	return _play_equip_action(Action.EQUIP, get_weapon_base().equip_clip_path() if get_weapon_base() != null else "")
 
 
 ## Holsters the weapon: plays its unequip clip, whose `prn:` key moves it to its
 ## holster point. False when it has no unequip clip.
 func play_unequip() -> bool:
+	if get_weapon_base() != null:
+		play_sound(get_weapon_base().unequip_sound)
 	return _play_equip_action(Action.UNEQUIP, get_weapon_base().unequip_clip_path() if get_weapon_base() != null else "")
 
 
@@ -272,9 +293,58 @@ func _finish_action() -> void:
 
 func _on_text_key(slot: int, key: String, _time: float) -> void:
 	var text := key.strip_edges()
+	if text.to_lower().begins_with(SOUND_KEY_PREFIX):
+		play_sound(_key_sound(text.substr(SOUND_KEY_PREFIX.length()).strip_edges()))
+		return
 	if slot != SLOT_ACTION or not text.to_lower().begins_with(PARENT_KEY_PREFIX):
 		return
 	parent_key.emit(text.substr(PARENT_KEY_PREFIX.length()).strip_edges())
+
+
+## Plays `sound` from the weapon: its player, built on first use, holds every
+## file its FNAM names, in an AudioStreamRandomizer when there are several.
+## Nothing plays for a null sound or one with no files.
+func play_sound(sound: SoundBase) -> void:
+	if sound == null or _sounds == null:
+		return
+	var player := _sound_players.get(sound) as AudioStreamPlayer3D
+	if player == null:
+		player = _make_sound_player(sound)
+		_sound_players[sound] = player
+	if player.stream != null:
+		player.play()
+
+
+## The SOUN of a clip key's EditorID, null when there is none.
+func _key_sound(editor_id: String) -> SoundBase:
+	var key := editor_id.to_lower()
+	if not _key_sounds.has(key):
+		_key_sounds[key] = EsmServer.find_base_by_editor_id(editor_id) as SoundBase
+	return _key_sounds[key]
+
+
+## A player for `sound` under Sounds. Its distances are the SOUN's attenuation
+## distances in metres: `# ASSUMPTION` the minimum is Godot's unit size (full
+## volume within it) and the maximum where it falls silent; the original's
+## attenuation curve (SNDD) is not read.
+func _make_sound_player(sound: SoundBase) -> AudioStreamPlayer3D:
+	var player := AudioStreamPlayer3D.new()
+	player.name = NifNames.escape(sound.editor_id) if not sound.editor_id.is_empty() else "Sound"
+	# Shots overlap: a new one does not cut the last.
+	player.max_polyphony = SOUND_POLYPHONY
+	var streams := SoundServer.get_streams(sound)
+	if streams.size() == 1:
+		player.stream = streams[0]
+	elif streams.size() > 1:
+		var randomizer := AudioStreamRandomizer.new()
+		for stream in streams:
+			randomizer.add_stream(-1, stream)
+		player.stream = randomizer
+	player.unit_size = maxf(sound.minimum_attenuation_distance / UNITS_PER_METRE, 1.0)
+	if sound.maximum_attenuation_distance > 0.0:
+		player.max_distance = sound.maximum_attenuation_distance / UNITS_PER_METRE
+	_sounds.add_child(player)
+	return player
 
 
 ## Puts the model in the holder's frame and stops its physics while held.

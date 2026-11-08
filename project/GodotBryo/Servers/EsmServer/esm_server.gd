@@ -1102,6 +1102,18 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.critical_chance_multiplier = _f32(critical, 4)
 		weapon.critical_flags = _u8(critical, 8)
 		weapon.critical_effect_form_id = _u32(critical, 12)
+		var shoot_sounds := _all_subrecords(raw, "SNAM")
+		weapon.shoot_sound = get_base(_u32(shoot_sounds[0])) as SoundBase if shoot_sounds.size() > 0 else null
+		weapon.shoot_distant_sound = get_base(_u32(shoot_sounds[1])) as SoundBase if shoot_sounds.size() > 1 else null
+		weapon.shoot_2d_sound = _sound_base(raw, "XNAM")
+		weapon.shoot_loop_sound = _sound_base(raw, "NAM7")
+		weapon.no_ammo_sound = _sound_base(raw, "TNAM")
+		weapon.block_sound = _sound_base(raw, "NAM6")
+		weapon.idle_sound = _sound_base(raw, "UNAM")
+		weapon.equip_sound = _sound_base(raw, "NAM9")
+		weapon.unequip_sound = _sound_base(raw, "NAM8")
+		weapon.pick_up_sound = _sound_base(raw, "YNAM")
+		weapon.drop_sound = _sound_base(raw, "ZNAM")
 		weapon.ammo_form_id = _u32(_subrecord(raw, "NAM0"))
 		weapon.ammo = get_base(weapon.ammo_form_id) if weapon.ammo_form_id != 0 else null
 		weapon.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
@@ -1109,6 +1121,16 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		var weapon_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
 		weapon.inventory_icon = String(weapon_item_data.get("inventory_icon", ""))
 		weapon.message_icon = String(weapon_item_data.get("message_icon", ""))
+	elif result is SoundBase:
+		var sound_base: SoundBase = result
+		sound_base.file_name = _string(_subrecord(raw, "FNAM"))
+		var sound_data := _subrecord(raw, "SNDD")
+		if sound_data.is_empty():
+			sound_data = _subrecord(raw, "SNDX")
+		sound_base.minimum_attenuation_distance = _u8(sound_data) * 5.0
+		sound_base.maximum_attenuation_distance = _u8(sound_data, 1) * 100.0
+		sound_base.frequency_adjustment = _i8(sound_data, 2)
+		sound_base.flags = _u32(sound_data, 4)
 	elif result is MiscBase:
 		var misc: MiscBase = result
 		misc.model_path = _string(_subrecord(raw, "MODL"))
@@ -1564,6 +1586,11 @@ func _weapon_animation_family(animation_type: int) -> String:
 		6: "2ha", 7: "2hr", 8: "2hh", 9: "2hl", 10: "1gt",
 		11: "1lm", 12: "1md", 13: "1gt"
 	}.get(animation_type, "")
+
+## The SOUN the FormID subrecord `tag` names, null when absent or 0.
+func _sound_base(raw: Dictionary, tag: String) -> SoundBase:
+	var form_id := _u32(_subrecord(raw, tag))
+	return get_base(form_id) as SoundBase if form_id != 0 else null
 
 func _subrecord(raw: Dictionary, tag: String) -> PackedByteArray:
 	for subrecord in raw.get("subrecords", []):
