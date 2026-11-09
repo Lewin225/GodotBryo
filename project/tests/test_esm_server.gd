@@ -1448,7 +1448,10 @@ func _check_item_resources(server, index: Array) -> void:
 			var node := EsmReferencePhysicaliser.new().physicalise(reference)
 			_check(node is EsmItemNode, "%s physicalises as EsmItemNode" % type_tag)
 			_check(node is EsmItemNode and (node as EsmItemNode).reference == reference, "%s EsmItemNode retains its typed reference" % type_tag)
-			_check(node.get_child_count() == 0, "%s physicalises without synchronously constructing legacy children" % type_tag)
+			# A template scene's own children (EsmWeaponNode's WeaponAnimator) are
+			# authored, owned by the node; anything else was constructed.
+			var constructed := node.get_children().filter(func(child: Node) -> bool: return child.owner != node)
+			_check(constructed.is_empty(), "%s physicalises without synchronously constructing legacy children" % type_tag)
 			node.free()
 			break
 		_check(found_reference, "a real %s reference is available" % type_tag)

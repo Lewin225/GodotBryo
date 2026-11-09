@@ -8,6 +8,7 @@ extends RefCounted
 
 const DoorNodeScript := preload("res://GodotBryo/Types/Node/esm_door_node.gd")
 const ItemNodeScript := preload("res://GodotBryo/Types/Node/esm_item_node.gd")
+const WeaponNodeScene := preload("res://GodotBryo/Types/Node/esm_weapon_node.tscn")
 const StaticNodeScript := preload("res://GodotBryo/Types/Node/esm_static_node.gd")
 const LightNodeScript := preload("res://GodotBryo/Types/Node/esm_light_node.gd")
 const ActivatorNodeScript := preload("res://GodotBryo/Types/Node/esm_activator_node.gd")
@@ -40,6 +41,21 @@ func physicalise(ref: EsmReference, parent: Node3D = null, initial_visual_detail
 	if parent != null:
 		parent.add_child(root)
 	return root
+
+## Builds the node of a weapon an actor holds (ActorWeaponSlots): its holder
+## places it, so it neither registers for its reference nor follows its
+## placement, and its body stays frozen with collision off.
+func physicalise_held(weapon: WeaponReference) -> EsmWeaponNode:
+	if weapon == null:
+		return null
+	var node := _make_node(weapon) as EsmWeaponNode
+	if node == null:
+		return null
+	node.placed_by_parent = true
+	node.is_held = true
+	node.configure(weapon)
+	node.name = _node_name(weapon)
+	return node
 
 ## Build one derived SCOL part as an ordinary StaticReference. Parts have no
 ## REFR identity of their own, so their synthetic ID is traceability-only.
@@ -74,9 +90,11 @@ func _make_node(ref: EsmReference) -> EsmNode:
 		return DoorNodeScript.new()
 	if ref is LeveledItemReference:
 		return LeveledItemPreviewNodeScript.new()
+	if ref is WeaponReference:
+		return WeaponNodeScene.instantiate()
 	if ref is MiscReference or ref is AlchemyReference \
 			or ref is AmmoReference or ref is KeyReference \
-			or ref is WeaponReference or ref is ArmorReference \
+			or ref is ArmorReference \
 			or ref is BookReference or ref is CaravanCardReference \
 			or ref is CaravanMoneyReference:
 		return ItemNodeScript.new()

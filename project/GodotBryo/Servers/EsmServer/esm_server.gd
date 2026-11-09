@@ -1077,11 +1077,62 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.grip_animation = _u8(weapon_dnam, 13)
 		weapon.reload_animation = _u8(weapon_dnam, 15)
 		weapon.attack_animation = _u8(weapon_dnam, 41)
+		weapon.animation_multiplier = _f32(weapon_dnam, 4)
+		weapon.reach = _f32(weapon_dnam, 8)
+		weapon.flags1 = _u8(weapon_dnam, 12)
+		weapon.ammo_use = _u8(weapon_dnam, 14)
+		weapon.min_spread = _f32(weapon_dnam, 16)
+		weapon.spread = _f32(weapon_dnam, 20)
+		weapon.sight_fov = _f32(weapon_dnam, 28)
+		weapon.projectile_form_id = _u32(weapon_dnam, 36)
+		weapon.projectile_count = _u8(weapon_dnam, 42)
+		weapon.min_range = _f32(weapon_dnam, 44)
+		weapon.max_range = _f32(weapon_dnam, 48)
+		weapon.flags2 = _u32(weapon_dnam, 56)
+		weapon.animation_attack_multiplier = _f32(weapon_dnam, 60)
+		weapon.fire_rate = _f32(weapon_dnam, 64)
+		weapon.attack_shots_per_second = _f32(weapon_dnam, 88)
+		weapon.reload_time = _f32(weapon_dnam, 92)
+		weapon.jam_time = _f32(weapon_dnam, 96)
+		weapon.aim_arc = _f32(weapon_dnam, 100)
+		weapon.semi_automatic_fire_delay_min = _f32(weapon_dnam, 128)
+		weapon.semi_automatic_fire_delay_max = _f32(weapon_dnam, 132)
+		var critical := _subrecord(raw, "CRDT")
+		weapon.critical_damage = _u16(critical)
+		weapon.critical_chance_multiplier = _f32(critical, 4)
+		weapon.critical_flags = _u8(critical, 8)
+		weapon.critical_effect_form_id = _u32(critical, 12)
+		var shoot_sounds := _all_subrecords(raw, "SNAM")
+		weapon.shoot_sound = get_base(_u32(shoot_sounds[0])) as SoundBase if shoot_sounds.size() > 0 else null
+		weapon.shoot_distant_sound = get_base(_u32(shoot_sounds[1])) as SoundBase if shoot_sounds.size() > 1 else null
+		weapon.shoot_2d_sound = _sound_base(raw, "XNAM")
+		weapon.shoot_loop_sound = _sound_base(raw, "NAM7")
+		weapon.no_ammo_sound = _sound_base(raw, "TNAM")
+		weapon.block_sound = _sound_base(raw, "NAM6")
+		weapon.idle_sound = _sound_base(raw, "UNAM")
+		weapon.equip_sound = _sound_base(raw, "NAM9")
+		weapon.unequip_sound = _sound_base(raw, "NAM8")
+		weapon.pick_up_sound = _sound_base(raw, "YNAM")
+		weapon.drop_sound = _sound_base(raw, "ZNAM")
+		weapon.ammo_form_id = _u32(_subrecord(raw, "NAM0"))
+		weapon.ammo = get_base(weapon.ammo_form_id) if weapon.ammo_form_id != 0 else null
 		weapon.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
 		weapon.biped_model_list = get_base(weapon.biped_model_list_form_id) as FormListBase
 		var weapon_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
 		weapon.inventory_icon = String(weapon_item_data.get("inventory_icon", ""))
 		weapon.message_icon = String(weapon_item_data.get("message_icon", ""))
+	elif result is SoundBase:
+		var sound_base: SoundBase = result
+		sound_base.file_name = _string(_subrecord(raw, "FNAM"))
+		var sound_data := _subrecord(raw, "SNDD")
+		if sound_data.is_empty():
+			sound_data = _subrecord(raw, "SNDX")
+		sound_base.minimum_attenuation_distance = _u8(sound_data) * 5.0
+		sound_base.maximum_attenuation_distance = _u8(sound_data, 1) * 100.0
+		sound_base.frequency_adjustment = _i8(sound_data, 2)
+		sound_base.flags = _u32(sound_data, 4)
+		sound_base.loop_begin = _i32(sound_data, 28)
+		sound_base.loop_end = _i32(sound_data, 32)
 	elif result is MiscBase:
 		var misc: MiscBase = result
 		misc.model_path = _string(_subrecord(raw, "MODL"))
@@ -1537,6 +1588,11 @@ func _weapon_animation_family(animation_type: int) -> String:
 		6: "2ha", 7: "2hr", 8: "2hh", 9: "2hl", 10: "1gt",
 		11: "1lm", 12: "1md", 13: "1gt"
 	}.get(animation_type, "")
+
+## The SOUN the FormID subrecord `tag` names, null when absent or 0.
+func _sound_base(raw: Dictionary, tag: String) -> SoundBase:
+	var form_id := _u32(_subrecord(raw, tag))
+	return get_base(form_id) as SoundBase if form_id != 0 else null
 
 func _subrecord(raw: Dictionary, tag: String) -> PackedByteArray:
 	for subrecord in raw.get("subrecords", []):

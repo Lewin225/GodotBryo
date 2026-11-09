@@ -65,13 +65,16 @@ update_scale = false
 shape = SubResource("CapsuleShape3D_player")
 
 [node name="FirstPersonRig" parent="." unique_id=1748862093 instance=ExtResource("62_fprig")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.14207876)
+physics_interpolation_mode = 2
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.10318935, 0.013227493)
 held_bones = PackedStringArray("Bip01 Looking")
 
 [node name="EsmActorNode" parent="." unique_id=123295044 instance=ExtResource("2_qjkh3")]
+physics_interpolation_mode = 2
 possessed_first_person = true
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=611636034]
+physics_interpolation_mode = 2
 top_level = true
 fov = 111.3
 far = 6000.0

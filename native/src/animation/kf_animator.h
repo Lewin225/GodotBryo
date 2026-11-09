@@ -3,12 +3,14 @@
 
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/node_path.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/core/object_id.hpp>
 
 #include <map>
 #include <vector>
@@ -21,7 +23,9 @@ namespace godot {
 // still unclaimed. Writes poses with Skeleton3D::set_bone_pose_*, so the
 // skeleton's modifiers apply on top. Reports root motion
 // (root_motion_mode), every start and stop (clip_started, clip_stopped), and
-// can follow another KfAnimator's clocks (sync_source).
+// can follow another KfAnimator's clocks (sync_source). With no skeleton it
+// plays on the Node3Ds under node_root instead (a weapon's parts), including
+// their visibility tracks.
 //
 // The module's README (native/src/animation/README.md) describes slots,
 // priorities, root motion and sync mode; the class reference is
@@ -48,6 +52,11 @@ public:
 
 	void set_skeleton_path(const NodePath &p_path);
 	NodePath get_skeleton_path() const;
+	// The node whose Node3D descendants (and itself) are the targets when
+	// skeleton_path resolves to no skeleton: a track binds to the node named
+	// as its path.
+	void set_node_root(const NodePath &p_path);
+	NodePath get_node_root() const;
 	void set_update_interval(int p_frames);
 	int get_update_interval() const;
 	void set_paused(bool p_paused);
@@ -79,6 +88,11 @@ public:
 	// The KfAnimator that clips played with a source_serial follow.
 	void set_sync_source(const NodePath &p_path);
 	NodePath get_sync_source() const;
+	// Slot -> the KfAnimator that clips played with a source_serial in that
+	// slot follow, in place of sync_source (an actor's weapon slot follows the
+	// weapon, its other slots the default).
+	void set_slot_sync_sources(const Dictionary &p_sources);
+	Dictionary get_slot_sync_sources() const;
 
 	// Starts `animation` in `slot`, fading in over `fade_seconds` (in an empty
 	// slot too) while the slot's current clip fades out. Bip01 and Bip01 NonAccum tracks play
@@ -86,7 +100,8 @@ public:
 	// clip_started; a non-zero `source_serial` makes the clip follow the
 	// sync_source clip of that serial. Returns the start's serial, 0 when the
 	// animation is null or keys none of the skeleton's bones (nothing starts and
-	// nothing is emitted).
+	// nothing is emitted). With node targets a clip keying none of the nodes
+	// still plays, for its clock and events.
 	int64_t play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root, float p_speed,
 			const String &p_path, int64_t p_source_serial);
 	// Records a start of the KF at `path` (loaded as `animation`, or null) in
@@ -123,9 +138,11 @@ protected:
 	void _notification(int p_what);
 
 private:
-	// One track of a clip bound to a skeleton bone.
+	// One track of a clip bound to a skeleton bone, or to a Node3D under
+	// node_root (`node`, with `bone` -1).
 	struct BoundTrack {
 		int bone = -1;
+		ObjectID node;
 		int track = -1;
 		Animation::TrackType type = Animation::TYPE_POSITION_3D;
 		int priority = 0;
@@ -201,7 +218,10 @@ private:
 	};
 
 	Skeleton3D *_skeleton() const;
-	KfAnimator *_source() const;
+	Node3D *_node_root() const;
+	bool _bind_nodes(Clip &r_clip) const;
+	void _write_node_pose();
+	KfAnimator *_source(int p_slot) const;
 	const Clip *_source_clip(int p_slot, uint64_t p_serial) const;
 	bool _follow_source(int p_slot, Clip &r_clip) const;
 	void _end_current(Slot &r_slot, float p_fade_seconds);
@@ -221,7 +241,9 @@ private:
 
 	std::vector<Event> _events;
 	NodePath _skeleton_path;
+	NodePath _node_root_path;
 	NodePath _sync_source_path;
+	Dictionary _slot_sync_sources;
 	int _update_interval = 1;
 	bool _paused = false;
 	int _tie_mode = TIE_BLEND;

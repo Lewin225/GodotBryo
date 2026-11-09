@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bn31vq8d1y5k7" path="res://GodotBryo/Types/Node/first_person_rig.gd" id="1_rig"]
 [ext_resource type="Script" uid="uid://clwbgfjmrx1vm" path="res://GodotBryo/Types/Node/kf_clip_sync.gd" id="2_sync"]
+[ext_resource type="Script" path="res://GodotBryo/Types/Node/first_person_viewmodel.gd" id="3_viewmodel"]
 
 [node name="FirstPersonRig" type="Node3D" unique_id=1850198129]
 script = ExtResource("1_rig")
@@ -16,3 +17,7 @@ script = ExtResource("1_rig")
 script = ExtResource("2_sync")
 follower = NodePath("../KfAnimator")
 debug_log = true
+
+[node name="Viewmodel" type="Node3D" parent="." node_paths=PackedStringArray("rig_animator")]
+script = ExtResource("3_viewmodel")
+rig_animator = NodePath("../KfAnimator")

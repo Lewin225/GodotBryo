@@ -19,11 +19,17 @@ signal simulation_mode_changed
 ## `active_package` changed; controllers read the new package's flags (Always
 ## Run and the like) from it.
 signal active_package_changed(old_package: PackageBase, new_package: PackageBase)
+## A weapon slot's weapon, or the drawn slot, changed.
+signal weapon_slots_changed
 
 ## The MODL the editor gives an NPC_ or CREA whose model comes from a leveled
 ## list (638 NPC_ in FalloutNV.esm).
 const PLACEHOLDER_MODEL := "marker_creature.nif"
 ## level_modifier without XLCM.
+## The weapon slots (Plans/Weapons/weapons.md, Equip slots): two short guns on
+## the belt and a long gun (or a heavy weapon's backpack) on the back.
+enum WeaponSlot { NONE = -1, RIGHT_HIP = 0, LEFT_HIP = 1, BACK = 2 }
+
 const LEVEL_MODIFIER_NONE := -1
 const LEVEL_MODIFIER_EASY := 0
 ## The fraction of the space's level each XLCM value chooses at, Easy to Boss
@@ -204,6 +210,37 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 ## Runtime state: what has changed from the base record's derived values.
 ## EsmServer creates it with the reference; otherwise created on first use.
 @export var actor_values: ActorValues
+## Runtime state with no ESM source: the weapon holstered or drawn at the right
+## hip, out of the inventory while it is here. Saved as its instance_id. Set by
+## equip_weapon(); read by the actor node's ActorWeaponSlots.
+@export var weapon_right_hip: WeaponReference:
+	set(value):
+		weapon_right_hip = value
+		_weapon_slots_changed()
+## Runtime state with no ESM source: the weapon at the left hip, a slot the
+## original does not have. As weapon_right_hip.
+@export var weapon_left_hip: WeaponReference:
+	set(value):
+		weapon_left_hip = value
+		_weapon_slots_changed()
+## Runtime state with no ESM source: the long gun (or heavy weapon) on the back.
+## As weapon_right_hip.
+@export var weapon_back: WeaponReference:
+	set(value):
+		weapon_back = value
+		_weapon_slots_changed()
+## Runtime state with no ESM source: the slot whose weapon is in the hand, NONE
+## when all are holstered. Set by draw_weapon() and holster_weapon().
+@export var drawn_weapon_slot: WeaponSlot = WeaponSlot.NONE:
+	set(value):
+		drawn_weapon_slot = value
+		_weapon_slots_changed()
+## Runtime state with no ESM source: the slot drawn last, which a draw or fire
+## input with nothing drawn draws again; NONE before any.
+@export var last_drawn_weapon_slot: WeaponSlot = WeaponSlot.NONE:
+	set(value):
+		last_drawn_weapon_slot = value
+		mark_dirty()
 ## Runtime state with no ESM source: the NPC_ or CREA chosen from the leveled
 ## list (LVLN, LVLC) in the base's template chain, chosen once on first use by
 ## get_leveled_template(). Null until chosen, and for an actor with no leveled
@@ -228,6 +265,10 @@ const LEVEL_MODIFIER_SCALES: Array[float] = [0.5, 0.75, 1.25, 2.0]
 ## Runtime state: the furniture marker index occupied while using furniture,
 ## else -1. Saved with `using`.
 @export_storage var using_marker: int = -1
+
+## _take_equipped_weapons() is running: equipping changes the inventory, which
+## calls it again.
+var _taking_weapons := false
 
 ## How far in front of the actor, and how high above its feet, drop() places
 ## an item, in metres.
@@ -300,6 +341,170 @@ func drop_entry(entry: InventoryItem, count := -1) -> int:
 		dropped += 1
 	contents.remove_inventory_item(entry, dropped)
 	return dropped
+
+## The weapon in `slot`, or null.
+func get_weapon(slot: WeaponSlot) -> WeaponReference:
+	match slot:
+		WeaponSlot.RIGHT_HIP:
+			return weapon_right_hip
+		WeaponSlot.LEFT_HIP:
+			return weapon_left_hip
+		WeaponSlot.BACK:
+			return weapon_back
+	return null
+
+
+## The slot holding `weapon`, NONE when it is in none.
+func get_weapon_slot(weapon: WeaponReference) -> WeaponSlot:
+	for slot: WeaponSlot in [WeaponSlot.RIGHT_HIP, WeaponSlot.LEFT_HIP, WeaponSlot.BACK]:
+		if weapon != null and get_weapon(slot) == weapon:
+			return slot
+	return WeaponSlot.NONE
+
+
+## The weapon in the hand, or null.
+func get_drawn_weapon() -> WeaponReference:
+	return get_weapon(drawn_weapon_slot)
+
+
+## Takes the weapon of the inventory entry `entry` out of the inventory into a
+## slot: one unit of a stack becomes a runtime reference first. A long gun goes
+## on the back, a short gun to the right hip, else the left. A slot in use
+## gives its weapon back to the inventory first (the right hip for a short
+## gun). Returns the slot, NONE when `entry` is not a weapon of this inventory.
+func equip_weapon(entry: InventoryItem) -> WeaponSlot:
+	if entry == null or contents == null or not contents.get_items().has(entry):
+		return WeaponSlot.NONE
+	var base := entry.base as WeaponBase
+	if base == null:
+		return WeaponSlot.NONE
+	var weapon := entry.item_reference as WeaponReference
+	if weapon == null:
+		var server := get_esm_server()
+		if server == null:
+			return WeaponSlot.NONE
+		weapon = server.create_runtime_reference(entry.base_form_id) as WeaponReference
+		if weapon == null:
+			return WeaponSlot.NONE
+	var slot := _free_slot_for(base)
+	if get_weapon(slot) != null:
+		unequip_weapon(slot)
+	contents.begin_batch()
+	entry.is_equipped = false
+	if entry.item_reference != null:
+		contents.remove_inventory_item(entry)
+	else:
+		contents.remove_inventory_item(entry, 1)
+	contents.end_batch()
+	weapon.set_holder(self)
+	_set_weapon(slot, weapon)
+	last_drawn_weapon_slot = slot
+	return slot
+
+
+## Puts the weapon in `slot` back in the inventory, holding its reference. False
+## when the slot is empty.
+func unequip_weapon(slot: WeaponSlot) -> bool:
+	var weapon := get_weapon(slot)
+	if weapon == null or contents == null:
+		return false
+	if drawn_weapon_slot == slot:
+		drawn_weapon_slot = WeaponSlot.NONE
+	_set_weapon(slot, null)
+	contents.add_inventory_item(InventoryItem.make_reference(weapon))
+	return true
+
+
+## Takes the weapon in `slot` away: not back to the inventory (RemoveItem).
+## False when the slot is empty.
+func remove_weapon(slot: WeaponSlot) -> bool:
+	var weapon := get_weapon(slot)
+	if weapon == null:
+		return false
+	if drawn_weapon_slot == slot:
+		drawn_weapon_slot = WeaponSlot.NONE
+	_set_weapon(slot, null)
+	weapon.holder_instance_id = &""
+	return true
+
+
+## The slots holding a weapon of the base `base_form_id`, right hip first.
+func get_weapon_slots_of(base_form_id: int) -> Array[WeaponSlot]:
+	var result: Array[WeaponSlot] = []
+	for slot: WeaponSlot in [WeaponSlot.RIGHT_HIP, WeaponSlot.LEFT_HIP, WeaponSlot.BACK]:
+		var weapon := get_weapon(slot)
+		if weapon != null and weapon.base_form_id == base_form_id:
+			result.append(slot)
+	return result
+
+
+## Draws the weapon in `slot` (holstering the drawn one); NONE draws the last
+## drawn. False when that slot is empty.
+func draw_weapon(slot: WeaponSlot = WeaponSlot.NONE) -> bool:
+	if slot == WeaponSlot.NONE:
+		slot = last_drawn_weapon_slot
+	if get_weapon(slot) == null:
+		return false
+	drawn_weapon_slot = slot
+	last_drawn_weapon_slot = slot
+	return true
+
+
+## Holsters the drawn weapon.
+func holster_weapon() -> void:
+	drawn_weapon_slot = WeaponSlot.NONE
+
+
+## The slot a weapon of `base` goes in: the back for a long gun; for a short
+## gun the right hip, else the left hip when only the right is in use.
+## `# ASSUMPTION` h2h (held on Bip01 R ForeTwist) takes a hip slot like a short
+## gun: nothing says where it counts.
+func _free_slot_for(base: WeaponBase) -> WeaponSlot:
+	if base.holsters_on_back():
+		return WeaponSlot.BACK
+	if weapon_right_hip != null and weapon_left_hip == null:
+		return WeaponSlot.LEFT_HIP
+	return WeaponSlot.RIGHT_HIP
+
+
+func _set_weapon(slot: WeaponSlot, weapon: WeaponReference) -> void:
+	match slot:
+		WeaponSlot.RIGHT_HIP:
+			weapon_right_hip = weapon
+		WeaponSlot.LEFT_HIP:
+			weapon_left_hip = weapon
+		WeaponSlot.BACK:
+			weapon_back = weapon
+
+
+## Takes every weapon the inventory marks equipped into a slot: is_equipped is
+## the equip request (EquipItem, the player's UI).
+func _take_equipped_weapons() -> void:
+	if _taking_weapons or contents == null:
+		return
+	_taking_weapons = true
+	for entry in contents.get_equipped_items():
+		if entry.base is WeaponBase:
+			equip_weapon(entry)
+	_taking_weapons = false
+
+
+func _weapon_slots_changed() -> void:
+	mark_dirty()
+	weapon_slots_changed.emit()
+
+
+func _watch_inventory(inventory: Inventory) -> void:
+	super._watch_inventory(inventory)
+	if inventory != null and not inventory.inventory_changed.is_connected(_take_equipped_weapons):
+		inventory.inventory_changed.connect(_take_equipped_weapons)
+
+
+func _unwatch_inventory(inventory: Inventory) -> void:
+	super._unwatch_inventory(inventory)
+	if inventory != null and inventory.inventory_changed.is_connected(_take_equipped_weapons):
+		inventory.inventory_changed.disconnect(_take_equipped_weapons)
+
 
 ## The inventory entry holding the reference `item`, or null.
 func _entry_for(item: EsmReference) -> InventoryItem:

@@ -75,6 +75,12 @@ const IDLE_CLIP_NAME := "idle__current"
 const LOOP_FOREVER := 255
 ## The KfAnimator slot locomotion plays in: animation group section 1, Movement.
 const MOVEMENT_SLOT := 1
+## The slot of a drawn weapon's stance (`<family>aim.kf`) and the slot of its
+## equip, attack, reload and jam clips, which follows the weapon's animator.
+## `# ASSUMPTION` above every IDLE section (0 to 63, SECTION_MASK) so neither
+## meets an idle; no data assigns weapon clips an animation group section.
+const WEAPON_STANCE_SLOT := 64
+const WEAPON_ACTION_SLOT := 65
 ## IDLE DATA byte 0's section bits; the upper two are flags.
 const SECTION_MASK := 0x3F
 ## Animation group section 20, Whole Body.
@@ -93,6 +99,13 @@ var _clips: Dictionary = {}
 var _clip_paths: Dictionary = {}
 ## The locomotion clip playing in MOVEMENT_SLOT, or "".
 var _locomotion_clip := ""
+## The drawn weapon's clip family (1hp, 2hr, ...), "" with none drawn.
+var _weapon_family := ""
+## KF path -> its Animation, for clips loaded on demand (weapon stance and
+## actions); a null value is a KF that failed to load.
+var _weapon_clips := {}
+## The weapon action being followed: [path, serial, source], [] for none.
+var _weapon_action: Array = []
 ## The idle play_idle last started that still plays or loads, or null.
 var _idle: IdleBase = null
 ## Slot -> the IDLE asked for in it, playing or still loading.
@@ -444,8 +457,12 @@ func _physics_process(_delta: float) -> void:
 		clip_name = _creature_clip(actor.motion if actor != null else null)
 	else:
 		var female := actor != null and actor.is_female()
-		var clip := locomotion_clip(actor.motion if actor != null else null, female)
+		var motion := actor.motion if actor != null else null
+		var clip := locomotion_clip(motion, female)
 		clip_name = _clip_name(_root_path + clip, 0)
+		var family_clip := _clip_name(_root_path + family_locomotion_clip(motion, _weapon_family), 0)
+		if not _weapon_family.is_empty() and _clips.has(family_clip):
+			clip_name = family_clip
 		if not _clips.has(clip_name):
 			clip_name = _clip_name(_root_path + IDLE_CLIP_PATH, 0)
 	_play_locomotion(clip_name, BLEND_SECONDS)
@@ -502,6 +519,83 @@ static func locomotion_clip(motion: ActorMotion, female: bool) -> String:
 	var pace := "fast" if motion.running else ""
 	var body := "female/" if female else "male/"
 	return LOCOMOTION_SUBDIRECTORY + body + "mt%s%s.kf" % [pace, direction]
+
+## The drawn weapon family's locomotion KF for `motion` (relative to the
+## animation root): `locomotion/<family><pace><direction>.kf` (1hpforward,
+## 2hrfastleft); "" standing or with no family. The family clips sit in
+## `locomotion/` beside the unarmed ones and key the whole body (1hpforward:
+## legs at priority 30, spine 31, right arm 35).
+static func family_locomotion_clip(motion: ActorMotion, family: String) -> String:
+	if family.is_empty() or motion == null or motion.get_planar_speed() < STANDING_SPEED:
+		return ""
+	var forward: float = -motion.velocity.z
+	var right: float = motion.velocity.x
+	var direction := ""
+	if absf(forward) >= absf(right):
+		direction = "forward" if forward > 0.0 else "backward"
+	else:
+		direction = "right" if right > 0.0 else "left"
+	var pace := "fast" if motion.running else ""
+	return LOCOMOTION_SUBDIRECTORY + "%s%s%s.kf" % [family, pace, direction]
+
+
+## A weapon of `family` is drawn ("" for none): locomotion picks the family's
+## clips, and its stance (`<family>aim.kf`, the weapon-out idle) plays in
+## WEAPON_STANCE_SLOT on the actor's own clock.
+func set_weapon_family(family: String) -> void:
+	if family == _weapon_family:
+		return
+	_weapon_family = family
+	_locomotion_clip = ""
+	if family.is_empty():
+		if _animator != null and is_instance_valid(_animator):
+			_animator.stop(WEAPON_STANCE_SLOT, BLEND_SECONDS)
+		return
+	_play_weapon_clip(WEAPON_STANCE_SLOT, WeaponBase.CLIP_FOLDER + family + "aim.kf", 0, null)
+
+
+## Plays the KF at `path` in WEAPON_ACTION_SLOT following `source`'s clip of
+## `serial` in the same slot (the weapon's animator: the clock, and the only
+## one emitting the clip's events).
+func follow_weapon_action(path: String, serial: int, source: KfAnimator) -> void:
+	_weapon_action = [path, serial, source]
+	_play_weapon_clip(WEAPON_ACTION_SLOT, path, serial, source)
+
+
+## Ends the followed weapon action.
+func stop_weapon_action(fade: float) -> void:
+	_weapon_action = []
+	if _animator != null and is_instance_valid(_animator):
+		_animator.stop(WEAPON_ACTION_SLOT, fade)
+
+
+func _play_weapon_clip(slot: int, path: String, serial: int, source: KfAnimator) -> void:
+	if _animator == null or not is_instance_valid(_animator):
+		return
+	var key := NifServer.canonical(path)
+	if not _weapon_clips.has(key):
+		NifServer.request_kf(key, self, _on_weapon_clip_delivered.bind(slot, key))
+		return
+	var clip: Animation = _weapon_clips[key]
+	if clip == null:
+		return
+	if source != null and is_instance_valid(source):
+		var sources := _animator.slot_sync_sources
+		sources[slot] = _animator.get_path_to(source)
+		_animator.slot_sync_sources = sources
+	_animator.play(slot, clip, BLEND_SECONDS, false, 1.0, key, serial)
+
+
+func _on_weapon_clip_delivered(library: AnimationLibrary, slot: int, key: String) -> void:
+	var clip: Animation = null
+	if library != null and not library.get_animation_list().is_empty():
+		clip = library.get_animation(library.get_animation_list()[0])
+	_weapon_clips[key] = clip
+	if slot == WEAPON_STANCE_SLOT and not _weapon_family.is_empty() and key == NifServer.canonical(WeaponBase.CLIP_FOLDER + _weapon_family + "aim.kf"):
+		_play_weapon_clip(slot, key, 0, null)
+	elif slot == WEAPON_ACTION_SLOT and not _weapon_action.is_empty() and NifServer.canonical(String(_weapon_action[0])) == key:
+		_play_weapon_clip(slot, key, int(_weapon_action[1]), _weapon_action[2])
+
 
 ## The KF file names, most fitting first, a creature plays for `motion`: the
 ## clip for its direction and pace, then the nearest it may lack; a creature
@@ -582,6 +676,10 @@ func _finish_if_ready() -> void:
 		_play_locomotion(idle_clip, 0.0)
 	else:
 		push_warning("ActorAnimator: default idle clip was not loaded: " + idle_clip)
+	# A weapon drawn before the clips loaded (a save loaded with one drawn, a
+	# body rebuilt) takes its stance now: set_weapon_family() had no animator.
+	if not _weapon_family.is_empty():
+		_play_weapon_clip(WEAPON_STANCE_SLOT, WeaponBase.CLIP_FOLDER + _weapon_family + "aim.kf", 0, null)
 	load_completed.emit(_clips.size())
 
 func _ensure_animator() -> KfAnimator:

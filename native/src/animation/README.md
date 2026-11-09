@@ -9,9 +9,10 @@ Design and findings: [`Plans/Actors/animation_blending.md`](../../../Plans/Actor
 (priorities, slots, root motion), [`Plans/Actors/first_person.md`](../../../Plans/Actors/first_person.md)
 (sync mode).
 
-Callers: `ActorAnimator` (an actor's locomotion and idles), `FirstPersonRig` through `KfClipSync`
-(the first-person viewmodel following the actor), `animation_viewer.tscn` (the launcher's
-Animation viewer). Test: `project/tests/test_kf_animator_sync.tscn`.
+Callers: `ActorAnimator` (an actor's locomotion and idles), `EsmWeaponNode` (a weapon's parts),
+`FirstPersonRig` through `KfClipSync` (the first-person viewmodel following the actor),
+`animation_viewer.tscn` (the launcher's Animation viewer). Tests:
+`project/tests/test_kf_animator_sync.tscn`, `test_kf_animator_nodes.tscn`.
 
 ---
 
@@ -56,6 +57,21 @@ KfAnimator does not load clips. Callers request them from NifServer and pass the
   `update_interval` frames the pose is written. `update_pose()` writes it now.
 - A pose read after the frame is the restored one; read modifier results on
   `Skeleton3D.skeleton_updated`.
+
+## Node targets
+
+With no skeleton (`skeleton_path` resolves to none), clips play on the `Node3D`s under `node_root`:
+a weapon's `##` parts.
+
+- A track binds to the node named as its path (the escaped NIF name), the root included.
+- Transform tracks resolve by priority and fade weight as bone channels do, and are written with
+  `set_position`, `set_quaternion`, `set_scale`.
+- A `<name>:visible` track (NifServer builds them from `NiVisController` bool blocks) sets the
+  node's `visible`: the highest priority clip keying it wins, the newest at a tie.
+- `Bip01` and `Bip01 NonAccum` tracks are skipped; there is no root motion and `disabled_bones`
+  does not apply.
+- A clip that keys none of the nodes still plays: its clock and events are kept, so a holder can
+  follow a weapon's clip that keys none of that weapon's parts.
 
 ## Events
 
@@ -104,6 +120,8 @@ One KfAnimator can follow another (`sync_source`):
   emits both.
 - The follower reads the source's time as it stands when the follower processes: give it a higher
   `process_priority` (KfClipSync does).
+- `slot_sync_sources` (slot -> KfAnimator) overrides `sync_source` for its slots: an actor's weapon
+  action slot follows the weapon's animator while its other slots run on their own clocks.
 - Which clip the follower plays for a start is the caller's choice. `KfClipSync`
   (`project/GodotBryo/Types/Node/kf_clip_sync.gd`) remaps the path (`_male` to `_1stperson`) or
   plays the source's own clip.

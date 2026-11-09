@@ -1,6 +1,7 @@
 #include "animation/kf_animator.h"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -20,6 +21,12 @@ constexpr int CHANNEL_POSITION = 0;
 constexpr int CHANNEL_ROTATION = 1;
 constexpr int CHANNEL_SCALE = 2;
 constexpr int CHANNEL_COUNT = 3;
+// A Node3D target's visibility, after its transform channels.
+constexpr int CHANNEL_VISIBLE = 3;
+constexpr int NODE_CHANNEL_COUNT = 4;
+// A visibility track's path is its target's name with this property
+// (NifServer's NifAnimationBuilder.VISIBILITY_SUFFIX).
+const char *const VISIBILITY_SUFFIX = ":visible";
 // Below this, a weight counts as nothing.
 constexpr float WEIGHT_EPSILON = 0.0001f;
 
@@ -49,6 +56,8 @@ void KfAnimator::_bind_methods() {
 	// Properties.
 	ClassDB::bind_method(D_METHOD("set_skeleton_path", "path"), &KfAnimator::set_skeleton_path);
 	ClassDB::bind_method(D_METHOD("get_skeleton_path"), &KfAnimator::get_skeleton_path);
+	ClassDB::bind_method(D_METHOD("set_node_root", "path"), &KfAnimator::set_node_root);
+	ClassDB::bind_method(D_METHOD("get_node_root"), &KfAnimator::get_node_root);
 	ClassDB::bind_method(D_METHOD("set_update_interval", "frames"), &KfAnimator::set_update_interval);
 	ClassDB::bind_method(D_METHOD("get_update_interval"), &KfAnimator::get_update_interval);
 	ClassDB::bind_method(D_METHOD("set_paused", "paused"), &KfAnimator::set_paused);
@@ -65,6 +74,8 @@ void KfAnimator::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_holding_unkeyed_root"), &KfAnimator::is_holding_unkeyed_root);
 	ClassDB::bind_method(D_METHOD("set_sync_source", "path"), &KfAnimator::set_sync_source);
 	ClassDB::bind_method(D_METHOD("get_sync_source"), &KfAnimator::get_sync_source);
+	ClassDB::bind_method(D_METHOD("set_slot_sync_sources", "sources"), &KfAnimator::set_slot_sync_sources);
+	ClassDB::bind_method(D_METHOD("get_slot_sync_sources"), &KfAnimator::get_slot_sync_sources);
 
 	// Playing.
 	ClassDB::bind_method(D_METHOD("play", "slot", "animation", "fade_seconds", "keep_root", "speed", "path", "source_serial"),
@@ -91,6 +102,8 @@ void KfAnimator::_bind_methods() {
 
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "skeleton_path", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Skeleton3D"),
 			"set_skeleton_path", "get_skeleton_path");
+	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "node_root", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Node3D"),
+			"set_node_root", "get_node_root");
 	ADD_GROUP("Playback", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "update_interval", PROPERTY_HINT_RANGE, "1,120,1,suffix:frames"),
 			"set_update_interval", "get_update_interval");
@@ -109,6 +122,8 @@ void KfAnimator::_bind_methods() {
 	ADD_GROUP("Sync", "");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "sync_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "KfAnimator"),
 			"set_sync_source", "get_sync_source");
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "slot_sync_sources", PROPERTY_HINT_DICTIONARY_TYPE, "int;NodePath"),
+			"set_slot_sync_sources", "get_slot_sync_sources");
 
 	BIND_ENUM_CONSTANT(TIE_BLEND);
 	BIND_ENUM_CONSTANT(TIE_NEWEST);
@@ -154,12 +169,28 @@ NodePath KfAnimator::get_skeleton_path() const {
 	return _skeleton_path;
 }
 
+void KfAnimator::set_node_root(const NodePath &p_path) {
+	_node_root_path = p_path;
+}
+
+NodePath KfAnimator::get_node_root() const {
+	return _node_root_path;
+}
+
 void KfAnimator::set_sync_source(const NodePath &p_path) {
 	_sync_source_path = p_path;
 }
 
 NodePath KfAnimator::get_sync_source() const {
 	return _sync_source_path;
+}
+
+void KfAnimator::set_slot_sync_sources(const Dictionary &p_sources) {
+	_slot_sync_sources = p_sources;
+}
+
+Dictionary KfAnimator::get_slot_sync_sources() const {
+	return _slot_sync_sources;
 }
 
 void KfAnimator::set_update_interval(int p_frames) {
@@ -252,11 +283,25 @@ Skeleton3D *KfAnimator::_skeleton() const {
 	return Object::cast_to<Skeleton3D>(get_node_or_null(_skeleton_path));
 }
 
-KfAnimator *KfAnimator::_source() const {
-	if (_sync_source_path.is_empty()) {
+// The node targets' root: node_root, used only when there is no skeleton.
+Node3D *KfAnimator::_node_root() const {
+	if (_skeleton() != nullptr || _node_root_path.is_empty()) {
 		return nullptr;
 	}
-	KfAnimator *source = Object::cast_to<KfAnimator>(get_node_or_null(_sync_source_path));
+	return Object::cast_to<Node3D>(get_node_or_null(_node_root_path));
+}
+
+// The KfAnimator `slot`'s following clips follow: its slot_sync_sources entry,
+// else sync_source; null for none or this animator.
+KfAnimator *KfAnimator::_source(int p_slot) const {
+	NodePath path = _sync_source_path;
+	if (_slot_sync_sources.has(p_slot)) {
+		path = _slot_sync_sources[p_slot];
+	}
+	if (path.is_empty()) {
+		return nullptr;
+	}
+	KfAnimator *source = Object::cast_to<KfAnimator>(get_node_or_null(path));
 	return source == this ? nullptr : source;
 }
 
@@ -285,7 +330,7 @@ bool KfAnimator::_follow_source(int p_slot, Clip &r_clip) const {
 	if (r_clip.source_serial == 0) {
 		return false;
 	}
-	const KfAnimator *source = _source();
+	const KfAnimator *source = _source(p_slot);
 	if (source == nullptr) {
 		return false;
 	}
@@ -326,8 +371,11 @@ void KfAnimator::_record_start(int p_slot, const Start &p_start, float p_fade_se
 // priority. False when no track names a bone.
 bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
 	Skeleton3D *skeleton = _skeleton();
-	if (skeleton == nullptr || r_clip.animation.is_null()) {
+	if (r_clip.animation.is_null()) {
 		return false;
+	}
+	if (skeleton == nullptr) {
+		return _bind_nodes(r_clip);
 	}
 	const Ref<Animation> &animation = r_clip.animation;
 	Dictionary priorities = animation->get_meta("nif_track_priorities", Dictionary());
@@ -368,6 +416,52 @@ bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
 	return !r_clip.tracks.empty();
 }
 
+// Maps the clip's transform and visibility tracks to the Node3Ds under
+// node_root named as their paths (the root itself included) and reads each
+// track's priority. Root motion does not apply: Bip01 and Bip01 NonAccum
+// tracks are skipped. False when no track names a node.
+bool KfAnimator::_bind_nodes(Clip &r_clip) const {
+	Node3D *root = _node_root();
+	if (root == nullptr) {
+		return false;
+	}
+	const Ref<Animation> &animation = r_clip.animation;
+	Dictionary priorities = animation->get_meta("nif_track_priorities", Dictionary());
+	const String root_bone = ROOT_BONE;
+	const String non_accum_bone = NON_ACCUM_BONE;
+	const String visibility_suffix = VISIBILITY_SUFFIX;
+	for (int track = 0; track < animation->get_track_count(); track++) {
+		const Animation::TrackType type = animation->track_get_type(track);
+		const bool transform = type == Animation::TYPE_POSITION_3D || type == Animation::TYPE_ROTATION_3D ||
+				type == Animation::TYPE_SCALE_3D;
+		const String path = String(animation->track_get_path(track));
+		const bool visibility = type == Animation::TYPE_VALUE && path.ends_with(visibility_suffix);
+		if ((!transform && !visibility) || animation->track_get_key_count(track) == 0) {
+			continue;
+		}
+		const String name = visibility ? path.substr(0, path.length() - visibility_suffix.length()) : path;
+		if (name == root_bone || name == non_accum_bone) {
+			continue;
+		}
+		Node3D *target = nullptr;
+		if (String(root->get_name()) == name) {
+			target = root;
+		} else {
+			target = Object::cast_to<Node3D>(root->find_child(name, true, false));
+		}
+		if (target == nullptr) {
+			continue;
+		}
+		BoundTrack bound;
+		bound.node = target->get_instance_id();
+		bound.track = track;
+		bound.type = type;
+		bound.priority = static_cast<int>(priorities.get(path, 0));
+		r_clip.tracks.push_back(bound);
+	}
+	return !r_clip.tracks.empty();
+}
+
 int64_t KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_fade_seconds, bool p_keep_root,
 		float p_speed, const String &p_path, int64_t p_source_serial) {
 	if (p_animation.is_null()) {
@@ -381,7 +475,11 @@ int64_t KfAnimator::play(int p_slot, const Ref<Animation> &p_animation, float p_
 	clip.serial = _next_serial++;
 	clip.keep_root = p_keep_root;
 	clip.source_serial = static_cast<uint64_t>(std::max<int64_t>(p_source_serial, 0));
-	if (!_bind(clip, p_keep_root)) {
+	// With node targets a clip plays even when it keys none of the nodes: it
+	// still has a clock and events (a weapon's clip, followed by its holder,
+	// whose parts it may not key: 1hpequip keys none of the 10mm pistol's).
+	const bool clock_only = _skeleton() == nullptr && _node_root() != nullptr;
+	if (!_bind(clip, p_keep_root) && !clock_only) {
 		return 0;
 	}
 	Slot &slot = _slots[p_slot];
@@ -693,6 +791,7 @@ void KfAnimator::_resolve(std::vector<Sample> &r_samples) const {
 void KfAnimator::_write_pose() {
 	Skeleton3D *skeleton = _skeleton();
 	if (skeleton == nullptr) {
+		_write_node_pose();
 		return;
 	}
 	const int bone_count = skeleton->get_bone_count();
@@ -826,6 +925,112 @@ void KfAnimator::_write_pose() {
 		if (whole_root || (_hold_unkeyed_root && !keys_root)) {
 			skeleton->set_bone_pose_position(root_bone, Vector3());
 			skeleton->set_bone_pose_rotation(root_bone, Quaternion());
+		}
+	}
+}
+
+// Samples every playing clip's node tracks, resolves each keyed channel and
+// writes it to its Node3D. Transforms resolve as bone channels do; visibility
+// takes the highest priority clip's value, the newest at a tie.
+void KfAnimator::_write_node_pose() {
+	if (_node_root() == nullptr) {
+		return;
+	}
+	std::map<uint64_t, std::vector<std::vector<Sample>>> channels;
+	auto add_clip = [&](const Clip &clip) {
+		if (clip.weight <= WEIGHT_EPSILON) {
+			return;
+		}
+		const double time = clip.time;
+		for (const BoundTrack &bound : clip.tracks) {
+			if (bound.bone != -1) {
+				continue;
+			}
+			Sample sample;
+			sample.priority = bound.priority;
+			sample.weight = clip.weight;
+			sample.serial = clip.serial;
+			int channel = CHANNEL_VISIBLE;
+			if (bound.type == Animation::TYPE_VALUE) {
+				const bool shown = clip.animation->value_track_interpolate(bound.track, time);
+				sample.vector.x = shown ? 1.0f : 0.0f;
+			} else {
+				channel = channel_of(bound.type);
+				if (bound.type == Animation::TYPE_POSITION_3D) {
+					sample.vector = clip.animation->position_track_interpolate(bound.track, time);
+				} else if (bound.type == Animation::TYPE_ROTATION_3D) {
+					sample.rotation = clip.animation->rotation_track_interpolate(bound.track, time);
+				} else {
+					sample.vector = clip.animation->scale_track_interpolate(bound.track, time);
+				}
+			}
+			std::vector<std::vector<Sample>> &node_channels = channels[static_cast<uint64_t>(bound.node)];
+			node_channels.resize(NODE_CHANNEL_COUNT);
+			node_channels[static_cast<size_t>(channel)].push_back(sample);
+		}
+	};
+	for (const auto &entry : _slots) {
+		const Slot &slot = entry.second;
+		if (slot.has_current) {
+			add_clip(slot.current);
+		}
+		for (const Clip &clip : slot.fading) {
+			add_clip(clip);
+		}
+	}
+	for (auto &entry : channels) {
+		Node3D *node = Object::cast_to<Node3D>(ObjectDB::get_instance(ObjectID(entry.first)));
+		if (node == nullptr) {
+			continue;
+		}
+		std::vector<std::vector<Sample>> &node_channels = entry.second;
+		const std::vector<Sample> &visible = node_channels[CHANNEL_VISIBLE];
+		if (!visible.empty()) {
+			const Sample *chosen = &visible.front();
+			for (const Sample &sample : visible) {
+				const bool higher = sample.priority > chosen->priority;
+				const bool newer_tie = sample.priority == chosen->priority && sample.serial > chosen->serial;
+				if (higher || newer_tie) {
+					chosen = &sample;
+				}
+			}
+			node->set_visible(chosen->vector.x > 0.5f);
+		}
+		for (int channel = 0; channel < CHANNEL_COUNT; channel++) {
+			std::vector<Sample> &samples = node_channels[static_cast<size_t>(channel)];
+			if (samples.empty()) {
+				continue;
+			}
+			_resolve(samples);
+			if (channel == CHANNEL_ROTATION) {
+				const Quaternion reference = samples.front().rotation;
+				Quaternion sum(0.0f, 0.0f, 0.0f, 0.0f);
+				for (const Sample &sample : samples) {
+					if (sample.weight <= 0.0f) {
+						continue;
+					}
+					const float sign = sample.rotation.dot(reference) < 0.0f ? -1.0f : 1.0f;
+					sum = sum + sample.rotation * (sample.weight * sign);
+				}
+				if (sum.length_squared() > WEIGHT_EPSILON) {
+					node->set_quaternion(sum.normalized());
+				}
+				continue;
+			}
+			Vector3 sum;
+			float total = 0.0f;
+			for (const Sample &sample : samples) {
+				sum += sample.vector * sample.weight;
+				total += sample.weight;
+			}
+			if (total <= WEIGHT_EPSILON) {
+				continue;
+			}
+			if (channel == CHANNEL_POSITION) {
+				node->set_position(sum);
+			} else {
+				node->set_scale(sum);
+			}
 		}
 	}
 }

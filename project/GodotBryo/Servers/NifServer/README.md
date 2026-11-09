@@ -58,7 +58,10 @@ therefore preserves every supported transform track under its escaped, bare auth
 it never guesses a human skeleton or rebinds a creature clip. Morph weight keys for skeleton.nif's
 `HeadAnims:0` morpher (`NiGeomMorpherController` links, the morph name in the interpolator ID) are
 not tracks: each clip carries them as `nif_face_tracks` metadata, morph name → time/value pairs,
-for the actor's facial player. Each controlled block's priority byte (0 to 100 in the shipped
+for the actor's facial player. A bool interpolator on an `NiVisController` (1,677 of the 1,779
+bool blocks in 722 of the 4,765 KFs; the other 102 drive particle emitters and stay unhandled) is a
+discrete value track `<target>:visible` of bools; one with no keys (1,243) is one key at 0 holding
+its static value. Each controlled block's priority byte (0 to 100 in the shipped
 KFs) is clip metadata: `nif_track_priorities`, track path → priority, and with face tracks
 `nif_face_track_priorities`, morph name → priority. No transform target is linked twice in one
 sequence with different priorities across the 4,765 shipped KFs (`native/tools/kf_priority_corpus`).
