@@ -25,6 +25,10 @@ const RECENT_LIMIT := 50
 ## Emitted when Favourites or Recent changes.
 signal changed(list: StringName)
 
+## One SpawnLists per save file (shared()), so every UI that changes
+## Favourites (the Spawn tab, the Inventory tab) changes the same lists.
+static var _shared := {}
+
 var path := DEFAULT_PATH
 var common: SpawnList
 var _favourites := PackedInt64Array()
@@ -34,6 +38,12 @@ func _init(save_path := DEFAULT_PATH, common_list: SpawnList = null) -> void:
 	path = save_path
 	common = common_list if common_list != null else load(COMMON_LIST) as SpawnList
 	load_saved()
+
+## The SpawnLists saved at `save_path`, made the first time it is asked for.
+static func shared(save_path := DEFAULT_PATH) -> SpawnLists:
+	if not _shared.has(save_path):
+		_shared[save_path] = SpawnLists.new(save_path)
+	return _shared[save_path]
 
 ## The form ids of Favourites or Recent (Common is by EditorID: `common`).
 func ids(list: StringName) -> PackedInt64Array:

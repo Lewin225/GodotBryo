@@ -265,6 +265,7 @@ func _check_tab(game: Node, placer: SpawnPlacer, player: EsmReference) -> void:
 	check(placer.history_size() == history_before + 1 and _count_of(inventory, PISTOL_9MM) == had, "a double click places it in the world")
 	placer.undo()
 
+	await _check_inventory_tab(game, placer, player)
 	await _check_tree_click_expand(tab)
 	await _check_icons(tab)
 
@@ -492,6 +493,181 @@ func _check_spawnlists(tab: SpawnMenuTab, placer: SpawnPlacer, lists_path: Strin
 			"a new SpawnLists reads Favourites and Recent back from %s" % lists_path)
 	tab.lists.clear()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(lists_path))
+
+## The Inventory debug tab against the player's real inventory: a weapon and
+## an aid item added, the Weapons tab lists only weapons, every tab's title
+## counts its entries, and selecting a row shows it in Details with its
+## picture.
+func _check_inventory_tab(game: Node, placer: SpawnPlacer, player: EsmReference) -> void:
+	var tab: Control = game.get_node("Debug Tools/TabContainer/Inventory")
+	var tabs: TabContainer = tab.get_parent()
+	var tools: Control = tabs.get_parent()
+	tools.call("_set_open", true)
+	tabs.current_tab = tabs.get_tab_idx_from_control(tab)
+	var weapon: Dictionary = tab_rows(game, "WEAP").filter(func(r: Dictionary) -> bool: return not String(r["shown_icon"]).is_empty())[0]
+	var aid: Dictionary = tab_rows(game, "ALCH").filter(func(r: Dictionary) -> bool: return not String(r["shown_icon"]).is_empty())[0]
+	placer.add_to_inventory(int(weapon["form_id"]), player, 1)
+	placer.add_to_inventory(int(aid["form_id"]), player, 1)
+	var categories: TabBar = tab.get_node("Margin/VBox/Categories")
+	var tree: Tree = tab.get_node("Margin/VBox/Split/ItemTree")
+	categories.current_tab = 1
+	tab._refresh()
+	var rows: Array = tree.get_root().get_children() if tree.get_root() != null else []
+	var all_weapons := rows.all(func(item: TreeItem) -> bool: return (item.get_metadata(0) as InventoryItem).base.record_type == "WEAP")
+	var weapon_row: TreeItem = null
+	for item: TreeItem in rows:
+		if (item.get_metadata(0) as InventoryItem).base_form_id == int(weapon["form_id"]):
+			weapon_row = item
+	check(not rows.is_empty() and all_weapons and weapon_row != null,
+			"the Inventory tab's Weapons list holds only weapons, %s among them (%d rows)" % [weapon["display_name"], rows.size()])
+	var total := 0
+	for index in range(1, categories.tab_count):
+		total += int(categories.get_tab_title(index).get_slice("(", 1).to_int())
+	check(categories.get_tab_title(1).begins_with("Weapons (") and total == int(categories.get_tab_title(0).get_slice("(", 1).to_int()),
+			"each tab's title counts its entries, and the categories add up to All (%s)" % categories.get_tab_title(0))
+	weapon_row.select(0)
+	var icon: RecordIcon = tab.get_node("Margin/VBox/Split/Details/Margin/VBox/Icon")
+	var fields: RichTextLabel = tab.get_node("Margin/VBox/Split/Details/Margin/VBox/Fields")
+	if not icon.has_picture():
+		await icon.picture_shown
+	check(icon.form_id == int(weapon["form_id"]) and icon.has_picture() and fields.text.contains(String(weapon["editor_id"])),
+			"selecting it shows it in Details, with its picture and EditorID")
+	categories.current_tab = 3
+	tab._refresh()
+	rows = tree.get_root().get_children()
+	check(rows.any(func(item: TreeItem) -> bool: return (item.get_metadata(0) as InventoryItem).base_form_id == int(aid["form_id"])),
+			"the Aid tab lists %s" % aid["display_name"])
+	await _check_inventory_menu(game, tab, placer, player as ActorReference, weapon)
+	categories.current_tab = 0
+	placer.undo()
+	placer.undo()
+	tools.call("_set_open", false)
+
+## The Inventory tab's context menu on real entries: Equip (armor worn and
+## taken off again, a weapon into a holster slot), Add to Favourites on the
+## spawn menu's own lists, and the spawn menu's console command.
+func _check_inventory_menu(game: Node, tab: Control, placer: SpawnPlacer, actor: ActorReference, weapon: Dictionary) -> void:
+	var menu: PopupMenu = tab.get_node("ContextMenu")
+	var spawn_tab := game.get_node("Debug Tools/TabContainer/Spawn") as SpawnMenuTab
+	var armor_row: Dictionary = tab_rows(game, "ARMO").filter(func(r: Dictionary) -> bool: return not String(r["editor_id"]).is_empty())[0]
+	placer.add_to_inventory(int(armor_row["form_id"]), actor, 1)
+	var armor := _entry_of(actor, int(armor_row["form_id"]))
+	tab.open_menu(armor, Vector2.ZERO)
+	var equip_index := menu.get_item_index(tab.MENU_EQUIP)
+	check(menu.get_item_text(equip_index) == "Equip" and not menu.is_item_disabled(equip_index)
+			and menu.get_item_text(menu.get_item_index(tab.MENU_FAVOURITE)) == "Add to Favourites",
+			"right click on %s offers Equip and Add to Favourites" % armor_row["display_name"])
+	tab._on_menu_id(tab.MENU_EQUIP)
+	menu.hide()
+	check(armor.is_equipped, "Equip wears it")
+	tab.open_menu(armor, Vector2.ZERO)
+	check(menu.get_item_text(equip_index) == "Unequip", "and the menu then offers Unequip")
+	tab._on_menu_id(tab.MENU_EQUIP)
+	menu.hide()
+	check(not armor.is_equipped, "which takes it off")
+
+	var lists: SpawnLists = SpawnLists.shared(spawn_tab.lists_path)
+	tab.open_menu(armor, Vector2.ZERO)
+	tab._on_menu_id(tab.MENU_FAVOURITE)
+	menu.hide()
+	check(lists.is_favourite(int(armor_row["form_id"])) and (spawn_tab.lists == null or spawn_tab.lists == lists),
+			"Add to Favourites adds it to the spawn menu's Favourites (the same SpawnLists)")
+	lists.toggle_favourite(int(armor_row["form_id"]))
+	# The toggles saved the test's own lists file again.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(spawn_tab.lists_path))
+	check(tab.console_command(armor) == "player.AddItem %s 1" % armor_row["editor_id"],
+			"Open in console's line is the spawn menu's: %s" % tab.console_command(armor))
+	var aid := actor.contents.get_items().filter(func(e: InventoryItem) -> bool: return e.base != null and e.base.record_type == "ALCH")
+	if not aid.is_empty():
+		tab.open_menu(aid[0], Vector2.ZERO)
+		check(menu.is_item_disabled(equip_index), "Equip is disabled for an aid item")
+		menu.hide()
+
+	var pistol := _entry_of(actor, int(weapon["form_id"]))
+	tab.open_menu(pistol, Vector2.ZERO)
+	tab._on_menu_id(tab.MENU_EQUIP)
+	menu.hide()
+	var slots := actor.get_weapon_slots_of(int(weapon["form_id"]))
+	check(not slots.is_empty() and _entry_of(actor, int(weapon["form_id"])) == null,
+			"Equip on %s puts it in a holster slot, out of the inventory" % weapon["display_name"])
+
+	# The Equipped tab: worn armor, and the weapons in the holster slots.
+	tab.toggle_equipped(armor)
+	var categories: TabBar = tab.get_node("Margin/VBox/Categories")
+	var tree: Tree = tab.get_node("Margin/VBox/Split/ItemTree")
+	categories.current_tab = tab.EQUIPPED
+	tab._refresh()
+	var shown: Array = tree.get_root().get_children().map(func(item: TreeItem) -> InventoryItem: return item.get_metadata(0))
+	var holstered: Array = shown.filter(func(e: InventoryItem) -> bool: return e.base_form_id == int(weapon["form_id"]))
+	check(categories.get_tab_title(tab.EQUIPPED).begins_with("Equipped (") and shown.has(armor) and holstered.size() == 1
+			and shown.all(func(e: InventoryItem) -> bool: return e.is_equipped),
+			"the Equipped tab lists the worn %s and the holstered %s, only equipped things (%d rows)" % [armor_row["display_name"], weapon["display_name"], shown.size()])
+	var pistol_slot: int = tab.slot_of(holstered[0]) if not holstered.is_empty() else -1
+	check(pistol_slot == slots[0] and tab.details_text(holstered[0]).contains("holster"),
+			"the holstered row knows its slot, and Details says so")
+	if not holstered.is_empty():
+		tab.open_menu(holstered[0], Vector2.ZERO)
+		check(menu.get_item_text(equip_index) == "Unequip", "its menu offers Unequip")
+		tab._on_menu_id(tab.MENU_EQUIP)
+		menu.hide()
+	check(actor.get_weapon_slots_of(int(weapon["form_id"])).is_empty() and _entry_of(actor, int(weapon["form_id"])) != null,
+			"which puts the weapon back in the inventory")
+	tab.toggle_equipped(armor)
+	categories.current_tab = 0
+	tab._refresh()
+	_check_details_buttons(tab, tree, actor, armor, armor_row)
+	placer.undo()
+
+## The Details buttons act on the selected row: Increase and Decrease change
+## its count by one, Equip wears it and then reads Unequip.
+func _check_details_buttons(tab: Control, tree: Tree, actor: ActorReference, armor: InventoryItem, armor_row: Dictionary) -> void:
+	var buttons := "Margin/VBox/Split/Details/Margin/VBox/Buttons/"
+	var equip: Button = tab.get_node(buttons + "Equip")
+	var drop: Button = tab.get_node(buttons + "Drop")
+	var increase: Button = tab.get_node(buttons + "Increase")
+	var decrease: Button = tab.get_node(buttons + "Decrease")
+	tree.deselect_all()
+	tab._show_details(null)
+	check(equip.disabled and drop.disabled and increase.disabled and decrease.disabled, "with nothing selected the Details buttons are off")
+	var row: TreeItem = null
+	for item in tree.get_root().get_children():
+		if item.get_metadata(0) == armor:
+			row = item
+	check(row != null, "the All tab lists %s" % armor_row["display_name"])
+	if row == null:
+		return
+	row.select(0)
+	check(not equip.disabled and equip.text == "Equip" and not drop.disabled and not increase.disabled and not decrease.disabled,
+			"selecting it turns the Details buttons on, Equip among them")
+	var form_id := int(armor_row["form_id"])
+	var before := actor.contents.get_item_count(form_id)
+	increase.pressed.emit()
+	check(actor.contents.get_item_count(form_id) == before + 1, "Increase adds one (%d -> %d)" % [before, actor.contents.get_item_count(form_id)])
+	_reselect(tree, armor)
+	decrease.pressed.emit()
+	check(actor.contents.get_item_count(form_id) == before, "Decrease removes one")
+	_reselect(tree, armor)
+	equip.pressed.emit()
+	check(armor.is_equipped and equip.text == "Unequip", "Equip wears it, and the button then reads Unequip")
+	_reselect(tree, armor)
+	equip.pressed.emit()
+	check(not armor.is_equipped, "pressed again it takes it off")
+
+## Selects `entry`'s row again after a rebuild.
+func _reselect(tree: Tree, entry: InventoryItem) -> void:
+	for item in tree.get_root().get_children():
+		if item.get_metadata(0) == entry:
+			item.select(0)
+
+func _entry_of(actor: ActorReference, form_id: int) -> InventoryItem:
+	for entry in actor.contents.get_items():
+		if entry.base_form_id == form_id:
+			return entry
+	return null
+
+## The spawn catalog's rows of `record_type`.
+func tab_rows(game: Node, record_type: String) -> Array:
+	return (game.get_node("Debug Tools/TabContainer/Spawn") as SpawnMenuTab).catalog.rows_for_type(record_type)
 
 ## A real Shift press, a left click on grid item `index`, and the release;
 ## how many spawns the click added to the history (1, or 0).

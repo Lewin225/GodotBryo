@@ -211,7 +211,7 @@ func ensure_catalog() -> bool:
 		return false
 	catalog = SpawnCatalog.new(esm_server.reader, esm_server.get_record_index(), get_node_or_null("/root/ArchiveServer"))
 	catalog.type_ready.connect(_on_type_ready)
-	lists = SpawnLists.new(lists_path)
+	lists = SpawnLists.shared(lists_path)
 	lists.changed.connect(_on_list_changed)
 	select_category(_categories.current_tab)
 	return true

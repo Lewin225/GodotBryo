@@ -22,6 +22,15 @@ func _ready() -> void:
 	check(inv_tab._item_name(unnamed_item) == "DynamiteBoxRef", "empty full_name falls back to editor_id")
 	check(inv_tab._item_name(bare_item) == "Item 0x123456", "no base falls back to hex FormID")
 
+	# The Pip-Boy's item categories, by record type; Misc takes the rest.
+	var category_of := func(record_type: String) -> String:
+		return inv_tab.CATEGORIES[inv_tab.category_of(record_type)]["name"]
+	var mapped := ["WEAP", "ARMO", "ALCH", "BOOK", "AMMO", "MISC", "KEYM", "NOTE", "XXXX"].map(category_of)
+	check(mapped == ["Weapons", "Apparel", "Aid", "Aid", "Ammo", "Misc", "Misc", "Misc", "Misc"],
+			"inventory categories: WEAP, ARMO, ALCH, BOOK, AMMO, MISC, KEYM, NOTE, unknown -> %s" % [mapped])
+	check(inv_tab.in_category(named_item, inv_tab.ALL) and inv_tab.in_category(named_item, inv_tab.MISC)
+			and not inv_tab.in_category(named_item, 1), "a MISC entry is on All and Misc, not Weapons")
+
 	inv_tab.free()
 
 	# 2. Test Environment color formatting
@@ -68,6 +77,15 @@ func _ready() -> void:
 				"Margin/VBox/Footer/Count", "Margin/VBox/Info", "ContextMenu"]:
 			check(spawn_tab.get_node_or_null(path) != null, "the Spawn tab has %s" % path.get_file())
 		check(spawn_tab.placer == game_node.get_node_or_null("SpawnPlacer"), "its placer is the game's SpawnPlacer")
+
+	var inventory_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/Inventory")
+	check(inventory_tab != null and inventory_tab.get_node_or_null("Margin/VBox/Categories") is TabBar
+			and (inventory_tab.get_node("Margin/VBox/Categories") as TabBar).tab_count == inventory_tab.CATEGORIES.size(),
+			"the Inventory tab has one category tab per CATEGORIES entry")
+	check(inventory_tab != null and inventory_tab.get_node_or_null("Margin/VBox/Split/ItemTree") is Tree
+			and inventory_tab.get_node_or_null("Margin/VBox/Split/Details/Margin/VBox/Icon") is RecordIcon
+			and inventory_tab.get_node_or_null("Margin/VBox/Split/Details/Margin/VBox/Fields") is RichTextLabel,
+			"its list sits beside a Details sidebar with a RecordIcon and fields")
 
 	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
 	check(ws_tab != null, "World Streaming tab exists in game.tscn")
