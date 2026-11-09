@@ -36,6 +36,8 @@
 [ext_resource type="Script" path="res://simulation_debug_tab.gd" id="sim_debug_tab"]
 [ext_resource type="Script" path="res://simulation_map_view.gd" id="sim_map_view"]
 [ext_resource type="PackedScene" path="res://console/console_overlay.tscn" id="console_overlay"]
+[ext_resource type="Script" path="res://spawn_menu/spawn_placer.gd" id="40_spawnplacer"]
+[ext_resource type="PackedScene" path="res://spawn_menu/spawn_menu_tab.tscn" id="41_spawntab"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
 
@@ -165,7 +167,7 @@ post_pass_compute_shader = ExtResource("17_iu0sx")
 wind_direction = Vector3(1, 0, 1)
 directional_lights_data = Array[Vector4]([Vector4(-0.3535534, 0.7071068, 0.61237246, 12), Vector4(1, 1, 1, 0.6)])
 
-[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player")]
+[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player", "spawn_placer")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
 world_streamer = NodePath("WorldStreamerV2")
@@ -178,9 +180,13 @@ cell_label = NodePath("DebugHud/CellLabel")
 sun = NodePath("Sun")
 world_environment = NodePath("WorldEnvironment")
 player = NodePath("Character")
+spawn_placer = NodePath("SpawnPlacer")
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
+
+[node name="SpawnPlacer" type="Node" parent="."]
+script = ExtResource("40_spawnplacer")
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")
@@ -2012,6 +2018,14 @@ clip_contents = true
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("sim_map_view")
+
+[node name="Spawn" parent="Debug Tools/TabContainer" node_paths=PackedStringArray("placer", "fade_target") instance=ExtResource("41_spawntab")]
+visible = false
+layout_mode = 2
+placer = NodePath("../../../SpawnPlacer")
+fade_target = NodePath("../..")
+metadata/_tab_index = 12
+metadata/_tab_name = "Spawn"
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

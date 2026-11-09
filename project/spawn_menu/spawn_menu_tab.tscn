@@ -1,0 +1,180 @@
+[gd_scene format=3 uid="uid://bo6shqjns8yyo"]
+
+[ext_resource type="Script" uid="uid://bvl22v6bx5al2" path="res://spawn_menu/spawn_menu_tab.gd" id="1_tab"]
+[ext_resource type="PackedScene" uid="uid://pr0ydsf6q1w5" path="res://ui/model_preview.tscn" id="2_preview"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_twm04"]
+bg_color = Color(0.06704778, 0.06704779, 0.06704779, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.21568628)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.30980393)
+shadow_size = 50
+
+[node name="Spawn" type="Control" unique_id=1515773923]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_tab")
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=870133671]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="VBox" type="VBoxContainer" parent="Margin" unique_id=547373433]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Categories" type="TabBar" parent="Margin/VBox" unique_id=1889370516]
+layout_mode = 2
+current_tab = 0
+tab_count = 6
+tab_0/title = "Spawnlists"
+tab_1/title = "Items"
+tab_2/title = "Actors"
+tab_3/title = "Objects"
+tab_4/title = "Interactive"
+tab_5/title = "Leveled"
+
+[node name="Split" type="HSplitContainer" parent="Margin/VBox" unique_id=1986965652]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Tree" type="Tree" parent="Margin/VBox/Split" unique_id=457076176]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+hide_root = true
+
+[node name="Right" type="VBoxContainer" parent="Margin/VBox/Split" unique_id=2004194766]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Toolbar" type="HBoxContainer" parent="Margin/VBox/Split/Right" unique_id=550820971]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Search" type="LineEdit" parent="Margin/VBox/Split/Right/Toolbar" unique_id=1339527210]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Search name, EditorID, FormID…"
+clear_button_enabled = true
+
+[node name="SizeLabel" type="Label" parent="Margin/VBox/Split/Right/Toolbar" unique_id=1059801282]
+layout_mode = 2
+text = "Size"
+
+[node name="Size" type="HSlider" parent="Margin/VBox/Split/Right/Toolbar" unique_id=375100939]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Thumbnail size: 64 to 768 pixels, in steps of 64."
+min_value = 64.0
+max_value = 768.0
+step = 64.0
+value = 128.0
+
+[node name="Spawned" type="Label" parent="Margin/VBox/Split/Right/Toolbar" unique_id=455092976]
+layout_mode = 2
+tooltip_text = "Spawns of this session that Undo and Clear spawned take back."
+text = "0 spawned"
+
+[node name="Undo" type="Button" parent="Margin/VBox/Split/Right/Toolbar" unique_id=464652854]
+layout_mode = 2
+tooltip_text = "Takes back the newest spawn of this session (Ctrl+Z)."
+text = "Undo"
+
+[node name="Clear" type="Button" parent="Margin/VBox/Split/Right/Toolbar" unique_id=1631709904]
+layout_mode = 2
+tooltip_text = "Takes back every spawn of this session."
+text = "Clear spawned"
+
+[node name="Status" type="Label" parent="Margin/VBox/Split/Right" unique_id=71381165]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.62, 0.66, 1)
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="Grid" type="ItemList" parent="Margin/VBox/Split/Right" unique_id=1059645336]
+texture_filter = 4
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/hovered = SubResource("StyleBoxFlat_twm04")
+allow_rmb_select = true
+max_text_lines = 2
+max_columns = 0
+same_column_width = true
+fixed_column_width = 136
+icon_mode = 0
+fixed_icon_size = Vector2i(96, 96)
+
+[node name="Info" type="RichTextLabel" parent="Margin/VBox" unique_id=998681535]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Footer" type="HBoxContainer" parent="Margin/VBox" unique_id=1418015536]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Hint" type="Label" parent="Margin/VBox/Footer" unique_id=1237325163]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.6, 0.62, 0.66, 1)
+
+[node name="CountLabel" type="Label" parent="Margin/VBox/Footer" unique_id=1315018754]
+layout_mode = 2
+text = "Count"
+
+[node name="Count" type="SpinBox" parent="Margin/VBox/Footer" unique_id=188104149]
+layout_mode = 2
+tooltip_text = "How many each click adds or places."
+min_value = 1.0
+max_value = 999.0
+value = 1.0
+rounded = true
+
+[node name="ContextMenu" type="PopupMenu" parent="." unique_id=1790109929]
+item_count = 8
+item_0/text = "Place at crosshair"
+item_0/id = 0
+item_1/text = "Add to inventory"
+item_1/id = 1
+item_2/text = "Equip item"
+item_2/id = 6
+item_3/text = "Add to Favourites"
+item_3/id = 7
+item_4/id = 5
+item_4/separator = true
+item_5/text = "Copy EditorID"
+item_5/id = 2
+item_6/text = "Copy console command"
+item_6/id = 3
+item_7/text = "Open in console"
+item_7/id = 4
+
+[node name="SearchDelay" type="Timer" parent="." unique_id=193169158]
+wait_time = 0.12
+one_shot = true
+
+[node name="ModelPreview" parent="." unique_id=1040194303 instance=ExtResource("2_preview")]
+visible = false
+layout_mode = 0

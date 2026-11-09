@@ -56,6 +56,19 @@ func _ready() -> void:
 	check(game_node.get_node_or_null("Console") is ConsoleOverlay and game_node.get_child(game_node.get_child_count() - 1).name == &"Console",
 			"game.tscn's console overlay is Game's last child, so its _input runs before Debug Tools'")
 
+	var spawn_tab := game_node.get_node_or_null("Debug Tools/TabContainer/Spawn") as SpawnMenuTab
+	check(spawn_tab != null, "Spawn tab exists in game.tscn")
+	if spawn_tab != null:
+		check(spawn_tab.get_node_or_null("Margin/VBox/Categories") is TabBar
+				and (spawn_tab.get_node("Margin/VBox/Categories") as TabBar).tab_count == SpawnCatalog.CATEGORIES.size(),
+				"the Spawn tab has one category tab per SpawnCatalog.CATEGORIES entry")
+		check(spawn_tab.get_node_or_null("Margin/VBox/Split/Tree") is Tree and spawn_tab.get_node_or_null("Margin/VBox/Split/Right/Grid") is ItemList,
+				"a tree beside an ItemList grid")
+		for path in ["Margin/VBox/Split/Right/Toolbar/Search", "Margin/VBox/Split/Right/Toolbar/Undo", "Margin/VBox/Split/Right/Toolbar/Clear",
+				"Margin/VBox/Footer/Count", "Margin/VBox/Info", "ContextMenu"]:
+			check(spawn_tab.get_node_or_null(path) != null, "the Spawn tab has %s" % path.get_file())
+		check(spawn_tab.placer == game_node.get_node_or_null("SpawnPlacer"), "its placer is the game's SpawnPlacer")
+
 	var ws_tab: Node = game_node.get_node_or_null("Debug Tools/TabContainer/World Streaming")
 	check(ws_tab != null, "World Streaming tab exists in game.tscn")
 	var v2_status: Node = ws_tab.get_node_or_null("Margin/SubTabs/V2 Profiler/Margin/VBox/StateGrid/Status")

@@ -8,6 +8,16 @@ They should not call into *non* server scripts, so checking GodotBryoSettings fo
 
 # NOTE - MeshServer exists only as concept notes. NifServer is the only mesh consumer so it's not needed
 
+# ThumbnailServer
+
+A record's picture for any UI: `request(form_id)` gives its inventory icon, else a render of its
+model, as a Texture2D. `RecordVisuals` decides which, from subrecords alone (fallback model
+subrecords, a creature's NIFZ body parts, a leveled list's entries), never from particular
+records. Renders are keyed by model, drawn once on its own stage, kept DXT5-compressed and saved
+under `user://thumbnails`. UI widgets on top of it live in `project/ui/`: `RecordIcon` (a
+TextureRect for one record) and `ModelPreview` (a live, turning 3D view that starts in the
+thumbnail's pose).
+
 # Pausing
 
 The game pauses with `get_tree().paused`: a save loading now, a pause menu later. The game
@@ -17,7 +27,7 @@ time, weather, the sky). Every server is `PROCESS_MODE_ALWAYS` and decides in it
 
 | Server | While the game is paused |
 |---|---|
-| ArchiveServer, TextureServer, NifServer, FaceGenServer, EsmServer, SaveServer | Carry on: they hold no game state, so a load warms them |
+| ArchiveServer, TextureServer, NifServer, FaceGenServer, EsmServer, SaveServer, ThumbnailServer | Carry on: they hold no game state, so a load warms them |
 | ScriptServer | Runs no GameMode or MenuMode block; its clock stands; queued moves wait |
 | QuestServer | Runs no quest script; its clock stands |
 | DialogueServer | Lines and their voices pause, as in menu mode |
