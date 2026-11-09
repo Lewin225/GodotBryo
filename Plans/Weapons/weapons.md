@@ -303,12 +303,25 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
 - One entry point creates projectiles and casts hits: a ProjectileServer, outside ScriptServer.
   The weapon node (after its ammo, jam and cycle checks), script `FireWeapon`, and NPC combat all
   call it; nothing else creates projectiles.
-- A request: `fire(weapon base, shooter, muzzle transform, aim point, seed)`. It carries everything
-  the server needs and nothing it must ask back for. The seed draws spread and projectile count.
+- A request: `fire(weapon: WeaponBase, shooter: EsmReference, from: Transform3D,
+  projectile: ProjectileBase, ammo: AmmoBase, seed: int)`. It carries everything the server
+  needs and nothing it must ask back for.
+  - `from`: the shot's origin and aim direction (-Z), after the weapon side's accuracy cone.
+  - `projectile`: the effective PROJ, resolved by the caller (the ammo's DAT2 PROJ, else the
+    WEAP's DNAM PROJ). The server uses it as given.
+  - `ammo`: null for weapons that spend themselves and for script calls without ammo. The server
+    reads its effects (RCIL) and flags, and its Proj. per Shot; not its PROJ.
+  - `shooter`: any reference. Named in the damage log; followed by the kill cam.
+  - `seed`: draws the post-shot spread, so a client replaying the shot draws the same projectiles.
+- Accuracy is the weapon side's: the weapon node (or the `FireWeapon` caller) draws the shot's
+  direction inside the accuracy cone, which the character's weapon skill sets. VR fires straight
+  down the barrel with no cone.
+- Post-shot spread is the server's: it fans the shot into its projectiles (Proj. per Shot, else
+  the WEAP's Projectile Count) around `from`'s direction, pellet cones and missile deviation.
 - Muzzle: the shooter's model's `ProjectileNode` (`##ProjectileNode` on the Gatling Laser). The server converts its Gamebryo forward to
   Godot once. With no `ProjectileNode`, the calling reference's transform. `# ASSUMPTION`
-- Direction: muzzle to aim point. With no aim point, the muzzle's forward (the reference's -Z in
-  the fallback).
+- Aim direction, before the accuracy cone: muzzle to aim point. With no aim point, the muzzle's forward (the
+  reference's -Z in the fallback).
 - Aim point, from the actor's head tracking:
   - player: a ray from the look node (the controller's camera) along its forward; where it hits,
     or a point at a fixed far distance if it hits nothing within it. Physics is not queried at long
@@ -356,8 +369,8 @@ a WEAP base and fires it from the calling reference. No weapon reference is invo
    NAM7 shoot loop from SoundServer's cached chunks (`get_stream_chunk()`): with SNDD loop points
    its wind-up plays once, the loop repeats between the points, and its wind-down plays on
    release; without, the whole file loops.
-7. ProjectileServer: the fire entry point, PROJ records, muzzle and aim points, script
-   `FireWeapon`. Ammo spent from the holder's inventory, shells and magazines dropped.
+7. ProjectileServer: [projectiles.md](projectiles.md) (census, shape, order). Shells and
+   magazines dropped by the weapon node.
 8. Viewmodel motion on the classic path: procedural sway, landing and jump. Not related to the
    procedural weapon path.
 
