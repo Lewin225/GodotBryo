@@ -237,6 +237,8 @@ func apply_input(input: ActorInput) -> void:
 		_trigger_weapon.set_trigger(false)
 	_trigger_weapon = weapon
 	if weapon != null:
+		weapon.aim_point = input.aim_point
+		weapon.has_aim_point = input.has_aim_point
 		weapon.set_trigger(input.fire)
 	_last_input = _copy_input(input)
 
@@ -248,6 +250,8 @@ static func _copy_input(input: ActorInput) -> ActorInput:
 	copy.draw = input.draw
 	copy.holster = input.holster
 	copy.equip_slot = input.equip_slot
+	copy.aim_point = input.aim_point
+	copy.has_aim_point = input.has_aim_point
 	return copy
 
 

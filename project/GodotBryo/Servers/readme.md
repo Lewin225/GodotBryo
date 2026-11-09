@@ -22,6 +22,7 @@ time, weather, the sky). Every server is `PROCESS_MODE_ALWAYS` and decides in it
 | QuestServer | Runs no quest script; its clock stands |
 | DialogueServer | Lines and their voices pause, as in menu mode |
 | NpcSimulationServer | Runs no package and moves no actor (PackageRunner); seeding carries on |
+| ProjectileServer | Resolves no shot and moves no projectile; fuses stand: shots fired wait for the next tick |
 
 The streamers (CellStreamerV2, WorldStreamerV2, TerrainStreamer) and TransitionCoordinator
 are game-scene nodes that act like servers: they are `PROCESS_MODE_ALWAYS` and keep loading and

@@ -398,12 +398,30 @@ func _update_holster_hold() -> void:
 	_input.holster = true
 
 
+## The aim point: where a ray from the camera along its forward hits, within
+## AIM_DISTANCE, else the point at that distance. The ray excludes the
+## player's own body.
+func _update_aim_point() -> void:
+	var view := camera if camera != null else get_viewport().get_camera_3d()
+	if view == null or not view.is_inside_tree():
+		_input.has_aim_point = false
+		return
+	var origin := view.global_position
+	var far := origin - view.global_basis.z * AIM_DISTANCE
+	var query := PhysicsRayQueryParameters3D.create(origin, far)
+	query.exclude = [get_rid()]
+	var result := get_world_3d().direct_space_state.intersect_ray(query)
+	_input.aim_point = result["position"] if not result.is_empty() else far
+	_input.has_aim_point = true
+
+
 ## Hands this frame's input packet to the possessed actor, then clears the
 ## inputs that last one frame (reload, holster, the hotkey's slot). Fire stays
 ## as held; it is released when fighting is disabled.
 func _send_input() -> void:
 	if not ScriptServer.is_player_control_enabled(ScriptServer.CONTROL_FIGHTING):
 		_input.fire = false
+	_update_aim_point()
 	if actor != null:
 		actor.apply_input(_input)
 	_input.reload = false
@@ -955,6 +973,9 @@ const WEAPON_HOTKEYS: Array[StringName] = [
 var _reload_pressed_msec := -1
 ## This frame's input packet for the possessed actor (EsmActorNode.apply_input()).
 var _input := ActorInput.new()
+## Metres the camera's aim ray reaches: 10000 game units, the Range of 73 of
+## the 95 PROJ. Past it the aim point is the ray's end. `# ASSUMPTION`
+const AIM_DISTANCE := 10000.0 / 70.0
 
 ## Takes control of `actor`: scripts' `player` becomes its reference, and
 ## body-level commands act on this body.

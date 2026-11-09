@@ -77,11 +77,14 @@ const FLAG2_NO_JAM_AFTER_RELOAD := 0x04
 ## ZNAM: Sound - Drop (on 224). Read; not used yet.
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "SoundBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var drop_sound: SoundBase
 ## NAM0: the AMMO it fires, or a FLST of AMMO it accepts (143 and 145 of the
-## 288 WEAP with NAM0 in the six ESMs; 214 of the 502 have none). Read; not used yet (the
-## weapon node's reload, Plans/Weapons/weapons.md step 7).
+## 288 WEAP with NAM0 in the six ESMs; 214 of the 502 have none). Read; used by default_ammo()
+## (the weapon node's reload and the ammo it fires).
 @export_custom(PROPERTY_HINT_RESOURCE_TYPE, "EsmBase", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var ammo: EsmBase
 ## NAM0's FormID, 0 when absent. Read; resolved into `ammo`.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var ammo_form_id: int = 0
+## INAM: the Impact DataSet (IPDS) of the weapon's hits, by surface material
+## (on 237 of 261 WEAP). Read; used by ProjectileServer for hitscan impacts.
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var impact_dataset_form_id: int = 0
 ## DNAM offset 4: Animation Multiplier, the speed of the weapon's clips. Read;
 ## not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var animation_multiplier: float = 1.0
@@ -93,16 +96,23 @@ const FLAG2_NO_JAM_AFTER_RELOAD := 0x04
 @export_custom(PROPERTY_HINT_FLAGS, FLAGS1_NAMES, PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var flags1: int = 0
 ## DNAM offset 14: Ammo Use, rounds spent per shot. Read; not used yet.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var ammo_use: int = 1
-## DNAM offset 16: Min Spread. Read; not used yet (ProjectileServer).
+## DNAM offset 16: Min Spread, degrees. Read; used by ProjectileServer as the
+## post-shot spread, the cone a shot's projectiles fan into: every shotgun has
+## Spread 0 and Min Spread 1.2 to 4. `# ASSUMPTION` which spread is which.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var min_spread: float = 0.0
-## DNAM offset 20: Spread. Read; not used yet (ProjectileServer).
+## DNAM offset 20: Spread, degrees. Read; used by EsmWeaponNode as the
+## accuracy cone the shot's direction is drawn in (0 on 51 of the
+## single-projectile guns). `# ASSUMPTION` which spread is which; the
+## holder's weapon skill narrowing it comes with skills.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var spread: float = 0.0
 ## DNAM offset 28: Sight FOV. Read; not used yet (aiming).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var sight_fov: float = 0.0
-## DNAM offset 36: the PROJ fired. Read; not used yet (ProjectileServer).
+## DNAM offset 36: the PROJ fired (on 173 of 261 WEAP). Read; used by
+## effective_projectile(): the ammo's DAT2 Projectile overrides it.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var projectile_form_id: int = 0
-## DNAM offset 42: Projectile Count per shot. Read; not used yet
-## (ProjectileServer).
+## DNAM offset 42: Projectile Count per shot (1 on 245; 7 on the shotguns,
+## 14 on the sawed-offs). Read; used by effective_projectile_count(): the
+## ammo's Proj. per Shot overrides it.
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var projectile_count: int = 1
 ## DNAM offset 44: Min Range. Read; not used yet (NPC combat).
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) var min_range: float = 0.0
@@ -255,3 +265,36 @@ func action_clip_name(action: String) -> String:
 		"attack": return animation_family + "attackleft.kf"
 		"reload": return animation_family + "reloada.kf"
 		_: return ""
+
+
+## The ammo NAM0 names first: the AMMO itself, or an FLST's first AMMO; null
+## when it has none (grenades, mines, thrown weapons and melee spend no ammo).
+func default_ammo() -> AmmoBase:
+	if ammo is AmmoBase:
+		return ammo as AmmoBase
+	var list := ammo as FormListBase
+	if list == null:
+		return null
+	for entry in list.entries:
+		if entry is AmmoBase:
+			return entry as AmmoBase
+	return null
+
+
+## The PROJ a shot with `loaded` fires: the ammo's DAT2 Projectile when it
+## names one, else DNAM's; null when neither does.
+func effective_projectile(loaded: AmmoBase) -> ProjectileBase:
+	if loaded != null and loaded.projectile != null:
+		return loaded.projectile
+	var server := EsmReference.get_esm_server()
+	if server == null or projectile_form_id == 0:
+		return null
+	return server.get_base(projectile_form_id) as ProjectileBase
+
+
+## How many projectiles a shot with `loaded` fires: the ammo's Proj. per Shot
+## when non-zero, else DNAM's Projectile Count. `# ASSUMPTION` 0 keeps it.
+func effective_projectile_count(loaded: AmmoBase) -> int:
+	if loaded != null and loaded.projectiles_per_shot > 0:
+		return loaded.projectiles_per_shot
+	return projectile_count

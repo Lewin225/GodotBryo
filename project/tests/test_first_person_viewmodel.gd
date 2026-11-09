@@ -51,9 +51,21 @@ func _ready() -> void:
 			"on the rig skeleton's Weapon bone")
 	check(viewmodel.model != null and viewmodel.model.find_children("*", "CollisionObject3D", true, false).is_empty(),
 			"with no rigid bodies or collision")
+	var weapon_node := controller.actor.weapon_slots.get_weapon_node(doc.weapon_right_hip)
+	await _wait_until(func() -> bool: return weapon_node != null and weapon_node.view_muzzle != null)
+	var view_muzzle := weapon_node.view_muzzle if weapon_node != null else null
+	check(view_muzzle != null and viewmodel.model.is_ancestor_of(view_muzzle) and weapon_node.shot_muzzle() == view_muzzle,
+			"the weapon's node shoots from the viewmodel's ProjectileNode")
+	var reference := weapon_node.get_weapon_reference() if weapon_node != null else null
+	if reference != null:
+		reference.loaded_ammo_count = 0
+		weapon_node._refill(reference, weapon_node.get_weapon_base())
+		check(reference.loaded_ammo_count == weapon_node.get_weapon_base().clip_size,
+				"a reload fills the clip with no ammo in the holder's inventory (%d)" % reference.loaded_ammo_count)
 	doc.holster_weapon()
 	await _wait_frames(2)
 	check(viewmodel.model == null, "holstering clears it")
+	check(weapon_node == null or not is_instance_valid(weapon_node) or weapon_node.view_muzzle == null, "and takes its muzzle back")
 
 	ScriptServer.run_debug_line("DocMitchellREF.EquipItem %s" % MINIGUN)
 	doc.draw_weapon(ActorReference.WeaponSlot.BACK)

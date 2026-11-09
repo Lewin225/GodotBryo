@@ -332,6 +332,25 @@ Phase 1, guns:
 5. Script `FireWeapon`. The editor: PROJ in the dock, placed as in flight. The lasers on this path (`# ASSUMPTION` above).
 6. The kill-cam projectile: the PROJ MODL from the muzzle to the resolved hit.
 
+Built (phase 1):
+- ProjectileBase (all of DATA, MODL, NAM1, VNAM), AmmoBase DATA, DAT2 and RCIL, AmmoEffectBase,
+  ExplosionBase DATA and MODL (PROJ links to it), ImpactDatasetBase DATA, ImpactBase (MODL,
+  DATA, SNAM; decals not yet), WEAP INAM; WeaponBase.default_ammo(), effective_projectile(),
+  effective_projectile_count().
+- `ProjectileServer` (README in its folder): `fire()`, post-shot spread from the WEAP's Min
+  Spread, rays on the physics tick, shooter exclusion, `hit`, `lethal_hit`, `shot_resolved`,
+  `damage_log`; muzzle flash with its light, tracers, Stone/Organic impacts; Beam PROJ as rays;
+  `spawn_shot_projectile()` for the kill cam.
+- EsmWeaponNode: muzzle along the NIF's +Y (checked against the barrel), the aim point from the
+  holder's input (the player's camera ray), the accuracy cone from the WEAP's Spread, the loaded
+  ammo, a reload taking rounds from the holder's inventory; `fired(shot_id)`.
+- Script `FireWeapon` (console signature added). PROJ in the browser dock: a ProjectileReference
+  (no flight state yet) shown by an EsmProjectileNode, its bodies held.
+- Tests: test_projectile_records, test_projectile_server, test_projectile_effects.
+- `# ASSUMPTION`s added: Min Spread is the post-shot spread and Spread the accuracy cone (every
+  shotgun has Spread 0); the muzzle's forward is its NIF +Y; impacts use Stone, or Organic on an
+  actor; the aim ray reaches 10000 units.
+
 Phase 2, launchers and thrown (every non-hitscan Missile and Lobber, 52):
 7. ProjectileReference (runtime reference, ProjectileBase in `TYPE_TO_BASE`) and
    EsmProjectileNode; saving and loading in flight, relisted in its cell.
@@ -345,13 +364,38 @@ Phase 2, launchers and thrown (every non-hitscan Missile and Lobber, 52):
     themselves (grenades, mines, thrown).
 11. Shooting projectiles.
 
-Phase 3, specials:
-12. Beam (14: lasers, pulse, Tesla cannon and chain, ARCHIMEDES), Flame beyond hitscan,
-    Continuous Beam (none in FalloutNV.esm), Pins Limbs, EXPL enchantments, image space
-    modifiers and radiation, Default Weapon Source.
+Built (phase 2):
+- ProjectileReference flight state (segment, age, travelled, at rest, fuse, armed, disarmed) as a
+  runtime reference; `EsmServer.get_runtime_references()`; ProjectileServer as a SaveServer
+  extra section; a load steps the rebuilt projectiles again.
+- Closed-form flight with gravity, spin by the Rotation flag, range; strikes (explode, stick and
+  wait, bounce and rest, hit and lie or end); fuses, arming and proximity; explosions (falloff,
+  LOS, force); detonate, detonate_placed (the detonator), disarm, pick_up, activation.
+- EsmProjectileNode follows its reference, plays the flight and countdown sounds, carries the
+  shootable area; hitscan rays set off shootable projectiles.
+- EsmWeaponNode: a weapon with no ammo fires without spending (stand-in); a detonator sets off its
+  holder's charges.
+- Test: test_projectile_flight.
+- `# ASSUMPTION`s added: the PROJ's Gravity multiplies the world's; Rotation is degrees per
+  second; bounce restitution 0.4 × Bouncy Mult and friction 0.6; linear explosion falloff and the
+  force's unit; a 0.5 s shooter grace; the strike rules; a mine's timer is its arming delay;
+  a detonator sets off its holder's Detonates charges; explosion models show for 2 s.
+- Not yet: the interact ray does not find projectiles (activation works through
+  ScriptServer.activate()); the thrown weapon's release follows no attack clip key.
 
-`# ASSUMPTION` the lasers can run on the phase 1 path (a ray at 10000 range with a beam visual)
-until phase 3; their PROJ is not hitscan, so this is ours, not the data's.
+Phase 3, specials: parked as unfinished work. Each waits on the system named.
+12. - Beams: done as they are. A beam hits at once and its model is drawn from the gun to
+      the hit, a very fast tracer.
+    - Tesla cannon chain (DLC03TeslaChainProjectile, 4 PROJ naming the cannon as Default
+      Weapon Source): jumping between targets. Not started.
+    - ARCHIMEDES strikes (Beam PROJ with explosions, ARCHIMEDES II on a 10 s timer). Not started.
+    - Flame (the flamer, hitscan, range 640): a stream drawn along the ray. Waits on particles.
+    - Pins Limbs (throwing knife, spear): waits on ragdolls and death.
+    - Explosion enchantments (EITM on 22 EXPL: incendiary, pulse, stun): waits on actor effects.
+    - Image space modifiers (MNAM on 97 EXPL): waits on IMAD.
+    - Radiation (24 EXPL): waits on the radiation actor value.
+    - Default Weapon Source (15 PROJ): the weapon a projectile counts as when nothing fired it.
+    - Continuous Beam: no PROJ uses it in FalloutNV.esm.
 
 Not in this plan: placed projectiles (PGRE), particles (NifServer, see Particles), the damage
 formula, VATS, the kill cam
@@ -359,7 +403,19 @@ itself, networking.
 
 ## Not known
 
-- Whether Beam PROJ resolve at once or travel at their Speed (5000/10000).
+- Muzzle flashes and tracers point up in game. Their NIFs hold NiBillboardNodes
+  (HandGunMuzzleFlash01 and RifleMuzzleFlash01 2 each, 762mmProjectile 1); NifServer's
+  NifBillboardNode `rotate_about_up` spins about the world up axis, which would stand a
+  forward-pointing flash upright. Not confirmed: the billboard modes in these NIFs are not
+  censused. A NifServer change (census, test in `tests/servers/`); if it is the cause,
+  ProjectileServer's MUZZLE_FLASH_TURN comes out with it. Projectile models need no turn: the
+  missile and Fat Man point along their NIF +Y.
+- The viewmodel casts no shadow, so it does not shadow its own muzzle flash light. To have it
+  shadow only from that light: viewmodel meshes cast shadows on their own render layer; every
+  other light leaves that layer out of its `shadow_caster_mask`; the flash light includes it in
+  its `shadow_caster_mask` and `light_cull_mask`. Needs shadow bias tuning (the light sits a few
+  centimetres from the gun) and assumes the viewmodel renders with the main camera.
+
 - Alt. Trigger on PROJ with no timer and no proximity.
 - PROJ DATA past +68: Bouncy Mult values that are not multipliers.
 - Fallout 3's AMMO and PROJ: no FO3 data here, so the FO3 fixed-round chain is not censused.

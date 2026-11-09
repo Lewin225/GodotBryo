@@ -45,6 +45,8 @@ var _requested_path := ""
 var _part_holders: Array[BoneAttachment3D] = []
 ## Plays the rig's weapon-slot clips on the model's parts.
 var _parts_animator: KfAnimator = null
+## The model's ProjectileNode, lent to the weapon's node.
+var _muzzle: Node3D = null
 
 
 func _ready() -> void:
@@ -121,6 +123,7 @@ func _on_model_delivered(tree: Node3D, path: String) -> void:
 	_weapon_attachment().add_child(tree)
 	tree.transform = Transform3D.IDENTITY
 	model = tree
+	_lend_muzzle(tree)
 	_hang_bone_parts(tree)
 	_animate_parts(tree)
 
@@ -207,7 +210,44 @@ func _weapon_attachment() -> BoneAttachment3D:
 	return _attachment
 
 
+## Hands the model's ProjectileNode (else its root) to the drawn weapon's
+## node, so its shots and muzzle flash leave from the gun the player sees.
+func _lend_muzzle(tree: Node3D) -> void:
+	_muzzle = tree.find_child(EsmWeaponNode.MUZZLE_NODE, true, false) as Node3D
+	if _muzzle == null:
+		_muzzle = tree.find_child(EsmWeaponNode.MUZZLE_NODE_PARTED, true, false) as Node3D
+	# A model with no ProjectileNode (the grenades, the thrown weapons) lends
+	# its root, on the rig's Weapon bone: the hand the player sees.
+	if _muzzle == null:
+		_muzzle = tree
+	_keep_muzzle_lent()
+
+
+## Lends the muzzle again when the weapon's node lacks it: the node can be
+## built after the model arrives, or rebuilt.
+func _keep_muzzle_lent() -> void:
+	var node := _weapon_node()
+	if node != null and _muzzle != null and node.view_muzzle != _muzzle:
+		node.view_muzzle = _muzzle
+
+
+func _process(_delta: float) -> void:
+	if model != null:
+		_keep_muzzle_lent()
+
+
+## The actor's node for the weapon shown; null when none is built.
+func _weapon_node() -> EsmWeaponNode:
+	if _actor == null or _actor.weapon_slots == null or weapon == null:
+		return null
+	return _actor.weapon_slots.get_weapon_node(weapon)
+
+
 func _clear() -> void:
+	var node := _weapon_node()
+	if node != null:
+		node.view_muzzle = null
+	_muzzle = null
 	weapon = null
 	_requested_path = ""
 	if model != null and is_instance_valid(model):

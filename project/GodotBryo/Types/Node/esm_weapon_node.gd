@@ -11,7 +11,9 @@ extends EsmItemNode
 ## them in the editor. Built from esm_weapon_node.tscn.
 ## Plan: Plans/Weapons/weapons.md.
 
-signal fired
+## A shot fired: spent a round and went to ProjectileServer. `shot_id` is 0
+## when no projectile was sent (no PROJ, or no ProjectileServer).
+signal fired(shot_id: int)
 ## A pull with nothing loaded: the no-ammo sound played.
 signal dry_fired
 signal reloaded
@@ -51,6 +53,13 @@ const UNITS_PER_METRE := 70.0
 ## A spin clip's text keys: its first shot, and the end of its firing loop.
 const SPIN_FIRE_KEY := "fire"
 const SPIN_LOOP_KEY := "loop"
+## The text key a throw leaves the hand at: on all 14 grenade-throw and
+## thrown attack clips (`1gtattackthrow*`, _male and _1stperson), between
+## `Hold` and `Attach` (0.87 s into 1gtattackthrow, 0.20 s into the knife's).
+const RELEASE_KEY := "release"
+## DNAM Animation Types that throw (WeaponBase.animation_type).
+const ANIMATION_GRENADE_THROW := 10
+const ANIMATION_THROWN := 13
 ## The text key naming the bone a clip moves the weapon to: `prn: Bip01 R Hand`.
 const PARENT_KEY_PREFIX := "prn:"
 ## Seconds a clip fades out over when stopped.
@@ -76,6 +85,8 @@ enum Action { NONE, RELOAD, JAM, EQUIP, UNEQUIP }
 ## name.
 const BONE_PART_KEY := "UPB"
 
+const ProjectileServerScript := preload("res://GodotBryo/Servers/ProjectileServer/projectile_server.gd")
+
 ## The model's muzzle node; null before the model loads or when it has none.
 var muzzle: Node3D
 ## The model's shell ejection node; null before the model loads or when it has
@@ -92,6 +103,22 @@ var is_held := false:
 	set(value):
 		is_held = value
 		_apply_held()
+## The actor holding the weapon, set by ActorWeaponSlots; null when none. A
+## reload takes its rounds from the holder's inventory, and a shot excludes the
+## holder's collision.
+var holder: ActorReference = null
+## The muzzle the player sees in first person: the viewmodel's ProjectileNode
+## (FirstPersonViewmodel sets it while it shows this weapon). Used in place of
+## `muzzle` while set and visible: the world model on the first-person body is
+## not where the gun shows.
+var view_muzzle: Node3D = null
+## Where the holder aims (Godot world), set each frame by its controller;
+## used while has_aim_point. With none, a shot leaves along the muzzle's
+## forward.
+var aim_point := Vector3.ZERO
+var has_aim_point := false
+## Draws each shot's accuracy cone and seed.
+var _random := RandomNumberGenerator.new()
 
 ## The template scene's node the sound players are built under.
 @onready var _sounds: Node3D = $Sounds
@@ -123,6 +150,9 @@ var _next_shot_msec := 0
 ## Whether a spin clip is held in its firing loop (from the pull that started
 ## it until the release).
 var _spinning := false
+## A throw waiting for its attack clip's Release key: the weapon whose shot
+## goes then; null when none waits.
+var _release_base: WeaponBase = null
 
 
 ## The reference as a WeaponReference; null when the node holds another type.
@@ -159,7 +189,10 @@ func set_trigger(held: bool) -> void:
 
 
 ## Fires one shot now if the weapon can (the inspector's Fire button): spends a
-## loaded round and plays the attack clip. Does nothing while a reload, jam or
+## loaded round and plays the attack clip. A weapon with no ammo (NAM0: the
+## grenades, mines and thrown weapons, which spend themselves) fires without
+## spending anything: a stand-in until inventories carry them. A detonator
+## (Projectile Count 0, no PROJ) sets off its holder's placed charges. Does nothing while a reload, jam or
 ## equip plays, while jammed, before the shot interval has passed or with
 ## nothing loaded (which plays the no-ammo sound). True when it fired.
 func fire() -> bool:
@@ -169,19 +202,131 @@ func fire() -> bool:
 		return false
 	if Time.get_ticks_msec() < _next_shot_msec:
 		return false
-	if weapon.loaded_ammo_count <= 0:
+	var spends_itself := base.default_ammo() == null
+	if weapon.loaded_ammo_count <= 0 and not spends_itself:
 		_stop_loop_sound()
 		play_sound(base.no_ammo_sound)
 		dry_fired.emit()
 		return false
-	weapon.loaded_ammo_count -= 1
+	if not spends_itself:
+		weapon.loaded_ammo_count -= 1
 	_next_shot_msec = Time.get_ticks_msec() + int(shot_interval() * 1000.0)
 	_play_shot_sound(base)
 	var path := base.attack_clip_path()
 	if not _attack_clip_playing(path):
 		_play(SLOT_ACTION, path)
-	fired.emit()
+	if throws_at_release():
+		_release_base = base
+		return true
+	fired.emit(_send_shot(base))
 	return true
+
+
+## Whether a shot waits for its attack clip's Release key: the grenade-throw
+## and thrown weapons (DNAM Animation Type 10 and 13), whose attack clips all
+## carry one. A mine is dropped at once.
+func throws_at_release() -> bool:
+	var base := get_weapon_base()
+	return base != null and (base.animation_type == ANIMATION_GRENADE_THROW or base.animation_type == ANIMATION_THROWN)
+
+
+## Sends the throw waiting for its Release key, if one waits.
+func _release_throw() -> void:
+	if _release_base == null:
+		return
+	var base := _release_base
+	_release_base = null
+	fired.emit(_send_shot(base))
+
+
+## Sends this shot to ProjectileServer: the projectile the loaded ammo fires,
+## from the muzzle along the aim inside the accuracy cone. The shot's id, or 0.
+func _send_shot(base: WeaponBase) -> int:
+	var server := get_node_or_null("/root/ProjectileServer")
+	var ammo := loaded_ammo()
+	var projectile := base.effective_projectile(ammo)
+	var shooter: EsmReference = holder if holder != null else reference
+	if server != null and projectile == null and base.projectile_count == 0:
+		server.detonate_placed(shooter)
+		return 0
+	if server == null or projectile == null:
+		return 0
+	var from := shot_transform(_random)
+	_show_muzzle_flash(server, projectile)
+	return server.fire(base, shooter, from, projectile, ammo, _random.randi())
+
+
+## The shot's muzzle flash under the muzzle the shot leaves from (the
+## viewmodel's in first person), facing along the muzzle's forward, so it moves
+## with the gun.
+func _show_muzzle_flash(server: Node, projectile: ProjectileBase) -> void:
+	var parent := shot_muzzle()
+	var facing := Transform3D(_basis_facing(muzzle_forward()), parent.global_position)
+	server.show_muzzle_flash(projectile, facing, parent)
+
+
+## The ammo loaded: the WeaponReference's loaded ammo, else the ammo the WEAP
+## names first; null when it spends none.
+func loaded_ammo() -> AmmoBase:
+	var weapon := get_weapon_reference()
+	var base := get_weapon_base()
+	var server := EsmReference.get_esm_server()
+	if weapon != null and weapon.loaded_ammo_form_id != 0 and server != null:
+		var loaded := server.get_base(weapon.loaded_ammo_form_id) as AmmoBase
+		if loaded != null:
+			return loaded
+	return base.default_ammo() if base != null else null
+
+
+## A shot's origin and direction (-Z), Godot world: from the muzzle (the
+## node's own transform when it has none) towards the aim point, or along the
+## muzzle's forward with none, turned inside the accuracy cone.
+func shot_transform(random: RandomNumberGenerator) -> Transform3D:
+	var origin_node := shot_muzzle()
+	var origin := origin_node.global_position
+	var direction := muzzle_forward()
+	if has_aim_point and aim_point.distance_to(origin) > 0.01:
+		direction = (aim_point - origin).normalized()
+	var aimed := Transform3D(_basis_facing(direction), origin)
+	var cone := deg_to_rad(accuracy_cone())
+	if cone > 0.0:
+		var turned := ProjectileServerScript.cone_direction(aimed.basis, cone, random)
+		aimed.basis = _basis_facing(turned)
+	return aimed
+
+
+## The node a shot leaves from: the viewmodel's muzzle while it shows, else
+## the model's, else this node.
+func shot_muzzle() -> Node3D:
+	if view_muzzle != null and is_instance_valid(view_muzzle) and view_muzzle.is_visible_in_tree():
+		return view_muzzle
+	if muzzle != null and muzzle.is_inside_tree():
+		return muzzle
+	return self
+
+
+## The accuracy cone's half-angle, degrees: the WEAP's Spread. `# ASSUMPTION`
+## Spread is the accuracy cone (WeaponBase.spread); the holder's skill
+## narrowing it comes with skills.
+func accuracy_cone() -> float:
+	var base := get_weapon_base()
+	return maxf(base.spread, 0.0) if base != null else 0.0
+
+
+## The muzzle's forward, Godot world: its NIF +Y, the axis the barrel points
+## along (`ProjectileNode` sits at the barrel's end). The node's -Z with no
+## muzzle. +Y was found to be the correct behaviour; the muzzle flash model is
+## authored along +X instead (ProjectileServer.MUZZLE_FLASH_TURN).
+func muzzle_forward() -> Vector3:
+	var origin_node := shot_muzzle()
+	if origin_node != self:
+		return origin_node.global_basis.y.normalized()
+	return -global_basis.z.normalized()
+
+
+static func _basis_facing(direction: Vector3) -> Basis:
+	var up := Vector3.UP if absf(direction.normalized().dot(Vector3.UP)) < 0.99 else Vector3.BACK
+	return Basis.looking_at(direction, up)
 
 
 ## Whether the attack clip at `path` is the action slot's clip and keeps
@@ -445,6 +590,9 @@ func _on_clip_delivered(library: AnimationLibrary, slot: int, path: String) -> v
 ## reload and jam clips mark no earlier finish), not when another clip in the
 ## slot does, nor when it is replaced.
 func _on_clip_finished(slot: int, animation: Animation) -> void:
+	# A throw whose clip ended with no Release key (or failed to load) goes now.
+	if slot == SLOT_ACTION and _release_base != null:
+		_release_throw()
 	if slot != SLOT_ACTION or _action == Action.NONE or animation == null or animation != _action_clip:
 		return
 	_animator.stop(SLOT_ACTION, FADE_SECONDS)
@@ -462,7 +610,7 @@ func _finish_action() -> void:
 	if weapon == null or base == null:
 		return
 	if finished == Action.RELOAD:
-		weapon.loaded_ammo_count = base.clip_size
+		_refill(weapon, base)
 		reloaded.emit()
 	elif finished == Action.JAM:
 		weapon.is_jammed = false
@@ -473,6 +621,9 @@ func _finish_action() -> void:
 
 func _on_text_key(slot: int, key: String, _time: float) -> void:
 	var text := key.strip_edges()
+	if slot == SLOT_ACTION and text.to_lower() == RELEASE_KEY:
+		_release_throw()
+		return
 	if text.to_lower().begins_with(SOUND_KEY_PREFIX):
 		play_sound(_key_sound(text.substr(SOUND_KEY_PREFIX.length()).strip_edges()))
 		return
@@ -674,3 +825,28 @@ func _find_nif_node(tree: Node3D, nif_name: String) -> Node3D:
 		if String(node.get_meta(NifNames.META_NIF_NAME, "")) == nif_name:
 			return node as Node3D
 	return null
+
+
+## Fills the clip at the end of a reload. Held, it first takes the loaded
+## ammo's rounds from the holder's inventory, up to the clip size. Then it tops
+## the clip up to its size whatever the inventory held: a stand-in until
+## inventories carry ammo, so a reload always fills.
+func _refill(weapon: WeaponReference, base: WeaponBase) -> void:
+	var ammo := loaded_ammo()
+	if ammo != null:
+		weapon.loaded_ammo_form_id = ammo.form_id
+	var inventory := holder.get("contents") as Inventory if holder != null else null
+	if inventory == null or ammo == null:
+		weapon.loaded_ammo_count = base.clip_size
+		return
+	var wanted := base.clip_size - weapon.loaded_ammo_count
+	var taken := 0
+	for item in inventory.get_items():
+		if taken >= wanted:
+			break
+		if item.base_form_id != ammo.form_id:
+			continue
+		var take := mini(item.count, wanted - taken)
+		if inventory.remove_inventory_item(item, take):
+			taken += take
+	weapon.loaded_ammo_count = base.clip_size

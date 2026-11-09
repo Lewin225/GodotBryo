@@ -110,6 +110,7 @@ const SIGNATURES := {
 	"SetActorValue|SetAV|ModActorValue|ModAV|ForceActorValue|ForceAV|DamageActorValue|DamageAV|RestoreActorValue|RestoreAV": "ActorValue:actorvalue Value:number",
 	"GetHealthPercentage|GetLevel|GetButtonPressed|ToggleCollision|TCL|TGM|TDM|Kill|Resurrect": "",
 	"PlaceAtMe": "Object:object [Count:int]",
+	"FireWeapon": "Weapon:item",
 	"CenterOnCell|COC": "Cell:interior_cell",
 	"ShowMessage": "Message:message",
 }
