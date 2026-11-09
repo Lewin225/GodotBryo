@@ -123,6 +123,13 @@ func set_open(open: bool) -> void:
 		if server != null:
 			server.exit_menu(server.MENU_CONSOLE)
 
+## Opens the console with `text` typed into the input but not run, the caret
+## at its end (the spawn menu's Open in console).
+func open_with_line(text: String) -> void:
+	set_open(true)
+	_set_line(text)
+	_line.grab_focus()
+
 ## Makes `reference` the target and opens the console (Script Engine tab).
 func target_reference(reference: EsmReference) -> void:
 	session.set_target(reference)

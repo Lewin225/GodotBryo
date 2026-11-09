@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="SpawnList" format=3]
+
+[ext_resource type="Script" path="res://spawn_menu/spawn_list.gd" id="1_list"]
+
+[resource]
+script = ExtResource("1_list")
+editor_ids = PackedStringArray("WeapNV9mmPistol", "WeapNV44Revolver", "WeapNVVarmintRifle", "WeapNVServiceRifle", "WeapNVHuntingShotgun", "WeapLaserRifle", "WeapPlasmaRifle", "WeapNVMachete", "WeapMinigun", "WeapFatman", "ArmorLeather", "ArmorCombat", "ArmorPowerT51b", "VaultSuit21", "Stimpak", "RadAway", "NukaCola", "WaterPurified", "Ammo9mm", "Ammo44magnum", "Ammo556mm", "AmmoMicroFusionCell", "Caps001", "SpareParts", "NVCrGecko", "CrDeathClaw", "CrRadscorpion1Small", "NVCrCazador", "CrBrahmin", "VStreetSecuritron", "Chair01F", "BedTwin01R", "WorkBench", "CrateLarge01", "Barrel03static")

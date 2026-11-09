@@ -36,6 +36,9 @@
 [ext_resource type="Script" path="res://simulation_debug_tab.gd" id="sim_debug_tab"]
 [ext_resource type="Script" path="res://simulation_map_view.gd" id="sim_map_view"]
 [ext_resource type="PackedScene" path="res://console/console_overlay.tscn" id="console_overlay"]
+[ext_resource type="Script" path="res://spawn_menu/spawn_placer.gd" id="40_spawnplacer"]
+[ext_resource type="PackedScene" path="res://spawn_menu/spawn_menu_tab.tscn" id="41_spawntab"]
+[ext_resource type="Script" path="res://ui/record_icon.gd" id="42_recordicon"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
 
@@ -165,7 +168,7 @@ post_pass_compute_shader = ExtResource("17_iu0sx")
 wind_direction = Vector3(1, 0, 1)
 directional_lights_data = Array[Vector4]([Vector4(-0.3535534, 0.7071068, 0.61237246, 12), Vector4(1, 1, 1, 0.6)])
 
-[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player")]
+[node name="Game" type="Node3D" unique_id=215906396 node_paths=PackedStringArray("cell_streamer", "world_streamer", "terrain_streamer", "transition_coordinator", "game_time_manager", "weather_manager", "celestial_controller", "cell_label", "sun", "world_environment", "player", "spawn_placer")]
 script = ExtResource("1")
 cell_streamer = NodePath("CellStreamerV2")
 world_streamer = NodePath("WorldStreamerV2")
@@ -178,9 +181,13 @@ cell_label = NodePath("DebugHud/CellLabel")
 sun = NodePath("Sun")
 world_environment = NodePath("WorldEnvironment")
 player = NodePath("Character")
+spawn_placer = NodePath("SpawnPlacer")
 
 [node name="Character" parent="." unique_id=1007875956 instance=ExtResource("2_e8heu")]
 process_priority = 99
+
+[node name="SpawnPlacer" type="Node" parent="."]
+script = ExtResource("40_spawnplacer")
 
 [node name="CellStreamerV2" type="Node3D" parent="." unique_id=237117943]
 script = ExtResource("3_cellstreamerv2")
@@ -619,13 +626,14 @@ layout_mode = 2
 tooltip_text = "Raycast downwards and snap player position directly to ground."
 text = "Snap to Ground"
 
-[node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954]
+[node name="Inventory" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=402594954 node_paths=PackedStringArray("spawn_tab")]
 visible = false
 custom_maximum_size = Vector2(1920, 1080)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 script = ExtResource("8_inventorydebug")
+spawn_tab = NodePath("../Spawn")
 metadata/_tab_index = 2
 metadata/_tab_name = "Inventory Manager"
 
@@ -649,37 +657,111 @@ text = "[b]🎒 Player Inventory[/b]"
 fit_content = true
 scroll_active = false
 
+[node name="Categories" type="TabBar" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
+layout_mode = 2
+current_tab = 0
+tab_count = 7
+tab_0/title = "All"
+tab_1/title = "Weapons"
+tab_2/title = "Apparel"
+tab_3/title = "Aid"
+tab_4/title = "Misc"
+tab_5/title = "Ammo"
+tab_6/title = "Equipped"
+
 [node name="FilterEdit" type="LineEdit" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=94027675]
 layout_mode = 2
 placeholder_text = "Filter items by name or FormID..."
 clear_button_enabled = true
 
-[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=2087114334]
+[node name="Split" type="HSplitContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox"]
 custom_minimum_size = Vector2(0, 260)
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="ItemTree" type="Tree" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split" unique_id=2087114334]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+allow_rmb_select = true
 columns = 6
 column_titles_visible = true
 hide_root = true
 
-[node name="Buttons" type="HBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=525794185]
+[node name="Details" type="PanelContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Increment" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=532771478]
+[node name="Title" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox"]
 layout_mode = 2
-tooltip_text = "Add one of the selected inventory item (debug only)."
-text = "Inc"
+theme_override_colors/font_color = Color(0.6, 0.62, 0.66, 1)
+text = "Details"
 
-[node name="Delete" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=1913915189]
+[node name="Icon" type="TextureRect" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox"]
+custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
-tooltip_text = "Remove one selected item from inventory."
-text = "Delete"
+expand_mode = 1
+stretch_mode = 5
+script = ExtResource("42_recordicon")
 
-[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=76765613]
+[node name="Name" type="Label" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox"]
 layout_mode = 2
-tooltip_text = "Spawn one selected item in front of the camera."
+theme_override_font_sizes/font_size = 20
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Buttons" type="GridContainer" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox" unique_id=525794185]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 2
+
+[node name="Equip" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Equip the selected weapon or armor, or unequip it when it is equipped."
+disabled = true
+text = "Equip"
+
+[node name="Drop" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox/Buttons" unique_id=76765613]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Drop the whole selected entry in front of the actor."
+disabled = true
 text = "Drop"
+
+[node name="Increase" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox/Buttons" unique_id=532771478]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Add one of the selected item (debug only)."
+disabled = true
+text = "Increase"
+
+[node name="Decrease" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox/Buttons" unique_id=1913915189]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Remove one of the selected item (debug only)."
+disabled = true
+text = "Decrease"
+
+[node name="Fields" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Split/Details/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "Select an item."
+fit_content = true
 
 [node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
 layout_mode = 2
@@ -687,6 +769,21 @@ bbcode_enabled = true
 text = "0 distinct item type(s)"
 fit_content = true
 scroll_active = false
+
+[node name="ContextMenu" type="PopupMenu" parent="Debug Tools/TabContainer/Inventory"]
+item_count = 6
+item_0/text = "Equip"
+item_0/id = 0
+item_1/text = "Drop"
+item_1/id = 1
+item_2/text = "Add to Favourites"
+item_2/id = 2
+item_3/id = 5
+item_3/separator = true
+item_4/text = "Copy EditorID"
+item_4/id = 3
+item_5/text = "Open in console"
+item_5/id = 4
 
 [node name="Teleport" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=655647290]
 visible = false
@@ -2012,6 +2109,14 @@ clip_contents = true
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("sim_map_view")
+
+[node name="Spawn" parent="Debug Tools/TabContainer" node_paths=PackedStringArray("placer", "fade_target") instance=ExtResource("41_spawntab")]
+visible = false
+layout_mode = 2
+placer = NodePath("../../../SpawnPlacer")
+fade_target = NodePath("../..")
+metadata/_tab_index = 12
+metadata/_tab_name = "Spawn"
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=1549324999]
 

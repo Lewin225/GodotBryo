@@ -170,5 +170,6 @@ anything.
 | `test_grass_esm` | Issue #12: real GRAS.DATA field decoding and a multi-GNAM LTEX grass fixture | headless |
 | `test_game_data_config` | Issue #22: portable data-directory discovery skips existing incomplete directories and reports an invalid explicit override | headless |
 | `test_unlit_effect_material` | Issue #26: real additive `BSShaderNoLightingProperty` beam remains unlit while preserving its authored alpha blend | headless |
+| `test_spawn_menu` | Spawn menu (`Plans/SpawnMenu/`): `SpawnCatalog` rows against the 2026-11-09 census, tree, search; `SpawnPlacer` PlaceAtMe/crosshair/undo in Doc Mitchell's house; tab, icons, hover preview, model thumbnails, `ThumbnailServer` and `RecordIcon` | headless (thumbnail renders need a window; skipped headless) |
 
 Phase/task numbers refer to `phases/`'s own task docs (e.g. "2.12" = `phases/2/12-distant-object-lod.md`).

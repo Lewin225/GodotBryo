@@ -55,6 +55,8 @@ var _hud_cell_form_id: int = 0 # last cell the HUD was drawn for -- avoids redun
 ## The player. Exported for the same reason as the rest -- it was previously
 ## bound by the literal node name "Character" alone.
 @export var player: PlayerController
+## Owns spawning: the spawn menu tab's and PlaceAtMe's.
+@export var spawn_placer: SpawnPlacer
 var _interior_directional_light: DirectionalLight3D
 
 # DebugStats.gd's own F3 overlay moved to a real editor debugger panel
@@ -109,7 +111,7 @@ func _ready() -> void:
 	if typed_esm == null:
 		push_error("Game: EsmServer did not become ready")
 		return
-	ScriptServer.function_registry.place_at_me_handler = debug_place_at_me
+	ScriptServer.function_registry.place_at_me_handler = spawn_placer.place_at_me
 	ScriptServer.function_registry.center_on_cell_handler = transition_coordinator.center_on_cell
 	ScriptServer.function_registry.game_time_manager = game_time_manager
 
@@ -269,17 +271,6 @@ func _process(_delta: float) -> void:
 		if not climate.is_empty():
 			celestial_controller.update(game_time_manager.game_hour, climate)
 			weather_manager.advance(_delta * game_time_manager.timescale / 3600.0)
-
-## PlaceAtMe's runtime owner.  The function registry delegates here so it
-## never needs to know about active cell roots, mesh construction, or the
-## scene tree.  FalloutNV accepts Distance/Direction but ignores both in
-## practice; use a safe nearby spread instead, and retain the caller's
-## actual world rotation (including player look tilt when present).
-func debug_place_at_me(args: Array, caller: EsmReference) -> Variant:
-	if caller == null or args.is_empty():
-		return 0
-	push_warning("PlaceAtMe is unavailable while the legacy registry is detached from CellStreamerV2")
-	return 0
 
 ## Rendering-issues list #1: interiors don't have a real sky/sun -- Bethesda
 ## interior cells are always fully enclosed geometry with their own baked
