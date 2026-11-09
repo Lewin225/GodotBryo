@@ -345,9 +345,10 @@ Toggle with **Home** while the game is running (`game.tscn`'s `Debug Tools`
 - **Envrioment** (`project/environment_debug_tab.gd`) — the current
   interior cell's real `CELL.XCLL` ambient-lighting data side by side with
   what's actually applied to the live `WorldEnvironment`.
-- **Script Engine** (`project/scripting_debug_tab.gd`) — a script console,
-  and every script with variables (references whose script has run, and
-  quests whose script variables exist) with its source, blocks and locals.
+- **Script Engine** (`project/scripting_debug_tab.gd`) — every script with
+  variables (references whose script has run, and quests whose script
+  variables exist) with its source, blocks and locals; Target in Console
+  makes the selected reference the console's target.
 - **Quests** (`project/quests_debug_tab.gd`) — every QUST with its
   `QuestServer` state (running, stage, objectives, completed/failed), filtered
   by status; sets the active quest in place of the Pip-Boy, and Show Script
@@ -361,6 +362,19 @@ All of these tabs are scene-authored in `game.tscn` (real `Label`/`SpinBox`/
 `ItemList` nodes with fixed names) — their scripts only do `@onready $Path`
 lookups and refresh logic, deliberately not building UI from code, so the
 tab stays an easy place to keep adding controls by hand in the editor.
+
+### Console (`` ` ``)
+
+`project/console/console_overlay.tscn`, the last child of `game.tscn`'s root
+(its `_input` must run before Debug Tools', which toggles on Tab): a
+drop-down console that runs script statements through
+`ScriptServer.run_debug_line`. `ConsoleSession` (`script_vm/console_session.gd`)
+runs lines and the console commands (`help`, `find`, `info`, `prid`, `bat`,
+`history`, `clear`); `ConsoleCompleter` (`script_vm/console_completer.gd`)
+completes and resolves every EditorID in FalloutNV.esm's record index, narrowed
+by the argument types in its `SIGNATURES` table. Add a registered function's
+arguments there when you register it (`tests/test_console.tscn` lists the ones
+missing). A left click in the world while it is open picks the target.
 
 ### Editor `@tool` viewers
 

@@ -872,6 +872,35 @@ func _register_defaults() -> void:
 		return 0
 	register(["ToggleCollision", "TCL"], toggle_collision)
 
+	# `TGM` / `TDM`: toggle the player's god / demigod mode (the flags on
+	# ScriptServer; nothing reads them yet, as there is no damage system).
+	# Not per reference. Return the new state, 1 or 0.
+	register("TGM", func(_a, _c):
+		if script_server == null:
+			return 0
+		script_server.god_mode = not script_server.god_mode
+		return 1 if script_server.god_mode else 0)
+	register("TDM", func(_a, _c):
+		if script_server == null:
+			return 0
+		script_server.demigod_mode = not script_server.demigod_mode
+		return 1 if script_server.demigod_mode else 0)
+	# `[Actor.]Kill` takes the calling actor's Health to 0; `[Actor.]Resurrect`
+	# restores it to full. Only Health changes: there is no death animation,
+	# ragdoll or AI response yet. 0 for a non-actor.
+	register("Kill", func(_a, ctx: ScriptExecutionContext):
+		var values := _actor_values(ctx)
+		if values == null:
+			return 0
+		values.damage_value(ActorValue.HEALTH, values.get_current(ActorValue.HEALTH))
+		return 1)
+	register("Resurrect", func(_a, ctx: ScriptExecutionContext):
+		var values := _actor_values(ctx)
+		if values == null:
+			return 0
+		values.restore_value(ActorValue.HEALTH, 1.0e9)
+		return 1)
+
 	register("ShowMessage", func(a: Array, ctx: ScriptExecutionContext):
 		# Real argument shape: either an EditorID string (e.g. GSBrokenSMGMsg)
 		# or a FormID -- resolved via get_message_by_editor_id() or get_message_by_form_id().

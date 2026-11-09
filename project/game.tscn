@@ -35,6 +35,7 @@
 [ext_resource type="Script" uid="uid://3aerum15e3f6" path="res://debug_monitors_label.gd" id="monitors_label"]
 [ext_resource type="Script" path="res://simulation_debug_tab.gd" id="sim_debug_tab"]
 [ext_resource type="Script" path="res://simulation_map_view.gd" id="sim_map_view"]
+[ext_resource type="PackedScene" path="res://console/console_overlay.tscn" id="console_overlay"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
 
@@ -351,64 +352,48 @@ text = "0 live contexts"
 fit_content = true
 scroll_active = false
 
-[node name="ConsoleRow" type="HBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=648164203]
-layout_mode = 2
-
-[node name="Line" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=744659824]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "Run a script line, e.g. Player.Disable"
-
-[node name="Run" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=1878701052]
-layout_mode = 2
-text = "Run"
-
-[node name="Clear" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/ConsoleRow" unique_id=2068415879]
-layout_mode = 2
-text = "Clear"
-
-[node name="VSplit" type="VSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1893336224]
+[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox" unique_id=1298307156]
 layout_mode = 2
 size_flags_vertical = 3
-
-[node name="Output" type="TextEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1789706687]
-custom_minimum_size = Vector2(0, 54)
-layout_mode = 2
-
-[node name="HSplit" type="HSplitContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit" unique_id=1298307156]
-layout_mode = 2
 split_offsets = PackedInt32Array(40)
 split_offset = 40
 
-[node name="Left" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=949132900]
+[node name="Left" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit" unique_id=949132900]
 custom_minimum_size = Vector2(200, 0)
 custom_maximum_size = Vector2(800, -1)
 layout_mode = 2
 
-[node name="LineEdit" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=1376486747]
+[node name="LineEdit" type="LineEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Left" unique_id=1376486747]
 layout_mode = 2
 placeholder_text = "Filter"
 
-[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Left" unique_id=668789071]
+[node name="Instances" type="ItemList" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Left" unique_id=668789071]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit" unique_id=1731338449]
+[node name="Right" type="VBoxContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit" unique_id=1731338449]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1758729041]
+[node name="Details" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Right" unique_id=1758729041]
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="ScrollContainer" type="ScrollContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=1681806379]
+[node name="ConsoleTarget" type="Button" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Right" unique_id=2093847561]
+layout_mode = 2
+size_flags_horizontal = 0
+disabled = true
+tooltip_text = "Opens the console (`) with this reference as its target, so commands without a Ref. prefix act on it."
+text = "Target in Console"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Right" unique_id=1681806379]
 custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 
-[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right/ScrollContainer" unique_id=464048584]
+[node name="Locals" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Right/ScrollContainer" unique_id=464048584]
 custom_minimum_size = Vector2(200, 70)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -417,31 +402,11 @@ bbcode_enabled = true
 fit_content = true
 scroll_active = false
 
-[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/VSplit/HSplit/Right" unique_id=780816419]
+[node name="Source" type="CodeEdit" parent="Debug Tools/TabContainer/Scripting/Margin/VBox/HSplit/Right" unique_id=780816419]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/font_readonly_color = Color(0.8745098, 0.8745098, 0.8745098, 1)
 theme_override_styles/read_only = SubResource("StyleBoxFlat_7knny")
-
-[node name="SuggestionsPanel" type="PanelContainer" parent="Debug Tools/TabContainer/Scripting" unique_id=194857299]
-visible = false
-top_level = true
-z_index = 50
-layout_mode = 2
-mouse_filter = 2
-
-[node name="Margin" type="MarginContainer" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel" unique_id=194857300]
-layout_mode = 2
-theme_override_constants/margin_left = 15
-theme_override_constants/margin_top = 30
-theme_override_constants/margin_right = 15
-theme_override_constants/margin_bottom = 30
-
-[node name="SuggestionsList" type="RichTextLabel" parent="Debug Tools/TabContainer/Scripting/SuggestionsPanel/Margin" unique_id=194857301]
-layout_mode = 2
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
 
 [node name="Player" type="ScrollContainer" parent="Debug Tools/TabContainer" unique_id=1803339936]
 visible = false
@@ -2097,6 +2062,8 @@ large_structures_wind_speed = 1.0
 medium_structures_wind_speed = 5.0
 small_structures_wind_speed = 1.0
 metadata/_custom_type_script = "uid://djusduuxf0voj"
+
+[node name="Console" parent="." unique_id=1730492856 instance=ExtResource("console_overlay")]
 
 [connection signal="tab_changed" from="Debug Tools/TabContainer" to="Debug Tools/Background" method="_on_tab_container_tab_changed"]
 [connection signal="toggled" from="Debug Tools/TabContainer/Editing/Margin/VBox/ShowBackgroundOnTabScren" to="Debug Tools/Background" method="_on_show_background_on_tab_scren_toggled"]
