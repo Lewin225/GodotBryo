@@ -53,11 +53,14 @@ const UNITS_PER_METRE := 70.0
 ## A spin clip's text keys: its first shot, and the end of its firing loop.
 const SPIN_FIRE_KEY := "fire"
 const SPIN_LOOP_KEY := "loop"
-## The text key a throw leaves the hand at: on all 14 grenade-throw and
-## thrown attack clips (`1gtattackthrow*`, _male and _1stperson), between
-## `Hold` and `Attach` (0.87 s into 1gtattackthrow, 0.20 s into the knife's).
+## The text key a throw or a placed mine leaves the hand at: on all 20
+## attack clips of the throwing and mine families (`1gtattackthrow*` and
+## `1lmplacemine*`, `1mdplacemine`, _male and _1stperson), before `Attach`
+## (0.87 s into 1gtattackthrow, 0.20 s into the knife's, 1.50 s into
+## 1lmplacemine).
 const RELEASE_KEY := "release"
-## DNAM Animation Types that throw (WeaponBase.animation_type).
+## DNAM Animation Types that throw or place (WeaponBase.animation_type):
+## Grenade Throw, Land Mine, Mine Drop, Thrown.
 const ANIMATION_GRENADE_THROW := 10
 const ANIMATION_THROWN := 13
 ## The text key naming the bone a clip moves the weapon to: `prn: Bip01 R Hand`.
@@ -222,12 +225,12 @@ func fire() -> bool:
 	return true
 
 
-## Whether a shot waits for its attack clip's Release key: the grenade-throw
-## and thrown weapons (DNAM Animation Type 10 and 13), whose attack clips all
-## carry one. A mine is dropped at once.
+## Whether a shot waits for its attack clip's Release key: the grenade-throw,
+## land mine, mine drop and thrown weapons (DNAM Animation Type 10 to 13),
+## whose attack clips all carry one.
 func throws_at_release() -> bool:
 	var base := get_weapon_base()
-	return base != null and (base.animation_type == ANIMATION_GRENADE_THROW or base.animation_type == ANIMATION_THROWN)
+	return base != null and base.animation_type >= ANIMATION_GRENADE_THROW and base.animation_type <= ANIMATION_THROWN
 
 
 ## Sends the throw waiting for its Release key, if one waits.

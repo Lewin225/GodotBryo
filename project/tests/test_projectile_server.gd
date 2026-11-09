@@ -27,7 +27,8 @@ func _ready() -> void:
 	await _check_muzzle_and_wall()
 	_check_spread()
 	await _check_lethal_and_range()
-	await _check_throw_release()
+	await _check_throw_release("WeapGrenadeFrag")
+	await _check_throw_release("WeapMineFrag")
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
@@ -144,8 +145,8 @@ func _check_lethal_and_range() -> void:
 	ProjectileServer.shot_resolved.disconnect(on_resolved)
 
 
-func _check_throw_release() -> void:
-	var grenade := await _place("WeapGrenadeFrag")
+func _check_throw_release(editor_id: String) -> void:
+	var grenade := await _place(editor_id)
 	var base := grenade.get_weapon_base()
 	var path := base.attack_clip_path()
 	NifServer.request_kf(path, grenade, grenade._on_clip_delivered.bind(-1, path))
@@ -157,7 +158,7 @@ func _check_throw_release() -> void:
 	var on_fired := func(shot_id: int) -> void: shots.append(shot_id)
 	grenade.fired.connect(on_fired)
 	var started := Time.get_ticks_msec()
-	check(grenade.throws_at_release() and grenade.fire(), "the frag grenade (a grenade throw) starts its throw")
+	check(grenade.throws_at_release() and grenade.fire(), "%s starts its throw" % editor_id)
 	await _physics()
 	check(shots.is_empty(), "no shot before its attack clip's Release key")
 	for frame in FRAMES:
