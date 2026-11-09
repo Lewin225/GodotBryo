@@ -410,6 +410,9 @@ itself, networking.
   censused. A NifServer change (census, test in `tests/servers/`); if it is the cause,
   ProjectileServer's MUZZLE_FLASH_TURN comes out with it. Projectile models need no turn: the
   missile and Fat Man point along their NIF +Y.
+- A landed mine keeps the facing it flew with: it does not lie flat on the surface it struck.
+  Once PGRE loading is in, a mine that lands becomes a placed projectile (PGRE kind) and the
+  physics settles it on the surface; until then it stays as it is.
 - The viewmodel casts no shadow, so it does not shadow its own muzzle flash light. To have it
   shadow only from that light: viewmodel meshes cast shadows on their own render layer; every
   other light leaves that layer out of its `shadow_caster_mask`; the flash light includes it in
