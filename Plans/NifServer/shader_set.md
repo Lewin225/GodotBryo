@@ -183,7 +183,7 @@ and operation) from the native export, which does not carry it yet (`nif_source_
 `controller_type`, `controller_id`, `interpolator_id` per controlled block).
 
 Instance uniforms live in Godot's global shader variable buffer, and every instance whose
-material declares them reserves its slots (5 here) whether or not anything sets them. At
+material declares them reserves its slots (8 here) whether or not anything sets them. At
 Godot's default buffer size, scenes of 40,000+ nodes ran out; later instances read unset slots and
 rendered white ("Too many instances using shader instance variables"). `project.godot` sets
 `rendering/limits/global_shader_variables/buffer_size=1048576` (16 MB of VRAM, a CPU copy of the
@@ -228,6 +228,18 @@ animated and tinted shapes on their shared material instead of a copy per instan
    sequences now also get visibility tracks, static transform values, priorities, text keys and
    face morphs; KFs get alpha tracks on targets that are shapes. KF disk cache version
    `nifserver-kf-v7`. The remaining controllers are added once, there.
+   Texture transform built: NiTextureTransformController float links become tracks on the base
+   map's UV instance uniforms, one float each (`nif_uv_offset_u`/`_v`, `nif_uv_scale_u`/`_v`,
+   `nif_uv_rotate`), by the operation in the controller ID (`<shaderMap>-<slot>-<operation>`;
+   slot 0 on every link; KF links carry the ID but never reach their controller block). Order:
+   scale, translate, rotate about (0.5, 0.5) in radians, `# ASSUMPTION`. Census tool:
+   `native/tools/controller_census.cpp` (not committed). KF cache `nifserver-kf-v9`.
+   NiMaterialColorController's target is in its controller ID too: SELF_ILLUM 1,218 and SPEC 42
+   NIF links, 804 and 80 KF links.
+   Not played yet: no code plays a static object's own sequences (signs' `Left`/`Right` loops);
+   only doors, furniture, activators, containers and effects play clips. A NIF with two
+   NiControllerManagers can repeat sequence names (`nv_freesidesign-large_lights.nif`, two
+   `Left` and two `Right`); the tree builder does not de-duplicate clip names.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.

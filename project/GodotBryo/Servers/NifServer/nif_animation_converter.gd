@@ -27,6 +27,19 @@ const VISIBILITY_SUFFIX := ":visible"
 ## NIF shaders' alpha multiplier, an instance uniform on the shape's
 ## MeshInstance3D (shaders/nif_*.gdshaderinc).
 const ALPHA_SUFFIX := ":instance_shader_parameters/nif_alpha"
+## An NiTextureTransformController link's operation (the last part of its
+## controller ID, `<shaderMap>-<slot>-<operation>`) -> its track's property on
+## the target shape: the NIF shaders' base-map UV transform instance uniforms.
+## Census, every NIF and KF link: slot 0 and shaderMap 0 on all; in NIFs
+## TT_TRANSLATE_U 704, TT_TRANSLATE_V 672, TT_SCALE_U 177, TT_SCALE_V 153,
+## TT_ROTATE 105; in KFs 185, 227, 182, 185, 125.
+const TEXTURE_TRANSFORM_SUFFIXES := {
+	"TT_TRANSLATE_U": ":instance_shader_parameters/nif_uv_offset_u",
+	"TT_TRANSLATE_V": ":instance_shader_parameters/nif_uv_offset_v",
+	"TT_SCALE_U": ":instance_shader_parameters/nif_uv_scale_u",
+	"TT_SCALE_V": ":instance_shader_parameters/nif_uv_scale_v",
+	"TT_ROTATE": ":instance_shader_parameters/nif_uv_rotate",
+}
 
 
 ## One Animation from one NiControllerSequence. `resolver` takes an authored
@@ -75,6 +88,11 @@ static func build_animation(sequence: Dictionary, resolver: Callable, moved: Arr
 		if _is_alpha_block(block) and bool(resolved["shape"]):
 			if _add_float_track(animation, path + ALPHA_SUFFIX, interpolator, start):
 				_add_priority(track_priorities, path + ALPHA_SUFFIX, block)
+			continue
+		if _texture_transform_suffix(block) != "" and bool(resolved["shape"]):
+			var uv_path := path + _texture_transform_suffix(block)
+			if _add_float_track(animation, uv_path, interpolator, start):
+				_add_priority(track_priorities, uv_path, block)
 			continue
 		if kind != "transform":
 			# Other property controllers (material colour, emittance, texture
@@ -134,6 +152,22 @@ static func _is_alpha_block(block: Dictionary) -> bool:
 	if String(interpolator.get("kind", "")) != "float":
 		return false
 	return String(block.get("controller_type", "")) == "NiAlphaController"
+
+
+## The track property suffix of an NiTextureTransformController float link on
+## the base map (slot 0), or "" for any other link. Its operation is read from
+## the controller ID, which KF links carry too: no KF link reaches its
+## controller block.
+static func _texture_transform_suffix(block: Dictionary) -> String:
+	if String(block.get("controller_type", "")) != "NiTextureTransformController":
+		return ""
+	var interpolator: Dictionary = block.get("interpolator", {})
+	if String(interpolator.get("kind", "")) != "float":
+		return ""
+	var parts := String(block.get("controller_id", "")).split("-")
+	if parts.size() != 3 or parts[1] != "0":
+		return ""
+	return String(TEXTURE_TRANSFORM_SUFFIXES.get(parts[2], ""))
 
 
 ## Adds a value track at `path` from a float interpolator's keys, played

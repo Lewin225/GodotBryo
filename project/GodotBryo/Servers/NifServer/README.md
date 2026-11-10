@@ -164,7 +164,7 @@ work, and NifServer offers no entry point for it.
 |---|---|
 | declared bones forming a hierarchy inside it | a `Skeleton3D`, skins bound to it |
 | declared bones as a flat list | unresolved named binds, no `Skeleton3D` |
-| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound, built by `NifAnimationConverter` as KFs are: transform tracks (static values as one key), `NiVisController` visibility, an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform, and the priority, text key and face morph metadata. Material colour, emittance and texture transform are not built yet |
+| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound, built by `NifAnimationConverter` as KFs are: transform tracks (static values as one key), `NiVisController` visibility, an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform, an `NiTextureTransformController` on a shape as a track on its base-map UV uniform (`nif_uv_offset_u`/`_v`, `nif_uv_scale_u`/`_v`, `nif_uv_rotate`, by the operation in its controller ID), and the priority, text key and face morph metadata. Material colour and emittance are not built yet |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
 | collision | one body per owning node, parented under that node: a `StaticBody3D`, an `AnimatableBody3D` on an animated owner, or a `NifRigidBody` when the `bhkRigidBody`'s motion system moves (1, 2, 4, 8) |
 | `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |
@@ -239,9 +239,9 @@ material path chosen from what the shape's NifSource node declares, added as cas
 | `PATH_LIT` | `BSShaderPPLightingProperty` without the Hair, FaceGen or Refraction flag; 57,379 shapes | `glow` | a `ShaderMaterial` on `shaders/nif_lit.gdshaderinc`, built as `PATH_UNLIT` is: the standard path's rules decide its render state, one generated variant per state is shared (19 over the corpus), and the same instance uniforms vary per instance. StandardMaterial3D's lit defaults (metallic 0, roughness 1, specular 0.5); the normal map at scale 1 and the glow map as emission. XEMI replaces the material colour and is emitted |
 | `PATH_STANDARD` | every other shape (TileShader, TallGrass, Water, Sky, NiMaterialProperty only, none) | `glow` | the `StandardMaterial3D` described here |
 
-The unlit and lit shaders' instance uniforms reserve 5 slots per instance in Godot's global shader
+The unlit and lit shaders' instance uniforms reserve 8 slots per instance in Godot's global shader
 variable buffer, set by `project.godot` to `rendering/limits/global_shader_variables/buffer_size=1048576`
-(about 200,000 instances). At Godot's default size, large scenes run out and the instances past the
+(about 130,000 instances; # ASSUMPTION one slot per uniform). At Godot's default size, large scenes run out and the instances past the
 end render white.
 
 `NifServer.set_material_path()` replaces a path's builder: it receives a

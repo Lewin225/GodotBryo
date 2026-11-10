@@ -12,9 +12,15 @@ extends Node
 const EXPLOSION := "meshes/effects/explosionlarge01.nif"
 const SHAPE := "GlowFloat:0"
 const ALPHA_SUFFIX := ":instance_shader_parameters/nif_alpha"
+## A Freeside sign: Line01:0's base map scrolls in U (NiTextureTransformController,
+## controller ID 0-0-TT_TRANSLATE_U).
+const SIGN := "meshes/architecture/freeside/nv_freesidesign-large_lights.nif"
+const SIGN_SHAPE := "Line01:0"
+const UV_OFFSET_U_SUFFIX := ":instance_shader_parameters/nif_uv_offset_u"
 
 var failures := 0
 var _tree: Node3D = null
+var _sign: Node3D = null
 
 
 func check(condition: bool, message: String) -> void:
@@ -68,7 +74,42 @@ func _ready() -> void:
 		check(is_equal_approx(actual, expected),
 			"seeking to %.2f s sets nif_alpha to %.3f (got %.3f)" % [time, expected, actual])
 		check(mesh.get_surface_override_material(0) == null, "the shared material is kept")
+	await _check_texture_transform()
 	_finish()
+
+
+## The sign's U scroll is a track on the shape's nif_uv_offset_u, and
+## seeking sets that component.
+func _check_texture_transform() -> void:
+	NifServer.request(SIGN, self, func(tree: Node3D) -> void: _sign = tree)
+	for i in 600:
+		if _sign != null:
+			break
+		await get_tree().process_frame
+	check(_sign != null, "%s delivered" % SIGN)
+	if _sign == null:
+		return
+	add_child(_sign)
+	var player := _sign.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	check(player != null and not player.get_animation_list().is_empty(), "the sign has a sequence")
+	if player == null or player.get_animation_list().is_empty():
+		return
+	var clip := String(player.get_animation_list()[0])
+	var animation := player.get_animation(clip)
+	var track := _track_ending(animation, NifNames.escape(SIGN_SHAPE) + UV_OFFSET_U_SUFFIX)
+	check(track != -1, "%s has a %s U-offset track" % [clip, SIGN_SHAPE])
+	var mesh := _mesh(_sign, SIGN_SHAPE)
+	if track == -1 or mesh == null:
+		return
+	# Mid-clip: a looping clip wraps a seek to its length back to 0.
+	var time := animation.length * 0.37
+	var expected := float(animation.value_track_interpolate(track, time))
+	check(not is_zero_approx(expected), "the offset at %.2f s is not 0 (%.3f)" % [time, expected])
+	player.play(clip)
+	player.seek(time, true)
+	var offset := float(mesh.get_instance_shader_parameter("nif_uv_offset_u"))
+	check(is_equal_approx(offset, expected),
+		"seeking to %.2f s sets nif_uv_offset_u to %.3f (got %.3f)" % [time, expected, offset])
 
 
 func _finish() -> void:
