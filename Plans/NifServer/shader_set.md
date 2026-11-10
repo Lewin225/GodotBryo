@@ -182,6 +182,16 @@ Material colour and texture transform need their controller's target (which colo
 and operation) from the native export, which does not carry it yet (`nif_source_gd.cpp` exports
 `controller_type`, `controller_id`, `interpolator_id` per controlled block).
 
+Instance uniforms live in Godot's global shader variable buffer, and every instance whose
+material declares them reserves its slots (5 here) whether or not anything sets them. At
+Godot's default buffer size, scenes of 40,000+ nodes ran out; later instances read unset slots and
+rendered white ("Too many instances using shader instance variables"). `project.godot` sets
+`rendering/limits/global_shader_variables/buffer_size=1048576` (16 MB of VRAM, a CPU copy of the
+same size, about 200,000 instances), kept as cheap next to the terrain's reservation. The
+alternative, declaring the instance uniforms only on XEMI-marked and controller-driven shapes
+behind a compile-time define, is not built. The Compatibility (OpenGL) renderer's uniform buffer
+limit likely rules this size out there; not checked.
+
 Materials sharing one shader still draw separately in Godot when their uniforms differ (each
 texture set is its own material); fewer shaders cut pipeline switches, and instance uniforms keep
 animated and tinted shapes on their shared material instead of a copy per instance.
@@ -200,7 +210,12 @@ animated and tinted shapes on their shared material instead of a copy per instan
    to scripts). Variants are generated from the render state (a `render_mode` line and defines)
    and cached: 23 over the corpus, all drawn with the real renderer without a shader error. Its
    render state still comes from `_build_standard()`'s rules. XEMI is the `nif_emittance`
-   instance uniform. Lit is next.
+   instance uniform.
+   Lit built: `PATH_LIT` (BSShaderPPLightingProperty without Hair, FaceGen or Refraction, 57,379
+   shapes), body `shaders/nif_lit.gdshaderinc`, the same generator and instance uniforms: 19
+   variants, all drawn with the real renderer without a shader error. Hair and skin stay on
+   StandardMaterial3D for now (actor code tints them as one). The normal map's alpha (the
+   specular mask) is not sampled yet: parity with StandardMaterial3D first.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.

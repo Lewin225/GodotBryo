@@ -389,9 +389,9 @@ func _apply_external_emittance(visual: Node3D) -> void:
 			continue
 		var shared := instance.mesh.surface_get_material(0)
 		if shared is ShaderMaterial:
-			# The unlit NIF shader takes XEMI as an instance uniform: its
-			# colour replaces the material colour, and the shared material is
-			# kept. Unshaded, so there is no emission to set.
+			# The NIF shaders take XEMI as an instance uniform: its colour
+			# replaces the material colour (and is emitted, on the lit
+			# shader), and the shared material is kept.
 			instance.set_instance_shader_parameter("nif_emittance", Color(color.r, color.g, color.b, 1.0))
 			instance.set_meta("nif_external_emittance_applied_form_id", emittance_form_id)
 			continue

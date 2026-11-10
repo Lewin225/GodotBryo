@@ -44,7 +44,11 @@ instance uniform vec2 nif_uv_scale = vec2(1.0);
 void fragment() {
 	vec2 uv = UV * nif_uv_scale + nif_uv_offset;
 	vec4 albedo_tex = texture(texture_albedo, uv);
-	albedo_tex = mix(albedo_tex, albedo_tex * COLOR, use_vertex_color);
+	// COLOR is read only when the shape uses vertex colour, as
+	// StandardMaterial3D does.
+	if (use_vertex_color > 0.5) {
+		albedo_tex *= COLOR;
+	}
 	vec3 material_color = mix(albedo_color.rgb, nif_emittance.rgb, nif_emittance.a);
 	ALBEDO = material_color * nif_color.rgb * albedo_tex.rgb;
 #ifdef NIF_ALPHA

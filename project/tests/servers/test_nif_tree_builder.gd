@@ -128,10 +128,10 @@ func test_static_tree() -> void:
 
 	var mi := _find_first(root, "MeshInstance3D") as MeshInstance3D
 	check(mi.mesh != null and mi.mesh.get_surface_count() == 1, "mesh has one surface")
-	var mat := mi.mesh.surface_get_material(0) as StandardMaterial3D
-	check(mat != null, "surface carries a StandardMaterial3D")
-	check(mat.albedo_texture != null, "diffuse texture resolved through TextureServer")
-	check(mat.normal_texture != null, "normal map resolved")
+	var mat := NifMaterialBuilderScript.render_state(mi.mesh.surface_get_material(0))
+	check(not mat.is_empty(), "surface carries a NIF material")
+	check(bool(mat.get("has_albedo_texture", false)), "diffuse texture resolved through TextureServer")
+	check(bool(mat.get("has_normal_texture", false)), "normal map resolved")
 
 	# Names must round-trip, and the authored name is always recoverable.
 	var escaped_found := false
@@ -972,25 +972,26 @@ func test_shader_depth_flags() -> void:
 	check(not third.is_empty(), "third water tank shape found")
 	if third.is_empty():
 		return
-	var mat: StandardMaterial3D = NifMaterialBuilderScript.build(third, false, {})
-	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
+	var mat := NifMaterialBuilderScript.build(third, false, {})
+	var state := NifMaterialBuilderScript.render_state(mat)
+	check(state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA,
 		"third shape retains authored alpha blending")
-	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+	check(state["depth_draw_mode"] == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
 		"third shape writes depth despite alpha blending")
-	check(not mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+	check(not bool(state["depth_test_disabled"]),
 		"third shape keeps depth testing enabled")
 	check(int(mat.get_meta("nif_shader_flags1", 0)) == 0x82000101 and
 		int(mat.get_meta("nif_shader_flags2", 0)) == 0x1,
 		"both raw shader flag words remain inspectable on material")
-	check(mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_STANDARD,
+	check(mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_LIT,
 		"the material records its material path")
 	var no_depth := third.duplicate()
 	no_depth["shader_flags1"] = 0
 	no_depth["shader_flags2"] = 0
-	var no_depth_mat: StandardMaterial3D = NifMaterialBuilderScript.build(no_depth, false, {})
-	check(no_depth_mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+	var no_depth_mat := NifMaterialBuilderScript.render_state(NifMaterialBuilderScript.build(no_depth, false, {}))
+	check(bool(no_depth_mat["depth_test_disabled"]),
 		"cleared authored test bit disables depth testing")
-	check(no_depth_mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED,
+	check(no_depth_mat["depth_draw_mode"] == BaseMaterial3D.DEPTH_DRAW_DISABLED,
 		"cleared authored write bit disables depth writing")
 
 

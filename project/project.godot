@@ -203,6 +203,7 @@ scaling_3d/mode=1
 scaling_3d/mode.macos=3
 scaling_3d/scale=0.75
 scaling_3d/fsr_sharpness=2.0
+limits/global_shader_variables/buffer_size=1048576
 lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=3
 lights_and_shadows/positional_shadow/atlas_quadrant_1_subdiv=3
 lights_and_shadows/positional_shadow/atlas_quadrant_2_subdiv=4

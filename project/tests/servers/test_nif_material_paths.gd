@@ -39,7 +39,7 @@ func check(cond: bool, msg: String) -> void:
 
 
 ## Replaces the blended tank shape with a ShaderMaterial and tints every other
-## shape's stock material red.
+## shape's stock (lit) material red.
 func _override(context: NifMaterialContext) -> Material:
 	var shape_name := String(context.node["name"])
 	_seen[shape_name] = {
@@ -54,8 +54,8 @@ func _override(context: NifMaterialContext) -> Material:
 		replaced.shader = shader
 		replaced.set_shader_parameter("diffuse", context.texture(NifMaterialBuilderScript.ROLE_DIFFUSE))
 		return replaced
-	var adjusted := context.default_material() as StandardMaterial3D
-	adjusted.albedo_color = Color.RED
+	var adjusted := context.default_material() as ShaderMaterial
+	adjusted.set_shader_parameter("albedo_color", Color.RED)
 	return adjusted
 
 
@@ -80,8 +80,8 @@ func _shape(root: Node, authored_name: String) -> MeshInstance3D:
 func test_override() -> void:
 	print("--- material path overrides ---")
 	check(not NifServer.set_material_path(&"water", _override), "an unknown material path is refused")
-	check(NifServer.set_material_path(NifMaterialBuilderScript.PATH_STANDARD, _override),
-		"an override for the standard path is accepted before any build")
+	check(NifServer.set_material_path(NifMaterialBuilderScript.PATH_LIT, _override),
+		"an override for the lit path is accepted before any build")
 	check(NifServer.set_material_path(NifMaterialBuilderScript.PATH_HAIR, _hair_override),
 		"an override for the hair path is accepted before any build")
 
@@ -99,7 +99,7 @@ func test_override() -> void:
 	var replaced_mat: Material = replaced.mesh.surface_get_material(0) if replaced != null else null
 	check(replaced_mat is ShaderMaterial, "%s gets the override's ShaderMaterial" % REPLACED_SHAPE)
 	if replaced_mat != null:
-		check(replaced_mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_STANDARD,
+		check(replaced_mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_LIT,
 			"the ShaderMaterial carries nif_material_path")
 		check(int(replaced_mat.get_meta("nif_shader_flags1", 0)) == 0x82000101
 			and int(replaced_mat.get_meta("nif_shader_flags2", 0)) == 0x1,
@@ -120,28 +120,28 @@ func test_override() -> void:
 	check(bool(seen.get("has_diffuse", false)), "the context's diffuse texture resolved")
 
 	var adjusted := _shape(root, ADJUSTED_SHAPE)
-	var adjusted_mat := adjusted.mesh.surface_get_material(0) as StandardMaterial3D if adjusted != null else null
-	check(adjusted_mat != null and adjusted_mat.albedo_color == Color.RED,
+	var adjusted_mat := adjusted.mesh.surface_get_material(0) as ShaderMaterial if adjusted != null else null
+	check(adjusted_mat != null and adjusted_mat.get_shader_parameter("albedo_color") == Color.RED,
 		"%s gets the stock material, adjusted by the override" % ADJUSTED_SHAPE)
 	if adjusted_mat != null:
-		check(adjusted_mat.albedo_texture != null, "the adjusted stock material keeps its diffuse")
-		check(adjusted_mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_STANDARD,
+		check(adjusted_mat.get_shader_parameter("texture_albedo") != null, "the adjusted stock material keeps its diffuse")
+		check(adjusted_mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_LIT,
 			"the adjusted material carries nif_material_path")
 
 	await _check_hair()
 
-	var all_standard := true
+	var all_lit := true
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
 		if mi.mesh == null or mi.mesh.get_surface_count() == 0:
 			continue
 		var mat := mi.mesh.surface_get_material(0)
-		if mat == null or mat.get_meta("nif_material_path", &"") != NifMaterialBuilderScript.PATH_STANDARD:
-			all_standard = false
-	check(all_standard, "every water tank shape is dispatched to the standard path")
+		if mat == null or mat.get_meta("nif_material_path", &"") != NifMaterialBuilderScript.PATH_LIT:
+			all_lit = false
+	check(all_lit, "every water tank shape is dispatched to the lit path")
 	root.free()
 
-	check(not NifServer.set_material_path(NifMaterialBuilderScript.PATH_STANDARD, _override),
+	check(not NifServer.set_material_path(NifMaterialBuilderScript.PATH_LIT, _override),
 		"an override after the first build is refused")
 
 
@@ -184,6 +184,8 @@ func test_path_census() -> void:
 	var refraction := 0
 	var stencil := 0
 	var unlit := 0
+	var lit := 0
+	var lit_shader_materials := 0
 	var unlit_shader_materials := 0
 	var stencil_both := 0
 	var refraction_alpha := 0
@@ -209,6 +211,12 @@ func test_path_census() -> void:
 					stencil_both += 1
 			var slots: PackedStringArray = nd["texture_slots"]
 			var slot_2 := String(slots[2]).to_lower() if slots.size() > 2 else ""
+			if path == NifMaterialBuilderScript.PATH_LIT:
+				lit += 1
+				var lit_built := NifMaterialBuilderScript._build_lit(NifMaterialContextScript.new(
+					path, nd, nd.has("colors"), {}, {}, NifMaterialBuilderScript._build_lit))
+				if lit_built is ShaderMaterial and not NifMaterialBuilderScript.render_state(lit_built).is_empty():
+					lit_shader_materials += 1
 			if path == NifMaterialBuilderScript.PATH_UNLIT:
 				unlit += 1
 				# Built through the stock builder, not build(): build() would
@@ -235,8 +243,12 @@ func test_path_census() -> void:
 	check(skin == 332, "332 shapes go to the skin path (got %d)" % skin)
 	check(unlit == 7936, "7,936 shapes go to the unlit path (got %d)" % unlit)
 	check(unlit_shader_materials == unlit, "each is a ShaderMaterial with its render state (got %d)" % unlit_shader_materials)
-	var variants := NifMaterialBuilderScript.unlit_variant_count()
+	var variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.UNLIT_SHADER_BODY)
 	check(variants > 0 and variants <= 24, "they share %d unlit shader variants" % variants)
+	check(lit_shader_materials == lit and lit > 0,
+		"%d shapes go to the lit path, each a ShaderMaterial with its render state" % lit)
+	var lit_variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.LIT_SHADER_BODY)
+	check(lit_variants > 0 and lit_variants <= 24, "they share %d lit shader variants" % lit_variants)
 	check(stencil == 2017, "2,017 shapes carry an NiStencilProperty (got %d)" % stencil)
 	check(stencil_both == stencil, "every one draws both sides (got %d)" % stencil_both)
 	check(refraction == 92, "92 shapes go to the refraction path (got %d)" % refraction)

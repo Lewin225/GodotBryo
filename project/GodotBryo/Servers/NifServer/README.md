@@ -236,7 +236,13 @@ material path chosen from what the shape's NifSource node declares, added as cas
 | `PATH_SKIN` | FaceGen flag (flags1 bit 10) on PPLighting; 332 shapes (heads, hands, upper bodies, the skin parts of outfits) | `skin_sk` | the standard material without emission; the `_sk` texture (a flat dark red on heads and hands) is not rendered. Actors replace it with their own skin material |
 | `PATH_REFRACTION` | Refraction flag (flags1 bit 15) on PPLighting; 92 shapes in 83 NIFs, all effect distortion meshes (explosion shock spheres, muzzle flash warps, shield fields), none with an NiAlphaProperty | `glow` | draws nothing (fully transparent, unshaded, no depth write): refraction is not built, and drawn as their textures they are opaque white or flat surfaces |
 | `PATH_UNLIT` | `BSShaderNoLightingProperty`; 7,936 shapes (effects, glows, light cards, AO fades) | `glow` | a `ShaderMaterial` on `shaders/nif_unlit.gdshaderinc`: the standard path's rules (alpha, depth, stencil, light-shaft fades) decide its render state, and one generated shader variant per compile-time state is shared (23 over the corpus). Instance uniforms `nif_alpha`, `nif_color`, `nif_emittance` (the placement's XEMI), `nif_uv_offset` and `nif_uv_scale` vary per instance on the shared material. `NifMaterialBuilder.render_state()` reads its state, as it does a StandardMaterial3D's |
-| `PATH_STANDARD` | every other shape | `glow` | the `StandardMaterial3D` described here |
+| `PATH_LIT` | `BSShaderPPLightingProperty` without the Hair, FaceGen or Refraction flag; 57,379 shapes | `glow` | a `ShaderMaterial` on `shaders/nif_lit.gdshaderinc`, built as `PATH_UNLIT` is: the standard path's rules decide its render state, one generated variant per state is shared (19 over the corpus), and the same instance uniforms vary per instance. StandardMaterial3D's lit defaults (metallic 0, roughness 1, specular 0.5); the normal map at scale 1 and the glow map as emission. XEMI replaces the material colour and is emitted |
+| `PATH_STANDARD` | every other shape (TileShader, TallGrass, Water, Sky, NiMaterialProperty only, none) | `glow` | the `StandardMaterial3D` described here |
+
+The unlit and lit shaders' instance uniforms reserve 5 slots per instance in Godot's global shader
+variable buffer, set by `project.godot` to `rendering/limits/global_shader_variables/buffer_size=1048576`
+(about 200,000 instances). At Godot's default size, large scenes run out and the instances past the
+end render white.
 
 `NifServer.set_material_path()` replaces a path's builder: it receives a
 `NifMaterialContext` (the shape's node dictionary, its textures by role, and `default_material()`,
