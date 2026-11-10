@@ -222,6 +222,12 @@ animated and tinted shapes on their shared material instead of a copy per instan
    2, `# ASSUMPTION` that Gamebryo clamps). Test: `tests/servers/test_nif_material_tracks`. A NIF's
    own sequences build transform and alpha tracks only: NiVisController visibility is built for
    KFs (NifAnimationBuilder), not for a file's own sequences.
+   Unified: `NifAnimationConverter` (`nif_animation_converter.gd`) holds every controlled block ->
+   track rule; KFs (NifAnimationBuilder, bare escaped names) and a NIF's own sequences
+   (NifTreeBuilder, built node paths) call it with their own target resolver. A NIF's own
+   sequences now also get visibility tracks, static transform values, priorities, text keys and
+   face morphs; KFs get alpha tracks on targets that are shapes. KF disk cache version
+   `nifserver-kf-v7`. The remaining controllers are added once, there.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.

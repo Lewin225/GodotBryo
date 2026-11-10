@@ -164,7 +164,7 @@ work, and NifServer offers no entry point for it.
 |---|---|
 | declared bones forming a hierarchy inside it | a `Skeleton3D`, skins bound to it |
 | declared bones as a flat list | unresolved named binds, no `Skeleton3D` |
-| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound: transform tracks, and an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform. Other property controllers (visibility, material colour, emittance, texture transform) are not built in a file's own sequences |
+| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound, built by `NifAnimationConverter` as KFs are: transform tracks (static values as one key), `NiVisController` visibility, an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform, and the priority, text key and face morph metadata. Material colour, emittance and texture transform are not built yet |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
 | collision | one body per owning node, parented under that node: a `StaticBody3D`, an `AnimatableBody3D` on an animated owner, or a `NifRigidBody` when the `bhkRigidBody`'s motion system moves (1, 2, 4, 8) |
 | `bhkBlendCollisionObject` bones | `PhysicalBone3D` under an inert `PhysicalBoneSimulator3D` |

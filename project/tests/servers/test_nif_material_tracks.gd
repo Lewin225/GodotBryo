@@ -5,7 +5,8 @@ extends Node
 ## instance uniform (`<shape's node path>:instance_shader_parameters/nif_alpha`,
 ## NifTreeBuilder._make_animation()), and playing the
 ## sequence sets that uniform on the shape's MeshInstance3D, not on its shared
-## material.
+## material. The NIF's own sequences also carry its NiVisController
+## visibility, built by the same NifAnimationConverter as KFs.
 
 ## The Fat Man explosion: GlowFloat:0's alpha is keyed over the sequence.
 const EXPLOSION := "meshes/effects/explosionlarge01.nif"
@@ -48,6 +49,10 @@ func _ready() -> void:
 		_finish()
 		return
 	check(animation.track_get_key_count(track) > 1, "the alpha is keyed over time (%d keys)" % animation.track_get_key_count(track))
+	# The NIF's own sequences share NifAnimationConverter with KFs, so its
+	# NiVisController links are visibility tracks too (FireBallGeo's).
+	var visibility := _track_ending(animation, NifNames.escape("FireBallGeo") + ":visible")
+	check(visibility != -1, "the NIF's own sequence has FireBallGeo's visibility track")
 
 	# Seek to a key whose value is not 1 and read the uniform back.
 	var key := _key_not_one(animation, track)

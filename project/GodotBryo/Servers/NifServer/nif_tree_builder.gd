@@ -14,9 +14,7 @@ class_name NifTreeBuilder
 ## exists so the tree can be looked at in the editor first.
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
-## An alpha track's property: the NIF shaders' alpha multiplier, an instance
-## uniform on the shape's MeshInstance3D (shaders/nif_*.gdshaderinc).
-const ALPHA_TRACK_SUFFIX := ":instance_shader_parameters/nif_alpha"
+const NifAnimationConverterScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_converter.gd")
 const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
@@ -818,92 +816,37 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 
 
 ## One Animation from one NiControllerSequence, or null when nothing in it
-## resolves to a node in this file.
+## resolves to a node in this file. The block -> track rules are
+## NifAnimationConverter's; this resolves the sequence's target names to the
+## nodes built here, and records each node a transform track moves in
+## `animated`.
 static func _make_animation(seq: Dictionary, index_of_name: Dictionary, root: Node3D,
 		built: Array, skeleton: Skeleton3D, bone_of_node: Dictionary,
 		animated: Dictionary) -> Animation:
-	var anim := Animation.new()
-	var start := float(seq["start_time"])
-	var stop := float(seq["stop_time"])
-	anim.length = maxf(stop - start, 0.001)
-	match int(seq["cycle_type"]):
-		0: anim.loop_mode = Animation.LOOP_LINEAR   # CYCLE_LOOP
-		1: anim.loop_mode = Animation.LOOP_PINGPONG # CYCLE_REVERSE
-		_: anim.loop_mode = Animation.LOOP_NONE     # CYCLE_CLAMP
-
-	var tracks := 0
-	for cb in seq["controlled_blocks"]:
-		var ip: Dictionary = cb["interpolator"]
-		if not bool(ip["present"]):
-			continue
-		if _is_alpha_block(cb):
-			tracks += _add_alpha_track(anim, cb, index_of_name, root, built, start)
-			continue
-		if String(ip["kind"]) != "transform":
-			# Other float, bool, point3 and blend interpolators drive
-			# properties rather than transforms; their addressing is the
-			# unsettled half of section 7.3 and they are left to the caller
-			# for now.
-			continue
-		var target := String(cb["node_name"])
-		if not index_of_name.has(target):
-			continue
-		var node_index := int(index_of_name[target])
-		var base := _track_path(node_index, root, built, skeleton, bone_of_node)
-		if base.is_empty():
-			continue
-		animated[node_index] = true
-		tracks += _add_transform_tracks(anim, base, ip, start)
-
-	if tracks == 0:
+	var resolver := _tree_target.bind(index_of_name, root, built, skeleton, bone_of_node)
+	var moved: Array = []
+	var anim := NifAnimationConverterScript.build_animation(seq, resolver, moved)
+	for target in moved:
+		animated[int(index_of_name[target])] = true
+	if anim.get_track_count() == 0:
 		return null
-	# Sequence names, not text keys: NiTextKeyExtraData markers ("start",
-	# "end", sound cues) are still outstanding, and are not these.
-	anim.set_meta("nif_accum_root", String(seq["accum_root_name"]))
-	anim.set_meta("nif_start_time", start)
 	return anim
 
 
-## Whether a controlled block animates a shape's material alpha: a float
-## interpolator on an NiAlphaController. 1,182 links in the shipped corpus,
-## all float; 1,102 name a shape (1,010 unlit, 92 lit), the rest a name that
-## is no shape.
-static func _is_alpha_block(cb: Dictionary) -> bool:
-	if String(cb["controller_type"]) != "NiAlphaController":
-		return false
-	return String((cb["interpolator"] as Dictionary)["kind"]) == "float"
-
-
-## Adds a value track on the target shape's `nif_alpha` instance uniform (the
-## NIF shaders' alpha multiplier, so the shared material is untouched): its
-## float keys played linearly, or its static value as one key when it has no
-## keys (85 links). Returns 1 when a track was added: not when the target is
-## not a MeshInstance3D in this tree, or the link has neither keys nor a set
-## static value.
-static func _add_alpha_track(anim: Animation, cb: Dictionary, index_of_name: Dictionary,
-		root: Node3D, built: Array, start: float) -> int:
-	var target := String(cb["node_name"])
+## A sequence target in this file: the built node's track path, whether it is
+## a shape's MeshInstance3D, and whether it is a Skeleton3D bone; an empty
+## Dictionary when the name is no node built here.
+static func _tree_target(target: String, index_of_name: Dictionary, root: Node3D,
+		built: Array, skeleton: Skeleton3D, bone_of_node: Dictionary) -> Dictionary:
 	if not index_of_name.has(target):
-		return 0
+		return {}
 	var node_index := int(index_of_name[target])
-	if node_index < 0 or node_index >= built.size() or not (built[node_index] is MeshInstance3D):
-		return 0
-	var ip: Dictionary = cb["interpolator"]
-	var keys: Array = ip["float_keys"]
-	var static_value := float(ip["static_float"])
-	var has_static := bool(ip["has_static_float"]) and is_finite(static_value) and absf(static_value) < 1.0e30
-	if keys.is_empty() and not has_static:
-		return 0
-	var t := anim.add_track(Animation.TYPE_VALUE)
-	anim.track_set_path(t, NodePath(String(root.get_path_to(built[node_index])) + ALPHA_TRACK_SUFFIX))
-	anim.value_track_set_update_mode(t, Animation.UPDATE_CONTINUOUS)
-	anim.track_set_interpolation_type(t, Animation.INTERPOLATION_LINEAR)
-	if keys.is_empty():
-		anim.track_insert_key(t, 0.0, static_value)
-		return 1
-	for k in keys:
-		anim.track_insert_key(t, maxf(float(k["time"]) - start, 0.0), float(k["value"]))
-	return 1
+	var path := _track_path(node_index, root, built, skeleton, bone_of_node)
+	if path.is_empty():
+		return {}
+	var is_bone := bone_of_node.has(node_index)
+	var is_shape := not is_bone and built[node_index] is MeshInstance3D
+	return {"path": path, "shape": is_shape, "bone": is_bone}
 
 
 ## The NodePath an Animation track addresses a built node by. A bone is
@@ -918,72 +861,6 @@ static func _track_path(node_index: int, root: Node3D, built: Array,
 	if node_index < 0 or node_index >= built.size() or built[node_index] == null:
 		return ""
 	return String(root.get_path_to(built[node_index]))
-
-
-## Keys are authored in the node's own parent space and go in verbatim. Times
-## are rebased to zero because Godot animations start there while a NIF
-## sequence carries its own start time (recorded on the Animation as metadata).
-static func _add_transform_tracks(anim: Animation, base: String, ip: Dictionary, start: float) -> int:
-	var added := 0
-	var resampled := bool(ip["resampled"])
-	var pos_keys: Array = ip["translation_keys"]
-	if not pos_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_POSITION_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(pos_keys, resampled))
-		for k in pos_keys:
-			anim.position_track_insert_key(t, maxf(float(k["time"]) - start, 0.0), Vector3(k["value"]))
-		added += 1
-	var rot_keys: Array = ip["rotation_keys"]
-	if not rot_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_ROTATION_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(rot_keys, resampled))
-		for k in rot_keys:
-			anim.rotation_track_insert_key(t, maxf(float(k["time"]) - start, 0.0),
-				(k["value"] as Quaternion).normalized())
-		added += 1
-	var scale_keys: Array = ip["scale_keys"]
-	if not scale_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_SCALE_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(scale_keys, resampled))
-		for k in scale_keys:
-			var v := float(k["value"])
-			anim.scale_track_insert_key(t, maxf(float(k["time"]) - start, 0.0), Vector3(v, v, v))
-		added += 1
-	return added
-
-
-## Gamebryo interpolates PER KEY; Godot interpolates PER TRACK. The gap does
-## not close, so this is a policy, not a mapping:
-##
-##   QUADRATIC / TBC  ->  CUBIC    the authored intent is "it stops softly".
-##                                 Godot's cubic derives its curve from
-##                                 neighbouring keys rather than the authored
-##                                 tangents, which are not extracted -- close
-##                                 enough for a designer's easing, and far
-##                                 cheaper than baking a dense key run.
-##   CONST            ->  LINEAR   DELIBERATE. A large share of the corpus is
-##                                 authored stepped at the engine's ~30 Hz
-##                                 update. That read as fine on a 360 and
-##                                 reads as juddering on modern hardware;
-##                                 smoothing it is an improvement, not a loss.
-##   LINEAR / other   ->  LINEAR
-##
-## A mixed channel takes CUBIC only when eased keys are the MAJORITY. Cubic
-## through keys authored linear invents overshoot at direction reversals,
-## so the conservative side is the default one.
-static func _track_interp(keys: Array, resampled: bool) -> int:
-	if resampled:
-		# Already sampled off a curve; the keys ARE the curve.
-		return Animation.INTERPOLATION_LINEAR
-	var eased := 0
-	for k in keys:
-		match String(k["interp"]):
-			"quadratic", "tbc":
-				eased += 1
-	return Animation.INTERPOLATION_CUBIC if eased * 2 > keys.size() else Animation.INTERPOLATION_LINEAR
 
 
 ## Collision is built, never withheld (nif_server_v2.md section 5.3). Ragdoll
