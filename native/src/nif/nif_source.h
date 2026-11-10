@@ -341,6 +341,14 @@ struct SceneNode {
 	float alpha_threshold = 0.5f; // 0..1
 	std::string alpha_blend_func; // mix | add | multiply
 
+	// NiStencilProperty. In 20.1.0.3+ files its state is packed into flags
+	// (niftools: bit 0 stencil enable, bits 1-3 fail action, 4-6 z-fail
+	// action, 7-9 pass action, 10-11 draw mode, 12-14 test function).
+	// 2,017 shapes in the shipped BSAs carry one, every one with flags 0x4D80:
+	// stencil disabled, draw mode 3 (DRAW_BOTH, two-sided).
+	bool has_stencil_property = false;
+	int stencil_draw_mode = 0; // 0 CCW_OR_BOTH, 1 CCW, 2 CW, 3 BOTH
+
 	// NiObjectNET extra data attached to this node. Godot has no construct for
 	// most of it, so nif_server_v2.md 5.3 puts it in node metadata rather than
 	// dropping it: BSXFlags (12,578 blocks), NiStringExtraData (32,161),

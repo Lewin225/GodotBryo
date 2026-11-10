@@ -250,6 +250,10 @@ override receives every texture the path declares and no others. A replaced mate
 every instance like any other, so it batches the same way. `EsmNode`'s XEMI tint only handles
 `StandardMaterial3D` and leaves other materials untinted.
 
+`NiStencilProperty`'s draw mode sets the cull mode. 2,017 shapes carry one, every one with flags
+`0x4D80` (stencil off, draw mode 3, both sides), so they are not culled: foliage, light cards,
+effect planes. Draw modes 0 to 2 appear on no shipped shape and keep the back-face cull.
+
 `NiAlphaProperty` with both blend and test enabled cannot be matched exactly:
 `StandardMaterial3D` cannot combine both authored operations, so the builder
 keeps one by blend function. Additive (`SRC_ALPHA`/`ONE`, `ONE`/`ONE`) and

@@ -934,6 +934,11 @@ Document load(const uint8_t *data, size_t size) {
 				}
 			}
 
+			if (auto *stencil = nif.GetStencilProperty(shape)) {
+				out.has_stencil_property = true;
+				out.stencil_draw_mode = (stencil->flags >> 10) & 0x3;
+			}
+
 			if (const auto *verts = nif.GetVertsForShape(shape)) {
 				out.geometry.positions.reserve(verts->size() * 3);
 				for (const auto &v : *verts) {

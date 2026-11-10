@@ -53,6 +53,8 @@ const ROLE_HAIR_HIGHLIGHT := &"hair_highlight"
 ## one flat colour (21, 6, 5); what the skin shader does with it is not known.
 const ROLE_SKIN_SK := &"skin_sk"
 
+## NiStencilProperty draw mode 3, DRAW_BOTH (niftools StencilDrawMode).
+const STENCIL_DRAW_BOTH := 3
 ## BSShaderFlags bit 18, Hair (nif.xml F3SF1).
 const SHADER_FLAG1_HAIR := 1 << 18
 ## BSShaderFlags bit 10, FaceGen (nif.xml F3SF1).
@@ -264,6 +266,7 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 
 	if context.has_vertex_colors:
 		mat.vertex_color_use_as_albedo = true
+	_apply_stencil(mat, nd)
 
 	var blend_enabled := false
 	var test_enabled := false
@@ -351,6 +354,18 @@ static func _apply_shader_depth(mat: StandardMaterial3D, flags1: int, flags2: in
 	if not depth_test:
 		mat.set_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST, true)
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if depth_write else BaseMaterial3D.DEPTH_DRAW_DISABLED
+
+
+## NiStencilProperty's draw mode -> cull. 2,017 shapes carry one, all draw
+## mode 3 (DRAW_BOTH): two-sided, so no culling (foliage, light cards, effect
+## planes). Modes 0 to 2 (CCW_OR_BOTH, CCW, CW) appear on no shipped shape
+## and keep the default back-face cull; which Godot face CW and CCW name
+## after the tree builder's winding conversion is not checked.
+static func _apply_stencil(mat: StandardMaterial3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_stencil_property", false)):
+		return
+	if int(nd["stencil_draw_mode"]) == STENCIL_DRAW_BOTH:
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 
 ## NiAlphaProperty -> Godot transparency. Blend and test are separate bits and

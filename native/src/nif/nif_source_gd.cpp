@@ -99,6 +99,10 @@ Array NifSource::get_nodes() const {
 			d["alpha_threshold"] = n.alpha_threshold;
 			d["alpha_blend_func"] = String(n.alpha_blend_func.c_str());
 		}
+		d["has_stencil_property"] = n.has_stencil_property;
+		if (n.has_stencil_property) {
+			d["stencil_draw_mode"] = n.stencil_draw_mode;
+		}
 		PackedInt32Array prop_blocks;
 		for (int32_t idx : n.property_block_indices) {
 			prop_blocks.push_back(idx);

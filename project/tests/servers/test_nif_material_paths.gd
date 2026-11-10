@@ -9,6 +9,7 @@ extends Node
 ## anything in the process builds.
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+const NifMaterialContextScript := preload("res://GodotBryo/Servers/NifServer/nif_material_context.gd")
 const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 const WATER_TANK := "meshes/architecture/goodsprings/NV_WaterTank.NIF"
 # The tank's blended shape, flags1 0x82000101, flags2 0x1.
@@ -18,6 +19,9 @@ const BEARD := "meshes/characters/hair/beardchincurtain.nif"
 const BEARD_SHAPE := "BeardChinCurtain:0"
 const BEARD_HIGHLIGHT := "textures\\characters\\hair\\BeardLincoln_hl.dds"
 # The Fat Man explosion's shock sphere, flags1 0x80018001: Refraction.
+# Carries an NiStencilProperty, flags 0x4D80 (draw mode 3, both sides).
+const BROOM := "meshes/animobjects/aobroom.nif"
+const BROOM_SHAPE := "Broom"
 const NUKE_EXPLOSION := "meshes/effects/explosionlarge01.nif"
 const NUKE_SHOCK_SHAPE := "GeoSphere03:0"
 
@@ -178,6 +182,8 @@ func _check_hair() -> void:
 func test_path_census() -> void:
 	print("--- hair, skin and refraction path census ---")
 	var refraction := 0
+	var stencil := 0
+	var stencil_both := 0
 	var refraction_alpha := 0
 	var hair := 0
 	var highlights := 0
@@ -195,6 +201,10 @@ func test_path_census() -> void:
 			if not nd.has("positions"):
 				continue
 			var path := NifMaterialBuilderScript.path_for(nd)
+			if bool(nd.get("has_stencil_property", false)):
+				stencil += 1
+				if int(nd["stencil_draw_mode"]) == NifMaterialBuilderScript.STENCIL_DRAW_BOTH:
+					stencil_both += 1
 			var slots: PackedStringArray = nd["texture_slots"]
 			var slot_2 := String(slots[2]).to_lower() if slots.size() > 2 else ""
 			if path == NifMaterialBuilderScript.PATH_REFRACTION:
@@ -213,6 +223,8 @@ func test_path_census() -> void:
 	check(hair == 159, "159 shapes go to the hair path (got %d)" % hair)
 	check(highlights == hair, "every one has an _hl texture in slot 2 (got %d)" % highlights)
 	check(skin == 332, "332 shapes go to the skin path (got %d)" % skin)
+	check(stencil == 2017, "2,017 shapes carry an NiStencilProperty (got %d)" % stencil)
+	check(stencil_both == stencil, "every one draws both sides (got %d)" % stencil_both)
 	check(refraction == 92, "92 shapes go to the refraction path (got %d)" % refraction)
 	check(refraction_alpha == 0, "none of them has an NiAlphaProperty (got %d)" % refraction_alpha)
 	check(skin_sk == 238, "238 of them have an _sk texture in slot 2 (got %d)" % skin_sk)
@@ -243,10 +255,43 @@ func test_refraction_material() -> void:
 	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED, "and writes no depth")
 
 
+## A two-sided shape is not culled; a shape with no NiStencilProperty keeps
+## the back-face cull.
+func test_stencil_cull() -> void:
+	print("--- NiStencilProperty draw mode ---")
+	var raw: Dictionary = ArchiveServer.read(BROOM)
+	var src := NifSource.new()
+	if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
+		check(false, "read %s" % BROOM)
+		return
+	var two_sided: Dictionary = {}
+	var one_sided: Dictionary = {}
+	for nd in src.get_nodes():
+		if not nd.has("positions"):
+			continue
+		if String(nd["name"]) == BROOM_SHAPE:
+			two_sided = nd
+		elif not bool(nd.get("has_stencil_property", false)):
+			one_sided = nd
+	check(not two_sided.is_empty() and bool(two_sided["has_stencil_property"]),
+		"%s has an NiStencilProperty" % BROOM_SHAPE)
+	if not two_sided.is_empty():
+		var mat := NifMaterialBuilderScript._build_standard(NifMaterialContextScript.new(
+			NifMaterialBuilderScript.PATH_STANDARD, two_sided, false, {}, {},
+			NifMaterialBuilderScript._build_standard)) as StandardMaterial3D
+		check(mat.cull_mode == BaseMaterial3D.CULL_DISABLED, "%s draws both sides" % BROOM_SHAPE)
+	if not one_sided.is_empty():
+		var mat := NifMaterialBuilderScript._build_standard(NifMaterialContextScript.new(
+			NifMaterialBuilderScript.PATH_STANDARD, one_sided, false, {}, {},
+			NifMaterialBuilderScript._build_standard)) as StandardMaterial3D
+		check(mat.cull_mode == BaseMaterial3D.CULL_BACK, "%s keeps the back-face cull" % String(one_sided["name"]))
+
+
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_path_census()
 	test_refraction_material()
+	test_stencil_cull()
 	await test_override()
 
 	print("=======================")
