@@ -176,6 +176,17 @@ func _check_control_inputs(doc: ActorReference, actor: EsmActorNode, slots: Acto
 	actor.apply_input(_packet({"holster": true}))
 	actor.apply_input(_packet({}))
 	doc.unequip_weapon(ActorReference.WeaponSlot.RIGHT_HIP)
+	var rifle_base := EsmServer.find_base_by_editor_id(RIFLE)
+	EsmServer.add_inventory_items(doc, rifle_base, 1)
+	var entry: InventoryItem = null
+	for item in doc.contents.get_items():
+		if item.base_form_id == rifle_base.form_id:
+			entry = item
+	actor.apply_input(_packet({"equip_item": entry}))
+	check(entry != null and doc.weapon_back != null and doc.weapon_back.base == rifle_base,
+			"an input with equip_item equips the inventory's hunting rifle into the back slot")
+	actor.apply_input(_packet({}))
+	doc.unequip_weapon(ActorReference.WeaponSlot.BACK)
 
 
 ## An ActorInput with `fields` set.

@@ -219,6 +219,8 @@ func apply_input(input: ActorInput) -> void:
 	var actor_reference := reference as ActorReference
 	if input == null or actor_reference == null:
 		return
+	if input.equip_item != null and actor_reference.contents != null:
+		actor_reference.contents.equip_item(input.equip_item)
 	if input.equip_slot >= 0 and input.equip_slot < WEAPON_SLOTS_BY_INDEX.size():
 		actor_reference.draw_weapon(WEAPON_SLOTS_BY_INDEX[input.equip_slot])
 	if input.holster and not _last_input.holster:

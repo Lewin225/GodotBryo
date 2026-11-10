@@ -398,6 +398,12 @@ func _update_holster_hold() -> void:
 	_input.holster = true
 
 
+## Asks the possessed actor to equip `entry` from its inventory on the next
+## input packet (ActorInput.equip_item): the debug Inventory tab's Equip.
+func equip(entry: InventoryItem) -> void:
+	_input.equip_item = entry
+
+
 ## The aim point: where a ray from the camera along its forward hits, within
 ## AIM_DISTANCE, else the point at that distance. The ray excludes the
 ## player's own body.
@@ -427,6 +433,7 @@ func _send_input() -> void:
 	_input.reload = false
 	_input.holster = false
 	_input.equip_slot = -1
+	_input.equip_item = null
 
 
 func _process(delta: float) -> void:

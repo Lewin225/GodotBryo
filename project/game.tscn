@@ -681,6 +681,11 @@ layout_mode = 2
 tooltip_text = "Spawn one selected item in front of the camera."
 text = "Drop"
 
+[node name="Equip" type="Button" parent="Debug Tools/TabContainer/Inventory/Margin/VBox/Buttons" unique_id=1309824517]
+layout_mode = 2
+tooltip_text = "Equip the selected item through the player's input."
+text = "Equip"
+
 [node name="Status" type="RichTextLabel" parent="Debug Tools/TabContainer/Inventory/Margin/VBox" unique_id=1520213217]
 layout_mode = 2
 bbcode_enabled = true

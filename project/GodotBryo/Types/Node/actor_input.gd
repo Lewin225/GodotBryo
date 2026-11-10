@@ -23,3 +23,6 @@ var equip_slot := -1
 ## a far point along it; an NPC's target. Used while has_aim_point.
 var aim_point := Vector3.ZERO
 var has_aim_point := false
+## The inventory entry to equip this frame (Inventory.equip_item(): a weapon
+## then goes to its slot); null for none.
+var equip_item: InventoryItem = null
