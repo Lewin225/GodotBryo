@@ -14,6 +14,9 @@ class_name NifTreeBuilder
 ## exists so the tree can be looked at in the editor first.
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+## An alpha track's property: the NIF shaders' alpha multiplier, an instance
+## uniform on the shape's MeshInstance3D (shaders/nif_*.gdshaderinc).
+const ALPHA_TRACK_SUFFIX := ":instance_shader_parameters/nif_alpha"
 const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
@@ -831,10 +834,16 @@ static func _make_animation(seq: Dictionary, index_of_name: Dictionary, root: No
 	var tracks := 0
 	for cb in seq["controlled_blocks"]:
 		var ip: Dictionary = cb["interpolator"]
-		if not bool(ip["present"]) or String(ip["kind"]) != "transform":
-			# Float, bool, point3 and blend interpolators drive properties
-			# rather than transforms; their addressing is the unsettled half
-			# of section 7.3 and they are left to the caller for now.
+		if not bool(ip["present"]):
+			continue
+		if _is_alpha_block(cb):
+			tracks += _add_alpha_track(anim, cb, index_of_name, root, built, start)
+			continue
+		if String(ip["kind"]) != "transform":
+			# Other float, bool, point3 and blend interpolators drive
+			# properties rather than transforms; their addressing is the
+			# unsettled half of section 7.3 and they are left to the caller
+			# for now.
 			continue
 		var target := String(cb["node_name"])
 		if not index_of_name.has(target):
@@ -853,6 +862,48 @@ static func _make_animation(seq: Dictionary, index_of_name: Dictionary, root: No
 	anim.set_meta("nif_accum_root", String(seq["accum_root_name"]))
 	anim.set_meta("nif_start_time", start)
 	return anim
+
+
+## Whether a controlled block animates a shape's material alpha: a float
+## interpolator on an NiAlphaController. 1,182 links in the shipped corpus,
+## all float; 1,102 name a shape (1,010 unlit, 92 lit), the rest a name that
+## is no shape.
+static func _is_alpha_block(cb: Dictionary) -> bool:
+	if String(cb["controller_type"]) != "NiAlphaController":
+		return false
+	return String((cb["interpolator"] as Dictionary)["kind"]) == "float"
+
+
+## Adds a value track on the target shape's `nif_alpha` instance uniform (the
+## NIF shaders' alpha multiplier, so the shared material is untouched): its
+## float keys played linearly, or its static value as one key when it has no
+## keys (85 links). Returns 1 when a track was added: not when the target is
+## not a MeshInstance3D in this tree, or the link has neither keys nor a set
+## static value.
+static func _add_alpha_track(anim: Animation, cb: Dictionary, index_of_name: Dictionary,
+		root: Node3D, built: Array, start: float) -> int:
+	var target := String(cb["node_name"])
+	if not index_of_name.has(target):
+		return 0
+	var node_index := int(index_of_name[target])
+	if node_index < 0 or node_index >= built.size() or not (built[node_index] is MeshInstance3D):
+		return 0
+	var ip: Dictionary = cb["interpolator"]
+	var keys: Array = ip["float_keys"]
+	var static_value := float(ip["static_float"])
+	var has_static := bool(ip["has_static_float"]) and is_finite(static_value) and absf(static_value) < 1.0e30
+	if keys.is_empty() and not has_static:
+		return 0
+	var t := anim.add_track(Animation.TYPE_VALUE)
+	anim.track_set_path(t, NodePath(String(root.get_path_to(built[node_index])) + ALPHA_TRACK_SUFFIX))
+	anim.value_track_set_update_mode(t, Animation.UPDATE_CONTINUOUS)
+	anim.track_set_interpolation_type(t, Animation.INTERPOLATION_LINEAR)
+	if keys.is_empty():
+		anim.track_insert_key(t, 0.0, static_value)
+		return 1
+	for k in keys:
+		anim.track_insert_key(t, maxf(float(k["time"]) - start, 0.0), float(k["value"]))
+	return 1
 
 
 ## The NodePath an Animation track addresses a built node by. A bone is

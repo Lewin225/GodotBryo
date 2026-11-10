@@ -55,7 +55,9 @@ void fragment() {
 	vec3 material_color = mix(albedo_color.rgb, nif_emittance.rgb, nif_emittance.a);
 	ALBEDO = material_color * nif_color.rgb * albedo_tex.rgb;
 #ifdef NIF_ALPHA
-	ALPHA = albedo_color.a * nif_color.a * albedo_tex.a * nif_alpha;
+	// NiAlphaController keys run from -0.5 to 2 in the shipped corpus; the
+	// alpha is clamped to 0..1. # ASSUMPTION: Gamebryo clamps it the same way.
+	ALPHA = clamp(albedo_color.a * nif_color.a * albedo_tex.a * nif_alpha, 0.0, 1.0);
 #endif
 #ifdef NIF_SCISSOR
 	ALPHA_SCISSOR_THRESHOLD = alpha_scissor_threshold;

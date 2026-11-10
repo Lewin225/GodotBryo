@@ -216,6 +216,12 @@ animated and tinted shapes on their shared material instead of a copy per instan
    variants, all drawn with the real renderer without a shader error. Hair and skin stay on
    StandardMaterial3D for now (actor code tints them as one). The normal map's alpha (the
    specular mask) is not sampled yet: parity with StandardMaterial3D first.
+   Alpha tracks built: an NiAlphaController float link on a shape in a NIF's own sequences
+   (NifTreeBuilder._make_animation()) is a value track on the shape's
+   `instance_shader_parameters/nif_alpha`; the shaders clamp the alpha to 0..1 (keys run -0.5 to
+   2, `# ASSUMPTION` that Gamebryo clamps). Test: `tests/servers/test_nif_material_tracks`. A NIF's
+   own sequences build transform and alpha tracks only: NiVisController visibility is built for
+   KFs (NifAnimationBuilder), not for a file's own sequences.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
