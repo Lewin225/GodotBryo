@@ -26,6 +26,7 @@ const CREOSOTE_BUSH := "meshes/clutter/creosotebush/creosotebushsm.nif"
 const JOSHUA_TREE := "meshes/landscape/trees/treejoshbnv.nif"
 const DRINKING_GLASS := "meshes/animobjects/aodrinkingglass.nif"
 const VAULT_WINDOW := "meshes/dungeons/vault/accessories/vwindow01.nif"
+const AR_MUZZLE_FLASH := "meshes/effects/muzzleflashes/assaultriflemuzzleflash.nif"
 const DOC_MITCHELL_WINDOW := "meshes/dungeons/NV_CraftsmanHomesInterior/NVCraftsmanRmWallGlassB.nif"
 const INDUSTRIAL_RAYS := "meshes/effects/ambient/industrial/IndFXLightRays01.nif"
 const GOODSPRINGS_BEAM := "meshes/effects/ambient/FXLightBeamBrtW02.nif"
@@ -1034,12 +1035,22 @@ func test_external_emittance_shapes() -> void:
 
 
 func test_dual_alpha_scissor() -> void:
-	print("--- dual-bit NiAlphaProperty maps to authored alpha scissor ---")
+	print("--- dual-bit NiAlphaProperty: mix shapes scissor, additive shapes blend ---")
+	# [path, shape, authored test bit, transparency, scissor cutoff, blend mode,
+	# depth write]
 	var cases := [
-		[CREOSOTE_BUSH, "Box06:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 200.0 / 255.0],
-		[JOSHUA_TREE, "TreeJoshB_1:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 100.0 / 255.0],
-		[DRINKING_GLASS, "Liquid", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 1.0 / 255.0],
-		[VAULT_WINDOW, "VWindow01:0", BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0],
+		[CREOSOTE_BUSH, "Box06:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 200.0 / 255.0,
+			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[JOSHUA_TREE, "TreeJoshB_1:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 100.0 / 255.0,
+			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[DRINKING_GLASS, "Liquid", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 1.0 / 255.0,
+			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[VAULT_WINDOW, "VWindow01:0", false, BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0,
+			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		# flags 0x120D: SRC_ALPHA/ONE with a GREATER 1 test; shader flags2
+		# clear, so no depth write.
+		[AR_MUZZLE_FLASH, "Plane01:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0,
+			BaseMaterial3D.BLEND_MODE_ADD, BaseMaterial3D.DEPTH_DRAW_DISABLED],
 	]
 	for entry in cases:
 		var path := String(entry[0])
@@ -1060,17 +1071,20 @@ func test_dual_alpha_scissor() -> void:
 		check(not shape.is_empty(), "%s has shape %s" % [path, shape_name])
 		if shape.is_empty():
 			continue
-		var expected_mode: int = int(entry[2])
+		var expected_mode: int = int(entry[3])
 		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
-		check(bool(shape["alpha_test_enabled"]) == (expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR),
-			"%s authored test bit matches expected mode" % shape_name)
+		check(bool(shape["alpha_test_enabled"]) == bool(entry[2]),
+			"%s authored test bit is %s" % [shape_name, str(entry[2])])
 		var mat: StandardMaterial3D = NifMaterialBuilderScript.build(shape, false, {})
 		check(mat.transparency == expected_mode,
 			"%s selects expected transparency mode" % shape_name)
 		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
-			check(is_equal_approx(mat.alpha_scissor_threshold, float(entry[3])),
+			check(is_equal_approx(mat.alpha_scissor_threshold, float(entry[4])),
 				"%s uses expected alpha-test cutoff" % shape_name)
-		check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+		else:
+			check(mat.blend_mode == int(entry[5]),
+				"%s uses its authored blend function" % shape_name)
+		check(mat.depth_draw_mode == int(entry[6]),
 			"%s keeps authored depth-write flag" % shape_name)
 
 

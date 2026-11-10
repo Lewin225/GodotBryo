@@ -317,22 +317,27 @@ static func _apply_shader_depth(mat: StandardMaterial3D, flags1: int, flags2: in
 
 ## NiAlphaProperty -> Godot transparency. Blend and test are separate bits and
 ## a shape can set either or both. StandardMaterial3D cannot combine authored
-## blending with authored alpha testing; try alpha scissor for the dual-bit
-## case, using the authored cutoff so discarded pixels cannot occlude each
-## other when depth writing is enabled. This drops the authored edge blending.
+## blending with authored alpha testing, so a dual-bit shape keeps one by its
+## blend function. An additive or multiply shape blends, as a blend-only one
+## does: those blends are order independent, and their test thresholds (1 to 3
+## of 255 on the effect cards) discard nothing visible. A mix shape uses alpha
+## scissor at the authored cutoff, so its depth write keeps overlapping cards
+## sorted; this drops its authored edge blending.
 static func _apply_alpha(mat: StandardMaterial3D, nd: Dictionary,
 		blend_enabled: bool, test_enabled: bool) -> void:
-	if blend_enabled and test_enabled:
+	var blend_func := String(nd["alpha_blend_func"])
+	var order_independent := blend_func == "add" or blend_func == "multiply"
+	if blend_enabled and test_enabled and not order_independent:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		# NiAlphaProperty's GREATER 0 still rejects fully transparent pixels.
 		# Godot's cutoff of 0 rejects none, so use the smallest 8-bit step.
 		mat.alpha_scissor_threshold = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
 	elif blend_enabled:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		# Light shafts and glow overlays ship src=SRC_ALPHA dst=ONE and are
-		# genuinely additive; grime decals ship ZERO/SRC_COLOR and multiply.
-		# Defaulting everything to mix loses both.
-		match String(nd["alpha_blend_func"]):
+		# Light shafts, glow overlays and muzzle flashes ship src=SRC_ALPHA
+		# dst=ONE and are genuinely additive; grime decals ship ZERO/SRC_COLOR
+		# and multiply. Defaulting everything to mix loses both.
+		match blend_func:
 			"add":
 				mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 			"multiply":

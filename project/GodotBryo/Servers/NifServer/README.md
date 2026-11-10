@@ -249,11 +249,17 @@ override receives every texture the path declares and no others. A replaced mate
 every instance like any other, so it batches the same way. `EsmNode`'s XEMI tint only handles
 `StandardMaterial3D` and leaves other materials untinted.
 
-`NiAlphaProperty` with both blend and test enabled currently uses Godot alpha
-scissor at the authored test threshold as an explicit approximation:
-`StandardMaterial3D` cannot combine both authored operations, so the authored
-edge blending is lost. An authored threshold of zero uses a minimal nonzero
-cutoff to reject fully transparent pixels. Blend-only shapes (including the
+`NiAlphaProperty` with both blend and test enabled cannot be matched exactly:
+`StandardMaterial3D` cannot combine both authored operations, so the builder
+keeps one by blend function. Additive (`SRC_ALPHA`/`ONE`, `ONE`/`ONE`) and
+multiply shapes blend as blend-only shapes do; those blends are order
+independent, and the test thresholds they carry (1 to 3 of 255 on the effect
+cards, every muzzle flash among them) discard nothing visible. Mix shapes use
+Godot alpha scissor at the authored test threshold, so they write depth and
+overlapping foliage cards sort; their authored edge blending is lost. An
+authored threshold of zero uses a minimal nonzero cutoff to reject fully
+transparent pixels. Census and options: `Plans/NifServer/alpha_dual_bit.md`.
+Blend-only shapes (including the
 checked `VWindow01:0` pane) remain blended;
 test-only shapes remain alpha-scissored at their authored thresholds.
 
