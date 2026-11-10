@@ -29,6 +29,7 @@ func _ready() -> void:
 	await _check_fire_weapon()
 	await _check_kill_cam_projectile()
 	await _check_placed_projectile()
+	await _check_effect_sequence()
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
@@ -135,6 +136,20 @@ func _wall(centre: Vector3) -> void:
 	wall.add_child(shape)
 	add_child(wall)
 	wall.global_position = centre
+
+
+## The Fat Man explosion's model (ExplosionLarge01) has one sequence,
+## SpecialIdle_AreaEffect, and plays it once shown.
+func _check_effect_sequence() -> void:
+	var effect := ProjectileEffect.new()
+	effect.lifetime = 5.0
+	add_child(effect)
+	effect.show_model("Effects\\ExplosionLarge01.NIF")
+	await _until(func() -> bool: return _has_mesh(effect))
+	var player := effect.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	check(player != null and player.is_playing() and String(player.current_animation) == NifNames.escape("SpecialIdle_AreaEffect"),
+			"an effect plays its model's only sequence (%s)" % (String(player.current_animation) if player != null else "no player"))
+	effect.queue_free()
 
 
 func _has_mesh(node: Node) -> bool:

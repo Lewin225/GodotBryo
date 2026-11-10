@@ -142,3 +142,21 @@ func _on_model_delivered(tree: Node3D, path: String) -> void:
 	# forward) is the tree's -Z; `_model_turn` turns a model authored along
 	# another axis.
 	tree.transform = Transform3D(_model_turn, Vector3.ZERO)
+	_play_sequence(tree)
+
+
+## Plays the model's sequence from its start when it has exactly one: 212 of
+## the 263 NIFs under effects folders carry one (Idle, SpecialIdle_AreaEffect,
+## Forward); 50 carry several (Forward, Backward, Left, Right), which are
+## left still. Only the tracks NifServer builds play (transforms and
+## NiVisController visibility); its alpha, colour and texture controllers
+## are not built. # ASSUMPTION: an effect plays its only sequence once shown,
+## as Gamebryo plays a NIF's sequence by default.
+func _play_sequence(tree: Node3D) -> void:
+	var player := tree.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null:
+		return
+	var clips := player.get_animation_list()
+	if clips.size() != 1:
+		return
+	player.play(clips[0])
