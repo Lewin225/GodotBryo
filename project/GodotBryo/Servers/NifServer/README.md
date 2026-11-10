@@ -234,6 +234,7 @@ material path chosen from what the shape's NifSource node declares, added as cas
 |---|---|---|---|
 | `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission and without vertex colour as albedo (hair vertex colours are not a colour; their use is unknown, and they stay in the mesh); the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
 | `PATH_SKIN` | FaceGen flag (flags1 bit 10) on PPLighting; 332 shapes (heads, hands, upper bodies, the skin parts of outfits) | `skin_sk` | the standard material without emission; the `_sk` texture (a flat dark red on heads and hands) is not rendered. Actors replace it with their own skin material |
+| `PATH_REFRACTION` | Refraction flag (flags1 bit 15) on PPLighting; 92 shapes in 83 NIFs, all effect distortion meshes (explosion shock spheres, muzzle flash warps, shield fields), none with an NiAlphaProperty | `glow` | draws nothing (fully transparent, unshaded, no depth write): refraction is not built, and drawn as their textures they are opaque white or flat surfaces |
 | `PATH_STANDARD` | every other shape | `glow` | the `StandardMaterial3D` described here |
 
 `NifServer.set_material_path()` replaces a path's builder: it receives a

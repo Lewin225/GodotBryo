@@ -1,8 +1,8 @@
 extends Node
 
 ## NifMaterialBuilder's material paths: Hair-flagged shapes are dispatched to
-## PATH_HAIR, FaceGen-flagged ones to PATH_SKIN and every other shape to
-## PATH_STANDARD, and an override registered
+## PATH_HAIR, FaceGen-flagged ones to PATH_SKIN, Refraction-flagged ones to
+## PATH_REFRACTION and every other shape to PATH_STANDARD, and an override registered
 ## through NifServer before the first build either adjusts the stock material
 ## or replaces it, while the `nif_*` metadata is stamped onto whatever it
 ## returns. Its own scene, because the overrides must be registered before
@@ -17,6 +17,9 @@ const ADJUSTED_SHAPE := "DieselTankNV:0"
 const BEARD := "meshes/characters/hair/beardchincurtain.nif"
 const BEARD_SHAPE := "BeardChinCurtain:0"
 const BEARD_HIGHLIGHT := "textures\\characters\\hair\\BeardLincoln_hl.dds"
+# The Fat Man explosion's shock sphere, flags1 0x80018001: Refraction.
+const NUKE_EXPLOSION := "meshes/effects/explosionlarge01.nif"
+const NUKE_SHOCK_SHAPE := "GeoSphere03:0"
 
 var failures := 0
 # shape name -> {diffuse_path, has_diffuse, path}, recorded by the override
@@ -170,9 +173,12 @@ func _check_hair() -> void:
 
 
 ## Every Hair-flagged shape in the corpus, and only those, goes to the hair
-## path; every FaceGen-flagged one to the skin path.
+## path; every FaceGen-flagged one to the skin path; every Refraction-flagged
+## one to the refraction path.
 func test_path_census() -> void:
-	print("--- hair and skin path census ---")
+	print("--- hair, skin and refraction path census ---")
+	var refraction := 0
+	var refraction_alpha := 0
 	var hair := 0
 	var highlights := 0
 	var skin := 0
@@ -191,6 +197,10 @@ func test_path_census() -> void:
 			var path := NifMaterialBuilderScript.path_for(nd)
 			var slots: PackedStringArray = nd["texture_slots"]
 			var slot_2 := String(slots[2]).to_lower() if slots.size() > 2 else ""
+			if path == NifMaterialBuilderScript.PATH_REFRACTION:
+				refraction += 1
+				if bool(nd.get("has_alpha_property", false)):
+					refraction_alpha += 1
 			if path == NifMaterialBuilderScript.PATH_SKIN:
 				skin += 1
 				if slot_2.ends_with("_sk.dds"):
@@ -203,12 +213,40 @@ func test_path_census() -> void:
 	check(hair == 159, "159 shapes go to the hair path (got %d)" % hair)
 	check(highlights == hair, "every one has an _hl texture in slot 2 (got %d)" % highlights)
 	check(skin == 332, "332 shapes go to the skin path (got %d)" % skin)
+	check(refraction == 92, "92 shapes go to the refraction path (got %d)" % refraction)
+	check(refraction_alpha == 0, "none of them has an NiAlphaProperty (got %d)" % refraction_alpha)
 	check(skin_sk == 238, "238 of them have an _sk texture in slot 2 (got %d)" % skin_sk)
+
+
+## The shock sphere's stock material draws nothing: fully transparent,
+## unshaded, no depth write.
+func test_refraction_material() -> void:
+	print("--- refraction stock material ---")
+	var raw: Dictionary = ArchiveServer.read(NUKE_EXPLOSION)
+	var src := NifSource.new()
+	if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
+		check(false, "read %s" % NUKE_EXPLOSION)
+		return
+	var shape: Dictionary = {}
+	for nd in src.get_nodes():
+		if String(nd["name"]) == NUKE_SHOCK_SHAPE:
+			shape = nd
+			break
+	check(not shape.is_empty(), "%s has %s" % [NUKE_EXPLOSION, NUKE_SHOCK_SHAPE])
+	if shape.is_empty():
+		return
+	check(NifMaterialBuilderScript.path_for(shape) == NifMaterialBuilderScript.PATH_REFRACTION,
+		"%s goes to the refraction path" % NUKE_SHOCK_SHAPE)
+	var mat := NifMaterialBuilderScript._build_refraction(null) as StandardMaterial3D
+	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and is_zero_approx(mat.albedo_color.a),
+		"its stock material is fully transparent")
+	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED, "and writes no depth")
 
 
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_path_census()
+	test_refraction_material()
 	await test_override()
 
 	print("=======================")

@@ -11,7 +11,8 @@ class_name NifMaterialBuilder
 ## metadata onto whatever the path returns.
 ##
 ## Shapes with the Hair flag go to PATH_HAIR, shapes with the FaceGen flag to
-## PATH_SKIN; every other shape goes to PATH_STANDARD.
+## PATH_SKIN, shapes with the Refraction flag to PATH_REFRACTION; every other
+## shape goes to PATH_STANDARD.
 
 # For cache_key() only, which is static.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -31,7 +32,17 @@ const PATH_HAIR := &"hair"
 ## diffuse, but for a few gore caps, a DLC02 body and some with no diffuse.
 ## Slot 2 is a `_sk` texture on 238 of them, none on the rest.
 const PATH_SKIN := &"skin"
-const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN]
+## Shapes whose BSShaderPPLightingProperty sets the Refraction flag: screen
+## distortion meshes. 92 shapes in 83 NIFs, all BSShaderPPLightingProperty,
+## none with an NiAlphaProperty, 87 writing depth, none with the Hair or
+## FaceGen flag; 81 also set Fire Refraction. Explosion shock spheres
+## (ExplosionLarge01's GeoSphere03, the Fat Man's), muzzle flash warps,
+## shield and door fields. Their diffuse is FXWhite, FXPartTinyGlowy or a
+## distortion normal map (FXNormalDistort_n). Its stock material draws
+## nothing: refraction is not built, and the shape drawn as its texture is an
+## opaque white or flat surface.
+const PATH_REFRACTION := &"refraction"
+const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN, PATH_REFRACTION]
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
@@ -46,6 +57,8 @@ const ROLE_SKIN_SK := &"skin_sk"
 const SHADER_FLAG1_HAIR := 1 << 18
 ## BSShaderFlags bit 10, FaceGen (nif.xml F3SF1).
 const SHADER_FLAG1_FACEGEN := 1 << 10
+## BSShaderFlags bit 15, Refraction (nif.xml F3SF1).
+const SHADER_FLAG1_REFRACTION := 1 << 15
 ## The blocks the GECK lists the Hair flag for.
 const HAIR_SHADER_BLOCKS: Array[String] = ["BSShaderPPLightingProperty", "Lighting30ShaderProperty"]
 
@@ -82,6 +95,8 @@ static func path_for(nd: Dictionary) -> StringName:
 		return PATH_HAIR
 	if _is_skin(nd):
 		return PATH_SKIN
+	if _is_refraction(nd):
+		return PATH_REFRACTION
 	return PATH_STANDARD
 
 
@@ -99,6 +114,14 @@ static func _is_skin(nd: Dictionary) -> bool:
 	if String(nd["shader_type"]) != "BSShaderPPLightingProperty":
 		return false
 	return (int(nd["shader_flags1"]) & SHADER_FLAG1_FACEGEN) != 0
+
+
+static func _is_refraction(nd: Dictionary) -> bool:
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	if String(nd["shader_type"]) != "BSShaderPPLightingProperty":
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_REFRACTION) != 0
 
 
 ## The textures a shape's path uses: [{role, slot, path, alpha_safe}] in slot
@@ -166,6 +189,8 @@ static func _stock_builder(path: StringName) -> Callable:
 			return _build_hair
 		PATH_SKIN:
 			return _build_skin
+		PATH_REFRACTION:
+			return _build_refraction
 	return _build_standard
 
 
@@ -302,6 +327,19 @@ static func _build_hair(context: NifMaterialContext) -> Material:
 ## race's texture and the NPC's FaceGen tint, EsmActorNode._apply_skin).
 static func _build_skin(context: NifMaterialContext) -> Material:
 	return _build_standard(context)
+
+
+## PATH_REFRACTION's stock material: draws nothing. A fully transparent,
+## unshaded blend that writes no depth, so the distortion mesh neither shows
+## nor hides what is behind it. Its textures stay in `nif_texture_roles` for a
+## refraction override.
+static func _build_refraction(_context: NifMaterialContext) -> Material:
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	return mat
 
 
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth
