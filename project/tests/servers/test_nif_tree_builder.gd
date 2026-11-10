@@ -26,6 +26,7 @@ const CREOSOTE_BUSH := "meshes/clutter/creosotebush/creosotebushsm.nif"
 const JOSHUA_TREE := "meshes/landscape/trees/treejoshbnv.nif"
 const DRINKING_GLASS := "meshes/animobjects/aodrinkingglass.nif"
 const VAULT_WINDOW := "meshes/dungeons/vault/accessories/vwindow01.nif"
+const DUST_MESH_SKY := "meshes/effects/ambient/fxdustmeshsky01.nif"
 const AR_MUZZLE_FLASH := "meshes/effects/muzzleflashes/assaultriflemuzzleflash.nif"
 const DOC_MITCHELL_WINDOW := "meshes/dungeons/NV_CraftsmanHomesInterior/NVCraftsmanRmWallGlassB.nif"
 const INDUSTRIAL_RAYS := "meshes/effects/ambient/industrial/IndFXLightRays01.nif"
@@ -1036,22 +1037,28 @@ func test_external_emittance_shapes() -> void:
 
 
 func test_dual_alpha_scissor() -> void:
-	print("--- dual-bit NiAlphaProperty: mix shapes scissor, additive shapes blend ---")
-	# [path, shape, authored test bit, transparency, scissor cutoff, blend mode,
-	# depth write]
+	print("--- dual-bit NiAlphaProperty: blended with the authored function and alpha tested ---")
+	# [path, shape, authored test bit, blend mode, alpha-test cutoff (-1: no
+	# test), depth write]. Every case is a lit or unlit shader shape, so a
+	# dual-bit shape both blends and tests, as the file asks.
 	var cases := [
-		[CREOSOTE_BUSH, "Box06:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 200.0 / 255.0,
-			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
-		[JOSHUA_TREE, "TreeJoshB_1:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 100.0 / 255.0,
-			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
-		[DRINKING_GLASS, "Liquid", true, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 1.0 / 255.0,
-			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
-		[VAULT_WINDOW, "VWindow01:0", false, BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0,
-			BaseMaterial3D.BLEND_MODE_MIX, BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[CREOSOTE_BUSH, "Box06:0", true, BaseMaterial3D.BLEND_MODE_MIX, 200.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[JOSHUA_TREE, "TreeJoshB_1:0", true, BaseMaterial3D.BLEND_MODE_MIX, 100.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		# An authored threshold of 0 still rejects alpha 0 (GREATER 0).
+		[DRINKING_GLASS, "Liquid", true, BaseMaterial3D.BLEND_MODE_MIX, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[VAULT_WINDOW, "VWindow01:0", false, BaseMaterial3D.BLEND_MODE_MIX, -1.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
 		# flags 0x120D: SRC_ALPHA/ONE with a GREATER 1 test; shader flags2
 		# clear, so no depth write.
-		[AR_MUZZLE_FLASH, "Plane01:0", true, BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0,
-			BaseMaterial3D.BLEND_MODE_ADD, BaseMaterial3D.DEPTH_DRAW_DISABLED],
+		[AR_MUZZLE_FLASH, "Plane01:0", true, BaseMaterial3D.BLEND_MODE_ADD, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED],
+		# flags 0x12ED: SRC_ALPHA/INV_SRC_ALPHA with a GREATER 1 test; the sky
+		# dust card that rendered as a cutout under the scissor rule.
+		[DUST_MESH_SKY, "DustBillBoard01:0", true, BaseMaterial3D.BLEND_MODE_MIX, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED],
 	]
 	for entry in cases:
 		var path := String(entry[0])
@@ -1072,20 +1079,18 @@ func test_dual_alpha_scissor() -> void:
 		check(not shape.is_empty(), "%s has shape %s" % [path, shape_name])
 		if shape.is_empty():
 			continue
-		var expected_mode: int = int(entry[3])
+		var tested := bool(entry[2])
 		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
-		check(bool(shape["alpha_test_enabled"]) == bool(entry[2]),
-			"%s authored test bit is %s" % [shape_name, str(entry[2])])
+		check(bool(shape["alpha_test_enabled"]) == tested,
+			"%s authored test bit is %s" % [shape_name, str(tested)])
 		var mat := NifMaterialBuilderScript.render_state(NifMaterialBuilderScript.build(shape, false, {}))
-		check(mat["transparency"] == expected_mode,
-			"%s selects expected transparency mode" % shape_name)
-		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+		check(mat["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA, "%s is blended" % shape_name)
+		check(mat["blend_mode"] == int(entry[3]), "%s uses its authored blend function" % shape_name)
+		check(bool(mat["alpha_test"]) == tested, "%s is alpha tested: %s" % [shape_name, str(tested)])
+		if tested:
 			check(is_equal_approx(mat["alpha_scissor_threshold"], float(entry[4])),
-				"%s uses expected alpha-test cutoff" % shape_name)
-		else:
-			check(mat["blend_mode"] == int(entry[5]),
-				"%s uses its authored blend function" % shape_name)
-		check(mat["depth_draw_mode"] == int(entry[6]),
+				"%s tests at its authored threshold" % shape_name)
+		check(mat["depth_draw_mode"] == int(entry[5]),
 			"%s keeps authored depth-write flag" % shape_name)
 
 

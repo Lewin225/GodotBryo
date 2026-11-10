@@ -261,6 +261,11 @@ every instance like any other, so it batches the same way. `EsmNode`'s XEMI tint
 `0x4D80` (stencil off, draw mode 3, both sides), so they are not culled: foliage, light cards,
 effect planes. Draw modes 0 to 2 appear on no shipped shape and keep the back-face cull.
 
+On the lit and unlit shader paths, a shape with both `NiAlphaProperty` bits is matched: it is
+blended with its authored function and the shader discards alpha at or below the authored
+threshold (the GREATER test, `NIF_ALPHA_TEST`); depth write follows the shader flags. The
+paragraph below is the rule the remaining StandardMaterial3D paths keep.
+
 `NiAlphaProperty` with both blend and test enabled cannot be matched exactly:
 `StandardMaterial3D` cannot combine both authored operations, so the builder
 keeps one by blend function. Additive (`SRC_ALPHA`/`ONE`, `ONE`/`ONE`) and

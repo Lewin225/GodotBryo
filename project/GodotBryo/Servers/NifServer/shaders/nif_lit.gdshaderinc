@@ -9,6 +9,8 @@
 // Defines:
 //   NIF_ALPHA     writes ALPHA (blended and alpha-scissor variants)
 //   NIF_SCISSOR   alpha scissor at alpha_scissor_threshold
+//   NIF_ALPHA_TEST  blended and also alpha tested: discards alpha at or below
+//                   alpha_scissor_threshold (NiAlphaProperty's GREATER test)
 //
 // Instance uniforms are per MeshInstance3D, so a shared material keeps
 // batching while each instance animates or is tinted on its own:
@@ -29,7 +31,7 @@ uniform sampler2D texture_normal : hint_roughness_normal, filter_linear_mipmap, 
 uniform float normal_scale = 0.0;
 // The glow map (slot 2); black when the shape has none.
 uniform sampler2D texture_emission : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
-#ifdef NIF_SCISSOR
+#if defined(NIF_SCISSOR) || defined(NIF_ALPHA_TEST)
 uniform float alpha_scissor_threshold = 0.5;
 #endif
 
@@ -61,5 +63,10 @@ void fragment() {
 #endif
 #ifdef NIF_SCISSOR
 	ALPHA_SCISSOR_THRESHOLD = alpha_scissor_threshold;
+#endif
+#ifdef NIF_ALPHA_TEST
+	if (ALPHA <= alpha_scissor_threshold) {
+		discard;
+	}
 #endif
 }

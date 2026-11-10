@@ -381,14 +381,13 @@ static func _build_refraction(_context: NifMaterialContext) -> Material:
 ## also stored as `nif_render_state` metadata (render_state()).
 static func _build_unlit(context: NifMaterialContext) -> Material:
 	var rules := _build_standard(context) as StandardMaterial3D
-	var state := _standard_render_state(rules)
+	var state := _shader_render_state(rules, context.node)
 	var mat := ShaderMaterial.new()
 	mat.shader = _variant_shader(UNLIT_SHADER_BODY, ["unshaded"], state)
 	mat.set_shader_parameter("albedo_color", rules.albedo_color)
 	mat.set_shader_parameter("texture_albedo", rules.albedo_texture)
 	mat.set_shader_parameter("use_vertex_color", 1.0 if rules.vertex_color_use_as_albedo else 0.0)
-	if state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
-		mat.set_shader_parameter("alpha_scissor_threshold", rules.alpha_scissor_threshold)
+	_set_alpha_cutoff(mat, state)
 	if bool(state["proximity_fade"]):
 		mat.set_shader_parameter("proximity_fade_distance", rules.proximity_fade_distance)
 	if state["distance_fade_mode"] != BaseMaterial3D.DISTANCE_FADE_DISABLED:
@@ -404,7 +403,7 @@ static func _build_unlit(context: NifMaterialContext) -> Material:
 ## the glow map as emission. Its render state is stored as `nif_render_state`.
 static func _build_lit(context: NifMaterialContext) -> Material:
 	var rules := _build_standard(context) as StandardMaterial3D
-	var state := _standard_render_state(rules)
+	var state := _shader_render_state(rules, context.node)
 	var mat := ShaderMaterial.new()
 	mat.shader = _variant_shader(LIT_SHADER_BODY, [], state)
 	mat.set_shader_parameter("albedo_color", rules.albedo_color)
@@ -415,16 +414,51 @@ static func _build_lit(context: NifMaterialContext) -> Material:
 		mat.set_shader_parameter("normal_scale", rules.normal_scale)
 	if rules.emission_enabled:
 		mat.set_shader_parameter("texture_emission", rules.emission_texture)
-	if state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
-		mat.set_shader_parameter("alpha_scissor_threshold", rules.alpha_scissor_threshold)
+	_set_alpha_cutoff(mat, state)
 	mat.set_meta("nif_render_state", state)
 	return mat
+
+
+## The render state for the NIF shaders: the StandardMaterial3D rules' state,
+## except that a shape with both NiAlphaProperty bits is blended with its
+## authored blend function and also alpha tested (`alpha_test`), as the file
+## asks. StandardMaterial3D cannot do both, so its rules keep one
+## (_apply_alpha()); the shaders discard at the authored threshold in the
+## blended pass. The test function is GREATER on every dual-bit property
+## (alpha_dual_bit.md); a threshold of 0 still rejects alpha 0, as there.
+static func _shader_render_state(rules: StandardMaterial3D, nd: Dictionary) -> Dictionary:
+	var state := _standard_render_state(rules)
+	state["alpha_test"] = false
+	if not bool(nd.get("has_alpha_property", false)):
+		return state
+	if not (bool(nd["alpha_blend_enabled"]) and bool(nd["alpha_test_enabled"])):
+		return state
+	state["transparency"] = BaseMaterial3D.TRANSPARENCY_ALPHA
+	match String(nd["alpha_blend_func"]):
+		"add":
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_ADD
+		"multiply":
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_MUL
+		_:
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_MIX
+	state["alpha_test"] = true
+	state["alpha_scissor_threshold"] = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
+	return state
+
+
+## Sets the variant's alpha cutoff: the scissor threshold, or the alpha test
+## threshold of a blended and tested shape.
+static func _set_alpha_cutoff(mat: ShaderMaterial, state: Dictionary) -> void:
+	var scissor: bool = state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	if scissor or bool(state.get("alpha_test", false)):
+		mat.set_shader_parameter("alpha_scissor_threshold", state["alpha_scissor_threshold"])
 
 
 ## A material's render state, whichever path built it: transparency,
 ## blend_mode, shading_mode, depth_draw_mode, depth_test_disabled, cull_mode,
 ## proximity_fade, distance_fade_mode (BaseMaterial3D's enums), and the values
-## vertex_color, has_albedo_texture, has_normal_texture,
+## alpha_test (the NIF shaders only: blended and alpha tested), vertex_color,
+## has_albedo_texture, has_normal_texture,
 ## has_emission_texture, albedo_color, alpha_scissor_threshold,
 ## proximity_fade_distance, distance_fade_max_distance. Empty for a material
 ## that is neither a StandardMaterial3D nor built by PATH_UNLIT.
@@ -492,6 +526,8 @@ static func _variant_shader(body: String, base_modes: PackedStringArray, state: 
 			modes.append("cull_front")
 		_:
 			modes.append("cull_back")
+	if bool(state.get("alpha_test", false)):
+		defines.append("NIF_ALPHA_TEST")
 	if bool(state["proximity_fade"]):
 		defines.append("NIF_PROXIMITY_FADE")
 	if int(state["distance_fade_mode"]) != BaseMaterial3D.DISTANCE_FADE_DISABLED:

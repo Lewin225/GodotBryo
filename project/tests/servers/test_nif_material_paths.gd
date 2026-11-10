@@ -244,11 +244,11 @@ func test_path_census() -> void:
 	check(unlit == 7936, "7,936 shapes go to the unlit path (got %d)" % unlit)
 	check(unlit_shader_materials == unlit, "each is a ShaderMaterial with its render state (got %d)" % unlit_shader_materials)
 	var variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.UNLIT_SHADER_BODY)
-	check(variants > 0 and variants <= 24, "they share %d unlit shader variants" % variants)
+	check(variants == 29, "they share 29 unlit shader variants (got %d)" % variants)
 	check(lit_shader_materials == lit and lit > 0,
 		"%d shapes go to the lit path, each a ShaderMaterial with its render state" % lit)
 	var lit_variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.LIT_SHADER_BODY)
-	check(lit_variants > 0 and lit_variants <= 24, "they share %d lit shader variants" % lit_variants)
+	check(lit_variants == 23, "they share 23 lit shader variants (got %d)" % lit_variants)
 	check(stencil == 2017, "2,017 shapes carry an NiStencilProperty (got %d)" % stencil)
 	check(stencil_both == stencil, "every one draws both sides (got %d)" % stencil_both)
 	check(refraction == 92, "92 shapes go to the refraction path (got %d)" % refraction)

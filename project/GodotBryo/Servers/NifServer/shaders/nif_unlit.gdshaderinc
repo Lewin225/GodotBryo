@@ -8,6 +8,9 @@
 // Defines:
 //   NIF_ALPHA             writes ALPHA (blended and alpha-scissor variants)
 //   NIF_SCISSOR           alpha scissor at alpha_scissor_threshold
+//   NIF_ALPHA_TEST        blended and also alpha tested: discards alpha at or
+//                         below alpha_scissor_threshold (NiAlphaProperty's
+//                         GREATER test)
 //   NIF_PROXIMITY_FADE    fades by distance to the depth behind (light shafts)
 //   NIF_DISTANCE_FADE     fades by distance to the camera (light shafts)
 //
@@ -23,7 +26,7 @@ uniform vec4 albedo_color : source_color = vec4(1.0);
 uniform sampler2D texture_albedo : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
 // 1 uses the vertex colour as albedo (StandardMaterial3D's vertex_color_use_as_albedo).
 uniform float use_vertex_color = 0.0;
-#ifdef NIF_SCISSOR
+#if defined(NIF_SCISSOR) || defined(NIF_ALPHA_TEST)
 uniform float alpha_scissor_threshold = 0.5;
 #endif
 #ifdef NIF_PROXIMITY_FADE
@@ -65,5 +68,10 @@ void fragment() {
 #endif
 #ifdef NIF_DISTANCE_FADE
 	ALPHA *= clamp(smoothstep(distance_fade_min, distance_fade_max, length(VERTEX)), 0.0, 1.0);
+#endif
+#ifdef NIF_ALPHA_TEST
+	if (ALPHA <= alpha_scissor_threshold) {
+		discard;
+	}
 #endif
 }

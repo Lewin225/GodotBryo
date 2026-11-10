@@ -113,3 +113,12 @@ Depth write still follows the shader flags (the muzzle flashes' flags2 is clear,
 `test_nif_tree_builder.gd` `test_dual_alpha_scissor()` adds the assault rifle flash's
 `Plane01:0` (0x120D: additive, no depth write); the NifServer README's alpha paragraph says
 the same. Options 2 and 3 are open for the dual-bit mix foliage.
+
+Option 3 built for the shader paths (`shader_set.md`): on PATH_LIT and PATH_UNLIT a dual-bit
+shape is blended with its authored function and alpha tested in the shader (`NIF_ALPHA_TEST`,
+discard at or below the threshold). Found in game as cutouts that should blend: the sky dust card
+(`effects\ambient\fxdustmeshsky01.nif` `DustBillBoard01:0`) and the smoke wisps
+(`SmokeWispsTile.dds`, `0x12ED`). The 109 dual-bit mix foliage shapes now render blended with
+their depth write, as the file asks, not as scissor cutouts.
+Checked in game and found to be the correct behaviour: the dust card, the smoke wisps and the
+Joshua trees. Their look needs tuning (not recorded yet); none is broken.
