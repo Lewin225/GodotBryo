@@ -183,6 +183,8 @@ func test_path_census() -> void:
 	print("--- hair, skin and refraction path census ---")
 	var refraction := 0
 	var stencil := 0
+	var unlit := 0
+	var unlit_shader_materials := 0
 	var stencil_both := 0
 	var refraction_alpha := 0
 	var hair := 0
@@ -207,6 +209,14 @@ func test_path_census() -> void:
 					stencil_both += 1
 			var slots: PackedStringArray = nd["texture_slots"]
 			var slot_2 := String(slots[2]).to_lower() if slots.size() > 2 else ""
+			if path == NifMaterialBuilderScript.PATH_UNLIT:
+				unlit += 1
+				# Built through the stock builder, not build(): build() would
+				# close the override window test_override() needs.
+				var built := NifMaterialBuilderScript._build_unlit(NifMaterialContextScript.new(
+					path, nd, nd.has("colors"), {}, {}, NifMaterialBuilderScript._build_unlit))
+				if built is ShaderMaterial and not NifMaterialBuilderScript.render_state(built).is_empty():
+					unlit_shader_materials += 1
 			if path == NifMaterialBuilderScript.PATH_REFRACTION:
 				refraction += 1
 				if bool(nd.get("has_alpha_property", false)):
@@ -223,6 +233,10 @@ func test_path_census() -> void:
 	check(hair == 159, "159 shapes go to the hair path (got %d)" % hair)
 	check(highlights == hair, "every one has an _hl texture in slot 2 (got %d)" % highlights)
 	check(skin == 332, "332 shapes go to the skin path (got %d)" % skin)
+	check(unlit == 7936, "7,936 shapes go to the unlit path (got %d)" % unlit)
+	check(unlit_shader_materials == unlit, "each is a ShaderMaterial with its render state (got %d)" % unlit_shader_materials)
+	var variants := NifMaterialBuilderScript.unlit_variant_count()
+	check(variants > 0 and variants <= 24, "they share %d unlit shader variants" % variants)
 	check(stencil == 2017, "2,017 shapes carry an NiStencilProperty (got %d)" % stencil)
 	check(stencil_both == stencil, "every one draws both sides (got %d)" % stencil_both)
 	check(refraction == 92, "92 shapes go to the refraction path (got %d)" % refraction)

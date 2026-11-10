@@ -167,6 +167,14 @@ func _check_xemi_visual_tint(server) -> void:
 			var authored_name := String(instance.get_meta("nif_name", ""))
 			if authored_name == String(entry[1]):
 				found_marked = true
+				if instance.mesh.surface_get_material(0) is ShaderMaterial:
+					# The unlit NIF shader: XEMI is the nif_emittance instance
+					# uniform, on the shared material.
+					var emittance: Color = instance.get_instance_shader_parameter("nif_emittance")
+					_check(instance.get_surface_override_material(0) == null
+						and emittance.is_equal_approx(Color(color.r, color.g, color.b, 1.0)),
+						"%s takes XEMI as its nif_emittance instance uniform, keeping the shared material" % authored_name)
+					continue
 				var override := instance.get_surface_override_material(0) as StandardMaterial3D
 				var shared := instance.mesh.surface_get_material(0) as StandardMaterial3D
 				_check(override != null and override != shared,

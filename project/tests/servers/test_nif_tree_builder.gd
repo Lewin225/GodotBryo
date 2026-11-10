@@ -511,30 +511,30 @@ func test_vertex_colour_and_alpha() -> void:
 	# ARRAY_COLOR unless the material opts in.
 	var vcol := 0
 	for m in by_name.values():
-		if (m as StandardMaterial3D).vertex_color_use_as_albedo:
+		if bool(NifMaterialBuilderScript.render_state(m)["vertex_color"]):
 			vcol += 1
 	check(vcol == 3, "all 3 materials use vertex colour as albedo (got %d)" % vcol)
 
 	# Block 16 is the case this exists for: an unlit, texture-less, blended
 	# AO fade whose only pixels are per-vertex colour and alpha. Rendered
 	# without either flag it is a solid opaque white quad.
-	var fade: StandardMaterial3D = null
+	var fade: Dictionary = {}
 	for part_name in by_name.keys():
-		var m: StandardMaterial3D = by_name[part_name]
-		if m.albedo_texture == null:
-			fade = m
+		var state := NifMaterialBuilderScript.render_state(by_name[part_name])
+		if not bool(state["has_albedo_texture"]):
+			fade = state
 			break
-	check(fade != null, "found the texture-less shape")
-	if fade == null:
+	check(not fade.is_empty(), "found the texture-less shape")
+	if fade.is_empty():
 		root.queue_free()
 		return
-	check(fade.vertex_color_use_as_albedo, "texture-less shape reads vertex colour")
-	check(fade.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
-		"blend-enabled shape is TRANSPARENCY_ALPHA (got %d)" % fade.transparency)
-	check(fade.blend_mode == BaseMaterial3D.BLEND_MODE_MIX,
-		"src=SRC_ALPHA dst=INV_SRC_ALPHA maps to MIX (got %d)" % fade.blend_mode)
-	check(fade.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED,
-		"BSShaderNoLightingProperty is unshaded (got %d)" % fade.shading_mode)
+	check(bool(fade["vertex_color"]), "texture-less shape reads vertex colour")
+	check(fade["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA,
+		"blend-enabled shape is TRANSPARENCY_ALPHA (got %d)" % fade["transparency"])
+	check(fade["blend_mode"] == BaseMaterial3D.BLEND_MODE_MIX,
+		"src=SRC_ALPHA dst=INV_SRC_ALPHA maps to MIX (got %d)" % fade["blend_mode"])
+	check(fade["shading_mode"] == BaseMaterial3D.SHADING_MODE_UNSHADED,
+		"BSShaderNoLightingProperty is unshaded (got %d)" % fade["shading_mode"])
 	root.queue_free()
 
 
@@ -575,8 +575,8 @@ func test_texture_conventions() -> void:
 		if not (node is MeshInstance3D):
 			continue
 		shapes += 1
-		var m: StandardMaterial3D = (node as MeshInstance3D).mesh.surface_get_material(0)
-		if m.albedo_texture != null:
+		var m: Material = (node as MeshInstance3D).mesh.surface_get_material(0)
+		if bool(NifMaterialBuilderScript.render_state(m)["has_albedo_texture"]):
 			textured += 1
 	check(shapes == 2, "2 shapes (got %d)" % shapes)
 	check(textured == 2, "both shapes resolved an albedo texture (got %d)" % textured)
@@ -1010,26 +1010,26 @@ func test_external_emittance_shapes() -> void:
 		check(marked != null and bool(marked.get_meta("nif_external_emittance", false)),
 			"%s is marked for placement XEMI" % String(entry[1]))
 		if marked != null:
-			var mat := marked.mesh.surface_get_material(0) as StandardMaterial3D
+			var mat := NifMaterialBuilderScript.render_state(marked.mesh.surface_get_material(0))
 			var is_shaft: bool = bool(entry[3])
-			check(mat.proximity_fade_enabled == is_shaft and
-				mat.distance_fade_mode == (BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+			check(bool(mat["proximity_fade"]) == is_shaft and
+				mat["distance_fade_mode"] == (BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
 					if is_shaft else BaseMaterial3D.DISTANCE_FADE_DISABLED),
 				"%s uses soft clip and near fade only for additive rays" % String(entry[1]))
 			if is_shaft:
-				check(is_equal_approx(mat.proximity_fade_distance, 1.0) and
-					is_equal_approx(mat.distance_fade_max_distance, 1.5) and
-					is_equal_approx(mat.albedo_color.a, 0.2) and
-					mat.cull_mode == BaseMaterial3D.CULL_DISABLED,
+				check(is_equal_approx(mat["proximity_fade_distance"], 1.0) and
+					is_equal_approx(mat["distance_fade_max_distance"], 1.5) and
+					is_equal_approx((mat["albedo_color"] as Color).a, 0.2) and
+					mat["cull_mode"] == BaseMaterial3D.CULL_DISABLED,
 					"%s has shaft fades, 20%% alpha and two-sided faces" % String(entry[1]))
 		if not String(entry[2]).is_empty():
 			var unmarked := _find_authored_node(root, String(entry[2])) as MeshInstance3D
 			check(unmarked != null and not bool(unmarked.get_meta("nif_external_emittance", false)),
 				"%s is not marked for placement XEMI" % String(entry[2]))
 			if unmarked != null:
-				var unmarked_mat := unmarked.mesh.surface_get_material(0) as StandardMaterial3D
-				check(not unmarked_mat.proximity_fade_enabled and
-					unmarked_mat.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED,
+				var unmarked_mat := NifMaterialBuilderScript.render_state(unmarked.mesh.surface_get_material(0))
+				check(not bool(unmarked_mat["proximity_fade"]) and
+					unmarked_mat["distance_fade_mode"] == BaseMaterial3D.DISTANCE_FADE_DISABLED,
 					"%s has no light-shaft fade" % String(entry[2]))
 		root.queue_free()
 
@@ -1075,16 +1075,16 @@ func test_dual_alpha_scissor() -> void:
 		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
 		check(bool(shape["alpha_test_enabled"]) == bool(entry[2]),
 			"%s authored test bit is %s" % [shape_name, str(entry[2])])
-		var mat: StandardMaterial3D = NifMaterialBuilderScript.build(shape, false, {})
-		check(mat.transparency == expected_mode,
+		var mat := NifMaterialBuilderScript.render_state(NifMaterialBuilderScript.build(shape, false, {}))
+		check(mat["transparency"] == expected_mode,
 			"%s selects expected transparency mode" % shape_name)
 		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
-			check(is_equal_approx(mat.alpha_scissor_threshold, float(entry[4])),
+			check(is_equal_approx(mat["alpha_scissor_threshold"], float(entry[4])),
 				"%s uses expected alpha-test cutoff" % shape_name)
 		else:
-			check(mat.blend_mode == int(entry[5]),
+			check(mat["blend_mode"] == int(entry[5]),
 				"%s uses its authored blend function" % shape_name)
-		check(mat.depth_draw_mode == int(entry[6]),
+		check(mat["depth_draw_mode"] == int(entry[6]),
 			"%s keeps authored depth-write flag" % shape_name)
 
 

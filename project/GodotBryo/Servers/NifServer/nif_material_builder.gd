@@ -11,8 +11,9 @@ class_name NifMaterialBuilder
 ## metadata onto whatever the path returns.
 ##
 ## Shapes with the Hair flag go to PATH_HAIR, shapes with the FaceGen flag to
-## PATH_SKIN, shapes with the Refraction flag to PATH_REFRACTION; every other
-## shape goes to PATH_STANDARD.
+## PATH_SKIN, shapes with the Refraction flag to PATH_REFRACTION,
+## BSShaderNoLightingProperty shapes to PATH_UNLIT; every other shape goes to
+## PATH_STANDARD.
 
 # For cache_key() only, which is static.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -42,7 +43,15 @@ const PATH_SKIN := &"skin"
 ## nothing: refraction is not built, and the shape drawn as its texture is an
 ## opaque white or flat surface.
 const PATH_REFRACTION := &"refraction"
-const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN, PATH_REFRACTION]
+## BSShaderNoLightingProperty shapes: 7,936 in the shipped corpus (effects,
+## glows, light cards, AO fades). Built as a ShaderMaterial on the unlit NIF
+## shader (shaders/nif_unlit.gdshaderinc), one generated variant per
+## compile-time render state, with instance uniforms for per-instance alpha,
+## colour, XEMI and UV.
+const PATH_UNLIT := &"unlit"
+const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN, PATH_REFRACTION, PATH_UNLIT]
+
+const UNLIT_SHADER_BODY := "res://GodotBryo/Servers/NifServer/shaders/nif_unlit.gdshaderinc"
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
@@ -70,6 +79,9 @@ const LIGHT_SHAFT_SOFT_CLIP_METERS := 1.0
 const LIGHT_SHAFT_NEAR_FADE_METERS := 1.5
 const LIGHT_SHAFT_ALPHA_SCALE := 0.2
 
+# Render state key -> the generated unlit Shader, shared by every material
+# with that state.
+static var _unlit_shaders := {}
 static var _overrides := {}  # path -> Callable(NifMaterialContext) -> Material
 static var _built_any := false
 
@@ -99,6 +111,8 @@ static func path_for(nd: Dictionary) -> StringName:
 		return PATH_SKIN
 	if _is_refraction(nd):
 		return PATH_REFRACTION
+	if String(nd.get("shader_type", "")) == "BSShaderNoLightingProperty":
+		return PATH_UNLIT
 	return PATH_STANDARD
 
 
@@ -193,6 +207,8 @@ static func _stock_builder(path: StringName) -> Callable:
 			return _build_skin
 		PATH_REFRACTION:
 			return _build_refraction
+		PATH_UNLIT:
+			return _build_unlit
 	return _build_standard
 
 
@@ -200,6 +216,8 @@ static func _stock_builder(path: StringName) -> Callable:
 static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName,
 		role_paths: Dictionary, used_slots: Dictionary) -> void:
 	material.set_meta("nif_material_path", path)
+	# Whether the diffuse was fetched alpha-safe; a texture swap keeps it.
+	material.set_meta("nif_alpha_safe", _alpha_safe(nd))
 	# Role -> authored path, including roles the material does not render.
 	material.set_meta("nif_texture_roles", role_paths)
 	material.set_meta("nif_shader_type", String(nd["shader_type"]))
@@ -343,6 +361,119 @@ static func _build_refraction(_context: NifMaterialContext) -> Material:
 	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	return mat
+
+
+## PATH_UNLIT's stock material. The mapping rules are _build_standard()'s
+## (shader depth flags, NiStencilProperty, NiAlphaProperty, the light-shaft
+## fades); their result is carried over into the unlit shader variant for its
+## compile-time state and into the variant's uniforms. Its render state is
+## also stored as `nif_render_state` metadata (render_state()).
+static func _build_unlit(context: NifMaterialContext) -> Material:
+	var rules := _build_standard(context) as StandardMaterial3D
+	var state := _standard_render_state(rules)
+	var mat := ShaderMaterial.new()
+	mat.shader = _unlit_shader(state)
+	mat.set_shader_parameter("albedo_color", rules.albedo_color)
+	mat.set_shader_parameter("texture_albedo", rules.albedo_texture)
+	mat.set_shader_parameter("use_vertex_color", 1.0 if rules.vertex_color_use_as_albedo else 0.0)
+	if state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+		mat.set_shader_parameter("alpha_scissor_threshold", rules.alpha_scissor_threshold)
+	if bool(state["proximity_fade"]):
+		mat.set_shader_parameter("proximity_fade_distance", rules.proximity_fade_distance)
+	if state["distance_fade_mode"] != BaseMaterial3D.DISTANCE_FADE_DISABLED:
+		mat.set_shader_parameter("distance_fade_min", rules.distance_fade_min_distance)
+		mat.set_shader_parameter("distance_fade_max", rules.distance_fade_max_distance)
+	mat.set_meta("nif_render_state", state)
+	return mat
+
+
+## A material's render state, whichever path built it: transparency,
+## blend_mode, shading_mode, depth_draw_mode, depth_test_disabled, cull_mode,
+## proximity_fade, distance_fade_mode (BaseMaterial3D's enums), and the values
+## vertex_color, has_albedo_texture, albedo_color, alpha_scissor_threshold,
+## proximity_fade_distance, distance_fade_max_distance. Empty for a material
+## that is neither a StandardMaterial3D nor built by PATH_UNLIT.
+static func render_state(material: Material) -> Dictionary:
+	if material is StandardMaterial3D:
+		return _standard_render_state(material as StandardMaterial3D)
+	if material != null and material.has_meta("nif_render_state"):
+		return material.get_meta("nif_render_state")
+	return {}
+
+
+static func _standard_render_state(mat: StandardMaterial3D) -> Dictionary:
+	return {
+		"transparency": mat.transparency,
+		"blend_mode": mat.blend_mode,
+		"shading_mode": mat.shading_mode,
+		"depth_draw_mode": mat.depth_draw_mode,
+		"depth_test_disabled": mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+		"cull_mode": mat.cull_mode,
+		"proximity_fade": mat.proximity_fade_enabled,
+		"distance_fade_mode": mat.distance_fade_mode,
+		"vertex_color": mat.vertex_color_use_as_albedo,
+		"has_albedo_texture": mat.albedo_texture != null,
+		"albedo_color": mat.albedo_color,
+		"alpha_scissor_threshold": mat.alpha_scissor_threshold,
+		"proximity_fade_distance": mat.proximity_fade_distance,
+		"distance_fade_max_distance": mat.distance_fade_max_distance,
+	}
+
+
+## The unlit shader variant for a render state, generated once per
+## compile-time combination and shared.
+static func _unlit_shader(state: Dictionary) -> Shader:
+	var modes: PackedStringArray = ["unshaded"]
+	var defines: PackedStringArray = []
+	match int(state["transparency"]):
+		BaseMaterial3D.TRANSPARENCY_ALPHA:
+			defines.append("NIF_ALPHA")
+			match int(state["blend_mode"]):
+				BaseMaterial3D.BLEND_MODE_ADD:
+					modes.append("blend_add")
+				BaseMaterial3D.BLEND_MODE_MUL:
+					modes.append("blend_mul")
+				_:
+					modes.append("blend_mix")
+		BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+			defines.append("NIF_ALPHA")
+			defines.append("NIF_SCISSOR")
+	match int(state["depth_draw_mode"]):
+		BaseMaterial3D.DEPTH_DRAW_ALWAYS:
+			modes.append("depth_draw_always")
+		BaseMaterial3D.DEPTH_DRAW_DISABLED:
+			modes.append("depth_draw_never")
+		_:
+			modes.append("depth_draw_opaque")
+	if bool(state["depth_test_disabled"]):
+		modes.append("depth_test_disabled")
+	match int(state["cull_mode"]):
+		BaseMaterial3D.CULL_DISABLED:
+			modes.append("cull_disabled")
+		BaseMaterial3D.CULL_FRONT:
+			modes.append("cull_front")
+		_:
+			modes.append("cull_back")
+	if bool(state["proximity_fade"]):
+		defines.append("NIF_PROXIMITY_FADE")
+	if int(state["distance_fade_mode"]) != BaseMaterial3D.DISTANCE_FADE_DISABLED:
+		defines.append("NIF_DISTANCE_FADE")
+	var key := ", ".join(modes) + " | " + " ".join(defines)
+	if _unlit_shaders.has(key):
+		return _unlit_shaders[key]
+	var code := "shader_type spatial;\nrender_mode %s;\n" % ", ".join(modes)
+	for define in defines:
+		code += "#define %s\n" % define
+	code += "#include \"%s\"\n" % UNLIT_SHADER_BODY
+	var shader := Shader.new()
+	shader.code = code
+	_unlit_shaders[key] = shader
+	return shader
+
+
+## The number of unlit shader variants generated so far.
+static func unlit_variant_count() -> int:
+	return _unlit_shaders.size()
 
 
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth
