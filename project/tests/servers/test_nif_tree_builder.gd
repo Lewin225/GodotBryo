@@ -807,9 +807,12 @@ func test_prefer_static() -> void:
 	normal.queue_free()
 	flat.queue_free()
 
-	# Dynamic content is a refusal with a reason, not a silent ignore.
-	for pair in [[DOOR, "AnimationPlayer"], ["meshes/characters/_male/skeleton.nif", "Skeleton3D"],
-			[BILLBOARD, "NiBillboardNode"]]:
+	# Dynamic content is a refusal with a reason, not a silent ignore. The
+	# reason is the first blocker met: the skeleton and the fireball carry free
+	# controllers, so an AnimationPlayer holds their FreeControllers clips and is
+	# met before their Skeleton3D and NiBillboardNode.
+	for pair in [[DOOR, "AnimationPlayer"], ["meshes/characters/_male/skeleton.nif", "AnimationPlayer"],
+			[BILLBOARD, "AnimationPlayer"]]:
 		var d := NifSource.new()
 		var dr: Dictionary = ArchiveServer.read(String(pair[0]))
 		if not bool(dr["found"]) or not d.load(PackedByteArray(dr["data"])):

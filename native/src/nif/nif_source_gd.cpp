@@ -24,6 +24,7 @@ void NifSource::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_nodes"), &NifSource::get_nodes);
 	ClassDB::bind_method(D_METHOD("get_object_palettes"), &NifSource::get_object_palettes);
 	ClassDB::bind_method(D_METHOD("get_sequences"), &NifSource::get_sequences);
+	ClassDB::bind_method(D_METHOD("get_free_controllers"), &NifSource::get_free_controllers);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifSource::get_collision_shapes);
 	ClassDB::bind_method(D_METHOD("get_collision_bodies"), &NifSource::get_collision_bodies);
 }
@@ -351,6 +352,28 @@ Dictionary interpolator_dict(const nifsrc::Interpolator &ip) {
 }
 
 } // namespace
+
+Array NifSource::get_free_controllers() const {
+	Array out;
+	for (const auto &fc : doc_.free_controllers) {
+		Dictionary b;
+		b["block_index"] = static_cast<int>(fc.controller_block);
+		b["node_name"] = String(fc.block.node_name.c_str());
+		b["property_type"] = String();
+		b["controller_type"] = String(fc.block.controller_type.c_str());
+		b["controller_id"] = String(fc.block.controller_id.c_str());
+		b["interpolator_id"] = String();
+		b["priority"] = 0;
+		b["interpolator"] = interpolator_dict(fc.block.interpolator);
+		b["flags"] = static_cast<int>(fc.flags);
+		b["frequency"] = fc.frequency;
+		b["phase"] = fc.phase;
+		b["start_time"] = fc.start_time;
+		b["stop_time"] = fc.stop_time;
+		out.push_back(b);
+	}
+	return out;
+}
 
 Array NifSource::get_sequences() const {
 	Array out;

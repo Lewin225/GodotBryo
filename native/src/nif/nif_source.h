@@ -495,12 +495,32 @@ struct Sequence {
 	std::vector<TextKey> text_keys;
 };
 
+// A time controller that no NiControllerSequence link drives: Gamebryo runs it
+// on its own clock (its flags' cycle type and active bit, frequency, phase,
+// start and stop). Census of the shipped NIFs: 1,441 manager-less files carry
+// transform, texture transform, visibility, material colour, alpha or
+// emittance controllers like this; the cycle type is clamp on 7,687 and loop
+// on 1,499 of them. `block` holds the target (the owning node's name; a
+// property's controller names its node), the controller type, an ID in the
+// form sequence links use where it is known (texture transform:
+// <shaderMap>-<slot>-<operation>), and the interpolator.
+struct FreeController {
+	uint32_t controller_block = 0;
+	ControlledBlock block;
+	uint16_t flags = 0;
+	float frequency = 1.0f;
+	float phase = 0.0f;
+	float start_time = 0.0f;
+	float stop_time = 0.0f;
+};
+
 struct Document {
 	std::string version;
 	uint32_t block_count = 0;
 	std::vector<SceneNode> nodes;
 	std::vector<ObjectPalette> palettes;
 	std::vector<Sequence> sequences;
+	std::vector<FreeController> free_controllers;
 	// True when the declared bones form a parent-child hierarchy inside THIS
 	// file, i.e. the file contains a usable skeleton rather than a reference
 	// to one held elsewhere. skeleton.nif is true; a body part whose bone list

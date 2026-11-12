@@ -146,6 +146,10 @@ private:
 		int track = -1;
 		Animation::TrackType type = Animation::TYPE_POSITION_3D;
 		int priority = 0;
+		// A value track's property on a node target, set as a float (the NIF
+		// shaders' instance uniforms, `instance_shader_parameters/<name>`).
+		// Empty for transform and visibility tracks.
+		StringName property;
 	};
 
 	// A clip playing in a slot.

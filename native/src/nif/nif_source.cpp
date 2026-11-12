@@ -637,6 +637,92 @@ void fill_bspline(const nifly::NiHeader &header, nifly::NiBSplineTransformInterp
 	}
 }
 
+void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Interpolator &out);
+
+// The controller ID a sequence link would carry for `controller`, where the
+// controller's own fields give it: an NiTextureTransformController's
+// <shaderMap>-<slot>-<operation>. Empty for any other controller.
+std::string free_controller_id(nifly::NiTimeController *controller) {
+	auto *texture = dynamic_cast<nifly::NiTextureTransformController *>(controller);
+	if (texture == nullptr) {
+		return std::string();
+	}
+	static const char *kOperations[] = { "TT_TRANSLATE_U", "TT_TRANSLATE_V", "TT_ROTATE", "TT_SCALE_U", "TT_SCALE_V" };
+	const uint32_t operation = static_cast<uint32_t>(texture->operation);
+	if (operation >= 5) {
+		return std::string();
+	}
+	return std::to_string(texture->shaderMap ? 1 : 0) + "-" + std::to_string(static_cast<uint32_t>(texture->textureSlot))
+			+ "-" + kOperations[operation];
+}
+
+// Appends every controller on `owner`'s chain (nextControllerRef) that is not
+// in `linked` and not a manager, targeting the node named `node_name`.
+void collect_chain(const nifly::NiHeader &header, nifly::NiObjectNET *owner, const std::string &node_name,
+		const std::set<uint32_t> &linked, Document &doc) {
+	if (owner == nullptr) {
+		return;
+	}
+	uint32_t ctrl = owner->controllerRef.IsEmpty() ? nifly::NIF_NPOS : owner->controllerRef.index;
+	for (int guard = 0; ctrl != nifly::NIF_NPOS && guard < 64; guard++) {
+		auto *controller = header.GetBlock<nifly::NiTimeController>(ctrl);
+		if (controller == nullptr) {
+			break;
+		}
+		const uint32_t index = ctrl;
+		ctrl = controller->nextControllerRef.IsEmpty() ? nifly::NIF_NPOS : controller->nextControllerRef.index;
+		if (linked.count(index) > 0 || dynamic_cast<nifly::NiControllerManager *>(controller) != nullptr) {
+			continue;
+		}
+		FreeController out;
+		out.controller_block = index;
+		out.block.node_name = node_name;
+		out.block.controller_type = controller->GetBlockName();
+		out.block.controller_id = free_controller_id(controller);
+		out.flags = controller->flags;
+		out.frequency = controller->frequency;
+		out.phase = controller->phase;
+		out.start_time = controller->startTime;
+		out.stop_time = controller->stopTime;
+		if (auto *single = dynamic_cast<nifly::NiSingleInterpController *>(controller)) {
+			if (!single->interpolatorRef.IsEmpty()) {
+				fill_interpolator(header, single->interpolatorRef.index, out.block.interpolator);
+			}
+		}
+		doc.free_controllers.push_back(std::move(out));
+	}
+}
+
+// Every controller on a node or on one of its properties that no sequence link
+// names (FreeController).
+void collect_free_controllers(const nifly::NiHeader &header, Document &doc) {
+	std::set<uint32_t> linked;
+	for (uint32_t i = 0; i < doc.block_count; i++) {
+		auto *seq = header.GetBlock<nifly::NiControllerSequence>(i);
+		if (seq == nullptr) {
+			continue;
+		}
+		for (const auto &link : seq->controlledBlocks) {
+			if (!link.controllerRef.IsEmpty()) {
+				linked.insert(link.controllerRef.index);
+			}
+		}
+	}
+	for (const auto &node : doc.nodes) {
+		auto *av = header.GetBlock<nifly::NiAVObject>(node.block_index);
+		if (av == nullptr) {
+			continue;
+		}
+		collect_chain(header, av, node.name, linked, doc);
+		for (const auto &prop : av->propertyRefs) {
+			if (prop.IsEmpty()) {
+				continue;
+			}
+			collect_chain(header, header.GetBlock<nifly::NiProperty>(prop.index), node.name, linked, doc);
+		}
+	}
+}
+
 void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Interpolator &out) {
 	auto *interp = header.GetBlock<nifly::NiInterpolator>(block_index);
 	if (interp == nullptr) {
@@ -1302,6 +1388,8 @@ Document load(const uint8_t *data, size_t size) {
 		}
 		doc.sequences.push_back(std::move(out));
 	}
+
+	collect_free_controllers(header, doc);
 
 	for (uint32_t i = 0; i < doc.block_count; i++) {
 		auto *palette = header.GetBlock<nifly::NiDefaultAVObjectPalette>(i);

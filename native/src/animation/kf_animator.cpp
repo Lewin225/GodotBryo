@@ -416,10 +416,12 @@ bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
 	return !r_clip.tracks.empty();
 }
 
-// Maps the clip's transform and visibility tracks to the Node3Ds under
-// node_root named as their paths (the root itself included) and reads each
-// track's priority. Root motion does not apply: Bip01 and Bip01 NonAccum
-// tracks are skipped. False when no track names a node.
+// Maps the clip's transform, visibility and value tracks to the Node3Ds under
+// node_root and reads each track's priority. A track's node part is a path
+// from node_root (a NIF's own clips) or a node's name (KF clips), the root
+// itself included. A value track other than visibility sets its property as a
+// float. Root motion does not apply: Bip01 and Bip01 NonAccum tracks are
+// skipped. False when no track names a node.
 bool KfAnimator::_bind_nodes(Clip &r_clip) const {
 	Node3D *root = _node_root();
 	if (root == nullptr) {
@@ -435,11 +437,16 @@ bool KfAnimator::_bind_nodes(Clip &r_clip) const {
 		const bool transform = type == Animation::TYPE_POSITION_3D || type == Animation::TYPE_ROTATION_3D ||
 				type == Animation::TYPE_SCALE_3D;
 		const String path = String(animation->track_get_path(track));
-		const bool visibility = type == Animation::TYPE_VALUE && path.ends_with(visibility_suffix);
-		if ((!transform && !visibility) || animation->track_get_key_count(track) == 0) {
+		const bool value = type == Animation::TYPE_VALUE;
+		const bool visibility = value && path.ends_with(visibility_suffix);
+		if ((!transform && !value) || animation->track_get_key_count(track) == 0) {
 			continue;
 		}
-		const String name = visibility ? path.substr(0, path.length() - visibility_suffix.length()) : path;
+		const int colon = path.find(":");
+		if (value && colon < 0) {
+			continue;
+		}
+		const String name = value ? path.substr(0, colon) : path;
 		if (name == root_bone || name == non_accum_bone) {
 			continue;
 		}
@@ -447,7 +454,12 @@ bool KfAnimator::_bind_nodes(Clip &r_clip) const {
 		if (String(root->get_name()) == name) {
 			target = root;
 		} else {
-			target = Object::cast_to<Node3D>(root->find_child(name, true, false));
+			target = Object::cast_to<Node3D>(root->get_node_or_null(NodePath(name)));
+			if (target == nullptr) {
+				// A KF clip's bare name, or a path whose hierarchy was
+				// collapsed since (an actor's skinned part): its last node.
+				target = Object::cast_to<Node3D>(root->find_child(name.get_file(), true, false));
+			}
 		}
 		if (target == nullptr) {
 			continue;
@@ -457,6 +469,9 @@ bool KfAnimator::_bind_nodes(Clip &r_clip) const {
 		bound.track = track;
 		bound.type = type;
 		bound.priority = static_cast<int>(priorities.get(path, 0));
+		if (value && !visibility) {
+			bound.property = StringName(path.substr(colon + 1));
+		}
 		r_clip.tracks.push_back(bound);
 	}
 	return !r_clip.tracks.empty();
@@ -937,6 +952,8 @@ void KfAnimator::_write_node_pose() {
 		return;
 	}
 	std::map<uint64_t, std::vector<std::vector<Sample>>> channels;
+	// Node -> property -> its samples, one per clip keying it.
+	std::map<uint64_t, std::map<StringName, std::vector<Sample>>> properties;
 	auto add_clip = [&](const Clip &clip) {
 		if (clip.weight <= WEIGHT_EPSILON) {
 			return;
@@ -950,6 +967,12 @@ void KfAnimator::_write_node_pose() {
 			sample.priority = bound.priority;
 			sample.weight = clip.weight;
 			sample.serial = clip.serial;
+			if (!bound.property.is_empty()) {
+				const Variant property_value = clip.animation->value_track_interpolate(bound.track, time);
+				sample.vector.x = static_cast<float>(property_value);
+				properties[static_cast<uint64_t>(bound.node)][bound.property].push_back(sample);
+				continue;
+			}
 			int channel = CHANNEL_VISIBLE;
 			if (bound.type == Animation::TYPE_VALUE) {
 				const bool shown = clip.animation->value_track_interpolate(bound.track, time);
@@ -976,6 +999,25 @@ void KfAnimator::_write_node_pose() {
 		}
 		for (const Clip &clip : slot.fading) {
 			add_clip(clip);
+		}
+	}
+	// A property takes the highest priority clip's value, the newest at a tie,
+	// as visibility does.
+	for (auto &entry : properties) {
+		Node3D *node = Object::cast_to<Node3D>(ObjectDB::get_instance(ObjectID(entry.first)));
+		if (node == nullptr) {
+			continue;
+		}
+		for (auto &property : entry.second) {
+			const Sample *chosen = &property.second.front();
+			for (const Sample &sample : property.second) {
+				const bool higher = sample.priority > chosen->priority;
+				const bool newer_tie = sample.priority == chosen->priority && sample.serial > chosen->serial;
+				if (higher || newer_tie) {
+					chosen = &sample;
+				}
+			}
+			node->set(property.first, chosen->vector.x);
 		}
 	}
 	for (auto &entry : channels) {

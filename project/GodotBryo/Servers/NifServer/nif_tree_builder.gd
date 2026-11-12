@@ -15,6 +15,11 @@ class_name NifTreeBuilder
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
 const NifAnimationConverterScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_converter.gd")
+const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
+## NiTimeController flags: bits 1-2 the cycle type (0 loop, 1 reverse, 2
+## clamp, the encoding of a sequence's cycle type) and bit 3 active.
+const FREE_CONTROLLER_TIMING_FLAGS := 0xE
+const FREE_CONTROLLER_ACTIVE := 0x8
 const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
@@ -781,7 +786,8 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 		skeleton: Skeleton3D, bone_of_node: Dictionary) -> Dictionary:
 	var animated := {}
 	var sequences: Array = src.get_sequences()
-	if sequences.is_empty():
+	var free_controllers: Array = src.get_free_controllers()
+	if sequences.is_empty() and free_controllers.is_empty():
 		return animated
 
 	var index_of_name := _animation_name_index(src, nodes)
@@ -800,6 +806,8 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 		# names use neither -- but the same escape is applied for the same
 		# reason it is applied to node names: so the mapping stays reversible.
 		library.add_animation(NifNamesScript.escape(seq_name), anim)
+	_add_free_controller_clips(library, free_controllers, index_of_name, root, built, skeleton,
+		bone_of_node, animated)
 
 	if library.get_animation_list().is_empty():
 		if not unbound.is_empty():
@@ -810,9 +818,67 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 	player.name = "AnimationPlayer"
 	root.add_child(player)
 	player.add_animation_library("", library)
+	if NifObjectAnimatorScript.has_work(library):
+		var object_animator: Node = NifObjectAnimatorScript.new()
+		object_animator.name = NifObjectAnimatorScript.NODE_NAME
+		root.add_child(object_animator)
 	if not unbound.is_empty():
 		player.set_meta("nif_unbound_sequences", unbound)
 	return animated
+
+
+## Adds a clip for each timing group of the file's free controllers
+## (NifSource.get_free_controllers(): controllers no sequence drives, each on
+## its own clock). Controllers whose start, stop, cycle type, frequency, phase
+## and active bit all match share a clip, since they play on one clock; each
+## other timing is its own clip, so every free controller is in the library
+## whatever its length. Clips are named FreeControllers0.. in file order of
+## their first controller, and carry `nif_free_controllers` (true),
+## `nif_frequency`, `nif_phase`, `nif_active` and `nif_autoplay`: active and
+## driving no declared bone (a rig's own free controllers are its pose, which
+## the actor's animator owns). A clip that resolves nothing is left out.
+static func _add_free_controller_clips(library: AnimationLibrary, free_controllers: Array,
+		index_of_name: Dictionary, root: Node3D, built: Array, skeleton: Skeleton3D,
+		bone_of_node: Dictionary, animated: Dictionary) -> void:
+	var groups := {}
+	var order: Array = []
+	for fc in free_controllers:
+		var key := "%f|%f|%d|%f|%f" % [float(fc["start_time"]), float(fc["stop_time"]),
+			int(fc["flags"]) & FREE_CONTROLLER_TIMING_FLAGS, float(fc["frequency"]), float(fc["phase"])]
+		if not groups.has(key):
+			groups[key] = []
+			order.append(key)
+		(groups[key] as Array).append(fc)
+	var clip_count := 0
+	for key in order:
+		var group: Array = groups[key]
+		var first: Dictionary = group[0]
+		var flags := int(first["flags"])
+		var sequence := {
+			"name": "FreeControllers%d" % clip_count,
+			"start_time": float(first["start_time"]),
+			"stop_time": float(first["stop_time"]),
+			"cycle_type": (flags >> 1) & 0x3,
+			"accum_root_name": "",
+			"text_keys": [],
+			"controlled_blocks": group,
+		}
+		var anim := _make_animation(sequence, index_of_name, root, built, skeleton, bone_of_node, animated)
+		if anim == null:
+			continue
+		var drives_bone := false
+		for fc in group:
+			var target := String(fc["node_name"])
+			if index_of_name.has(target) and bone_of_node.has(int(index_of_name[target])):
+				drives_bone = true
+		var active := (flags & FREE_CONTROLLER_ACTIVE) != 0
+		anim.set_meta("nif_free_controllers", true)
+		anim.set_meta("nif_frequency", float(first["frequency"]))
+		anim.set_meta("nif_phase", float(first["phase"]))
+		anim.set_meta("nif_active", active)
+		anim.set_meta("nif_autoplay", active and not drives_bone)
+		library.add_animation(String(sequence["name"]), anim)
+		clip_count += 1
 
 
 ## One Animation from one NiControllerSequence, or null when nothing in it

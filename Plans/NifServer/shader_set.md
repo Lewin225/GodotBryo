@@ -240,6 +240,42 @@ animated and tinted shapes on their shared material instead of a copy per instan
    only doors, furniture, activators, containers and effects play clips. A NIF with two
    NiControllerManagers can repeat sequence names (`nv_freesidesign-large_lights.nif`, two
    `Left` and two `Right`); the tree builder does not de-duplicate clip names.
+   Free controllers built: controllers no sequence link drives (1,441 manager-less files; clamp
+   7,687, loop 1,499, reverse 14; active 8,401, inactive 799), exported by
+   `NifSource.get_free_controllers()` with their timing (1,105 free texture transform blocks,
+   matching the census; a property shared by several shapes exports its controller once per
+   shape, 181). NifTreeBuilder adds one `FreeControllers<n>` clip per timing group to the
+   AnimationPlayer library; a group that is active and drives no declared bone auto-plays through
+   `NifObjectAnimator`: a KfAnimator child, one slot per clip from 1 (slot 0 is left for
+   PlayGroup), speed the frequency, sought to the phase (`# ASSUMPTION` phase is seconds).
+   Skeleton NIFs (61; 2,450 clamped transform controllers, 951 with unset times; 2 looping, both
+   in `nvmrhouse\skeleton.nif`) keep their free controllers library-only; their bones are the
+   actor animator's. KfAnimator now binds a track's node part as a path from `node_root` first,
+   and sets any other value track's property as a float. Census tools: `manager_census.cpp`,
+   `skeleton_controller_census.cpp` (not committed). Test: `tests/servers/test_nif_free_controllers`.
+   A free controller starts at its own time at creation: app time x frequency + phase, with app
+   time 0 when the object is created, so clip time phase - start (clamped, or wrapped when it
+   loops). Weapon parts' free controllers (2,218 clamped transform controllers under weapons\)
+   run from a displaced pose at -0.033 s to the part's NIF rest pose at 0 s: found by reading
+   huntingrifle.nif's ##HRBolt, ##HRClip and ##HRTrigger keys against their rest transforms. At
+   creation they are already at their end: their end value (the rest pose) is written once and
+   the slot freed, so a later driver wins (the holster hide). Playing them from their first key
+   had left the bolt, the .44's cylinder and the missile launcher's barrel a frame short of rest;
+   fixed, `test_nif_free_controllers` checks the rifle's parts end exactly at rest. A clamped clip
+   that ends later frees its slot one frame after its end, once KfAnimator has written its end
+   value (it emits clip_finished before writing that frame). `# ASSUMPTION`: phase is in seconds.
+   Not known: KfAnimator's frame cost with one per animated world object.
+   Object groups built: NifObjectAnimator (renamed from the free-controller player) plays the
+   object's group in KfAnimator slot 0. On spawn its default group: Idle, else SpecialIdle
+   (census of records using a manager NIF: unscripted looping ones are Idle or SpecialIdle, 55 and
+   48 STATs, 222 TERMs SpecialIdle, 21 MSTTs Idle; Open/Close, Forward/Backward, Left/Right are
+   states). PlayGroup (111 scripts) records the group on the reference (`anim_group`, saved) and
+   EsmNode plays it; IsAnimPlaying compares it (`# ASSUMPTION`). PlayGroup's flag (1 x291, 0 x169,
+   2 x53) is not read. A clamped group holds its last frame and does not return to the default
+   (`# ASSUMPTION`). Doors, furniture, activators and containers still play Open/Close/Use through
+   the AnimationPlayer; moving them to slot 0 is to do. Test: `tests/servers/test_nif_object_animator`.
+   Skinned actor parts keep their AnimationPlayer and ObjectAnimator through skin compaction
+   (Securitron screens); not checked in game.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.

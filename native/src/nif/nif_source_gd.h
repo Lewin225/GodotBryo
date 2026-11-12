@@ -38,6 +38,11 @@ public:
 
 	// One entry per NiControllerSequence, target strings resolved.
 	Array get_sequences() const;
+	// Controllers no sequence link drives, each as a controlled block
+	// (node_name, controller_type, controller_id, interpolator) with its own
+	// clock: flags, frequency, phase, start_time, stop_time, and the
+	// controller's block_index.
+	Array get_free_controllers() const;
 
 	// Flattened collision shapes and the rigid bodies that own them.
 	Array get_collision_shapes() const;
