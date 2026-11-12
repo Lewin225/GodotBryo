@@ -196,6 +196,25 @@ func test_kf_delivery_and_cache() -> void:
 	check(int(stats["kf_duplicate_waiter_count"]) == 3, "3 KF waiters coalesced (%d)" % stats["kf_duplicate_waiter_count"])
 	check(int(stats["document_cache_misses"]) == 1, "KF cache miss parsed one document (%d)" % stats["document_cache_misses"])
 	check(FileAccess.file_exists(disk_path), "converted KF library persisted under user://")
+	check(disk_path.begins_with(NifServer.kf_cache_version_dir()) and disk_path.ends_with(".res"),
+		"it is a .res in the current version's folder (%s)" % disk_path)
+	var magic := FileAccess.open(disk_path, FileAccess.READ)
+	check(magic != null and magic.get_buffer(4).get_string_from_ascii() == "RSCC",
+		"it is a compressed binary resource")
+	if magic != null:
+		magic.close()
+	# A stale version's folder and a loose file of the old one-folder layout
+	# are deleted on prune; the current entry is kept.
+	var root := ProjectSettings.globalize_path(NifServer.KF_CACHE_DIR)
+	var stale_folder := root.path_join("nifserver-kf-stale-test")
+	DirAccess.make_dir_recursive_absolute(stale_folder)
+	FileAccess.open(stale_folder.path_join("old.res"), FileAccess.WRITE).close()
+	FileAccess.open(root.path_join("old-layout.tres"), FileAccess.WRITE).close()
+	var pruned := NifServer.prune_kf_disk_cache()
+	check(pruned >= 2 and not DirAccess.dir_exists_absolute(stale_folder)
+		and not FileAccess.file_exists(root.path_join("old-layout.tres")),
+		"prune deletes a stale version's folder and loose old-layout files (%d)" % pruned)
+	check(FileAccess.file_exists(disk_path), "prune keeps the current version's entry")
 
 	NifServer.purge_all()
 	NifServer.reset_stats()

@@ -15,9 +15,15 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 
 ## The raw-target AnimationLibrary schema. Bump when NifAnimationBuilder's
 ## Godot resource representation changes; old disk entries then cannot be
-## mistaken for a library compiled under a different binding contract.
+## mistaken for a library compiled under a different binding contract. Each
+## version has its own folder under KF_CACHE_DIR; prune_kf_disk_cache() deletes
+## every other version's folder (and the loose files of the old one-folder
+## layout), so a bump does not leave the old entries behind.
 const KF_CACHE_VERSION := "nifserver-kf-v9"
 const KF_CACHE_DIR := "user://nifserver_kf_cache"
+## A compressed binary resource's first four bytes (ResourceSaver with
+## FLAG_COMPRESS); an uncompressed one starts RSRC.
+const KF_CACHE_MAGIC: Array[String] = ["RSCC", "RSRC"]
 
 ## All editor-object classification and visibility belongs here. Keeping the
 ## policy at NIF delivery means it covers every consumer (typed cells, world
@@ -182,6 +188,7 @@ func _ready() -> void:
 	_archive_server = get_tree().root.get_node_or_null("ArchiveServer")
 	if _archive_server == null:
 		push_error("NifServer: ArchiveServer autoload not found; every request will fail")
+	prune_kf_disk_cache()
 
 
 func _exit_tree() -> void:
@@ -702,20 +709,60 @@ func _kf_cache_identity(key: String) -> String:
 	return KF_CACHE_VERSION + "|" + key + "|" + archive
 
 
+## The current KF_CACHE_VERSION's folder.
+static func kf_cache_version_dir() -> String:
+	return KF_CACHE_DIR.path_join(KF_CACHE_VERSION)
+
+
+## A KF's disk cache entry: a compressed binary resource in the current
+## version's folder.
 func _kf_cache_path(key: String) -> String:
-	return KF_CACHE_DIR.path_join(_kf_cache_identity(key).sha256_text() + ".tres")
+	return kf_cache_version_dir().path_join(_kf_cache_identity(key).sha256_text() + ".res")
+
+
+## Deletes the disk cache entries no current request can read: every folder
+## under KF_CACHE_DIR but the current version's, and every loose file there
+## (the old layout kept all versions' text resources in one folder). Returns
+## the number of files deleted.
+static func prune_kf_disk_cache() -> int:
+	var root := ProjectSettings.globalize_path(KF_CACHE_DIR)
+	if not DirAccess.dir_exists_absolute(root):
+		return 0
+	var deleted := 0
+	for file in DirAccess.get_files_at(root):
+		if DirAccess.remove_absolute(root.path_join(file)) == OK:
+			deleted += 1
+	for folder in DirAccess.get_directories_at(root):
+		if folder != KF_CACHE_VERSION:
+			deleted += _remove_folder(root.path_join(folder))
+	return deleted
+
+
+## Deletes `folder` and everything in it; returns the number of files deleted.
+static func _remove_folder(folder: String) -> int:
+	var deleted := 0
+	for file in DirAccess.get_files_at(folder):
+		if DirAccess.remove_absolute(folder.path_join(file)) == OK:
+			deleted += 1
+	for child in DirAccess.get_directories_at(folder):
+		deleted += _remove_folder(folder.path_join(child))
+	DirAccess.remove_absolute(folder)
+	return deleted
 
 
 func _load_kf_disk_cache(key: String) -> AnimationLibrary:
 	var path := _kf_cache_path(key)
 	if not FileAccess.file_exists(path):
 		return null
-	# ResourceLoader reports malformed text resources as engine errors. Reject
-	# obvious non-TRES cache corruption first so a stale partial write remains a
-	# quiet cache miss rather than a user-visible loading failure.
+	# ResourceLoader reports malformed resources as engine errors. Reject a
+	# file without a binary resource's magic first so a stale partial write
+	# remains a quiet cache miss rather than a user-visible loading failure.
 	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null or not file.get_line().begins_with("[gd_resource"):
+	if file == null or file.get_length() < 4:
 		return null
+	if not KF_CACHE_MAGIC.has(file.get_buffer(4).get_string_from_ascii()):
+		return null
+	file.close()
 	var resource := ResourceLoader.load(path, "AnimationLibrary", ResourceLoader.CACHE_MODE_IGNORE)
 	return resource as AnimationLibrary
 
@@ -723,7 +770,7 @@ func _load_kf_disk_cache(key: String) -> AnimationLibrary:
 func _save_kf_disk_cache(key: String, library: AnimationLibrary) -> bool:
 	if library == null:
 		return false
-	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(KF_CACHE_DIR)) != OK:
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(kf_cache_version_dir())) != OK:
 		return false
 	return ResourceSaver.save(library, _kf_cache_path(key), ResourceSaver.FLAG_COMPRESS) == OK
 

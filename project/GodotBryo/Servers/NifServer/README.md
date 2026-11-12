@@ -72,9 +72,12 @@ fingers and NonAccum most often), and 39,596 more have keys on some channels and
 on another (`native/tools/kf_static_pose_census`).
 Sequence names key the library --
 one resource rather than one `Animation`, because 33 shipped KFs carry 2-5 sequences. Delivered
-libraries are shared immutable resources. NifServer caches them in memory and as compressed
-resources under `user://nifserver_kf_cache/`, keyed by conversion schema, canonical path and the
-winning archive; the persistent cache is checked on a worker before BSA extraction or parsing.
+libraries are shared immutable resources. NifServer caches them in memory and as compressed binary
+resources (`.res`) under `user://nifserver_kf_cache/<KF_CACHE_VERSION>/`, keyed by conversion
+schema, canonical path and the winning archive; the persistent cache is checked on a worker before
+BSA extraction or parsing. On startup every other version's folder, and any loose file from the old
+one-folder text layout, is deleted (`prune_kf_disk_cache()`), so bumping `KF_CACHE_VERSION` does not
+leave the old entries on disk.
 
 **Companion LOD is an external asset rule, not an in-NIF mode.** `request_lod("foo.nif", ...)`
 canonicalizes `foo.nif`, looks for the archive-backed `foo_lod.nif`, then delegates to
