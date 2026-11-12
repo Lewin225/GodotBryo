@@ -108,6 +108,30 @@ func _register_defaults() -> void:
 	register("GetDisabled", func(_a, ctx: ScriptExecutionContext):
 		return 1 if ctx.calling_reference != null and ctx.calling_reference.is_disabled() else 0)
 
+	# `[Ref.]PlayGroup Group Flag`: plays an animation group on the calling
+	# reference's model (EsmReference.play_group(); the model's
+	# NifObjectAnimator). 111 of FalloutNV.esm's scripts call it, on object
+	# states (Forward 233 calls, Backward 85, Left 73, Right 59, SpecialIdle
+	# 46). The flag (1, 0 or 2) is not read.
+	register("PlayGroup", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.is_empty():
+			return 0
+		ctx.calling_reference.play_group(str(a[0]))
+		return 1)
+
+	# `[Ref.]IsAnimPlaying [Group]`: whether the calling reference's last played
+	# group is Group (case-insensitive), or with no Group, whether a group was
+	# played. # ASSUMPTION: compares PlayGroup's last group; a clamped group
+	# that reached its end still counts, and a model's default group counts
+	# only once a script played it.
+	register("IsAnimPlaying", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null:
+			return 0
+		var group := ctx.calling_reference.anim_group
+		if a.is_empty():
+			return 0 if group.is_empty() else 1
+		return 1 if group.to_lower() == str(a[0]).to_lower() else 0)
+
 	# `[Ref.]Activate [ActionRef] [RunOnActivateBlockFlag]`. The activator is
 	# ActionRef when given, else this dispatch's action reference. With the
 	# flag 1 the target's OnActivate block runs as for any activation;

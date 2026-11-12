@@ -37,6 +37,9 @@ const KNOWN_ARITIES := {
 	"getbuttonpressed": 0,
 	"getcurrenttime": 0,
 	"getself": 0,
+	# `IsAnimPlaying Group`: 34 scripts test it in conditions
+	# (Lucky38LightScript's `If (IsAnimPlaying Left != 1)`).
+	"isanimplaying": 1,
 	"getstage": 1,
 	"getstagedone": 2,
 	"getquestrunning": 1,

@@ -50,6 +50,8 @@ const SIGNATURES := {
 	"Abs|Sqrt": "X:number",
 	"GetSecondsPassed|GameDaysPassed|GetCurrentTime|GetRandomPercent": "",
 	"SwapTexture": "Ref:ref Block:string Path:string",
+	"PlayGroup": "Group:string Flag:int",
+	"IsAnimPlaying": "Group:string",
 	"Enable|Disable": "[Fade:flag]",
 	"GetDisabled|GetActionRef|GetSelf|IsWin32|IsXBox|IsPS3": "",
 	"Activate": "[ActionRef:ref] [RunOnActivateBlock:flag]",

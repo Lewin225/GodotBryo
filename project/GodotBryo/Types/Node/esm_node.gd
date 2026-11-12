@@ -2,6 +2,8 @@
 class_name EsmNode
 extends Node3D
 
+const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
+
 ## The desired paired-model tier. This is per placement, rather than state on
 ## the shared EsmBase, because WorldStreamer chooses it from tile residency.
 enum VisualDetail {
@@ -85,6 +87,8 @@ func _register_reference() -> void:
 		reference.teleported.connect(_on_reference_teleported)
 	if not reference.texture_swapped.is_connected(_apply_texture_swap):
 		reference.texture_swapped.connect(_apply_texture_swap)
+	if not reference.anim_group_played.is_connected(_play_anim_group):
+		reference.anim_group_played.connect(_play_anim_group)
 	_enable_chain.clear()
 	var link := reference
 	while link != null:
@@ -104,6 +108,8 @@ func _unregister_reference() -> void:
 		reference.teleported.disconnect(_on_reference_teleported)
 	if reference.texture_swapped.is_connected(_apply_texture_swap):
 		reference.texture_swapped.disconnect(_apply_texture_swap)
+	if reference.anim_group_played.is_connected(_play_anim_group):
+		reference.anim_group_played.disconnect(_play_anim_group)
 	for link in _enable_chain:
 		if link.enable_state_changed.is_connected(_apply_enable_state):
 			link.enable_state_changed.disconnect(_apply_enable_state)
@@ -359,9 +365,19 @@ func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
 	_active_visual_detail = detail
 	for block_name: String in reference.texture_swaps:
 		_apply_texture_swap(block_name)
+	if not reference.anim_group.is_empty():
+		_play_anim_group(reference.anim_group)
 	visual_detail_applied.emit(detail)
 	if detail == VisualDetail.FULL:
 		_on_nif_visual_ready(tree)
+
+## Plays the reference's animation group (PlayGroup) on the shown model's
+## NifObjectAnimator; a model without one has nothing to play.
+func _play_anim_group(group: String) -> void:
+	var visual := _visual_node(_active_visual_detail)
+	var object_animator := visual.get_node_or_null(NifObjectAnimatorScript.NODE_NAME) if visual != null else null
+	if object_animator != null:
+		object_animator.play_group(group)
 
 ## The NIF template only marks shapes with External_Emittance. XEMI belongs
 ## to this placement, so never mutate the material shared by other copies.

@@ -18,6 +18,9 @@ signal teleported(old_space_form_id: int, new_space_form_id: int)
 signal enable_state_changed
 ## Emitted when swap_texture() changes a block's texture.
 signal texture_swapped(block_name: String)
+## Emitted when PlayGroup plays an animation group on this reference
+## (play_group()); EsmNode plays it on the model.
+signal anim_group_played(group: String)
 
 ## XESP flags (xEdit's names).
 const ENABLE_PARENT_OPPOSITE := 0x01
@@ -146,11 +149,31 @@ const ENABLE_PARENT_POP_IN := 0x02
 ## in effect.
 @export var disabled: bool = false
 
+## Plays `group` on this object: PlayGroup. Recorded in anim_group and
+## announced by anim_group_played. PlayGroup's flag (1 on 291 calls in
+## FalloutNV.esm's scripts, 0 on 169, 2 on 53) is not read: every group starts
+## at once.
+func play_group(group: String) -> void:
+	anim_group = group
+	anim_group_played.emit(group)
+
+
 ## Runtime state with no ESM source: SwapTexture's swaps, NIF block name ->
 ## texture path relative to textures\, without extension. Set by
 ## swap_texture(); applied by EsmNode. Not saved: per the GECK wiki, loading a
 ## save reverts swapped textures.
 var texture_swaps: Dictionary = {}
+
+## Runtime state with no ESM source: the animation group PlayGroup last played
+## on this object (Forward, Left, Open...), "" until a script plays one, when
+## the model plays its default group (NifObjectAnimator: Idle, else
+## SpecialIdle). Set by play_group(); played by EsmNode through the model's
+## NifObjectAnimator; read by IsAnimPlaying. Saved, so an object streamed back
+## in or loaded resumes its group.
+@export var anim_group: String = "":
+	set(value):
+		anim_group = value
+		mark_dirty()
 
 ## Runtime state with no ESM source: the actor using this reference, for
 ## references used by one actor at a time (terminals, containers, a door being
