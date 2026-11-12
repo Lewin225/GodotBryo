@@ -276,6 +276,18 @@ animated and tinted shapes on their shared material instead of a copy per instan
    the AnimationPlayer; moving them to slot 0 is to do. Test: `tests/servers/test_nif_object_animator`.
    Skinned actor parts keep their AnimationPlayer and ObjectAnimator through skin compaction
    (Securitron screens); not checked in game.
+   Strip lights, open (2026-11-12): most are ACTIs running Lucky38LightScript (night Left, day
+   Right), CasinoBaseLightScript (OnLoad and GameMode PlayGroup Left) or VVault21LightScript
+   (Forward then Backward at night, Left then Right by day; timer on GetSecondsPassed); all parse.
+   The Tops hotel neon's Left and Right hold nif_alpha at 1 and 0 (on and off; no animation). The
+   Tops casino neon's Left scrolls nif_uv_offset_u 0 to 1 or 2 on Yellow_Neon1, Blue_Neon and
+   Object01: its tree plays it (checked with a diag, `_diag/diag_tops_neon.tscn`), but in game the
+   lights do not run. Next: trace the placed TopsCasinoLights reference: does its script run (OnLoad,
+   GameMode), does PlayGroup reach EsmNode._play_anim_group, does the model's ObjectAnimator get it.
+   Unscripted with Left/Right or Forward/Backward and no default group, so nothing plays them:
+   GomorrahLightsAlwaysOn (STAT), NVGamSignGlo (ACTI), NVMonorailEngineLOWAnim (STAT). The Tops sign
+   body (TheTopsSign01, NV_TheTops-Sign.NIF) has only two inactive material colour and emittance
+   free controllers; material colour and emittance are not built.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
    tracks.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
