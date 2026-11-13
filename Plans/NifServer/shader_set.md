@@ -288,8 +288,60 @@ animated and tinted shapes on their shared material instead of a copy per instan
    GomorrahLightsAlwaysOn (STAT), NVGamSignGlo (ACTI), NVMonorailEngineLOWAnim (STAT). The Tops sign
    body (TheTopsSign01, NV_TheTops-Sign.NIF) has only two inactive material colour and emittance
    free controllers; material colour and emittance are not built.
+   The Tops refs (2026-11-12): TheTopsSignLights (0011E498, NV_TheTops-Sign_Lights.NIF,
+   VVault21LightScript) is placed twice (001201B6, 0013B9E6) and TopsCasinoLights (00152C89) once
+   (0013B7F1); none has XESP or the initially-disabled flag, so no script enables them. The sign
+   lights' four sequences hold only material controllers (22 links each: emittance mult and
+   SELF_ILLUM colour on Neon:1-7, 14, 15 and Bulbs1_Backfaces:0-3), so the tree gets no
+   AnimationPlayer and no ObjectAnimator.
 5. Instance uniforms: alpha and emission (XEMI) first, then the native export and colour and UV
-   tracks.
+   tracks. Material colour and emittance census, every NIF and KF link
+   (`_diag/diag_material_ctrl_census.tscn`, 25,307 files):
+
+   | Where | Controller | Target | Interpolator | Links (on a shape) |
+   |---|---|---|---|---|
+   | NIF sequences | NiMaterialColorController | SELF_ILLUM | point3, keyed | 1,206 (1,150) |
+   | NIF sequences | NiMaterialColorController | SELF_ILLUM | point3, static | 12 (12) |
+   | NIF sequences | NiMaterialColorController | SPEC | point3, keyed | 42 (38) |
+   | NIF sequences | BSMaterialEmittanceMultController | | float, keyed | 860 (805) |
+   | NIF sequences | BSMaterialEmittanceMultController | | float, static | 19 (14) |
+   | NIF free, active | NiMaterialColorController | not exported | point3, keyed | 354 (348) |
+   | NIF free, active | NiMaterialColorController | not exported | blend | 2 (2) |
+   | NIF free, active | BSMaterialEmittanceMultController | | float, keyed | 89 (85) |
+   | NIF free, inactive | NiMaterialColorController | not exported | point3, keyed | 160 (155) |
+   | NIF free, inactive | BSMaterialEmittanceMultController | | float, keyed | 5 (5) |
+   | KF sequences | NiMaterialColorController | SELF_ILLUM | point3 407, none 397 | 804 |
+   | KF sequences | NiMaterialColorController | SPEC | point3 | 80 |
+   | KF sequences | BSMaterialEmittanceMultController | | float 236, none 55 | 291 |
+
+   No link targets AMB or DIFF. KF links name no shape of their own file (they address the
+   actor's or weapon's shapes). Missing to build them:
+   - NiMaterialProperty's emissive colour, emit multiplier and specular colour are not exported or
+     used: a shape's unanimated emission is its glow map only.
+   - A free NiMaterialColorController's target is not exported (`controller_id` is empty; the
+     target is in the controller's own flags).
+   - A point3 interpolator's static value is not exported (12 static SELF_ILLUM links).
+   - KfAnimator's property tracks write floats only; a colour track needs Color values.
+   - `nif_emittance` is XEMI's (rgb replaces the material colour, `a` weights it); the lit
+     shader's own inputs are `EmittanceColor` and `MatEmit` (Original shader packages), emission
+     = emissive colour x emit multiplier.
+   Built (2026-11-12): every shape carries its NiMaterialProperty emissive colour and emittance
+   multiplier as the instance uniforms `nif_emissive` and `nif_emit_mult`, set by NifTreeBuilder
+   (no split variant; 10 slots per instance). The native export now carries the material's
+   emissive, emit multiplier, specular, glossiness and alpha, a free NiMaterialColorController's
+   target as its controller ID, and a point3 interpolator's static value. SELF_ILLUM links are
+   Color tracks on `nif_emissive`, emittance links float tracks on `nif_emit_mult`; KfAnimator
+   writes a property track's value as it is (float or Color). Lit emission is the surface colour x
+   emissive x multiplier x the glow map (white when absent), as OpenMW's bs/default shader; added
+   on its own it lit glow-mapped shapes as a flat white. Lit shapes: glow map and coloured
+   emissive 3,219; glow map and black emissive 1,079 (their glow map now adds nothing); coloured
+   emissive, no glow map 772; XEMI (`nif_emittance`) replaces the emissive colour. The unlit
+   shader does not draw them (`# ASSUMPTION`: 3,941 unlit shapes carry a black emissive colour and
+   are visible; OpenMW's bs/nolighting does not use it either). Links by target shader: SELF_ILLUM
+   1,131 on lit shapes, 525 on unlit; emittance 512 lit, 397 unlit; SPEC 33 lit, 16 unlit. Lit
+   shapes with a coloured emissive: 3,991 of 53,840; they emit now. Some emissive colours are
+   negative (TheTopsSignLights' Neon:1, -0.26, -0.11, 0); they are not clamped. Test:
+   `tests/servers/test_nif_material_tracks`. Not built: SPEC colour links.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
 
 ### Texture channels

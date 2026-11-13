@@ -641,8 +641,15 @@ void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Inte
 
 // The controller ID a sequence link would carry for `controller`, where the
 // controller's own fields give it: an NiTextureTransformController's
-// <shaderMap>-<slot>-<operation>. Empty for any other controller.
+// <shaderMap>-<slot>-<operation>, an NiMaterialColorController's target colour
+// (AMB, DIFF, SPEC, SELF_ILLUM, the names sequence links carry). Empty for any
+// other controller.
 std::string free_controller_id(nifly::NiTimeController *controller) {
+	if (auto *color = dynamic_cast<nifly::NiMaterialColorController *>(controller)) {
+		static const char *kTargets[] = { "AMB", "DIFF", "SPEC", "SELF_ILLUM" };
+		const uint32_t target = static_cast<uint32_t>(color->targetColor);
+		return target < 4 ? std::string(kTargets[target]) : std::string();
+	}
 	auto *texture = dynamic_cast<nifly::NiTextureTransformController *>(controller);
 	if (texture == nullptr) {
 		return std::string();
@@ -845,6 +852,14 @@ void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Inte
 		// NOT a position: NiPoint3Interpolator drives colours and other
 		// three-component properties, so no unit conversion is applied.
 		out.kind = "point3";
+		const nifly::Vector3 &value = pi->point3Value;
+		if (std::fabs(value.x) < 1.0e30f && std::fabs(value.y) < 1.0e30f && std::fabs(value.z) < 1.0e30f) {
+			// An unset static value is written as -FLT_MAX.
+			out.has_static_point3 = true;
+			out.static_point3[0] = value.x;
+			out.static_point3[1] = value.y;
+			out.static_point3[2] = value.z;
+		}
 		if (auto *pd = header.GetBlock<nifly::NiPosData>(pi->dataRef)) {
 			out.point3_keys = vec3_keys_of(pd->data, 1.0f);
 		}
@@ -1018,6 +1033,21 @@ Document load(const uint8_t *data, size_t size) {
 					// pair the census did not see.
 					out.alpha_blend_func = "mix";
 				}
+			}
+
+			if (auto *material = nif.GetMaterialProperty(shape)) {
+				out.has_material_property = true;
+				const nifly::Color4 emissive = material->GetEmissiveColor();
+				out.material_emissive[0] = emissive.r;
+				out.material_emissive[1] = emissive.g;
+				out.material_emissive[2] = emissive.b;
+				out.material_emit_mult = material->GetEmissiveMultiple();
+				const nifly::Vector3 specular = material->GetSpecularColor();
+				out.material_specular[0] = specular.x;
+				out.material_specular[1] = specular.y;
+				out.material_specular[2] = specular.z;
+				out.material_glossiness = material->GetGlossiness();
+				out.material_alpha = material->GetAlpha();
 			}
 
 			if (auto *stencil = nif.GetStencilProperty(shape)) {

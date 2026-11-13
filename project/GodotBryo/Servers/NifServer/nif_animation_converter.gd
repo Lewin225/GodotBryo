@@ -33,6 +33,17 @@ const ALPHA_SUFFIX := ":instance_shader_parameters/nif_alpha"
 ## Census, every NIF and KF link: slot 0 and shaderMap 0 on all; in NIFs
 ## TT_TRANSLATE_U 704, TT_TRANSLATE_V 672, TT_SCALE_U 177, TT_SCALE_V 153,
 ## TT_ROTATE 105; in KFs 185, 227, 182, 185, 125.
+## A material emissive colour track's path is its target shape's path with
+## this property: NiMaterialColorController links on SELF_ILLUM, as Color keys.
+## Census, every NIF and KF link: SELF_ILLUM 2,525 and SPEC 135; none target AMB
+## or DIFF. SPEC links stay unhandled: the lit shader has no specular colour.
+const EMISSIVE_SUFFIX := ":instance_shader_parameters/nif_emissive"
+## The colour target of the NiMaterialColorController links built as
+## EMISSIVE_SUFFIX tracks.
+const EMISSIVE_TARGET := "SELF_ILLUM"
+## A material emittance multiplier track's path is its target shape's path
+## with this property: BSMaterialEmittanceMultController float links.
+const EMIT_MULT_SUFFIX := ":instance_shader_parameters/nif_emit_mult"
 const TEXTURE_TRANSFORM_SUFFIXES := {
 	"TT_TRANSLATE_U": ":instance_shader_parameters/nif_uv_offset_u",
 	"TT_TRANSLATE_V": ":instance_shader_parameters/nif_uv_offset_v",
@@ -94,10 +105,18 @@ static func build_animation(sequence: Dictionary, resolver: Callable, moved: Arr
 			if _add_float_track(animation, uv_path, interpolator, start):
 				_add_priority(track_priorities, uv_path, block)
 			continue
+		if _is_emissive_block(block) and bool(resolved["shape"]):
+			if _add_color_track(animation, path + EMISSIVE_SUFFIX, interpolator, start):
+				_add_priority(track_priorities, path + EMISSIVE_SUFFIX, block)
+			continue
+		if _is_emit_mult_block(block) and bool(resolved["shape"]):
+			if _add_float_track(animation, path + EMIT_MULT_SUFFIX, interpolator, start):
+				_add_priority(track_priorities, path + EMIT_MULT_SUFFIX, block)
+			continue
 		if kind != "transform":
-			# Other property controllers (material colour, emittance, texture
-			# transform, particles) are not built yet; the raw source stays
-			# available through NifSource.
+			# Other property controllers (specular colour, other texture
+			# slots, refraction, particles) are not built yet; the raw source
+			# stays available through NifSource.
 			unhandled.append(target + ":" + kind)
 			continue
 		if _add_transform_tracks(animation, path, interpolator, start) > 0:
@@ -152,6 +171,50 @@ static func _is_alpha_block(block: Dictionary) -> bool:
 	if String(interpolator.get("kind", "")) != "float":
 		return false
 	return String(block.get("controller_type", "")) == "NiAlphaController"
+
+
+## Whether a controlled block animates a shape's emissive colour: a point3
+## interpolator on an NiMaterialColorController whose target (the controller
+## ID, on sequence links and free controllers alike) is SELF_ILLUM.
+static func _is_emissive_block(block: Dictionary) -> bool:
+	var interpolator: Dictionary = block.get("interpolator", {})
+	if String(interpolator.get("kind", "")) != "point3":
+		return false
+	if String(block.get("controller_type", "")) != "NiMaterialColorController":
+		return false
+	return String(block.get("controller_id", "")) == EMISSIVE_TARGET
+
+
+## Whether a controlled block animates a shape's emittance multiplier: a float
+## interpolator on a BSMaterialEmittanceMultController.
+static func _is_emit_mult_block(block: Dictionary) -> bool:
+	var interpolator: Dictionary = block.get("interpolator", {})
+	if String(interpolator.get("kind", "")) != "float":
+		return false
+	return String(block.get("controller_type", "")) == "BSMaterialEmittanceMultController"
+
+
+## Adds a Color value track at `path` from a point3 interpolator's keys (r, g,
+## b; alpha 1), played linearly, or its static value as one key at 0 when it
+## has none (12 SELF_ILLUM sequence links). Returns whether a track was added.
+static func _add_color_track(animation: Animation, path: String,
+		interpolator: Dictionary, start: float) -> bool:
+	var keys: Array = interpolator.get("point3_keys", [])
+	var has_static := bool(interpolator.get("has_static_point3", false))
+	if keys.is_empty() and not has_static:
+		return false
+	var track := animation.add_track(Animation.TYPE_VALUE)
+	animation.track_set_path(track, NodePath(path))
+	animation.value_track_set_update_mode(track, Animation.UPDATE_CONTINUOUS)
+	animation.track_set_interpolation_type(track, Animation.INTERPOLATION_LINEAR)
+	if keys.is_empty():
+		var value: Vector3 = interpolator["static_point3"]
+		animation.track_insert_key(track, 0.0, Color(value.x, value.y, value.z))
+		return true
+	for key in keys:
+		var value: Vector3 = key["value"]
+		animation.track_insert_key(track, maxf(float(key["time"]) - start, 0.0), Color(value.x, value.y, value.z))
+	return true
 
 
 ## The track property suffix of an NiTextureTransformController float link on

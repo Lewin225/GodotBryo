@@ -677,6 +677,20 @@ static func _make_dismember_partition_node(nd: Dictionary, textures: Dictionary)
 	return container
 
 
+## Sets a shape's NiMaterialProperty emissive colour and emittance multiplier
+## on its NIF shader instance uniforms (nif_emissive, nif_emit_mult), which
+## the emissive and emittance tracks animate. Every shape carries its own
+## values; a shape without the property keeps the shader defaults (black, 1).
+static func _set_material_emission(mi: MeshInstance3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_material_property", false)):
+		return
+	if not (mi.mesh.surface_get_material(0) is ShaderMaterial):
+		return
+	var emissive: Color = nd["material_emissive"]
+	mi.set_instance_shader_parameter("nif_emissive", Color(emissive.r, emissive.g, emissive.b, 1.0))
+	mi.set_instance_shader_parameter("nif_emit_mult", float(nd["material_emit_mult"]))
+
+
 static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 		indices_override: PackedInt32Array = PackedInt32Array(), has_indices_override := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -711,6 +725,7 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, NifMaterialBuilderScript.build(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
 	mi.mesh = mesh
+	_set_material_emission(mi, nd)
 	# XEMI is placement data, so NifServer only identifies which authored
 	# shapes consume it. The delivered tree's owner supplies the actual tint.
 	mi.set_meta("nif_external_emittance",

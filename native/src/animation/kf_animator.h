@@ -146,8 +146,9 @@ private:
 		int track = -1;
 		Animation::TrackType type = Animation::TYPE_POSITION_3D;
 		int priority = 0;
-		// A value track's property on a node target, set as a float (the NIF
-		// shaders' instance uniforms, `instance_shader_parameters/<name>`).
+		// A value track's property on a node target, set to the track's value
+		// as it is, a float or a Color (the NIF shaders' instance uniforms,
+		// `instance_shader_parameters/<name>`).
 		// Empty for transform and visibility tracks.
 		StringName property;
 	};
@@ -219,6 +220,8 @@ private:
 		uint64_t serial = 0;
 		Vector3 vector;
 		Quaternion rotation;
+		// A property track's value.
+		Variant value;
 	};
 
 	Skeleton3D *_skeleton() const;

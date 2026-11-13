@@ -100,6 +100,14 @@ Array NifSource::get_nodes() const {
 			d["alpha_threshold"] = n.alpha_threshold;
 			d["alpha_blend_func"] = String(n.alpha_blend_func.c_str());
 		}
+		d["has_material_property"] = n.has_material_property;
+		if (n.has_material_property) {
+			d["material_emissive"] = Color(n.material_emissive[0], n.material_emissive[1], n.material_emissive[2]);
+			d["material_emit_mult"] = n.material_emit_mult;
+			d["material_specular"] = Color(n.material_specular[0], n.material_specular[1], n.material_specular[2]);
+			d["material_glossiness"] = n.material_glossiness;
+			d["material_alpha"] = n.material_alpha;
+		}
 		d["has_stencil_property"] = n.has_stencil_property;
 		if (n.has_stencil_property) {
 			d["stencil_draw_mode"] = n.stencil_draw_mode;
@@ -343,6 +351,8 @@ Dictionary interpolator_dict(const nifsrc::Interpolator &ip) {
 	d["scale"] = ip.scale;
 	d["has_static_float"] = ip.has_static_float;
 	d["static_float"] = ip.static_float;
+	d["has_static_point3"] = ip.has_static_point3;
+	d["static_point3"] = Vector3(ip.static_point3[0], ip.static_point3[1], ip.static_point3[2]);
 	d["translation_keys"] = vec3_keys(ip.translation_keys);
 	d["rotation_keys"] = quat_keys(ip.rotation_keys);
 	d["scale_keys"] = scalar_keys(ip.scale_keys);

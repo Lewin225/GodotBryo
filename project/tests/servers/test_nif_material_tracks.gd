@@ -6,7 +6,11 @@ extends Node
 ## NifTreeBuilder._make_animation()), and playing the
 ## sequence sets that uniform on the shape's MeshInstance3D, not on its shared
 ## material. The NIF's own sequences also carry its NiVisController
-## visibility, built by the same NifAnimationConverter as KFs.
+## visibility, built by the same NifAnimationConverter as KFs. The Tops sign
+## lights' sequences hold only material emissive colour (SELF_ILLUM) and
+## emittance multiplier links: they become Color and float tracks on the
+## shapes' nif_emissive and nif_emit_mult, each shape starts at its
+## NiMaterialProperty values, and KfAnimator writes the Color track.
 
 ## The Fat Man explosion: GlowFloat:0's alpha is keyed over the sequence.
 const EXPLOSION := "meshes/effects/explosionlarge01.nif"
@@ -17,6 +21,14 @@ const ALPHA_SUFFIX := ":instance_shader_parameters/nif_alpha"
 const SIGN := "meshes/architecture/freeside/nv_freesidesign-large_lights.nif"
 const SIGN_SHAPE := "Line01:0"
 const UV_OFFSET_U_SUFFIX := ":instance_shader_parameters/nif_uv_offset_u"
+## TheTopsSignLights's model: Forward, Left, Backward and Right, all material
+## emissive colour and emittance multiplier links (22 each).
+const TOPS_LIGHTS := "meshes/architecture/strip/nv_thetops-sign_lights.nif"
+const TOPS_SHAPE := "Neon:1"
+const EMISSIVE_SUFFIX := ":instance_shader_parameters/nif_emissive"
+const EMIT_MULT_SUFFIX := ":instance_shader_parameters/nif_emit_mult"
+const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
 
 var failures := 0
 var _tree: Node3D = null
@@ -75,6 +87,7 @@ func _ready() -> void:
 			"seeking to %.2f s sets nif_alpha to %.3f (got %.3f)" % [time, expected, actual])
 		check(mesh.get_surface_override_material(0) == null, "the shared material is kept")
 	await _check_texture_transform()
+	await _check_emission()
 	_finish()
 
 
@@ -110,6 +123,64 @@ func _check_texture_transform() -> void:
 	var offset := float(mesh.get_instance_shader_parameter("nif_uv_offset_u"))
 	check(is_equal_approx(offset, expected),
 		"seeking to %.2f s sets nif_uv_offset_u to %.3f (got %.3f)" % [time, expected, offset])
+
+
+## The Tops sign lights: emissive and emittance tracks, the material's values
+## at build, and a played group writing a Color to nif_emissive.
+func _check_emission() -> void:
+	print("--- %s ---" % TOPS_LIGHTS)
+	var raw: Dictionary = ArchiveServer.read(TOPS_LIGHTS)
+	var src := NifSource.new()
+	if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
+		check(false, "read %s" % TOPS_LIGHTS)
+		return
+	var material := {}
+	for nd in src.get_nodes():
+		if String(nd["name"]) == TOPS_SHAPE:
+			material = nd
+	check(bool(material.get("has_material_property", false)), "%s has an NiMaterialProperty" % TOPS_SHAPE)
+	var root: Node3D = await NifTreeBuilderScript.build(src)
+	add_child(root)
+	var mesh := _mesh(root, TOPS_SHAPE)
+	check(mesh != null, "%s is a MeshInstance3D" % TOPS_SHAPE)
+	if mesh == null or material.is_empty():
+		root.queue_free()
+		return
+	var emissive: Color = material["material_emissive"]
+	var built: Color = mesh.get_instance_shader_parameter("nif_emissive")
+	check(built.is_equal_approx(Color(emissive.r, emissive.g, emissive.b, 1.0)),
+		"nif_emissive starts at the material's emissive colour (%s, got %s)" % [emissive, built])
+	check(is_equal_approx(float(mesh.get_instance_shader_parameter("nif_emit_mult")), float(material["material_emit_mult"])),
+		"nif_emit_mult starts at the material's multiplier (%s)" % material["material_emit_mult"])
+	var player := root.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	check(player != null and player.has_animation("Forward"), "the sign lights have a Forward clip")
+	var animator := root.get_node_or_null(NifObjectAnimatorScript.NODE_NAME)
+	check(animator != null, "and an ObjectAnimator")
+	if player == null or animator == null or not player.has_animation("Forward"):
+		root.queue_free()
+		return
+	var animation := player.get_animation("Forward")
+	var escaped := NifNames.escape(TOPS_SHAPE)
+	var colour_track := _track_ending(animation, escaped + EMISSIVE_SUFFIX)
+	var mult_track := _track_ending(animation, escaped + EMIT_MULT_SUFFIX)
+	check(colour_track != -1, "Forward has a %s%s track" % [escaped, EMISSIVE_SUFFIX])
+	check(mult_track != -1, "Forward has a %s%s track" % [escaped, EMIT_MULT_SUFFIX])
+	check(animation.get_meta("nif_unhandled_controller_targets", PackedStringArray()).is_empty(),
+		"Forward has no unhandled links (%s)" % str(animation.get_meta("nif_unhandled_controller_targets", [])))
+	if colour_track == -1:
+		root.queue_free()
+		return
+	check(animator.play_group("Forward"), "the ObjectAnimator plays Forward")
+	var kf: KfAnimator = animator.get_animator()
+	var time := animation.length * 0.5
+	kf.set_paused(true)
+	kf.seek(NifObjectAnimatorScript.GROUP_SLOT, time)
+	kf.update_pose()
+	var expected: Color = animation.value_track_interpolate(colour_track, time)
+	var actual: Variant = mesh.get_instance_shader_parameter("nif_emissive")
+	check(actual is Color and (actual as Color).is_equal_approx(expected),
+		"at %.2f s KfAnimator sets nif_emissive to %s (got %s)" % [time, expected, actual])
+	root.queue_free()
 
 
 func _finish() -> void:

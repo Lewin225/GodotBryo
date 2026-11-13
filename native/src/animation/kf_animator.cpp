@@ -419,8 +419,8 @@ bool KfAnimator::_bind(Clip &r_clip, bool p_keep_root) const {
 // Maps the clip's transform, visibility and value tracks to the Node3Ds under
 // node_root and reads each track's priority. A track's node part is a path
 // from node_root (a NIF's own clips) or a node's name (KF clips), the root
-// itself included. A value track other than visibility sets its property as a
-// float. Root motion does not apply: Bip01 and Bip01 NonAccum tracks are
+// itself included. A value track other than visibility sets its property to
+// the track's value. Root motion does not apply: Bip01 and Bip01 NonAccum tracks are
 // skipped. False when no track names a node.
 bool KfAnimator::_bind_nodes(Clip &r_clip) const {
 	Node3D *root = _node_root();
@@ -968,8 +968,7 @@ void KfAnimator::_write_node_pose() {
 			sample.weight = clip.weight;
 			sample.serial = clip.serial;
 			if (!bound.property.is_empty()) {
-				const Variant property_value = clip.animation->value_track_interpolate(bound.track, time);
-				sample.vector.x = static_cast<float>(property_value);
+				sample.value = clip.animation->value_track_interpolate(bound.track, time);
 				properties[static_cast<uint64_t>(bound.node)][bound.property].push_back(sample);
 				continue;
 			}
@@ -1017,7 +1016,7 @@ void KfAnimator::_write_node_pose() {
 					chosen = &sample;
 				}
 			}
-			node->set(property.first, chosen->vector.x);
+			node->set(property.first, chosen->value);
 		}
 	}
 	for (auto &entry : channels) {

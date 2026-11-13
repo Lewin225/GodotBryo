@@ -346,6 +346,16 @@ struct SceneNode {
 	// action, 7-9 pass action, 10-11 draw mode, 12-14 test function).
 	// 2,017 shapes in the shipped BSAs carry one, every one with flags 0x4D80:
 	// stencil disabled, draw mode 3 (DRAW_BOTH, two-sided).
+	// NiMaterialProperty for a shape: emissive colour, emit multiplier,
+	// specular colour, glossiness and alpha, as stored (colours 0..1, not
+	// converted). Ambient and diffuse are not exported.
+	bool has_material_property = false;
+	float material_emissive[3] = { 0.0f, 0.0f, 0.0f };
+	float material_emit_mult = 1.0f;
+	float material_specular[3] = { 1.0f, 1.0f, 1.0f };
+	float material_glossiness = 10.0f;
+	float material_alpha = 1.0f;
+
 	bool has_stencil_property = false;
 	int stencil_draw_mode = 0; // 0 CCW_OR_BOTH, 1 CCW, 2 CW, 3 BOTH
 
@@ -454,6 +464,9 @@ struct Interpolator {
 	float scale = 1.0f;
 	bool has_static_float = false;
 	float static_float = 0.0f;
+	// NiPoint3Interpolator's own value; false when it is the unset -FLT_MAX.
+	bool has_static_point3 = false;
+	float static_point3[3] = { 0.0f, 0.0f, 0.0f };
 
 	std::vector<Vec3Key> translation_keys; // meters
 	std::vector<QuatKey> rotation_keys;

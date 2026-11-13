@@ -20,6 +20,11 @@
 //   nif_color       multiplies the colour (NiMaterialColorController)
 //   nif_emittance   replaces the material colour by its rgb, by its a (the
 //                   placement's XEMI); a = 0 leaves the material colour
+//   nif_emissive, nif_emit_mult  declared as on the lit shader, so tracks
+//                   and the tree builder address every shape alike; not
+//                   used. # ASSUMPTION: the original's NOLIGHT shaders do
+//                   not draw the emissive colour (3,941 unlit shapes carry a
+//                   black one and are visible)
 //   nif_uv_offset_u/_v, nif_uv_scale_u/_v, nif_uv_rotate  transform the base
 //                   map's UV; one float each, so a track sets a whole uniform
 //                   (NiTextureTransformController, slot 0 on every link)
@@ -43,6 +48,8 @@ uniform float distance_fade_max = 1.0;
 instance uniform float nif_alpha = 1.0;
 instance uniform vec4 nif_color : source_color = vec4(1.0);
 instance uniform vec4 nif_emittance : source_color = vec4(1.0, 1.0, 1.0, 0.0);
+instance uniform vec4 nif_emissive : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+instance uniform float nif_emit_mult = 1.0;
 instance uniform float nif_uv_offset_u = 0.0;
 instance uniform float nif_uv_offset_v = 0.0;
 instance uniform float nif_uv_scale_u = 1.0;
