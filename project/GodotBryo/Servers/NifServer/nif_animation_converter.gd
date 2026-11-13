@@ -44,6 +44,14 @@ const EMISSIVE_TARGET := "SELF_ILLUM"
 ## A material emittance multiplier track's path is its target shape's path
 ## with this property: BSMaterialEmittanceMultController float links.
 const EMIT_MULT_SUFFIX := ":instance_shader_parameters/nif_emit_mult"
+## A refraction controller's track path is its target shape's path with its
+## property: the refraction shader's instance uniforms. Float links on lit
+## shapes; 58 strength and 57 period links (windows, cactus) are keyed 0 on
+## shapes without the Refraction flag, whose shader has no such uniform.
+const REFRACTION_SUFFIXES := {
+	"BSRefractionStrengthController": ":instance_shader_parameters/nif_refraction_strength",
+	"BSRefractionFirePeriodController": ":instance_shader_parameters/nif_refraction_period",
+}
 const TEXTURE_TRANSFORM_SUFFIXES := {
 	"TT_TRANSLATE_U": ":instance_shader_parameters/nif_uv_offset_u",
 	"TT_TRANSLATE_V": ":instance_shader_parameters/nif_uv_offset_v",
@@ -113,9 +121,14 @@ static func build_animation(sequence: Dictionary, resolver: Callable, moved: Arr
 			if _add_float_track(animation, path + EMIT_MULT_SUFFIX, interpolator, start):
 				_add_priority(track_priorities, path + EMIT_MULT_SUFFIX, block)
 			continue
+		if _refraction_suffix(block) != "" and bool(resolved["shape"]):
+			var refraction_path := path + _refraction_suffix(block)
+			if _add_float_track(animation, refraction_path, interpolator, start):
+				_add_priority(track_priorities, refraction_path, block)
+			continue
 		if kind != "transform":
 			# Other property controllers (specular colour, other texture
-			# slots, refraction, particles) are not built yet; the raw source
+			# slots, particles) are not built yet; the raw source
 			# stays available through NifSource.
 			unhandled.append(target + ":" + kind)
 			continue
@@ -192,6 +205,15 @@ static func _is_emit_mult_block(block: Dictionary) -> bool:
 	if String(interpolator.get("kind", "")) != "float":
 		return false
 	return String(block.get("controller_type", "")) == "BSMaterialEmittanceMultController"
+
+
+## The track property suffix of a refraction controller's float link, or ""
+## for any other link.
+static func _refraction_suffix(block: Dictionary) -> String:
+	var interpolator: Dictionary = block.get("interpolator", {})
+	if String(interpolator.get("kind", "")) != "float":
+		return ""
+	return String(REFRACTION_SUFFIXES.get(String(block.get("controller_type", "")), ""))
 
 
 ## Adds a Color value track at `path` from a point3 interpolator's keys (r, g,

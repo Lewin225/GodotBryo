@@ -19,7 +19,7 @@ const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd"
 ## version has its own folder under KF_CACHE_DIR; prune_kf_disk_cache() deletes
 ## every other version's folder (and the loose files of the old one-folder
 ## layout), so a bump does not leave the old entries behind.
-const KF_CACHE_VERSION := "nifserver-kf-v10"
+const KF_CACHE_VERSION := "nifserver-kf-v12"
 const KF_CACHE_DIR := "user://nifserver_kf_cache"
 ## A compressed binary resource's first four bytes (ResourceSaver with
 ## FLAG_COMPRESS); an uncompressed one starts RSRC.

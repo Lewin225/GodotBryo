@@ -10,7 +10,9 @@ extends Node
 ## lights' sequences hold only material emissive colour (SELF_ILLUM) and
 ## emittance multiplier links: they become Color and float tracks on the
 ## shapes' nif_emissive and nif_emit_mult, each shape starts at its
-## NiMaterialProperty values, and KfAnimator writes the Color track.
+## NiMaterialProperty values, and KfAnimator writes the Color track. A KF's
+## material links build tracks too, its compressed B-spline colours and
+## multipliers resampled into keys (1hpattack3.kf).
 
 ## The Fat Man explosion: GlowFloat:0's alpha is keyed over the sequence.
 const EXPLOSION := "meshes/effects/explosionlarge01.nif"
@@ -27,6 +29,10 @@ const TOPS_LIGHTS := "meshes/architecture/strip/nv_thetops-sign_lights.nif"
 const TOPS_SHAPE := "Neon:1"
 const EMISSIVE_SUFFIX := ":instance_shader_parameters/nif_emissive"
 const EMIT_MULT_SUFFIX := ":instance_shader_parameters/nif_emit_mult"
+## A first-person attack KF: SELF_ILLUM colour on NiBSplineCompPoint3Interpolators
+## and emittance on NiBSplineCompFloatInterpolators.
+const ATTACK_KF := "meshes/characters/_1stperson/1hpattack3.kf"
+const NifAnimationBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_builder.gd")
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
 const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
 
@@ -88,6 +94,7 @@ func _ready() -> void:
 		check(mesh.get_surface_override_material(0) == null, "the shared material is kept")
 	await _check_texture_transform()
 	await _check_emission()
+	_check_kf_material_tracks()
 	_finish()
 
 
@@ -181,6 +188,36 @@ func _check_emission() -> void:
 	check(actual is Color and (actual as Color).is_equal_approx(expected),
 		"at %.2f s KfAnimator sets nif_emissive to %s (got %s)" % [time, expected, actual])
 	root.queue_free()
+
+
+## The attack KF's clip carries Color tracks on nif_emissive and float tracks
+## on nif_emit_mult, resampled from its B-splines into many keys.
+func _check_kf_material_tracks() -> void:
+	print("--- %s ---" % ATTACK_KF)
+	var raw: Dictionary = ArchiveServer.read(ATTACK_KF)
+	var src := NifSource.new()
+	if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
+		check(false, "read %s" % ATTACK_KF)
+		return
+	var library: AnimationLibrary = NifAnimationBuilderScript.build_library(src)
+	check(library != null and not library.get_animation_list().is_empty(), "it builds a clip")
+	if library == null:
+		return
+	var colour_keys := 0
+	var mult_keys := 0
+	var colour_value: Variant = null
+	for clip in library.get_animation_list():
+		var animation := library.get_animation(clip)
+		for track in animation.get_track_count():
+			var path := String(animation.track_get_path(track))
+			if path.ends_with(EMISSIVE_SUFFIX):
+				colour_keys = maxi(colour_keys, animation.track_get_key_count(track))
+				colour_value = animation.track_get_key_value(track, 0)
+			elif path.ends_with(EMIT_MULT_SUFFIX):
+				mult_keys = maxi(mult_keys, animation.track_get_key_count(track))
+	check(colour_keys > 10, "a nif_emissive track is resampled from its B-spline (%d keys)" % colour_keys)
+	check(colour_value is Color, "its keys are Colors (%s)" % type_string(typeof(colour_value)))
+	check(mult_keys > 10, "a nif_emit_mult track is resampled from its B-spline (%d keys)" % mult_keys)
 
 
 func _finish() -> void:

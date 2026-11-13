@@ -36,6 +36,7 @@
 [ext_resource type="Script" path="res://simulation_debug_tab.gd" id="sim_debug_tab"]
 [ext_resource type="Script" path="res://simulation_map_view.gd" id="sim_map_view"]
 [ext_resource type="PackedScene" path="res://console/console_overlay.tscn" id="console_overlay"]
+[ext_resource type="Script" path="res://GodotBryo/Servers/NifServer/refraction/refraction_capture.gd" id="refraction_capture"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_ggi80"]
 
@@ -278,6 +279,10 @@ directional_shadow_max_distance = 256.0
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=556981500]
 environment = ExtResource("12_hb5m1")
 camera_attributes = SubResource("CameraAttributesPractical_d75sj")
+
+[node name="RefractionCapture" type="Node" parent="." node_paths=PackedStringArray("world_environment")]
+script = ExtResource("refraction_capture")
+world_environment = NodePath("../WorldEnvironment")
 
 [node name="Debug Tools" type="Control" parent="." unique_id=1820856525]
 layout_mode = 3

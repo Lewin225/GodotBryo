@@ -10,6 +10,7 @@ extends Node
 
 const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
 const NifMaterialContextScript := preload("res://GodotBryo/Servers/NifServer/nif_material_context.gd")
+const RefractionCaptureScript := preload("res://GodotBryo/Servers/NifServer/refraction/refraction_capture.gd")
 const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 const WATER_TANK := "meshes/architecture/goodsprings/NV_WaterTank.NIF"
 # The tank's blended shape, flags1 0x82000101, flags2 0x1.
@@ -244,7 +245,9 @@ func test_path_census() -> void:
 	check(unlit == 7936, "7,936 shapes go to the unlit path (got %d)" % unlit)
 	check(unlit_shader_materials == unlit, "each is a ShaderMaterial with its render state (got %d)" % unlit_shader_materials)
 	var variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.UNLIT_SHADER_BODY)
-	check(variants == 29, "they share 29 unlit shader variants (got %d)" % variants)
+	# 28 since Dynamic Alpha shapes without an NiAlphaProperty draw blended
+	# (29 before).
+	check(variants == 28, "they share 28 unlit shader variants (got %d)" % variants)
 	check(lit_shader_materials == lit and lit > 0,
 		"%d shapes go to the lit path, each a ShaderMaterial with its render state" % lit)
 	var lit_variants := NifMaterialBuilderScript.variant_count(NifMaterialBuilderScript.LIT_SHADER_BODY)
@@ -256,10 +259,11 @@ func test_path_census() -> void:
 	check(skin_sk == 238, "238 of them have an _sk texture in slot 2 (got %d)" % skin_sk)
 
 
-## The shock sphere's stock material draws nothing: fully transparent,
-## unshaded, no depth write.
+## The shock sphere's material is the refraction shader: its normal map bound,
+## Fire Refraction from flags1 bit 16, and its strength and fire period on its
+## instance uniforms; the explosion's sequence animates the strength.
 func test_refraction_material() -> void:
-	print("--- refraction stock material ---")
+	print("--- refraction material ---")
 	var raw: Dictionary = ArchiveServer.read(NUKE_EXPLOSION)
 	var src := NifSource.new()
 	if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
@@ -275,10 +279,75 @@ func test_refraction_material() -> void:
 		return
 	check(NifMaterialBuilderScript.path_for(shape) == NifMaterialBuilderScript.PATH_REFRACTION,
 		"%s goes to the refraction path" % NUKE_SHOCK_SHAPE)
-	var mat := NifMaterialBuilderScript._build_refraction(null) as StandardMaterial3D
-	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and is_zero_approx(mat.albedo_color.a),
-		"its stock material is fully transparent")
-	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED, "and writes no depth")
+	check(bool(shape.get("has_refraction_fields", false)), "its refraction strength and fire period are exported")
+	var root: Node3D = await NifTreeBuilderScript.build(src)
+	var mesh: MeshInstance3D = null
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		if String(node.get_meta("nif_name", "")) == NUKE_SHOCK_SHAPE:
+			mesh = node
+	check(mesh != null, "%s is a MeshInstance3D" % NUKE_SHOCK_SHAPE)
+	if mesh == null:
+		root.free()
+		return
+	var mat := mesh.mesh.surface_get_material(0) as ShaderMaterial
+	check(mat != null and mat.shader == NifMaterialBuilderScript.REFRACTION_SHADER, "its material is the refraction shader")
+	if mat != null:
+		check(mat.get_shader_parameter("texture_normal") != null, "its normal map is bound")
+		check(is_equal_approx(float(mat.get_shader_parameter("fire_refraction")), 1.0), "Fire Refraction is on (flags1 0x80018001)")
+	check((mesh.layers & RefractionCaptureScript.LAYER_MASK) != 0, "it is on the distortion camera's layer")
+	check(mesh.is_in_group(RefractionCaptureScript.GROUP), "and in the refraction group")
+	check(is_equal_approx(float(mesh.get_instance_shader_parameter("nif_refraction_strength")), float(shape["refraction_strength"])),
+		"nif_refraction_strength is the property's %s" % shape["refraction_strength"])
+	check(is_equal_approx(float(mesh.get_instance_shader_parameter("nif_refraction_period")), float(shape["refraction_fire_period"])),
+		"nif_refraction_period is the property's %s" % shape["refraction_fire_period"])
+	# The smoke column has no NiAlphaProperty and the Dynamic Alpha flag
+	# (flags1 0x82080148): drawn blended, not opaque.
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		if String(node.get_meta("nif_name", "")) != "SmokeGeo:0":
+			continue
+		var smoke := (node as MeshInstance3D).mesh.surface_get_material(0)
+		var state: Dictionary = smoke.get_meta("nif_render_state", {})
+		check(int(state.get("transparency", -1)) == BaseMaterial3D.TRANSPARENCY_ALPHA
+			and int(state.get("blend_mode", -1)) == BaseMaterial3D.BLEND_MODE_MIX,
+			"SmokeGeo:0 (Dynamic Alpha, no NiAlphaProperty) is blended with mix (%s)" % state)
+	var player := root.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	var tracks := 0
+	if player != null:
+		for clip in player.get_animation_list():
+			var animation := player.get_animation(clip)
+			for track in animation.get_track_count():
+				if String(animation.track_get_path(track)).ends_with(":instance_shader_parameters/nif_refraction_strength"):
+					tracks += 1
+	print("  INFO %d refraction strength tracks in the explosion's clips" % tracks)
+	root.free()
+
+
+## Falloff: a light beam with flags1 bit 6 carries its falloff on its unlit
+## material; the casino neon, without the bit, does not fade.
+func test_falloff() -> void:
+	print("--- unlit falloff ---")
+	for entry in [["meshes/architecture/repcon/replightbeams.nif", "FXLightBeam06", true],
+			["meshes/architecture/strip/nv_thetops-casino_neon.nif", "Yellow_Neon1:0", false]]:
+		var raw: Dictionary = ArchiveServer.read(entry[0])
+		var src := NifSource.new()
+		if not bool(raw["found"]) or not src.load(PackedByteArray(raw["data"])):
+			check(false, "read %s" % entry[0])
+			continue
+		var root: Node3D = await NifTreeBuilderScript.build(src)
+		var mat: ShaderMaterial = null
+		for node in root.find_children("*", "MeshInstance3D", true, false):
+			if String(node.get_meta("nif_name", "")) == entry[1]:
+				mat = (node as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
+		check(mat != null, "%s has a shader material" % entry[1])
+		if mat != null:
+			var enabled := float(mat.get_shader_parameter("falloff_enabled") if mat.get_shader_parameter("falloff_enabled") != null else 0.0)
+			if entry[2]:
+				check(is_equal_approx(enabled, 1.0) and absf(float(mat.get_shader_parameter("falloff_start_angle")) - 0.98) < 0.01
+					and absf(float(mat.get_shader_parameter("falloff_stop_angle")) - 0.17) < 0.01,
+					"%s fades from cos %.2f to %.2f" % [entry[1], float(mat.get_shader_parameter("falloff_start_angle")), float(mat.get_shader_parameter("falloff_stop_angle"))])
+			else:
+				check(is_zero_approx(enabled), "%s (no bit 6) does not fade" % entry[1])
+		root.free()
 
 
 ## A two-sided shape is not culled; a shape with no NiStencilProperty keeps
@@ -316,9 +385,12 @@ func test_stencil_cull() -> void:
 func _ready() -> void:
 	check(ArchiveServer.is_ready(), "ArchiveServer available")
 	test_path_census()
-	test_refraction_material()
 	test_stencil_cull()
+	# Overrides are refused once any material is built, so the tests that
+	# build a tree run after test_override().
 	await test_override()
+	await test_refraction_material()
+	await test_falloff()
 
 	print("=======================")
 	if failures == 0:

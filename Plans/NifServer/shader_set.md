@@ -94,7 +94,7 @@ lit or unshaded, depth draw, depth test, cull, proximity and distance fade.
 
 1,431 shapes are driven by a sequence's material controller (NiAlphaController,
 NiMaterialColorController, BSMaterialEmittanceMultController, NiTextureTransformController,
-BSRefractionStrengthController, BSRefractionFirePeriodController, NiFlipController). They fall in
+BSRefractionStrengthController, BSRefractionFirePeriodController). They fall in
 17 of the combinations; the largest is blend add unshaded with no depth write (397).  By controller type,
 over every NIF's sequences (`native/tools/anim_survey --dump meshes`):
 
@@ -342,6 +342,75 @@ animated and tinted shapes on their shared material instead of a copy per instan
    shapes with a coloured emissive: 3,991 of 53,840; they emit now. Some emissive colours are
    negative (TheTopsSignLights' Neon:1, -0.26, -0.11, 0); they are not clamped. Test:
    `tests/servers/test_nif_material_tracks`. Not built: SPEC colour links.
+   Refraction built (2026-11-13): 92 lit shapes carry the Refraction flag (flags1 bit 15), 81 also
+   Fire Refraction (bit 16); none has an NiAlphaProperty; each has a distortion normal map in slot
+   1 (FXNormalDistort_n, FXFlatNormal_n, effectssphere01_n). BSShaderPPLightingProperty's strength
+   is 0 to 0.25 on most (Helios laser 1.0) and its fire period an int, -22 to 200. Strength
+   controllers on effects ramp 0 to 0.1-0.25; 58 strength and 57 period links on windows and
+   cactus are keyed 0 on unflagged shapes. The original bends particles too (checked on the Xbox
+   game). Its refraction pixel shaders (SLS2075, SLS2076, SM3032-3034) take only NormalMap and
+   PSRefractionPower, and an image-space pass, ISREFRACT (Src0, Src1, Tint), distorts the frame:
+   the shapes write a distortion buffer and a full-screen pass applies it. Built the same way:
+   `nif_refraction.gdshader` writes 0.5 + offset and depth into a distortion buffer drawn by
+   RefractionCapture (a camera copying the main one, seeing only layer 20), and RefractionEffect,
+   a compositor effect after the transparent pass, offsets the frame by it where no opaque
+   geometry is nearer. Sampling Godot's screen texture instead hid the transparents behind the
+   shape (the copy is taken before the transparent pass). ISREFRACT's Tint is not read. Fire
+   refraction scrolls the normal map by TIME / period (`# ASSUMPTION`, unit unknown). Census:
+   `_diag/diag_refraction_census.tscn`. Test: `tests/servers/test_nif_refraction`.
+   In game the distortion camera first picked up the WorldEnvironment's camera attributes (auto
+   exposure scaled the buffer to ~0.4x: a grey dome sampling the sky, the effect clipping metres
+   behind its shape) and its compositor (RefractionEffect distorting its own buffer), and the
+   buffer's black background pulled filtered edges by -0.5. Each is overridden on the camera; see
+   the NifServer README, "A second viewport in the main world". With those fixed the authored
+   strength is used as the screen UV offset unscaled (a 0.25 scale tried while auto exposure was
+   distorting the buffer is gone).
+   NiFlipController: no file in the shipped corpus has one (no block in any of the 25,307 NIF and
+   KF files, and no "NiFlipController" in their bytes); it was listed here in error. Animated
+   sub-textures in this era are particle data (the NOLIGHT vertex shaders' SubTexOffsets input),
+   with the particle systems, not built.
+   Gaps closed (2026-11-13): the unread material interpolators were compressed B-splines, all in
+   KFs: 397 NiBSplineCompPoint3Interpolator (SELF_ILLUM) and 55 NiBSplineCompFloatInterpolator
+   (emittance). Resampled natively into linear keys within 1/255 (same control storage as the
+   transform B-splines: bias + short x multiplier / 32767). Their values: colours mostly 0 to 1
+   (B-spline overshoot to -0.1; a few first-person KFs -1 to 1), multipliers 4 to 6 on
+   first-person attacks, 1 to 10 on the brainbot; 88 colour links are static only. Found with them:
+   the KF resolver counted a target as a shape only if the KF held a shape of that name, which no
+   KF does, so every KF material link (alpha, texture transform, colour, emittance) was dropped; a
+   KF target now counts as a shape. Census: `_diag/diag_unread_interpolators.tscn`. Open: 2 free
+   NiMaterialColorControllers in `scol/scolgsdochouse.nif` with NiBlendPoint3Interpolators (a blend
+   interpolator holds no data of its own).
+   Fat Man explosion (2026-11-13), three faults:
+   - Smoke cut to its shape: SmokeGeo:0 has no NiAlphaProperty but BS shader flags1 bit 19
+     (Dynamic Alpha), so it was drawn opaque; in the original it fades at its edges and over time
+     (Xbox). A shape with Dynamic Alpha and no NiAlphaProperty is now drawn blended (mix). 81
+     shapes outside LOD (38 unlit, 43 lit); the other 80 (consoles, Strip lights) follow the same
+     rule, `# ASSUMPTION`. Unlit variants 29 -> 28.
+   - Fireball rising sideways along the ground: ProjectileEffect replaced the delivered tree
+     root's transform with its model turn, dropping NifTreeBuilder.ROOT_BASIS (the Z-up to Y-up
+     turn NifServer puts on the root), so every effect model (explosions, muzzle flashes,
+     impacts, tracers) lay in Gamebryo's axes; upright billboards hid it by facing in world
+     space. The turn is now composed onto the root's basis. Test: `test_projectile_effects`.
+     Also NifBillboardNode replaced the node's whole basis, losing a transform track's scale,
+     and KfAnimator writing the track afterwards left the node in its authored orientation; the
+     facing now replaces only the rotation, keeps the base scale, and is applied on
+     frame_pre_draw, after animation (as OpenMW's AutoTransform). Test:
+     `tests/servers/test_nif_billboard`.
+   - White V on the ground: the particle emitter meshes (pCloudGroundEmit02:0, pCloudSkyEmit01:0)
+     are hidden (NiAVObject flags bit 0); the flag is not read. Left for the particle work. 347
+     hidden shapes and 143 hidden nodes (damage stages, blast and debris nodes) outside LOD.
+   Unlit falloff (2026-11-13): BSShaderNoLightingProperty's falloff was read but not drawn. With
+   flags1 bit 6 (the GECK's falloff enable; 1,520 unlit shapes, 1,320 with their own values) the
+   unlit shader scales alpha by the falloff, linear in the cosine between the surface normal and
+   the view (`# ASSUMPTION`). Light beams (replightbeams FXLightBeam06, cos 0.98 to 0.17, opacity 1
+   to 0) fade as a card turns edge-on, so crossed cards do not double up: the authored form of the
+   45 degree fade an earlier version hardcoded. The light-shaft rules' LIGHT_SHAFT_ALPHA_SCALE (0.2)
+   still applies on top; it may now be too faint. Fat Man MeshGeoSphere01:0: cos 0.94 to 0.71.
+   Unlit emissive colour: 3,941 visible unlit shapes carry a black emissive (1,952 mix with vertex
+   colour, 746 multiply decals, 601 opaque), so the unlit colour is not multiplied by it. Found to
+   be the correct behaviour: the Fat Man's MeshGeoSphere01:0 carries emissive (0.25, 0.8, 1) x 6
+   and SELF_ILLUM / emittance tracks, and the original's explosion shows no blue (Xbox). With its
+   falloff the shell is near invisible, as in the original.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
 
 ### Texture channels

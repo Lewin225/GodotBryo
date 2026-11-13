@@ -637,6 +637,91 @@ void fill_bspline(const nifly::NiHeader &header, nifly::NiBSplineTransformInterp
 	}
 }
 
+// A compact B-spline's control channel (`dimensions` values per control,
+// `bias + short * multiplier / 32767`) evaluated over the interpolator's time
+// range into linear keys, at the times adaptive_spline_times picks within
+// `tolerance`. Empty when the interpolator has no data, no basis or no
+// channel (offset 65535).
+std::vector<std::pair<float, SplineValue>> sample_compact_channel(const nifly::NiHeader &header,
+		nifly::NiBSplineInterpolator *interp, uint32_t offset, int dimensions, float bias,
+		float multiplier, float tolerance) {
+	std::vector<std::pair<float, SplineValue>> samples;
+	auto *data = header.GetBlock<nifly::NiBSplineData>(interp->splineDataRef);
+	auto *basis = header.GetBlock<nifly::NiBSplineBasisData>(interp->basisDataRef);
+	if (data == nullptr || basis == nullptr || basis->numControlPoints == 0) {
+		return samples;
+	}
+	const float start = interp->startTime, stop = interp->stopTime;
+	if (!(stop > start)) {
+		return samples;
+	}
+	const auto controls = spline_controls(data, offset, basis->numControlPoints, dimensions, true, bias, multiplier);
+	for (const float t : adaptive_spline_times(controls, start, stop, false, tolerance)) {
+		samples.emplace_back(t, evaluate_spline(controls, (t - start) / (stop - start)));
+	}
+	return samples;
+}
+
+// Whether a stored float is set: NIF writes an unset one as -FLT_MAX.
+bool is_set_float(float value) {
+	return std::fabs(value) < 1.0e30f;
+}
+
+// NiBSplineCompFloatInterpolator (55 KF emittance links): `base` is its static
+// value, `offset` its control channel. Keys within 1/255.
+void fill_bspline_float(const nifly::NiHeader &header, nifly::NiBSplineCompFloatInterpolator *interp,
+		Interpolator &out) {
+	out.kind = "float";
+	if (is_set_float(interp->base)) {
+		out.has_static_float = true;
+		out.static_float = interp->base;
+	}
+	const auto samples = sample_compact_channel(header, interp, interp->offset, 1, interp->bias,
+			interp->multiplier, 1.0f / 255.0f);
+	if (samples.empty()) {
+		return;
+	}
+	out.resampled = true;
+	for (const auto &sample : samples) {
+		ScalarKey key;
+		key.time = sample.first;
+		key.value = sample.second.v[0];
+		key.interp = "linear";
+		out.float_keys.push_back(std::move(key));
+	}
+}
+
+// NiBSplineCompPoint3Interpolator (397 KF SELF_ILLUM colour links): `value` is
+// its static value, `handle` its control channel, `positionOffset` and
+// `positionHalfRange` the compact bias and multiplier. Colours, so no unit
+// conversion. Keys within 1/255.
+void fill_bspline_point3(const nifly::NiHeader &header, nifly::NiBSplineCompPoint3Interpolator *interp,
+		Interpolator &out) {
+	out.kind = "point3";
+	const nifly::Vector3 &value = interp->value;
+	if (is_set_float(value.x) && is_set_float(value.y) && is_set_float(value.z)) {
+		out.has_static_point3 = true;
+		out.static_point3[0] = value.x;
+		out.static_point3[1] = value.y;
+		out.static_point3[2] = value.z;
+	}
+	const auto samples = sample_compact_channel(header, interp, interp->handle, 3, interp->positionOffset,
+			interp->positionHalfRange, 1.0f / 255.0f);
+	if (samples.empty()) {
+		return;
+	}
+	out.resampled = true;
+	for (const auto &sample : samples) {
+		Vec3Key key;
+		key.time = sample.first;
+		for (int d = 0; d < 3; d++) {
+			key.value[d] = sample.second.v[d];
+		}
+		key.interp = "linear";
+		out.point3_keys.push_back(std::move(key));
+	}
+}
+
 void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Interpolator &out);
 
 // The controller ID a sequence link would carry for `controller`, where the
@@ -739,6 +824,15 @@ void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Inte
 	out.block_index = block_index;
 	out.block_type = interp->GetBlockName();
 	out.kind = "unsupported";
+
+	if (auto *spline_float = dynamic_cast<nifly::NiBSplineCompFloatInterpolator *>(interp)) {
+		fill_bspline_float(header, spline_float, out);
+		return;
+	}
+	if (auto *spline_point3 = dynamic_cast<nifly::NiBSplineCompPoint3Interpolator *>(interp)) {
+		fill_bspline_point3(header, spline_point3, out);
+		return;
+	}
 
 	// The B-spline forms are NOT NiTransformInterpolator subclasses in nifly,
 	// so they have to be tested for first.
@@ -1187,6 +1281,10 @@ Document load(const uint8_t *data, size_t size) {
 				out.falloff_stop_angle = no_lighting->falloffStopAngle;
 				out.falloff_start_opacity = no_lighting->falloffStartOpacity;
 				out.falloff_stop_opacity = no_lighting->falloffStopOpacity;
+			} else if (const auto *lit = dynamic_cast<nifly::BSShaderPPLightingProperty *>(shader)) {
+				out.has_refraction_fields = true;
+				out.refraction_strength = lit->refractionStrength;
+				out.refraction_fire_period = lit->refractionFirePeriod;
 			} else if (const auto *sky = dynamic_cast<nifly::SkyShaderProperty *>(shader)) {
 				out.shader_file_name = sky->fileName.get();
 			} else if (const auto *tile = dynamic_cast<nifly::TileShaderProperty *>(shader)) {

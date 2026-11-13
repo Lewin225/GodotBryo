@@ -23,11 +23,7 @@ static func build_library(src: NifSource) -> AnimationLibrary:
 	var sequences: Array = src.get_sequences()
 	if sequences.is_empty():
 		return null
-	var shapes := {}
-	for nd in src.get_nodes():
-		if nd.has("positions"):
-			shapes[String(nd["name"])] = true
-	var resolver := _kf_target.bind(shapes)
+	var resolver := _kf_target
 	var library := AnimationLibrary.new()
 	for sequence in sequences:
 		var sequence_dict := sequence as Dictionary
@@ -45,6 +41,10 @@ static func build_library(src: NifSource) -> AnimationLibrary:
 
 
 ## A KF target: its bare escaped name, addressed against the rig it is bound
-## to later; a shape when the KF itself holds a shape of that name.
-static func _kf_target(target: String, shapes: Dictionary) -> Dictionary:
-	return {"path": NifNamesScript.escape(target), "shape": shapes.has(target), "bone": false}
+## to later. Every target counts as a shape: the flag only lets material
+## links (alpha, texture transform, emissive, emittance, refraction) build
+## tracks, and a material controller's target is a shape of the rig the KF
+## plays on, never one in the KF, which holds none. A link naming a node that
+## is no shape writes a property that node does not have, which does nothing.
+static func _kf_target(target: String) -> Dictionary:
+	return {"path": NifNamesScript.escape(target), "shape": true, "bone": false}

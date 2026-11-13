@@ -10,6 +10,8 @@ extends Node3D
 
 const FRAMES := 900
 
+const NifTreeBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_tree_builder.gd")
+
 var failures := 0
 
 
@@ -149,6 +151,16 @@ func _check_effect_sequence() -> void:
 	var player := effect.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	check(player != null and player.is_playing() and String(player.current_animation) == NifNames.escape("SpecialIdle_AreaEffect"),
 			"an effect plays its model's only sequence (%s)" % (String(player.current_animation) if player != null else "no player"))
+	# The model keeps NifServer's Y-up root turn: its fireball rises along
+	# world up, not along the NIF's Z laid sideways.
+	var model := player.get_parent() as Node3D if player != null else null
+	check(model != null and model.basis.is_equal_approx(NifTreeBuilderScript.ROOT_BASIS),
+			"the model keeps NifServer's Y-up root turn (%s)" % (model.basis if model != null else "none"))
+	var fireball := effect.find_child("FireBallGeo", true, false) as Node3D
+	if fireball != null:
+		await _until(func() -> bool: return fireball.global_position.y - effect.global_position.y > 1.0)
+		check(fireball.global_position.y - effect.global_position.y > 1.0,
+				"its fireball rises along world up (%.2f m)" % (fireball.global_position.y - effect.global_position.y))
 	effect.queue_free()
 
 

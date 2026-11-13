@@ -33,6 +33,17 @@ uniform vec4 albedo_color : source_color = vec4(1.0);
 uniform sampler2D texture_albedo : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
 // 1 uses the vertex colour as albedo (StandardMaterial3D's vertex_color_use_as_albedo).
 uniform float use_vertex_color = 0.0;
+// BSShaderNoLightingProperty's falloff, on shapes with flags1 bit 6: the
+// alpha fades with the angle between the surface and the view, from
+// falloff_start_opacity where its cosine is falloff_start_angle (or more,
+// facing the viewer) to falloff_stop_opacity where it is falloff_stop_angle
+// (or less, edge-on). Both sides fade alike. falloff_enabled 0 leaves the
+// alpha as it is. # ASSUMPTION: linear in the cosine.
+uniform float falloff_enabled = 0.0;
+uniform float falloff_start_angle = 1.0;
+uniform float falloff_stop_angle = 0.0;
+uniform float falloff_start_opacity = 1.0;
+uniform float falloff_stop_opacity = 1.0;
 #if defined(NIF_SCISSOR) || defined(NIF_ALPHA_TEST)
 uniform float alpha_scissor_threshold = 0.5;
 #endif
@@ -77,7 +88,11 @@ void fragment() {
 #ifdef NIF_ALPHA
 	// NiAlphaController keys run from -0.5 to 2 in the shipped corpus; the
 	// alpha is clamped to 0..1. # ASSUMPTION: Gamebryo clamps it the same way.
-	ALPHA = clamp(albedo_color.a * nif_color.a * albedo_tex.a * nif_alpha, 0.0, 1.0);
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float falloff_span = max(falloff_start_angle - falloff_stop_angle, 0.0001);
+	float falloff_t = clamp((falloff_start_angle - facing) / falloff_span, 0.0, 1.0);
+	float falloff = mix(1.0, mix(falloff_start_opacity, falloff_stop_opacity, falloff_t), falloff_enabled);
+	ALPHA = clamp(albedo_color.a * nif_color.a * albedo_tex.a * nif_alpha * falloff, 0.0, 1.0);
 #endif
 #ifdef NIF_SCISSOR
 	ALPHA_SCISSOR_THRESHOLD = alpha_scissor_threshold;

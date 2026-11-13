@@ -92,6 +92,11 @@ Array NifSource::get_nodes() const {
 			d["falloff_start_opacity"] = n.falloff_start_opacity;
 			d["falloff_stop_opacity"] = n.falloff_stop_opacity;
 		}
+		d["has_refraction_fields"] = n.has_refraction_fields;
+		if (n.has_refraction_fields) {
+			d["refraction_strength"] = n.refraction_strength;
+			d["refraction_fire_period"] = n.refraction_fire_period;
+		}
 		d["texture_convention"] = String(n.texture_convention.c_str());
 		d["has_alpha_property"] = n.has_alpha_property;
 		if (n.has_alpha_property) {

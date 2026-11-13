@@ -61,7 +61,13 @@ not tracks: each clip carries them as `nif_face_tracks` metadata, morph name →
 for the actor's facial player. A bool interpolator on an `NiVisController` (1,677 of the 1,779
 bool blocks in 722 of the 4,765 KFs; the other 102 drive particle emitters and stay unhandled) is a
 discrete value track `<target>:visible` of bools; one with no keys (1,243) is one key at 0 holding
-its static value. Each controlled block's priority byte (0 to 100 in the shipped
+its static value. Material links (alpha, texture transform, SELF_ILLUM colour, emittance,
+refraction) are value tracks on `<target>:instance_shader_parameters/<uniform>`, as in a NIF's own
+sequences: every KF target counts as a shape, since a material controller's target is a shape of
+the rig and a KF holds none (before, every KF material link was dropped). Compressed B-spline
+colours (`NiBSplineCompPoint3Interpolator`, 397 SELF_ILLUM links) and multipliers
+(`NiBSplineCompFloatInterpolator`, 55 emittance links), all in KFs, are resampled natively into
+linear keys within 1/255, as the transform B-splines are. Each controlled block's priority byte (0 to 100 in the shipped
 KFs) is clip metadata: `nif_track_priorities`, track path → priority, and with face tracks
 `nif_face_track_priorities`, morph name → priority. No transform target is linked twice in one
 sequence with different priorities across the 4,765 shipped KFs (`native/tools/kf_priority_corpus`).
@@ -167,7 +173,7 @@ work, and NifServer offers no entry point for it.
 |---|---|
 | declared bones forming a hierarchy inside it | a `Skeleton3D`, skins bound to it |
 | declared bones as a flat list | unresolved named binds, no `Skeleton3D` |
-| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound, built by `NifAnimationConverter` as KFs are: transform tracks (static values as one key), `NiVisController` visibility, an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform, an `NiTextureTransformController` on a shape as a track on its base-map UV uniform (`nif_uv_offset_u`/`_v`, `nif_uv_scale_u`/`_v`, `nif_uv_rotate`, by the operation in its controller ID), an `NiMaterialColorController` SELF_ILLUM link as a Color track on its `nif_emissive`, a `BSMaterialEmittanceMultController` as a track on its `nif_emit_mult`, and the priority, text key and face morph metadata. SPEC colour links are not built |
+| sequences addressing nodes in this file | an `AnimationPlayer` with those clips bound, built by `NifAnimationConverter` as KFs are: transform tracks (static values as one key), `NiVisController` visibility, an `NiAlphaController` on a shape as a track on that shape's `nif_alpha` instance uniform, an `NiTextureTransformController` on a shape as a track on its base-map UV uniform (`nif_uv_offset_u`/`_v`, `nif_uv_scale_u`/`_v`, `nif_uv_rotate`, by the operation in its controller ID), an `NiMaterialColorController` SELF_ILLUM link as a Color track on its `nif_emissive`, a `BSMaterialEmittanceMultController` as a track on its `nif_emit_mult`, the refraction controllers as tracks on `nif_refraction_strength` and `nif_refraction_period`, and the priority, text key and face morph metadata. SPEC colour links are not built |
 | controllers no sequence drives (`NifSource.get_free_controllers()`) | one `FreeControllers<n>` clip per timing group (start, stop, cycle, frequency, phase, active) in the same `AnimationPlayer` library, so every clip is exported; `nif_autoplay` when active and driving no declared bone. A tree whose library has a sequence or an auto-play clip gets an `ObjectAnimator` (`NifObjectAnimator`): a `KfAnimator` that plays the object's group in slot 0 (its default group `Idle`, else `SpecialIdle`, on spawn; `PlayGroup` replaces it through the reference's saved `anim_group`), and each auto-play clip in its own slot from 1 on its own clock |
 | sequences addressing a rig composed elsewhere | the names in `nif_unbound_sequences` metadata |
 | collision | one body per owning node, parented under that node: a `StaticBody3D`, an `AnimatableBody3D` on an animated owner, or a `NifRigidBody` when the `bhkRigidBody`'s motion system moves (1, 2, 4, 8) |
@@ -238,7 +244,7 @@ material path chosen from what the shape's NifSource node declares, added as cas
 |---|---|---|---|
 | `PATH_HAIR` | Hair flag (flags1 bit 18) on PPLighting or Lighting30; 159 shapes | `hair_highlight` | the standard material without emission and without vertex colour as albedo (hair vertex colours are not a colour; their use is unknown, and they stay in the mesh); the highlight is not rendered, and `albedo_color` is left white for the owner to tint |
 | `PATH_SKIN` | FaceGen flag (flags1 bit 10) on PPLighting; 332 shapes (heads, hands, upper bodies, the skin parts of outfits) | `skin_sk` | the standard material without emission; the `_sk` texture (a flat dark red on heads and hands) is not rendered. Actors replace it with their own skin material |
-| `PATH_REFRACTION` | Refraction flag (flags1 bit 15) on PPLighting; 92 shapes in 83 NIFs, all effect distortion meshes (explosion shock spheres, muzzle flash warps, shield fields), none with an NiAlphaProperty | `glow` | draws nothing (fully transparent, unshaded, no depth write): refraction is not built, and drawn as their textures they are opaque white or flat surfaces |
+| `PATH_REFRACTION` | Refraction flag (flags1 bit 15) on PPLighting; 92 shapes in 83 NIFs, all effect distortion meshes (explosion shock spheres, muzzle flash warps, shield fields), none with an NiAlphaProperty | `glow` | a `ShaderMaterial` on `shaders/nif_refraction.gdshader`, which draws no colour: it writes the shape's screen offset (slot 1 normal map x `nif_refraction_strength`) and depth into a distortion buffer, and `refraction/RefractionEffect`, a compositor effect after the transparent pass, offsets the finished frame by it (the original's refraction pixel shaders take only NormalMap and PSRefractionPower; its ISREFRACT image-space pass distorts the frame). `refraction/RefractionCapture` (a node in `game.tscn`) draws the buffer with a camera that copies the main one and sees only its layer (20), where NifTreeBuilder puts refraction shapes; under any other camera the shader discards. With Fire Refraction (flags1 bit 16, 81 shapes) the normal map scrolls in V by `TIME / nif_refraction_period` (`# ASSUMPTION`). Both instance uniforms start at the property's values and BSRefractionStrengthController / BSRefractionFirePeriodController tracks animate them. A scene without RefractionCapture draws no refraction. Test: `tests/servers/test_nif_refraction` (real renderer) |
 | `PATH_UNLIT` | `BSShaderNoLightingProperty`; 7,936 shapes (effects, glows, light cards, AO fades) | `glow` | a `ShaderMaterial` on `shaders/nif_unlit.gdshaderinc`: the standard path's rules (alpha, depth, stencil, light-shaft fades) decide its render state, and one generated shader variant per compile-time state is shared (23 over the corpus). Instance uniforms `nif_alpha`, `nif_color`, `nif_emittance` (the placement's XEMI), `nif_emissive` and `nif_emit_mult` (NiMaterialProperty's, set on every shape by NifTreeBuilder; not drawn by the unlit shader, `# ASSUMPTION`), `nif_uv_offset` and `nif_uv_scale` vary per instance on the shared material. `NifMaterialBuilder.render_state()` reads its state, as it does a StandardMaterial3D's |
 | `PATH_LIT` | `BSShaderPPLightingProperty` without the Hair, FaceGen or Refraction flag; 57,379 shapes | `glow` | a `ShaderMaterial` on `shaders/nif_lit.gdshaderinc`, built as `PATH_UNLIT` is: the standard path's rules decide its render state, one generated variant per state is shared (19 over the corpus), and the same instance uniforms vary per instance. Metallic 0; with the Specular shader flag (flags1 bit 0, 43,821 shapes) the normal map's alpha is the specular map (`SPECULAR` = 0.375 x alpha, tuned by eye) and NiMaterialProperty's glossiness gives the roughness (sqrt(2 / (glossiness + 2))); without it specular 0 and roughness 1. The material's specular colour is not used (black on 39,845 of the flagged shapes); the normal map at scale 1 and emission is the surface colour x `nif_emissive` x `nif_emit_mult` x the glow map (white when absent), as OpenMW's bs/default shader (`# ASSUMPTION`). XEMI replaces the material colour and the emissive colour |
 | `PATH_STANDARD` | every other shape (TileShader, TallGrass, Water, Sky, NiMaterialProperty only, none) | `glow` | the `StandardMaterial3D` described here |
@@ -324,10 +330,44 @@ stops `_enter_tree`/`_ready` firing part-way through construction.
 | `nif_material_context.gd` | What a material path receives for one shape. |
 | `nif_billboard_node.gd` | Per-frame billboard orientation for `NiBillboardNode`. |
 | `nif_names.gd` | Reversible NIF-name ↔ node-name escaping. |
+| `shaders/` | The NIF shader set: the lit and unlit bodies (`nif_lit.gdshaderinc`, `nif_unlit.gdshaderinc`, variants generated per render state) and `nif_refraction.gdshader`. |
+| `refraction/` | `RefractionCapture` (the distortion buffer's viewport and camera, a node in `game.tscn`) and `RefractionEffect` (the compositor effect that distorts the frame). |
 | `previews/` | Generated scenes for visual inspection. Written by the test, not by hand. |
 
 `NifSource` is a native class registered from `native/src/nif/`; it exposes nifly's object model
 without flattening or interpreting it.
+
+---
+
+## A second viewport in the main world
+
+RefractionCapture renders a buffer of data, not a picture, with a SubViewport that shares the main
+viewport's World3D. Everything the WorldEnvironment applies to "every camera without its own"
+reaches that camera too, and alters the data. Found while building refraction, each one a visible
+fault in game that the first test scene (no compositor, no camera attributes) did not show:
+
+- **Camera attributes.** `game.tscn`'s WorldEnvironment carries `CameraAttributesPractical` with
+  auto exposure and a far depth of field (from 26 m). Auto exposure scaled the buffer to about
+  0.4x: a neutral 0.5 offset read 0.20, a -0.3 offset over every shape, so the frame sampled the
+  sky (a grey dome) and the stored depths moved, clipping the effect metres behind its shape. The
+  blur would smear offsets and depths past 26 m. Fix: the camera's own `attributes`, a plain
+  `CameraAttributesPractical`.
+- **Compositor.** The WorldEnvironment's compositor runs on every viewport of the world.
+  RefractionEffect ran on its own distortion buffer, compounding the offsets. Fix: the camera's own
+  `compositor`, an empty `Compositor`.
+- **Environment.** Fog, ambient light, glow and tonemapping alter the output. Fix: the camera's own
+  `environment` (linear tonemap at exposure 1) and `fog_disabled`, `unshaded` on the shader.
+- **Background colour is sRGB.** `Environment.background_color` is converted to linear on the way
+  in: 0.5 was stored as 0.214. Pre-encode it (`linear_to_srgb()`) to store an exact value. The
+  shader's `ALBEDO` in an `unshaded` material with `use_hdr_2d` is stored as written.
+- **Filtering against the background.** The buffer is half size and read with linear filtering,
+  so an edge pixel mixes the shape with the background. A black background (an offset of -0.5)
+  pulled edges half the screen; the background must be the neutral value.
+
+Any future pass that renders data through a second camera in the main world needs the same four
+overrides (attributes, compositor, environment, background), and a test whose scene carries the
+game's own WorldEnvironment settings: `tests/servers/test_nif_refraction` sets `game.tscn`'s camera
+attributes on its WorldEnvironment for this reason.
 
 ---
 

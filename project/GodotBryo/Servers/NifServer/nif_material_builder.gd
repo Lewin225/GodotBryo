@@ -59,6 +59,9 @@ const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN, PATH_REFR
 
 const UNLIT_SHADER_BODY := "res://GodotBryo/Servers/NifServer/shaders/nif_unlit.gdshaderinc"
 const LIT_SHADER_BODY := "res://GodotBryo/Servers/NifServer/shaders/nif_lit.gdshaderinc"
+## PATH_REFRACTION's shader: one for every refraction shape (none has an
+## NiAlphaProperty, so there is no render state to vary).
+const REFRACTION_SHADER := preload("res://GodotBryo/Servers/NifServer/shaders/nif_refraction.gdshader")
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
@@ -80,6 +83,15 @@ const SHADER_FLAG1_REFRACTION := 1 << 15
 ## BSShaderPPLightingProperty flags1 bit 0: Specular. 43,821 of the 53,840 lit
 ## shapes carry it.
 const SHADER_FLAG1_SPECULAR := 1 << 0
+## BSShaderPPLightingProperty flags1 bit 16: Fire Refraction. 81 of the 92
+## refraction shapes carry it.
+const SHADER_FLAG1_FIRE_REFRACTION := 1 << 16
+## BS shader flags1 bit 6 ("Empty" in nif.xml): on BSShaderNoLightingProperty
+## it enables the falloff (the GECK), _set_falloff().
+const SHADER_FLAG1_FALLOFF := 1 << 6
+## BS shader flags1 bit 19: Dynamic Alpha. A shape without an NiAlphaProperty
+## that carries it is drawn blended (_is_dynamic_alpha_blend()).
+const SHADER_FLAG1_DYNAMIC_ALPHA := 1 << 19
 ## NiMaterialProperty's default glossiness, for a lit shape without one.
 const DEFAULT_GLOSSINESS := 10.0
 ## The blocks the GECK lists the Hair flag for.
@@ -260,8 +272,24 @@ static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName
 ## as the black they are encoded to. Not shader-fixable.
 static func _alpha_safe(nd: Dictionary) -> bool:
 	if not bool(nd.get("has_alpha_property", false)):
-		return false
+		return _is_dynamic_alpha_blend(nd)
 	return bool(nd["alpha_blend_enabled"]) or bool(nd["alpha_test_enabled"])
+
+
+## Whether a shape with no NiAlphaProperty is drawn blended: its BS shader
+## carries the Dynamic Alpha flag (flags1 bit 19). Census, every NIF outside
+## LOD: 81 shapes have the flag and no NiAlphaProperty (38 unlit, 43 lit),
+## among them the Fat Man explosion's smoke column (SmokeGeo:0, vertex alpha
+## 0 to 1, an NiAlphaController), which fades softly at its edges and over
+## time in the original (checked on the Xbox game); drawn opaque, it was cut
+## to its shape. Blended with the mix function. # ASSUMPTION: the flag means
+## the same on the other 80 shapes (consoles, Strip lights).
+static func _is_dynamic_alpha_blend(nd: Dictionary) -> bool:
+	if bool(nd.get("has_alpha_property", false)):
+		return false
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_DYNAMIC_ALPHA) != 0
 
 
 ## [diffuse, normal, glow] slot indices for a texture convention, -1 for a
@@ -308,6 +336,10 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 		blend_enabled = bool(nd["alpha_blend_enabled"])
 		test_enabled = bool(nd["alpha_test_enabled"])
 		_apply_alpha(mat, nd, blend_enabled, test_enabled)
+	elif _is_dynamic_alpha_blend(nd):
+		blend_enabled = true
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 
 	mat.albedo_texture = context.texture(ROLE_DIFFUSE)
 	var normal := context.texture(ROLE_NORMAL)
@@ -370,12 +402,12 @@ static func _build_skin(context: NifMaterialContext) -> Material:
 ## unshaded blend that writes no depth, so the distortion mesh neither shows
 ## nor hides what is behind it. Its textures stay in `nif_texture_roles` for a
 ## refraction override.
-static func _build_refraction(_context: NifMaterialContext) -> Material:
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
-	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+static func _build_refraction(context: NifMaterialContext) -> Material:
+	var mat := ShaderMaterial.new()
+	mat.shader = REFRACTION_SHADER
+	mat.set_shader_parameter("texture_normal", context.texture(ROLE_NORMAL))
+	var flags1 := int(context.node.get("shader_flags1", 0))
+	mat.set_shader_parameter("fire_refraction", 1.0 if (flags1 & SHADER_FLAG1_FIRE_REFRACTION) != 0 else 0.0)
 	return mat
 
 
@@ -392,6 +424,7 @@ static func _build_unlit(context: NifMaterialContext) -> Material:
 	mat.set_shader_parameter("albedo_color", rules.albedo_color)
 	mat.set_shader_parameter("texture_albedo", rules.albedo_texture)
 	mat.set_shader_parameter("use_vertex_color", 1.0 if rules.vertex_color_use_as_albedo else 0.0)
+	_set_falloff(mat, context.node)
 	_set_alpha_cutoff(mat, state)
 	if bool(state["proximity_fade"]):
 		mat.set_shader_parameter("proximity_fade_distance", rules.proximity_fade_distance)
@@ -423,6 +456,26 @@ static func _build_lit(context: NifMaterialContext) -> Material:
 	_set_alpha_cutoff(mat, state)
 	mat.set_meta("nif_render_state", state)
 	return mat
+
+
+## The unlit shader's falloff uniforms, on a shape whose flags1 has bit 6 (the
+## GECK's flag enabling BSShaderNoLightingProperty's falloff). Census of unlit
+## shapes outside LOD: 1,520 carry the bit, 1,320 with their own falloff
+## values (light beams: cos 0.98 to 0.17, opacity 1 to 0, so a beam card fades
+## as it turns edge-on and crossed cards do not double up; the Fat Man's
+## MeshGeoSphere01: cos 0.94 to 0.71); the 6,416 without the bit, most with
+## the default (1, cos 90, 1, 0), do not fade. The falloff scales alpha, so a
+## shape drawn opaque is unchanged.
+static func _set_falloff(mat: ShaderMaterial, nd: Dictionary) -> void:
+	if not bool(nd.get("has_falloff", false)):
+		return
+	if (int(nd.get("shader_flags1", 0)) & SHADER_FLAG1_FALLOFF) == 0:
+		return
+	mat.set_shader_parameter("falloff_enabled", 1.0)
+	mat.set_shader_parameter("falloff_start_angle", float(nd["falloff_start_angle"]))
+	mat.set_shader_parameter("falloff_stop_angle", float(nd["falloff_stop_angle"]))
+	mat.set_shader_parameter("falloff_start_opacity", float(nd["falloff_start_opacity"]))
+	mat.set_shader_parameter("falloff_stop_opacity", float(nd["falloff_stop_opacity"]))
 
 
 ## The lit shader's specular uniforms: the Specular shader flag, and the

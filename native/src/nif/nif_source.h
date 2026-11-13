@@ -310,6 +310,12 @@ struct SceneNode {
 	float falloff_start_opacity = 1.0f;
 	float falloff_stop_opacity = 1.0f;
 
+	// BSShaderPPLightingProperty's refraction strength and fire period, set
+	// only on that block (as stored; nifly reads the period as an int).
+	bool has_refraction_fields = false;
+	float refraction_strength = 0.0f;
+	int refraction_fire_period = 0;
+
 	// NiProperty blocks this node references, by BLOCK INDEX -- the identity
 	// nif_server_v2.md 7.3 needs. Property blocks are shared: ~34% of
 	// NiMaterialProperty are referenced by two or more nodes, while shader

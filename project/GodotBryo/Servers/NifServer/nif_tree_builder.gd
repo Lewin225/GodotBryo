@@ -24,6 +24,7 @@ const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_b
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
+const RefractionCaptureScript := preload("res://GodotBryo/Servers/NifServer/refraction/refraction_capture.gd")
 const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 
 ## nif_server_v2.md section 1: the result is already Y-up and Godot-forward, so
@@ -691,6 +692,25 @@ static func _set_material_emission(mi: MeshInstance3D, nd: Dictionary) -> void:
 	mi.set_instance_shader_parameter("nif_emit_mult", float(nd["material_emit_mult"]))
 
 
+## Puts a refraction shape where RefractionCapture's camera draws it (its
+## layer, its group; no shadow), and sets its BSShaderPPLightingProperty
+## refraction strength and fire period on the refraction shader's instance
+## uniforms (nif_refraction_strength, nif_refraction_period), which the
+## refraction controllers animate. The shape stays on layer 1 too, so it is
+## culled and picked as any other; the shader discards it there.
+static func _set_refraction(mi: MeshInstance3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_refraction_fields", false)):
+		return
+	var material := mi.mesh.surface_get_material(0) as ShaderMaterial
+	if material == null or material.shader != NifMaterialBuilderScript.REFRACTION_SHADER:
+		return
+	mi.layers |= RefractionCaptureScript.LAYER_MASK
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.add_to_group(RefractionCaptureScript.GROUP, true)
+	mi.set_instance_shader_parameter("nif_refraction_strength", float(nd["refraction_strength"]))
+	mi.set_instance_shader_parameter("nif_refraction_period", float(nd["refraction_fire_period"]))
+
+
 static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 		indices_override: PackedInt32Array = PackedInt32Array(), has_indices_override := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -726,6 +746,7 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 	mesh.surface_set_material(0, NifMaterialBuilderScript.build(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
 	mi.mesh = mesh
 	_set_material_emission(mi, nd)
+	_set_refraction(mi, nd)
 	# XEMI is placement data, so NifServer only identifies which authored
 	# shapes consume it. The delivered tree's owner supplies the actual tint.
 	mi.set_meta("nif_external_emittance",

@@ -34,6 +34,7 @@ text = "Pick FalloutNV.esm..."
 
 [node name="DataLabel" type="Label" parent="Panel" unique_id=1204579923]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 autowrap_mode = 3
 
