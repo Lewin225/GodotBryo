@@ -84,28 +84,50 @@ func _faced(facing: Basis) -> Transform3D:
 
 
 ## The world rotation the node faces with, or null when it has none this frame
-## (the camera at the node).
+## (the camera at the node, or on its up axis). The modes, as niftools'
+## nif.xml describes them (read through a summary, not verbatim):
+## "minimized" rotation (always_*) turns the node's authored facing (+Z) onto
+## the target by the shortest arc, keeping its authored roll; "non-minimized"
+## (rigid_*) snaps into the camera's frame, camera up; *_camera faces the
+## camera's view plane, *_center the camera's position; rotate_about_up spins
+## about the node's own up axis (its authored +Y, as OpenMW's AutoTransform),
+## so a muzzle flash's flame card, authored along the barrel (+Y), turns about
+## the barrel to face the viewer. # ASSUMPTION: bs_rotate_about_up behaves as
+## rotate_about_up (nif.xml: rotates only about its local Z axis; its shapes
+## not checked).
 func _facing(camera: Camera3D) -> Variant:
-	var up := Vector3.UP
-	var origin := (get_parent_node_3d().global_transform * _base.origin) if get_parent_node_3d() != null else _base.origin
+	var parent := get_parent_node_3d()
+	var parent_basis := parent.global_basis if parent != null else Basis.IDENTITY
+	var origin := parent.global_transform * _base.origin if parent != null else _base.origin
+	var authored := (parent_basis * _base.basis).orthonormalized()
+	var to_camera := camera.global_position - origin
 	match billboard_mode:
 		"rotate_about_up", "bs_rotate_about_up":
-			# Spins about the world up axis only: the sprite stays upright and
-			# turns to follow the viewer horizontally. Trees and flames.
-			var to_cam := camera.global_position - origin
-			to_cam.y = 0.0
-			if to_cam.length_squared() < 0.000001:
+			var axis := authored.y
+			var across := to_camera - axis * to_camera.dot(axis)
+			if across.length_squared() < 0.000001:
 				return null
-			return Basis.looking_at(-to_cam.normalized(), up)
-		"rigid_face_camera", "rigid_face_center":
-			# "Rigid" faces the camera's view PLANE rather than the camera's
-			# position, so a row of billboards stays mutually parallel instead
-			# of fanning toward a point.
+			var facing := across.normalized()
+			return Basis(axis.cross(facing), axis, facing)
+		"rigid_face_camera":
 			return Basis.looking_at(-camera.global_basis.z, camera.global_basis.y)
-		_:
-			# always_face_camera / always_face_center: point at the camera
-			# itself, so off-centre billboards turn toward it.
-			var direction := camera.global_position - origin
-			if direction.length_squared() < 0.000001:
+		"rigid_face_center":
+			if to_camera.length_squared() < 0.000001:
 				return null
-			return Basis.looking_at(-direction.normalized(), up)
+			return Basis.looking_at(-to_camera.normalized(), camera.global_basis.y)
+		"always_face_center":
+			if to_camera.length_squared() < 0.000001:
+				return null
+			return _turned_to(authored, to_camera.normalized())
+		_:
+			# always_face_camera: the view plane.
+			return _turned_to(authored, camera.global_basis.z)
+
+
+## `authored` turned by the shortest arc that puts its +Z on `facing`.
+static func _turned_to(authored: Basis, facing: Vector3) -> Basis:
+	var from := authored.z
+	if from.dot(facing) < -0.9999:
+		# Opposite: half a turn about the authored up axis.
+		return Basis(authored.y, PI) * authored
+	return Basis(Quaternion(from, facing)) * authored

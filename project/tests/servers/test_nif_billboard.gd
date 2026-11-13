@@ -27,6 +27,7 @@ func _ready() -> void:
 	camera.make_current()
 	for mode in ["always_face_camera", "rigid_face_center", "rotate_about_up"]:
 		await _check_mode(mode, camera)
+	await _check_about_own_up(camera)
 	print("ALL CHECKS PASSED" if failures == 0 else "FAILURES: %d" % failures)
 	get_tree().quit(0 if failures == 0 else 1)
 
@@ -43,6 +44,22 @@ func _check_mode(mode: String, camera: Camera3D) -> void:
 	billboard.transform = Transform3D(Basis(Vector3.UP, 1.0).scaled(Vector3(3, 3, 3)), Vector3.ZERO)
 	await _frames()
 	_check_facing(billboard, camera, 3.0, "after a track sets scale 3 and a rotation")
+	billboard.queue_free()
+
+
+## A muzzle flash's flame: rotate_about_up, authored with +Y along the
+## barrel (world -Z here). It spins about the barrel, not world up: +Y stays
+## on the barrel and +Z turns to the camera (on +X, square to the barrel).
+func _check_about_own_up(camera: Camera3D) -> void:
+	print("--- rotate_about_up about the node's own up axis ---")
+	var billboard: Node3D = NifBillboardNodeScript.new()
+	billboard.billboard_mode = "rotate_about_up"
+	billboard.basis = Basis(Vector3.RIGHT, -PI / 2.0)
+	add_child(billboard)
+	await _frames()
+	var basis := billboard.global_basis
+	check(basis.y.normalized().dot(Vector3.FORWARD) > 0.99, "+Y stays along the barrel (%s)" % basis.y)
+	check(basis.z.normalized().dot(Vector3.RIGHT) > 0.99, "+Z faces the camera (%s)" % basis.z)
 	billboard.queue_free()
 
 

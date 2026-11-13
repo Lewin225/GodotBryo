@@ -411,6 +411,21 @@ animated and tinted shapes on their shared material instead of a copy per instan
    be the correct behaviour: the Fat Man's MeshGeoSphere01:0 carries emissive (0.25, 0.8, 1) x 6
    and SELF_ILLUM / emittance tracks, and the original's explosion shows no blue (Xbox). With its
    falloff the shell is near invisible, as in the original.
+   Billboard modes and muzzle flashes (2026-11-13): the .44 Magnum's flash (HandGunMuzzleFlash01)
+   is authored along its NIF +Y (cross planes Plane12/13, flame card HorizontalFlash10, rotate
+   about up, its local +Y along the barrel; glow Glow03, rigid face center). NifBillboardNode now
+   faces per mode as niftools' nif.xml describes them (read through a summary, not verbatim):
+   rotate_about_up spins about the node's own authored +Y (as OpenMW), not world up, so the flame
+   stays along the barrel; always_* turn the authored +Z onto the target by the shortest arc;
+   rigid_* snap into the camera's frame (camera up), *_camera facing the view plane, *_center the
+   camera's position. `# ASSUMPTION`: bs_rotate_about_up as rotate_about_up (nif.xml: about local
+   Z; shapes not checked). ProjectileServer's MUZZLE_FLASH_TURN (+90 degrees about up, made while
+   ProjectileEffect dropped the root turn) sent flashes out of the gun's left; removed: NIF +Y is
+   already the effect's -Z through the root turn. Found to be the correct behaviour in game.
+   Instance materials closed: every material controller the original's shaders take plays.
+   Not built, by reason: SPEC colour (no lit shader takes a specular colour), 2 blend-interpolator
+   links (scolgsdochouse.nif), unlit emissive (unused in the original), hidden emitter meshes
+   (particles). Open: the light-shaft LIGHT_SHAFT_ALPHA_SCALE (0.2) may be too faint with falloff.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
 
 ### Texture channels

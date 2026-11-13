@@ -27,10 +27,6 @@ signal shot_resolved(shot_id: int, ends: PackedVector3Array)
 
 ## Game units per metre (native/src/common/units.h).
 const UNITS_PER_METRE := 70.0
-## A muzzle flash model's turn inside its effect: the flash is authored along
-## the ProjectileNode's +X, so its +X goes to the effect's -Z (the shot's
-## direction). The weapon models cannot change, so the turn is made here.
-const MUZZLE_FLASH_TURN := Basis(Vector3.UP, PI / 2.0)
 ## A muzzle flash light's radius and energy against its LIGH's, also used by
 ## the copy a projectile carries in flight: set by eye.
 const FLASH_LIGHT_RADIUS_SCALE := 2.0
@@ -324,7 +320,12 @@ func show_muzzle_flash(projectile: ProjectileBase, from: Transform3D, parent: No
 		effect.reparent(parent, false)
 	effect.global_transform = from
 	effect.lifetime = maxf(projectile.muzzle_flash_duration, 0.02)
-	effect.show_model(projectile.muzzle_flash_model_path, MUZZLE_FLASH_TURN)
+	# The flash is authored along its NIF +Y (HandGunMuzzleFlash01's cross
+	# planes and flame card), as the muzzle is; NifServer's Y-up root turn
+	# puts NIF +Y on -Z, the effect's forward, so no further turn is made. A
+	# +90 degree turn about up, made while the root turn was being dropped,
+	# sent the flash out of the gun's left.
+	effect.show_model(projectile.muzzle_flash_model_path)
 	if projectile.muzzle_flash_light_form_id != 0:
 		effect.add_light(EsmServer.get_base(projectile.muzzle_flash_light_form_id) as LightBase)
 	return effect

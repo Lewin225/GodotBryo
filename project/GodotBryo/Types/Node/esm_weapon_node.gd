@@ -319,7 +319,7 @@ func accuracy_cone() -> float:
 ## The muzzle's forward, Godot world: its NIF +Y, the axis the barrel points
 ## along (`ProjectileNode` sits at the barrel's end). The node's -Z with no
 ## muzzle. +Y was found to be the correct behaviour; the muzzle flash model is
-## authored along +X instead (ProjectileServer.MUZZLE_FLASH_TURN).
+## authored along its NIF +Y too.
 func muzzle_forward() -> Vector3:
 	var origin_node := shot_muzzle()
 	if origin_node != self:
