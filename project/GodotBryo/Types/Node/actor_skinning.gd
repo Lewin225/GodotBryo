@@ -45,8 +45,13 @@ func compact_external_skin_part(root: Node3D) -> void:
 	for leaf in leaves:
 		var mesh := leaf["mesh"] as MeshInstance3D
 		mesh.get_parent().remove_child(mesh)
+	# Only the Node3D hierarchy is collapsed. Plain Node children stay: the
+	# part's AnimationPlayer (its clip library) and ObjectAnimator, whose
+	# animator bound the same mesh instances when the part was staged (a
+	# Securitron's screen face scrolls through it).
 	for child in root.get_children():
-		child.free()
+		if child is Node3D:
+			child.free()
 	for leaf in leaves:
 		var mesh := leaf["mesh"] as MeshInstance3D
 		root.add_child(mesh)

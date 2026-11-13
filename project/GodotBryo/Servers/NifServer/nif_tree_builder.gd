@@ -14,10 +14,17 @@ class_name NifTreeBuilder
 ## exists so the tree can be looked at in the editor first.
 
 const NifNamesScript := preload("res://GodotBryo/Servers/NifServer/nif_names.gd")
+const NifAnimationConverterScript := preload("res://GodotBryo/Servers/NifServer/nif_animation_converter.gd")
+const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
+## NiTimeController flags: bits 1-2 the cycle type (0 loop, 1 reverse, 2
+## clamp, the encoding of a sequence's cycle type) and bit 3 active.
+const FREE_CONTROLLER_TIMING_FLAGS := 0xE
+const FREE_CONTROLLER_ACTIVE := 0x8
 const NifBillboardNodeScript := preload("res://GodotBryo/Servers/NifServer/nif_billboard_node.gd")
 # For cache_key() only, which is static -- the autoload instance is resolved
 # separately because a static call cannot reach it.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
+const RefractionCaptureScript := preload("res://GodotBryo/Servers/NifServer/refraction/refraction_capture.gd")
 const NifMaterialBuilderScript := preload("res://GodotBryo/Servers/NifServer/nif_material_builder.gd")
 
 ## nif_server_v2.md section 1: the result is already Y-up and Godot-forward, so
@@ -671,6 +678,39 @@ static func _make_dismember_partition_node(nd: Dictionary, textures: Dictionary)
 	return container
 
 
+## Sets a shape's NiMaterialProperty emissive colour and emittance multiplier
+## on its NIF shader instance uniforms (nif_emissive, nif_emit_mult), which
+## the emissive and emittance tracks animate. Every shape carries its own
+## values; a shape without the property keeps the shader defaults (black, 1).
+static func _set_material_emission(mi: MeshInstance3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_material_property", false)):
+		return
+	if not (mi.mesh.surface_get_material(0) is ShaderMaterial):
+		return
+	var emissive: Color = nd["material_emissive"]
+	mi.set_instance_shader_parameter("nif_emissive", Color(emissive.r, emissive.g, emissive.b, 1.0))
+	mi.set_instance_shader_parameter("nif_emit_mult", float(nd["material_emit_mult"]))
+
+
+## Puts a refraction shape where RefractionCapture's camera draws it (its
+## layer, its group; no shadow), and sets its BSShaderPPLightingProperty
+## refraction strength and fire period on the refraction shader's instance
+## uniforms (nif_refraction_strength, nif_refraction_period), which the
+## refraction controllers animate. The shape stays on layer 1 too, so it is
+## culled and picked as any other; the shader discards it there.
+static func _set_refraction(mi: MeshInstance3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_refraction_fields", false)):
+		return
+	var material := mi.mesh.surface_get_material(0) as ShaderMaterial
+	if material == null or material.shader != NifMaterialBuilderScript.REFRACTION_SHADER:
+		return
+	mi.layers |= RefractionCaptureScript.LAYER_MASK
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.add_to_group(RefractionCaptureScript.GROUP, true)
+	mi.set_instance_shader_parameter("nif_refraction_strength", float(nd["refraction_strength"]))
+	mi.set_instance_shader_parameter("nif_refraction_period", float(nd["refraction_fire_period"]))
+
+
 static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 		indices_override: PackedInt32Array = PackedInt32Array(), has_indices_override := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -705,6 +745,8 @@ static func _make_mesh_instance(nd: Dictionary, textures: Dictionary,
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, NifMaterialBuilderScript.build(nd, arrays[Mesh.ARRAY_COLOR] != null, textures))
 	mi.mesh = mesh
+	_set_material_emission(mi, nd)
+	_set_refraction(mi, nd)
 	# XEMI is placement data, so NifServer only identifies which authored
 	# shapes consume it. The delivered tree's owner supplies the actual tint.
 	mi.set_meta("nif_external_emittance",
@@ -780,7 +822,8 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 		skeleton: Skeleton3D, bone_of_node: Dictionary) -> Dictionary:
 	var animated := {}
 	var sequences: Array = src.get_sequences()
-	if sequences.is_empty():
+	var free_controllers: Array = src.get_free_controllers()
+	if sequences.is_empty() and free_controllers.is_empty():
 		return animated
 
 	var index_of_name := _animation_name_index(src, nodes)
@@ -799,6 +842,8 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 		# names use neither -- but the same escape is applied for the same
 		# reason it is applied to node names: so the mapping stays reversible.
 		library.add_animation(NifNamesScript.escape(seq_name), anim)
+	_add_free_controller_clips(library, free_controllers, index_of_name, root, built, skeleton,
+		bone_of_node, animated)
 
 	if library.get_animation_list().is_empty():
 		if not unbound.is_empty():
@@ -809,50 +854,101 @@ static func _build_animations(src: NifSource, root: Node3D, nodes: Array, built:
 	player.name = "AnimationPlayer"
 	root.add_child(player)
 	player.add_animation_library("", library)
+	if NifObjectAnimatorScript.has_work(library):
+		var object_animator: Node = NifObjectAnimatorScript.new()
+		object_animator.name = NifObjectAnimatorScript.NODE_NAME
+		root.add_child(object_animator)
 	if not unbound.is_empty():
 		player.set_meta("nif_unbound_sequences", unbound)
 	return animated
 
 
+## Adds a clip for each timing group of the file's free controllers
+## (NifSource.get_free_controllers(): controllers no sequence drives, each on
+## its own clock). Controllers whose start, stop, cycle type, frequency, phase
+## and active bit all match share a clip, since they play on one clock; each
+## other timing is its own clip, so every free controller is in the library
+## whatever its length. Clips are named FreeControllers0.. in file order of
+## their first controller, and carry `nif_free_controllers` (true),
+## `nif_frequency`, `nif_phase`, `nif_active` and `nif_autoplay`: active and
+## driving no declared bone (a rig's own free controllers are its pose, which
+## the actor's animator owns). A clip that resolves nothing is left out.
+static func _add_free_controller_clips(library: AnimationLibrary, free_controllers: Array,
+		index_of_name: Dictionary, root: Node3D, built: Array, skeleton: Skeleton3D,
+		bone_of_node: Dictionary, animated: Dictionary) -> void:
+	var groups := {}
+	var order: Array = []
+	for fc in free_controllers:
+		var key := "%f|%f|%d|%f|%f" % [float(fc["start_time"]), float(fc["stop_time"]),
+			int(fc["flags"]) & FREE_CONTROLLER_TIMING_FLAGS, float(fc["frequency"]), float(fc["phase"])]
+		if not groups.has(key):
+			groups[key] = []
+			order.append(key)
+		(groups[key] as Array).append(fc)
+	var clip_count := 0
+	for key in order:
+		var group: Array = groups[key]
+		var first: Dictionary = group[0]
+		var flags := int(first["flags"])
+		var sequence := {
+			"name": "FreeControllers%d" % clip_count,
+			"start_time": float(first["start_time"]),
+			"stop_time": float(first["stop_time"]),
+			"cycle_type": (flags >> 1) & 0x3,
+			"accum_root_name": "",
+			"text_keys": [],
+			"controlled_blocks": group,
+		}
+		var anim := _make_animation(sequence, index_of_name, root, built, skeleton, bone_of_node, animated)
+		if anim == null:
+			continue
+		var drives_bone := false
+		for fc in group:
+			var target := String(fc["node_name"])
+			if index_of_name.has(target) and bone_of_node.has(int(index_of_name[target])):
+				drives_bone = true
+		var active := (flags & FREE_CONTROLLER_ACTIVE) != 0
+		anim.set_meta("nif_free_controllers", true)
+		anim.set_meta("nif_frequency", float(first["frequency"]))
+		anim.set_meta("nif_phase", float(first["phase"]))
+		anim.set_meta("nif_active", active)
+		anim.set_meta("nif_autoplay", active and not drives_bone)
+		library.add_animation(String(sequence["name"]), anim)
+		clip_count += 1
+
+
 ## One Animation from one NiControllerSequence, or null when nothing in it
-## resolves to a node in this file.
+## resolves to a node in this file. The block -> track rules are
+## NifAnimationConverter's; this resolves the sequence's target names to the
+## nodes built here, and records each node a transform track moves in
+## `animated`.
 static func _make_animation(seq: Dictionary, index_of_name: Dictionary, root: Node3D,
 		built: Array, skeleton: Skeleton3D, bone_of_node: Dictionary,
 		animated: Dictionary) -> Animation:
-	var anim := Animation.new()
-	var start := float(seq["start_time"])
-	var stop := float(seq["stop_time"])
-	anim.length = maxf(stop - start, 0.001)
-	match int(seq["cycle_type"]):
-		0: anim.loop_mode = Animation.LOOP_LINEAR   # CYCLE_LOOP
-		1: anim.loop_mode = Animation.LOOP_PINGPONG # CYCLE_REVERSE
-		_: anim.loop_mode = Animation.LOOP_NONE     # CYCLE_CLAMP
-
-	var tracks := 0
-	for cb in seq["controlled_blocks"]:
-		var ip: Dictionary = cb["interpolator"]
-		if not bool(ip["present"]) or String(ip["kind"]) != "transform":
-			# Float, bool, point3 and blend interpolators drive properties
-			# rather than transforms; their addressing is the unsettled half
-			# of section 7.3 and they are left to the caller for now.
-			continue
-		var target := String(cb["node_name"])
-		if not index_of_name.has(target):
-			continue
-		var node_index := int(index_of_name[target])
-		var base := _track_path(node_index, root, built, skeleton, bone_of_node)
-		if base.is_empty():
-			continue
-		animated[node_index] = true
-		tracks += _add_transform_tracks(anim, base, ip, start)
-
-	if tracks == 0:
+	var resolver := _tree_target.bind(index_of_name, root, built, skeleton, bone_of_node)
+	var moved: Array = []
+	var anim := NifAnimationConverterScript.build_animation(seq, resolver, moved)
+	for target in moved:
+		animated[int(index_of_name[target])] = true
+	if anim.get_track_count() == 0:
 		return null
-	# Sequence names, not text keys: NiTextKeyExtraData markers ("start",
-	# "end", sound cues) are still outstanding, and are not these.
-	anim.set_meta("nif_accum_root", String(seq["accum_root_name"]))
-	anim.set_meta("nif_start_time", start)
 	return anim
+
+
+## A sequence target in this file: the built node's track path, whether it is
+## a shape's MeshInstance3D, and whether it is a Skeleton3D bone; an empty
+## Dictionary when the name is no node built here.
+static func _tree_target(target: String, index_of_name: Dictionary, root: Node3D,
+		built: Array, skeleton: Skeleton3D, bone_of_node: Dictionary) -> Dictionary:
+	if not index_of_name.has(target):
+		return {}
+	var node_index := int(index_of_name[target])
+	var path := _track_path(node_index, root, built, skeleton, bone_of_node)
+	if path.is_empty():
+		return {}
+	var is_bone := bone_of_node.has(node_index)
+	var is_shape := not is_bone and built[node_index] is MeshInstance3D
+	return {"path": path, "shape": is_shape, "bone": is_bone}
 
 
 ## The NodePath an Animation track addresses a built node by. A bone is
@@ -867,72 +963,6 @@ static func _track_path(node_index: int, root: Node3D, built: Array,
 	if node_index < 0 or node_index >= built.size() or built[node_index] == null:
 		return ""
 	return String(root.get_path_to(built[node_index]))
-
-
-## Keys are authored in the node's own parent space and go in verbatim. Times
-## are rebased to zero because Godot animations start there while a NIF
-## sequence carries its own start time (recorded on the Animation as metadata).
-static func _add_transform_tracks(anim: Animation, base: String, ip: Dictionary, start: float) -> int:
-	var added := 0
-	var resampled := bool(ip["resampled"])
-	var pos_keys: Array = ip["translation_keys"]
-	if not pos_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_POSITION_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(pos_keys, resampled))
-		for k in pos_keys:
-			anim.position_track_insert_key(t, maxf(float(k["time"]) - start, 0.0), Vector3(k["value"]))
-		added += 1
-	var rot_keys: Array = ip["rotation_keys"]
-	if not rot_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_ROTATION_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(rot_keys, resampled))
-		for k in rot_keys:
-			anim.rotation_track_insert_key(t, maxf(float(k["time"]) - start, 0.0),
-				(k["value"] as Quaternion).normalized())
-		added += 1
-	var scale_keys: Array = ip["scale_keys"]
-	if not scale_keys.is_empty():
-		var t := anim.add_track(Animation.TYPE_SCALE_3D)
-		anim.track_set_path(t, NodePath(base))
-		anim.track_set_interpolation_type(t, _track_interp(scale_keys, resampled))
-		for k in scale_keys:
-			var v := float(k["value"])
-			anim.scale_track_insert_key(t, maxf(float(k["time"]) - start, 0.0), Vector3(v, v, v))
-		added += 1
-	return added
-
-
-## Gamebryo interpolates PER KEY; Godot interpolates PER TRACK. The gap does
-## not close, so this is a policy, not a mapping:
-##
-##   QUADRATIC / TBC  ->  CUBIC    the authored intent is "it stops softly".
-##                                 Godot's cubic derives its curve from
-##                                 neighbouring keys rather than the authored
-##                                 tangents, which are not extracted -- close
-##                                 enough for a designer's easing, and far
-##                                 cheaper than baking a dense key run.
-##   CONST            ->  LINEAR   DELIBERATE. A large share of the corpus is
-##                                 authored stepped at the engine's ~30 Hz
-##                                 update. That read as fine on a 360 and
-##                                 reads as juddering on modern hardware;
-##                                 smoothing it is an improvement, not a loss.
-##   LINEAR / other   ->  LINEAR
-##
-## A mixed channel takes CUBIC only when eased keys are the MAJORITY. Cubic
-## through keys authored linear invents overshoot at direction reversals,
-## so the conservative side is the default one.
-static func _track_interp(keys: Array, resampled: bool) -> int:
-	if resampled:
-		# Already sampled off a curve; the keys ARE the curve.
-		return Animation.INTERPOLATION_LINEAR
-	var eased := 0
-	for k in keys:
-		match String(k["interp"]):
-			"quadratic", "tbc":
-				eased += 1
-	return Animation.INTERPOLATION_CUBIC if eased * 2 > keys.size() else Animation.INTERPOLATION_LINEAR
 
 
 ## Collision is built, never withheld (nif_server_v2.md section 5.3). Ragdoll

@@ -203,6 +203,7 @@ func _hang(weapon: WeaponReference, slot: ActorReference.WeaponSlot) -> void:
 		if node == null:
 			return
 		_nodes[weapon] = node
+		node.holder = _reference
 		node.visual_detail_applied.connect(_on_weapon_visual.bind(weapon))
 		node.parent_key.connect(_on_parent_key.bind(weapon))
 		node.equip_finished.connect(_on_equip_finished.bind(weapon))

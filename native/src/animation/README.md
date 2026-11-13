@@ -63,11 +63,14 @@ KfAnimator does not load clips. Callers request them from NifServer and pass the
 With no skeleton (`skeleton_path` resolves to none), clips play on the `Node3D`s under `node_root`:
 a weapon's `##` parts.
 
-- A track binds to the node named as its path (the escaped NIF name), the root included.
+- A track binds to the node its path names, the root included: a path from `node_root` (a NIF's
+  own clips, NifTreeBuilder) first, else a node of that name (the escaped NIF name, KF clips).
 - Transform tracks resolve by priority and fade weight as bone channels do, and are written with
   `set_position`, `set_quaternion`, `set_scale`.
 - A `<name>:visible` track (NifServer builds them from `NiVisController` bool blocks) sets the
   node's `visible`: the highest priority clip keying it wins, the newest at a tie.
+- Any other value track, `<node>:<property>`, sets that property as a float, chosen the same way:
+  the NIF shaders' instance uniforms (`instance_shader_parameters/nif_alpha`, `nif_uv_*`).
 - `Bip01` and `Bip01 NonAccum` tracks are skipped; there is no root motion and `disabled_bones`
   does not apply.
 - A clip that keys none of the nodes still plays: its clock and events are kept, so a holder can

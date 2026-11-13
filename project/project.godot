@@ -28,6 +28,7 @@ ScriptServer="*res://GodotBryo/Servers/ScriptServer/script_server.gd"
 QuestServer="*res://GodotBryo/Servers/QuestServer/quest_server.gd"
 DialogueServer="*res://GodotBryo/Servers/DialogueServer/dialogue_server.gd"
 SoundServer="*res://GodotBryo/Servers/SoundServer/sound_server.gd"
+ProjectileServer="*res://GodotBryo/Servers/ProjectileServer/projectile_server.gd"
 NpcSimulationServer="*res://GodotBryo/Servers/NpcSimulationServer/nav_npc_simulation_server.gd"
 SaveServer="*res://GodotBryo/Servers/SaveServer/save_server.gd"
 
@@ -202,6 +203,7 @@ scaling_3d/mode=1
 scaling_3d/mode.macos=3
 scaling_3d/scale=0.75
 scaling_3d/fsr_sharpness=2.0
+limits/global_shader_variables/buffer_size=1048576
 lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=3
 lights_and_shadows/positional_shadow/atlas_quadrant_1_subdiv=3
 lights_and_shadows/positional_shadow/atlas_quadrant_2_subdiv=4

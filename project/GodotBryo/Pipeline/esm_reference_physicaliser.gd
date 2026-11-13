@@ -92,6 +92,8 @@ func _make_node(ref: EsmReference) -> EsmNode:
 		return LeveledItemPreviewNodeScript.new()
 	if ref is WeaponReference:
 		return WeaponNodeScene.instantiate()
+	if ref is ProjectileReference:
+		return EsmProjectileNode.new()
 	if ref is MiscReference or ref is AlchemyReference \
 			or ref is AmmoReference or ref is KeyReference \
 			or ref is ArmorReference \

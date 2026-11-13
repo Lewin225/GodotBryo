@@ -26,6 +26,8 @@ const CREOSOTE_BUSH := "meshes/clutter/creosotebush/creosotebushsm.nif"
 const JOSHUA_TREE := "meshes/landscape/trees/treejoshbnv.nif"
 const DRINKING_GLASS := "meshes/animobjects/aodrinkingglass.nif"
 const VAULT_WINDOW := "meshes/dungeons/vault/accessories/vwindow01.nif"
+const DUST_MESH_SKY := "meshes/effects/ambient/fxdustmeshsky01.nif"
+const AR_MUZZLE_FLASH := "meshes/effects/muzzleflashes/assaultriflemuzzleflash.nif"
 const DOC_MITCHELL_WINDOW := "meshes/dungeons/NV_CraftsmanHomesInterior/NVCraftsmanRmWallGlassB.nif"
 const INDUSTRIAL_RAYS := "meshes/effects/ambient/industrial/IndFXLightRays01.nif"
 const GOODSPRINGS_BEAM := "meshes/effects/ambient/FXLightBeamBrtW02.nif"
@@ -127,10 +129,10 @@ func test_static_tree() -> void:
 
 	var mi := _find_first(root, "MeshInstance3D") as MeshInstance3D
 	check(mi.mesh != null and mi.mesh.get_surface_count() == 1, "mesh has one surface")
-	var mat := mi.mesh.surface_get_material(0) as StandardMaterial3D
-	check(mat != null, "surface carries a StandardMaterial3D")
-	check(mat.albedo_texture != null, "diffuse texture resolved through TextureServer")
-	check(mat.normal_texture != null, "normal map resolved")
+	var mat := NifMaterialBuilderScript.render_state(mi.mesh.surface_get_material(0))
+	check(not mat.is_empty(), "surface carries a NIF material")
+	check(bool(mat.get("has_albedo_texture", false)), "diffuse texture resolved through TextureServer")
+	check(bool(mat.get("has_normal_texture", false)), "normal map resolved")
 
 	# Names must round-trip, and the authored name is always recoverable.
 	var escaped_found := false
@@ -510,30 +512,30 @@ func test_vertex_colour_and_alpha() -> void:
 	# ARRAY_COLOR unless the material opts in.
 	var vcol := 0
 	for m in by_name.values():
-		if (m as StandardMaterial3D).vertex_color_use_as_albedo:
+		if bool(NifMaterialBuilderScript.render_state(m)["vertex_color"]):
 			vcol += 1
 	check(vcol == 3, "all 3 materials use vertex colour as albedo (got %d)" % vcol)
 
 	# Block 16 is the case this exists for: an unlit, texture-less, blended
 	# AO fade whose only pixels are per-vertex colour and alpha. Rendered
 	# without either flag it is a solid opaque white quad.
-	var fade: StandardMaterial3D = null
+	var fade: Dictionary = {}
 	for part_name in by_name.keys():
-		var m: StandardMaterial3D = by_name[part_name]
-		if m.albedo_texture == null:
-			fade = m
+		var state := NifMaterialBuilderScript.render_state(by_name[part_name])
+		if not bool(state["has_albedo_texture"]):
+			fade = state
 			break
-	check(fade != null, "found the texture-less shape")
-	if fade == null:
+	check(not fade.is_empty(), "found the texture-less shape")
+	if fade.is_empty():
 		root.queue_free()
 		return
-	check(fade.vertex_color_use_as_albedo, "texture-less shape reads vertex colour")
-	check(fade.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
-		"blend-enabled shape is TRANSPARENCY_ALPHA (got %d)" % fade.transparency)
-	check(fade.blend_mode == BaseMaterial3D.BLEND_MODE_MIX,
-		"src=SRC_ALPHA dst=INV_SRC_ALPHA maps to MIX (got %d)" % fade.blend_mode)
-	check(fade.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED,
-		"BSShaderNoLightingProperty is unshaded (got %d)" % fade.shading_mode)
+	check(bool(fade["vertex_color"]), "texture-less shape reads vertex colour")
+	check(fade["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA,
+		"blend-enabled shape is TRANSPARENCY_ALPHA (got %d)" % fade["transparency"])
+	check(fade["blend_mode"] == BaseMaterial3D.BLEND_MODE_MIX,
+		"src=SRC_ALPHA dst=INV_SRC_ALPHA maps to MIX (got %d)" % fade["blend_mode"])
+	check(fade["shading_mode"] == BaseMaterial3D.SHADING_MODE_UNSHADED,
+		"BSShaderNoLightingProperty is unshaded (got %d)" % fade["shading_mode"])
 	root.queue_free()
 
 
@@ -574,8 +576,8 @@ func test_texture_conventions() -> void:
 		if not (node is MeshInstance3D):
 			continue
 		shapes += 1
-		var m: StandardMaterial3D = (node as MeshInstance3D).mesh.surface_get_material(0)
-		if m.albedo_texture != null:
+		var m: Material = (node as MeshInstance3D).mesh.surface_get_material(0)
+		if bool(NifMaterialBuilderScript.render_state(m)["has_albedo_texture"]):
 			textured += 1
 	check(shapes == 2, "2 shapes (got %d)" % shapes)
 	check(textured == 2, "both shapes resolved an albedo texture (got %d)" % textured)
@@ -805,9 +807,12 @@ func test_prefer_static() -> void:
 	normal.queue_free()
 	flat.queue_free()
 
-	# Dynamic content is a refusal with a reason, not a silent ignore.
-	for pair in [[DOOR, "AnimationPlayer"], ["meshes/characters/_male/skeleton.nif", "Skeleton3D"],
-			[BILLBOARD, "NiBillboardNode"]]:
+	# Dynamic content is a refusal with a reason, not a silent ignore. The
+	# reason is the first blocker met: the skeleton and the fireball carry free
+	# controllers, so an AnimationPlayer holds their FreeControllers clips and is
+	# met before their Skeleton3D and NiBillboardNode.
+	for pair in [[DOOR, "AnimationPlayer"], ["meshes/characters/_male/skeleton.nif", "AnimationPlayer"],
+			[BILLBOARD, "AnimationPlayer"]]:
 		var d := NifSource.new()
 		var dr: Dictionary = ArchiveServer.read(String(pair[0]))
 		if not bool(dr["found"]) or not d.load(PackedByteArray(dr["data"])):
@@ -971,25 +976,26 @@ func test_shader_depth_flags() -> void:
 	check(not third.is_empty(), "third water tank shape found")
 	if third.is_empty():
 		return
-	var mat: StandardMaterial3D = NifMaterialBuilderScript.build(third, false, {})
-	check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
+	var mat := NifMaterialBuilderScript.build(third, false, {})
+	var state := NifMaterialBuilderScript.render_state(mat)
+	check(state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA,
 		"third shape retains authored alpha blending")
-	check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+	check(state["depth_draw_mode"] == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
 		"third shape writes depth despite alpha blending")
-	check(not mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+	check(not bool(state["depth_test_disabled"]),
 		"third shape keeps depth testing enabled")
 	check(int(mat.get_meta("nif_shader_flags1", 0)) == 0x82000101 and
 		int(mat.get_meta("nif_shader_flags2", 0)) == 0x1,
 		"both raw shader flag words remain inspectable on material")
-	check(mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_STANDARD,
+	check(mat.get_meta("nif_material_path", &"") == NifMaterialBuilderScript.PATH_LIT,
 		"the material records its material path")
 	var no_depth := third.duplicate()
 	no_depth["shader_flags1"] = 0
 	no_depth["shader_flags2"] = 0
-	var no_depth_mat: StandardMaterial3D = NifMaterialBuilderScript.build(no_depth, false, {})
-	check(no_depth_mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+	var no_depth_mat := NifMaterialBuilderScript.render_state(NifMaterialBuilderScript.build(no_depth, false, {}))
+	check(bool(no_depth_mat["depth_test_disabled"]),
 		"cleared authored test bit disables depth testing")
-	check(no_depth_mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED,
+	check(no_depth_mat["depth_draw_mode"] == BaseMaterial3D.DEPTH_DRAW_DISABLED,
 		"cleared authored write bit disables depth writing")
 
 
@@ -1009,37 +1015,53 @@ func test_external_emittance_shapes() -> void:
 		check(marked != null and bool(marked.get_meta("nif_external_emittance", false)),
 			"%s is marked for placement XEMI" % String(entry[1]))
 		if marked != null:
-			var mat := marked.mesh.surface_get_material(0) as StandardMaterial3D
+			var mat := NifMaterialBuilderScript.render_state(marked.mesh.surface_get_material(0))
 			var is_shaft: bool = bool(entry[3])
-			check(mat.proximity_fade_enabled == is_shaft and
-				mat.distance_fade_mode == (BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+			check(bool(mat["proximity_fade"]) == is_shaft and
+				mat["distance_fade_mode"] == (BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
 					if is_shaft else BaseMaterial3D.DISTANCE_FADE_DISABLED),
 				"%s uses soft clip and near fade only for additive rays" % String(entry[1]))
 			if is_shaft:
-				check(is_equal_approx(mat.proximity_fade_distance, 1.0) and
-					is_equal_approx(mat.distance_fade_max_distance, 1.5) and
-					is_equal_approx(mat.albedo_color.a, 0.2) and
-					mat.cull_mode == BaseMaterial3D.CULL_DISABLED,
+				check(is_equal_approx(mat["proximity_fade_distance"], 1.0) and
+					is_equal_approx(mat["distance_fade_max_distance"], 1.5) and
+					is_equal_approx((mat["albedo_color"] as Color).a, 0.2) and
+					mat["cull_mode"] == BaseMaterial3D.CULL_DISABLED,
 					"%s has shaft fades, 20%% alpha and two-sided faces" % String(entry[1]))
 		if not String(entry[2]).is_empty():
 			var unmarked := _find_authored_node(root, String(entry[2])) as MeshInstance3D
 			check(unmarked != null and not bool(unmarked.get_meta("nif_external_emittance", false)),
 				"%s is not marked for placement XEMI" % String(entry[2]))
 			if unmarked != null:
-				var unmarked_mat := unmarked.mesh.surface_get_material(0) as StandardMaterial3D
-				check(not unmarked_mat.proximity_fade_enabled and
-					unmarked_mat.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED,
+				var unmarked_mat := NifMaterialBuilderScript.render_state(unmarked.mesh.surface_get_material(0))
+				check(not bool(unmarked_mat["proximity_fade"]) and
+					unmarked_mat["distance_fade_mode"] == BaseMaterial3D.DISTANCE_FADE_DISABLED,
 					"%s has no light-shaft fade" % String(entry[2]))
 		root.queue_free()
 
 
 func test_dual_alpha_scissor() -> void:
-	print("--- dual-bit NiAlphaProperty maps to authored alpha scissor ---")
+	print("--- dual-bit NiAlphaProperty: blended with the authored function and alpha tested ---")
+	# [path, shape, authored test bit, blend mode, alpha-test cutoff (-1: no
+	# test), depth write]. Every case is a lit or unlit shader shape, so a
+	# dual-bit shape both blends and tests, as the file asks.
 	var cases := [
-		[CREOSOTE_BUSH, "Box06:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 200.0 / 255.0],
-		[JOSHUA_TREE, "TreeJoshB_1:0", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 100.0 / 255.0],
-		[DRINKING_GLASS, "Liquid", BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, 1.0 / 255.0],
-		[VAULT_WINDOW, "VWindow01:0", BaseMaterial3D.TRANSPARENCY_ALPHA, -1.0],
+		[CREOSOTE_BUSH, "Box06:0", true, BaseMaterial3D.BLEND_MODE_MIX, 200.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[JOSHUA_TREE, "TreeJoshB_1:0", true, BaseMaterial3D.BLEND_MODE_MIX, 100.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		# An authored threshold of 0 still rejects alpha 0 (GREATER 0).
+		[DRINKING_GLASS, "Liquid", true, BaseMaterial3D.BLEND_MODE_MIX, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		[VAULT_WINDOW, "VWindow01:0", false, BaseMaterial3D.BLEND_MODE_MIX, -1.0,
+			BaseMaterial3D.DEPTH_DRAW_ALWAYS],
+		# flags 0x120D: SRC_ALPHA/ONE with a GREATER 1 test; shader flags2
+		# clear, so no depth write.
+		[AR_MUZZLE_FLASH, "Plane01:0", true, BaseMaterial3D.BLEND_MODE_ADD, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED],
+		# flags 0x12ED: SRC_ALPHA/INV_SRC_ALPHA with a GREATER 1 test; the sky
+		# dust card that rendered as a cutout under the scissor rule.
+		[DUST_MESH_SKY, "DustBillBoard01:0", true, BaseMaterial3D.BLEND_MODE_MIX, 1.0 / 255.0,
+			BaseMaterial3D.DEPTH_DRAW_DISABLED],
 	]
 	for entry in cases:
 		var path := String(entry[0])
@@ -1060,17 +1082,18 @@ func test_dual_alpha_scissor() -> void:
 		check(not shape.is_empty(), "%s has shape %s" % [path, shape_name])
 		if shape.is_empty():
 			continue
-		var expected_mode: int = int(entry[2])
+		var tested := bool(entry[2])
 		check(bool(shape["alpha_blend_enabled"]), "%s is authored with blending" % shape_name)
-		check(bool(shape["alpha_test_enabled"]) == (expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR),
-			"%s authored test bit matches expected mode" % shape_name)
-		var mat: StandardMaterial3D = NifMaterialBuilderScript.build(shape, false, {})
-		check(mat.transparency == expected_mode,
-			"%s selects expected transparency mode" % shape_name)
-		if expected_mode == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
-			check(is_equal_approx(mat.alpha_scissor_threshold, float(entry[3])),
-				"%s uses expected alpha-test cutoff" % shape_name)
-		check(mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS,
+		check(bool(shape["alpha_test_enabled"]) == tested,
+			"%s authored test bit is %s" % [shape_name, str(tested)])
+		var mat := NifMaterialBuilderScript.render_state(NifMaterialBuilderScript.build(shape, false, {}))
+		check(mat["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA, "%s is blended" % shape_name)
+		check(mat["blend_mode"] == int(entry[3]), "%s uses its authored blend function" % shape_name)
+		check(bool(mat["alpha_test"]) == tested, "%s is alpha tested: %s" % [shape_name, str(tested)])
+		if tested:
+			check(is_equal_approx(mat["alpha_scissor_threshold"], float(entry[4])),
+				"%s tests at its authored threshold" % shape_name)
+		check(mat["depth_draw_mode"] == int(entry[5]),
 			"%s keeps authored depth-write flag" % shape_name)
 
 

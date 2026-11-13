@@ -34,7 +34,7 @@ const TYPE_TO_BASE := {
 	"HDPT": "HeadPartBase", "IPDS": "ImpactDatasetBase", "SOUN": "SoundBase", "FACT": "FactionBase",
 	"ENCH": "EnchantmentBase", "SPEL": "SpellBase", "CSTY": "CombatStyleBase", "SCPT": "ScriptBase",
 	"NOTE": "NoteBase", "EXPL": "ExplosionBase", "DEBR": "DebrisBase", "ECZN": "EncounterZoneBase",
-	"IDLE": "IdleBase", "TXST": "TextureSetBase"
+	"IDLE": "IdleBase", "TXST": "TextureSetBase", "PROJ": "ProjectileBase", "AMEF": "AmmoEffectBase", "IPCT": "ImpactBase"
 }
 const TYPE_TO_REFERENCE := {
 	"NPC_": "NpcReference", "CREA": "CreatureReference", "WEAP": "WeaponReference", "ARMO": "ArmorReference",
@@ -43,7 +43,7 @@ const TYPE_TO_REFERENCE := {
 	"TACT": "TalkingActivatorReference", "ARMA": "ArmorAddonReference", "ALCH": "AlchemyReference",
 	"LVLI": "LeveledItemReference", "AMMO": "AmmoReference", "BOOK": "BookReference",
 	"CCRD": "CaravanCardReference", "CMNY": "CaravanMoneyReference", "KEYM": "KeyReference", "MISC": "MiscReference",
-	"MSTT": "MovableStaticReference", "TERM": "TerminalReference", "STAT": "StaticReference"
+	"MSTT": "MovableStaticReference", "TERM": "TerminalReference", "STAT": "StaticReference", "PROJ": "ProjectileReference"
 }
 
 var reader
@@ -661,6 +661,14 @@ func _new_unplaced_reference(base_form_id: int) -> EsmReference:
 	result.base = base
 	return result
 
+## Every runtime reference (ProjectileServer collects its projectiles after a
+## load).
+func get_runtime_references() -> Array[EsmReference]:
+	var result: Array[EsmReference] = []
+	for reference: EsmReference in _runtime_references.values():
+		result.append(reference)
+	return result
+
 ## Drops a runtime reference from the runtime table, for one used up or
 ## deleted, so get_reference() no longer finds it and a save leaves it out.
 func release_runtime_reference(reference: EsmReference) -> void:
@@ -1114,6 +1122,7 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		weapon.unequip_sound = _sound_base(raw, "NAM8")
 		weapon.pick_up_sound = _sound_base(raw, "YNAM")
 		weapon.drop_sound = _sound_base(raw, "ZNAM")
+		weapon.impact_dataset_form_id = _u32(_subrecord(raw, "INAM"))
 		weapon.ammo_form_id = _u32(_subrecord(raw, "NAM0"))
 		weapon.ammo = get_base(weapon.ammo_form_id) if weapon.ammo_form_id != 0 else null
 		weapon.biped_model_list_form_id = _u32(_subrecord(raw, "BIPL"))
@@ -1141,6 +1150,32 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		misc.weight = float(item_data.get("weight", 0.0))
 		misc.inventory_icon = String(item_data.get("inventory_icon", ""))
 		misc.message_icon = String(item_data.get("message_icon", ""))
+	elif result is ImpactDatasetBase:
+		var dataset: ImpactDatasetBase = result
+		var dataset_data := _subrecord(raw, "DATA")
+		var ids := PackedInt32Array()
+		for offset in range(0, dataset_data.size() - 3, 4):
+			ids.append(_u32(dataset_data, offset))
+		dataset.impact_form_ids = ids
+	elif result is ImpactBase:
+		var impact: ImpactBase = result
+		impact.model_path = _string(_subrecord(raw, "MODL"))
+		var impact_data := _subrecord(raw, "DATA")
+		impact.duration = _f32(impact_data)
+		impact.orientation = _u32(impact_data, 4)
+		impact.angle_threshold = _f32(impact_data, 8)
+		impact.placement_radius = _f32(impact_data, 12)
+		impact.sound = _sound_base(raw, "SNAM")
+	elif result is ProjectileBase:
+		_populate_projectile(result as ProjectileBase, raw)
+	elif result is ExplosionBase:
+		_populate_explosion(result as ExplosionBase, raw)
+	elif result is AmmoEffectBase:
+		var effect: AmmoEffectBase = result
+		var effect_data := _subrecord(raw, "DATA")
+		effect.effect_type = _u32(effect_data)
+		effect.operation = _u32(effect_data, 4)
+		effect.value = _f32(effect_data, 8)
 	elif result is AlchemyBase or result is AmmoBase or result is KeyBase:
 		result.set("model_path", _string(_subrecord(raw, "MODL")))
 		var generic_item_data: Dictionary = reader.get_item_data(result.form_id) if reader != null else {}
@@ -1148,6 +1183,8 @@ func _populate_base(result: EsmBase, raw: Dictionary) -> void:
 		result.set("weight", float(generic_item_data.get("weight", 0.0)))
 		result.set("inventory_icon", String(generic_item_data.get("inventory_icon", "")))
 		result.set("message_icon", String(generic_item_data.get("message_icon", "")))
+		if result is AmmoBase:
+			_populate_ammo(result as AmmoBase, raw)
 	elif result is NpcBase:
 		_populate_npc(result as NpcBase, raw)
 	elif result is CreatureBase:
@@ -1590,6 +1627,69 @@ func _weapon_animation_family(animation_type: int) -> String:
 	}.get(animation_type, "")
 
 ## The SOUN the FormID subrecord `tag` names, null when absent or 0.
+## PROJ: DATA (84 bytes on 78, 68 on 17: no Rotation or Bouncy Mult), MODL,
+## NAM1, VNAM.
+func _populate_projectile(projectile: ProjectileBase, raw: Dictionary) -> void:
+	projectile.model_path = _string(_subrecord(raw, "MODL"))
+	projectile.muzzle_flash_model_path = _string(_subrecord(raw, "NAM1"))
+	projectile.sound_level = _u32(_subrecord(raw, "VNAM"))
+	var data := _subrecord(raw, "DATA")
+	projectile.flags = _u16(data)
+	projectile.projectile_type = _u16(data, 2)
+	projectile.gravity = _f32(data, 4)
+	projectile.speed = _f32(data, 8)
+	projectile.projectile_range = _f32(data, 12)
+	projectile.light_form_id = _u32(data, 16)
+	projectile.muzzle_flash_light_form_id = _u32(data, 20)
+	projectile.tracer_chance = _f32(data, 24)
+	projectile.alt_trigger_proximity = _f32(data, 28)
+	projectile.alt_trigger_timer = _f32(data, 32)
+	projectile.explosion_form_id = _u32(data, 36)
+	projectile.explosion = get_base(projectile.explosion_form_id) as ExplosionBase if projectile.explosion_form_id != 0 else null
+	projectile.sound = _sound_from_id(_u32(data, 40))
+	projectile.muzzle_flash_duration = _f32(data, 44)
+	projectile.fade_duration = _f32(data, 48)
+	projectile.impact_force = _f32(data, 52)
+	projectile.countdown_sound = _sound_from_id(_u32(data, 56))
+	projectile.disable_sound = _sound_from_id(_u32(data, 60))
+	projectile.default_weapon_source_form_id = _u32(data, 64)
+	projectile.rotation = Vector3(_f32(data, 68), _f32(data, 72), _f32(data, 76))
+	projectile.bouncy_mult = _f32(data, 80)
+
+## EXPL: MODL and DATA (52 bytes on all 154).
+func _populate_explosion(explosion: ExplosionBase, raw: Dictionary) -> void:
+	explosion.model_path = _string(_subrecord(raw, "MODL"))
+	var data := _subrecord(raw, "DATA")
+	explosion.force = _f32(data)
+	explosion.damage = _f32(data, 4)
+	explosion.radius = _f32(data, 8)
+	explosion.light_form_id = _u32(data, 12)
+	explosion.sound = _sound_from_id(_u32(data, 16))
+	explosion.flags = _u32(data, 20)
+	explosion.impact_dataset_form_id = _u32(data, 28)
+	explosion.second_sound = _sound_from_id(_u32(data, 32))
+
+## AMMO: DATA (13 bytes), DAT2 (20 bytes on 76, 12 on 11, absent on 5), RCIL.
+func _populate_ammo(ammo: AmmoBase, raw: Dictionary) -> void:
+	var data := _subrecord(raw, "DATA")
+	ammo.speed = _f32(data)
+	ammo.flags = _u8(data, 4)
+	ammo.clip_rounds = _u8(data, 12)
+	var data2 := _subrecord(raw, "DAT2")
+	ammo.projectiles_per_shot = _u32(data2)
+	ammo.projectile_form_id = _u32(data2, 4)
+	ammo.projectile = get_base(ammo.projectile_form_id) as ProjectileBase if ammo.projectile_form_id != 0 else null
+	ammo.consumed_ammo_form_id = _u32(data2, 12)
+	ammo.consumed_percentage = _f32(data2, 16)
+	ammo.effects.clear()
+	for entry in _all_subrecords(raw, "RCIL"):
+		var effect := get_base(_u32(entry)) as AmmoEffectBase
+		if effect != null:
+			ammo.effects.append(effect)
+
+func _sound_from_id(form_id: int) -> SoundBase:
+	return get_base(form_id) as SoundBase if form_id != 0 else null
+
 func _sound_base(raw: Dictionary, tag: String) -> SoundBase:
 	var form_id := _u32(_subrecord(raw, tag))
 	return get_base(form_id) as SoundBase if form_id != 0 else null

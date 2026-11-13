@@ -50,6 +50,8 @@ const SIGNATURES := {
 	"Abs|Sqrt": "X:number",
 	"GetSecondsPassed|GameDaysPassed|GetCurrentTime|GetRandomPercent": "",
 	"SwapTexture": "Ref:ref Block:string Path:string",
+	"PlayGroup": "Group:string Flag:int",
+	"IsAnimPlaying": "Group:string",
 	"Enable|Disable": "[Fade:flag]",
 	"GetDisabled|GetActionRef|GetSelf|IsWin32|IsXBox|IsPS3": "",
 	"Activate": "[ActionRef:ref] [RunOnActivateBlock:flag]",
@@ -110,6 +112,7 @@ const SIGNATURES := {
 	"SetActorValue|SetAV|ModActorValue|ModAV|ForceActorValue|ForceAV|DamageActorValue|DamageAV|RestoreActorValue|RestoreAV": "ActorValue:actorvalue Value:number",
 	"GetHealthPercentage|GetLevel|GetButtonPressed|ToggleCollision|TCL|TGM|TDM|Kill|Resurrect": "",
 	"PlaceAtMe": "Object:object [Count:int]",
+	"FireWeapon": "Weapon:item",
 	"CenterOnCell|COC": "Cell:interior_cell",
 	"ShowMessage": "Message:message",
 }

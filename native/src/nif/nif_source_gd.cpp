@@ -24,6 +24,7 @@ void NifSource::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_nodes"), &NifSource::get_nodes);
 	ClassDB::bind_method(D_METHOD("get_object_palettes"), &NifSource::get_object_palettes);
 	ClassDB::bind_method(D_METHOD("get_sequences"), &NifSource::get_sequences);
+	ClassDB::bind_method(D_METHOD("get_free_controllers"), &NifSource::get_free_controllers);
 	ClassDB::bind_method(D_METHOD("get_collision_shapes"), &NifSource::get_collision_shapes);
 	ClassDB::bind_method(D_METHOD("get_collision_bodies"), &NifSource::get_collision_bodies);
 }
@@ -91,6 +92,11 @@ Array NifSource::get_nodes() const {
 			d["falloff_start_opacity"] = n.falloff_start_opacity;
 			d["falloff_stop_opacity"] = n.falloff_stop_opacity;
 		}
+		d["has_refraction_fields"] = n.has_refraction_fields;
+		if (n.has_refraction_fields) {
+			d["refraction_strength"] = n.refraction_strength;
+			d["refraction_fire_period"] = n.refraction_fire_period;
+		}
 		d["texture_convention"] = String(n.texture_convention.c_str());
 		d["has_alpha_property"] = n.has_alpha_property;
 		if (n.has_alpha_property) {
@@ -98,6 +104,18 @@ Array NifSource::get_nodes() const {
 			d["alpha_test_enabled"] = n.alpha_test_enabled;
 			d["alpha_threshold"] = n.alpha_threshold;
 			d["alpha_blend_func"] = String(n.alpha_blend_func.c_str());
+		}
+		d["has_material_property"] = n.has_material_property;
+		if (n.has_material_property) {
+			d["material_emissive"] = Color(n.material_emissive[0], n.material_emissive[1], n.material_emissive[2]);
+			d["material_emit_mult"] = n.material_emit_mult;
+			d["material_specular"] = Color(n.material_specular[0], n.material_specular[1], n.material_specular[2]);
+			d["material_glossiness"] = n.material_glossiness;
+			d["material_alpha"] = n.material_alpha;
+		}
+		d["has_stencil_property"] = n.has_stencil_property;
+		if (n.has_stencil_property) {
+			d["stencil_draw_mode"] = n.stencil_draw_mode;
 		}
 		PackedInt32Array prop_blocks;
 		for (int32_t idx : n.property_block_indices) {
@@ -338,6 +356,8 @@ Dictionary interpolator_dict(const nifsrc::Interpolator &ip) {
 	d["scale"] = ip.scale;
 	d["has_static_float"] = ip.has_static_float;
 	d["static_float"] = ip.static_float;
+	d["has_static_point3"] = ip.has_static_point3;
+	d["static_point3"] = Vector3(ip.static_point3[0], ip.static_point3[1], ip.static_point3[2]);
 	d["translation_keys"] = vec3_keys(ip.translation_keys);
 	d["rotation_keys"] = quat_keys(ip.rotation_keys);
 	d["scale_keys"] = scalar_keys(ip.scale_keys);
@@ -347,6 +367,28 @@ Dictionary interpolator_dict(const nifsrc::Interpolator &ip) {
 }
 
 } // namespace
+
+Array NifSource::get_free_controllers() const {
+	Array out;
+	for (const auto &fc : doc_.free_controllers) {
+		Dictionary b;
+		b["block_index"] = static_cast<int>(fc.controller_block);
+		b["node_name"] = String(fc.block.node_name.c_str());
+		b["property_type"] = String();
+		b["controller_type"] = String(fc.block.controller_type.c_str());
+		b["controller_id"] = String(fc.block.controller_id.c_str());
+		b["interpolator_id"] = String();
+		b["priority"] = 0;
+		b["interpolator"] = interpolator_dict(fc.block.interpolator);
+		b["flags"] = static_cast<int>(fc.flags);
+		b["frequency"] = fc.frequency;
+		b["phase"] = fc.phase;
+		b["start_time"] = fc.start_time;
+		b["stop_time"] = fc.stop_time;
+		out.push_back(b);
+	}
+	return out;
+}
 
 Array NifSource::get_sequences() const {
 	Array out;

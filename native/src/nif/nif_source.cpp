@@ -637,6 +637,184 @@ void fill_bspline(const nifly::NiHeader &header, nifly::NiBSplineTransformInterp
 	}
 }
 
+// A compact B-spline's control channel (`dimensions` values per control,
+// `bias + short * multiplier / 32767`) evaluated over the interpolator's time
+// range into linear keys, at the times adaptive_spline_times picks within
+// `tolerance`. Empty when the interpolator has no data, no basis or no
+// channel (offset 65535).
+std::vector<std::pair<float, SplineValue>> sample_compact_channel(const nifly::NiHeader &header,
+		nifly::NiBSplineInterpolator *interp, uint32_t offset, int dimensions, float bias,
+		float multiplier, float tolerance) {
+	std::vector<std::pair<float, SplineValue>> samples;
+	auto *data = header.GetBlock<nifly::NiBSplineData>(interp->splineDataRef);
+	auto *basis = header.GetBlock<nifly::NiBSplineBasisData>(interp->basisDataRef);
+	if (data == nullptr || basis == nullptr || basis->numControlPoints == 0) {
+		return samples;
+	}
+	const float start = interp->startTime, stop = interp->stopTime;
+	if (!(stop > start)) {
+		return samples;
+	}
+	const auto controls = spline_controls(data, offset, basis->numControlPoints, dimensions, true, bias, multiplier);
+	for (const float t : adaptive_spline_times(controls, start, stop, false, tolerance)) {
+		samples.emplace_back(t, evaluate_spline(controls, (t - start) / (stop - start)));
+	}
+	return samples;
+}
+
+// Whether a stored float is set: NIF writes an unset one as -FLT_MAX.
+bool is_set_float(float value) {
+	return std::fabs(value) < 1.0e30f;
+}
+
+// NiBSplineCompFloatInterpolator (55 KF emittance links): `base` is its static
+// value, `offset` its control channel. Keys within 1/255.
+void fill_bspline_float(const nifly::NiHeader &header, nifly::NiBSplineCompFloatInterpolator *interp,
+		Interpolator &out) {
+	out.kind = "float";
+	if (is_set_float(interp->base)) {
+		out.has_static_float = true;
+		out.static_float = interp->base;
+	}
+	const auto samples = sample_compact_channel(header, interp, interp->offset, 1, interp->bias,
+			interp->multiplier, 1.0f / 255.0f);
+	if (samples.empty()) {
+		return;
+	}
+	out.resampled = true;
+	for (const auto &sample : samples) {
+		ScalarKey key;
+		key.time = sample.first;
+		key.value = sample.second.v[0];
+		key.interp = "linear";
+		out.float_keys.push_back(std::move(key));
+	}
+}
+
+// NiBSplineCompPoint3Interpolator (397 KF SELF_ILLUM colour links): `value` is
+// its static value, `handle` its control channel, `positionOffset` and
+// `positionHalfRange` the compact bias and multiplier. Colours, so no unit
+// conversion. Keys within 1/255.
+void fill_bspline_point3(const nifly::NiHeader &header, nifly::NiBSplineCompPoint3Interpolator *interp,
+		Interpolator &out) {
+	out.kind = "point3";
+	const nifly::Vector3 &value = interp->value;
+	if (is_set_float(value.x) && is_set_float(value.y) && is_set_float(value.z)) {
+		out.has_static_point3 = true;
+		out.static_point3[0] = value.x;
+		out.static_point3[1] = value.y;
+		out.static_point3[2] = value.z;
+	}
+	const auto samples = sample_compact_channel(header, interp, interp->handle, 3, interp->positionOffset,
+			interp->positionHalfRange, 1.0f / 255.0f);
+	if (samples.empty()) {
+		return;
+	}
+	out.resampled = true;
+	for (const auto &sample : samples) {
+		Vec3Key key;
+		key.time = sample.first;
+		for (int d = 0; d < 3; d++) {
+			key.value[d] = sample.second.v[d];
+		}
+		key.interp = "linear";
+		out.point3_keys.push_back(std::move(key));
+	}
+}
+
+void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Interpolator &out);
+
+// The controller ID a sequence link would carry for `controller`, where the
+// controller's own fields give it: an NiTextureTransformController's
+// <shaderMap>-<slot>-<operation>, an NiMaterialColorController's target colour
+// (AMB, DIFF, SPEC, SELF_ILLUM, the names sequence links carry). Empty for any
+// other controller.
+std::string free_controller_id(nifly::NiTimeController *controller) {
+	if (auto *color = dynamic_cast<nifly::NiMaterialColorController *>(controller)) {
+		static const char *kTargets[] = { "AMB", "DIFF", "SPEC", "SELF_ILLUM" };
+		const uint32_t target = static_cast<uint32_t>(color->targetColor);
+		return target < 4 ? std::string(kTargets[target]) : std::string();
+	}
+	auto *texture = dynamic_cast<nifly::NiTextureTransformController *>(controller);
+	if (texture == nullptr) {
+		return std::string();
+	}
+	static const char *kOperations[] = { "TT_TRANSLATE_U", "TT_TRANSLATE_V", "TT_ROTATE", "TT_SCALE_U", "TT_SCALE_V" };
+	const uint32_t operation = static_cast<uint32_t>(texture->operation);
+	if (operation >= 5) {
+		return std::string();
+	}
+	return std::to_string(texture->shaderMap ? 1 : 0) + "-" + std::to_string(static_cast<uint32_t>(texture->textureSlot))
+			+ "-" + kOperations[operation];
+}
+
+// Appends every controller on `owner`'s chain (nextControllerRef) that is not
+// in `linked` and not a manager, targeting the node named `node_name`.
+void collect_chain(const nifly::NiHeader &header, nifly::NiObjectNET *owner, const std::string &node_name,
+		const std::set<uint32_t> &linked, Document &doc) {
+	if (owner == nullptr) {
+		return;
+	}
+	uint32_t ctrl = owner->controllerRef.IsEmpty() ? nifly::NIF_NPOS : owner->controllerRef.index;
+	for (int guard = 0; ctrl != nifly::NIF_NPOS && guard < 64; guard++) {
+		auto *controller = header.GetBlock<nifly::NiTimeController>(ctrl);
+		if (controller == nullptr) {
+			break;
+		}
+		const uint32_t index = ctrl;
+		ctrl = controller->nextControllerRef.IsEmpty() ? nifly::NIF_NPOS : controller->nextControllerRef.index;
+		if (linked.count(index) > 0 || dynamic_cast<nifly::NiControllerManager *>(controller) != nullptr) {
+			continue;
+		}
+		FreeController out;
+		out.controller_block = index;
+		out.block.node_name = node_name;
+		out.block.controller_type = controller->GetBlockName();
+		out.block.controller_id = free_controller_id(controller);
+		out.flags = controller->flags;
+		out.frequency = controller->frequency;
+		out.phase = controller->phase;
+		out.start_time = controller->startTime;
+		out.stop_time = controller->stopTime;
+		if (auto *single = dynamic_cast<nifly::NiSingleInterpController *>(controller)) {
+			if (!single->interpolatorRef.IsEmpty()) {
+				fill_interpolator(header, single->interpolatorRef.index, out.block.interpolator);
+			}
+		}
+		doc.free_controllers.push_back(std::move(out));
+	}
+}
+
+// Every controller on a node or on one of its properties that no sequence link
+// names (FreeController).
+void collect_free_controllers(const nifly::NiHeader &header, Document &doc) {
+	std::set<uint32_t> linked;
+	for (uint32_t i = 0; i < doc.block_count; i++) {
+		auto *seq = header.GetBlock<nifly::NiControllerSequence>(i);
+		if (seq == nullptr) {
+			continue;
+		}
+		for (const auto &link : seq->controlledBlocks) {
+			if (!link.controllerRef.IsEmpty()) {
+				linked.insert(link.controllerRef.index);
+			}
+		}
+	}
+	for (const auto &node : doc.nodes) {
+		auto *av = header.GetBlock<nifly::NiAVObject>(node.block_index);
+		if (av == nullptr) {
+			continue;
+		}
+		collect_chain(header, av, node.name, linked, doc);
+		for (const auto &prop : av->propertyRefs) {
+			if (prop.IsEmpty()) {
+				continue;
+			}
+			collect_chain(header, header.GetBlock<nifly::NiProperty>(prop.index), node.name, linked, doc);
+		}
+	}
+}
+
 void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Interpolator &out) {
 	auto *interp = header.GetBlock<nifly::NiInterpolator>(block_index);
 	if (interp == nullptr) {
@@ -646,6 +824,15 @@ void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Inte
 	out.block_index = block_index;
 	out.block_type = interp->GetBlockName();
 	out.kind = "unsupported";
+
+	if (auto *spline_float = dynamic_cast<nifly::NiBSplineCompFloatInterpolator *>(interp)) {
+		fill_bspline_float(header, spline_float, out);
+		return;
+	}
+	if (auto *spline_point3 = dynamic_cast<nifly::NiBSplineCompPoint3Interpolator *>(interp)) {
+		fill_bspline_point3(header, spline_point3, out);
+		return;
+	}
 
 	// The B-spline forms are NOT NiTransformInterpolator subclasses in nifly,
 	// so they have to be tested for first.
@@ -759,6 +946,14 @@ void fill_interpolator(const nifly::NiHeader &header, uint32_t block_index, Inte
 		// NOT a position: NiPoint3Interpolator drives colours and other
 		// three-component properties, so no unit conversion is applied.
 		out.kind = "point3";
+		const nifly::Vector3 &value = pi->point3Value;
+		if (std::fabs(value.x) < 1.0e30f && std::fabs(value.y) < 1.0e30f && std::fabs(value.z) < 1.0e30f) {
+			// An unset static value is written as -FLT_MAX.
+			out.has_static_point3 = true;
+			out.static_point3[0] = value.x;
+			out.static_point3[1] = value.y;
+			out.static_point3[2] = value.z;
+		}
 		if (auto *pd = header.GetBlock<nifly::NiPosData>(pi->dataRef)) {
 			out.point3_keys = vec3_keys_of(pd->data, 1.0f);
 		}
@@ -934,6 +1129,26 @@ Document load(const uint8_t *data, size_t size) {
 				}
 			}
 
+			if (auto *material = nif.GetMaterialProperty(shape)) {
+				out.has_material_property = true;
+				const nifly::Color4 emissive = material->GetEmissiveColor();
+				out.material_emissive[0] = emissive.r;
+				out.material_emissive[1] = emissive.g;
+				out.material_emissive[2] = emissive.b;
+				out.material_emit_mult = material->GetEmissiveMultiple();
+				const nifly::Vector3 specular = material->GetSpecularColor();
+				out.material_specular[0] = specular.x;
+				out.material_specular[1] = specular.y;
+				out.material_specular[2] = specular.z;
+				out.material_glossiness = material->GetGlossiness();
+				out.material_alpha = material->GetAlpha();
+			}
+
+			if (auto *stencil = nif.GetStencilProperty(shape)) {
+				out.has_stencil_property = true;
+				out.stencil_draw_mode = (stencil->flags >> 10) & 0x3;
+			}
+
 			if (const auto *verts = nif.GetVertsForShape(shape)) {
 				out.geometry.positions.reserve(verts->size() * 3);
 				for (const auto &v : *verts) {
@@ -1066,6 +1281,10 @@ Document load(const uint8_t *data, size_t size) {
 				out.falloff_stop_angle = no_lighting->falloffStopAngle;
 				out.falloff_start_opacity = no_lighting->falloffStartOpacity;
 				out.falloff_stop_opacity = no_lighting->falloffStopOpacity;
+			} else if (const auto *lit = dynamic_cast<nifly::BSShaderPPLightingProperty *>(shader)) {
+				out.has_refraction_fields = true;
+				out.refraction_strength = lit->refractionStrength;
+				out.refraction_fire_period = lit->refractionFirePeriod;
 			} else if (const auto *sky = dynamic_cast<nifly::SkyShaderProperty *>(shader)) {
 				out.shader_file_name = sky->fileName.get();
 			} else if (const auto *tile = dynamic_cast<nifly::TileShaderProperty *>(shader)) {
@@ -1297,6 +1516,8 @@ Document load(const uint8_t *data, size_t size) {
 		}
 		doc.sequences.push_back(std::move(out));
 	}
+
+	collect_free_controllers(header, doc);
 
 	for (uint32_t i = 0; i < doc.block_count; i++) {
 		auto *palette = header.GetBlock<nifly::NiDefaultAVObjectPalette>(i);

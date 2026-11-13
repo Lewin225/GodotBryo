@@ -310,6 +310,12 @@ struct SceneNode {
 	float falloff_start_opacity = 1.0f;
 	float falloff_stop_opacity = 1.0f;
 
+	// BSShaderPPLightingProperty's refraction strength and fire period, set
+	// only on that block (as stored; nifly reads the period as an int).
+	bool has_refraction_fields = false;
+	float refraction_strength = 0.0f;
+	int refraction_fire_period = 0;
+
 	// NiProperty blocks this node references, by BLOCK INDEX -- the identity
 	// nif_server_v2.md 7.3 needs. Property blocks are shared: ~34% of
 	// NiMaterialProperty are referenced by two or more nodes, while shader
@@ -340,6 +346,24 @@ struct SceneNode {
 	bool alpha_test_enabled = false;
 	float alpha_threshold = 0.5f; // 0..1
 	std::string alpha_blend_func; // mix | add | multiply
+
+	// NiStencilProperty. In 20.1.0.3+ files its state is packed into flags
+	// (niftools: bit 0 stencil enable, bits 1-3 fail action, 4-6 z-fail
+	// action, 7-9 pass action, 10-11 draw mode, 12-14 test function).
+	// 2,017 shapes in the shipped BSAs carry one, every one with flags 0x4D80:
+	// stencil disabled, draw mode 3 (DRAW_BOTH, two-sided).
+	// NiMaterialProperty for a shape: emissive colour, emit multiplier,
+	// specular colour, glossiness and alpha, as stored (colours 0..1, not
+	// converted). Ambient and diffuse are not exported.
+	bool has_material_property = false;
+	float material_emissive[3] = { 0.0f, 0.0f, 0.0f };
+	float material_emit_mult = 1.0f;
+	float material_specular[3] = { 1.0f, 1.0f, 1.0f };
+	float material_glossiness = 10.0f;
+	float material_alpha = 1.0f;
+
+	bool has_stencil_property = false;
+	int stencil_draw_mode = 0; // 0 CCW_OR_BOTH, 1 CCW, 2 CW, 3 BOTH
 
 	// NiObjectNET extra data attached to this node. Godot has no construct for
 	// most of it, so nif_server_v2.md 5.3 puts it in node metadata rather than
@@ -446,6 +470,9 @@ struct Interpolator {
 	float scale = 1.0f;
 	bool has_static_float = false;
 	float static_float = 0.0f;
+	// NiPoint3Interpolator's own value; false when it is the unset -FLT_MAX.
+	bool has_static_point3 = false;
+	float static_point3[3] = { 0.0f, 0.0f, 0.0f };
 
 	std::vector<Vec3Key> translation_keys; // meters
 	std::vector<QuatKey> rotation_keys;
@@ -487,12 +514,32 @@ struct Sequence {
 	std::vector<TextKey> text_keys;
 };
 
+// A time controller that no NiControllerSequence link drives: Gamebryo runs it
+// on its own clock (its flags' cycle type and active bit, frequency, phase,
+// start and stop). Census of the shipped NIFs: 1,441 manager-less files carry
+// transform, texture transform, visibility, material colour, alpha or
+// emittance controllers like this; the cycle type is clamp on 7,687 and loop
+// on 1,499 of them. `block` holds the target (the owning node's name; a
+// property's controller names its node), the controller type, an ID in the
+// form sequence links use where it is known (texture transform:
+// <shaderMap>-<slot>-<operation>), and the interpolator.
+struct FreeController {
+	uint32_t controller_block = 0;
+	ControlledBlock block;
+	uint16_t flags = 0;
+	float frequency = 1.0f;
+	float phase = 0.0f;
+	float start_time = 0.0f;
+	float stop_time = 0.0f;
+};
+
 struct Document {
 	std::string version;
 	uint32_t block_count = 0;
 	std::vector<SceneNode> nodes;
 	std::vector<ObjectPalette> palettes;
 	std::vector<Sequence> sequences;
+	std::vector<FreeController> free_controllers;
 	// True when the declared bones form a parent-child hierarchy inside THIS
 	// file, i.e. the file contains a usable skeleton rather than a reference
 	// to one held elsewhere. skeleton.nif is true; a body part whose bone list

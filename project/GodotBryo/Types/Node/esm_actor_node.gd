@@ -219,6 +219,8 @@ func apply_input(input: ActorInput) -> void:
 	var actor_reference := reference as ActorReference
 	if input == null or actor_reference == null:
 		return
+	if input.equip_item != null and actor_reference.contents != null:
+		actor_reference.contents.equip_item(input.equip_item)
 	if input.equip_slot >= 0 and input.equip_slot < WEAPON_SLOTS_BY_INDEX.size():
 		actor_reference.draw_weapon(WEAPON_SLOTS_BY_INDEX[input.equip_slot])
 	if input.holster and not _last_input.holster:
@@ -237,6 +239,8 @@ func apply_input(input: ActorInput) -> void:
 		_trigger_weapon.set_trigger(false)
 	_trigger_weapon = weapon
 	if weapon != null:
+		weapon.aim_point = input.aim_point
+		weapon.has_aim_point = input.has_aim_point
 		weapon.set_trigger(input.fire)
 	_last_input = _copy_input(input)
 
@@ -248,6 +252,8 @@ static func _copy_input(input: ActorInput) -> ActorInput:
 	copy.draw = input.draw
 	copy.holster = input.holster
 	copy.equip_slot = input.equip_slot
+	copy.aim_point = input.aim_point
+	copy.has_aim_point = input.has_aim_point
 	return copy
 
 

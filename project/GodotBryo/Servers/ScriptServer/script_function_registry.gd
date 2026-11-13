@@ -108,6 +108,30 @@ func _register_defaults() -> void:
 	register("GetDisabled", func(_a, ctx: ScriptExecutionContext):
 		return 1 if ctx.calling_reference != null and ctx.calling_reference.is_disabled() else 0)
 
+	# `[Ref.]PlayGroup Group Flag`: plays an animation group on the calling
+	# reference's model (EsmReference.play_group(); the model's
+	# NifObjectAnimator). 111 of FalloutNV.esm's scripts call it, on object
+	# states (Forward 233 calls, Backward 85, Left 73, Right 59, SpecialIdle
+	# 46). The flag (1, 0 or 2) is not read.
+	register("PlayGroup", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null or a.is_empty():
+			return 0
+		ctx.calling_reference.play_group(str(a[0]))
+		return 1)
+
+	# `[Ref.]IsAnimPlaying [Group]`: whether the calling reference's last played
+	# group is Group (case-insensitive), or with no Group, whether a group was
+	# played. # ASSUMPTION: compares PlayGroup's last group; a clamped group
+	# that reached its end still counts, and a model's default group counts
+	# only once a script played it.
+	register("IsAnimPlaying", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null:
+			return 0
+		var group := ctx.calling_reference.anim_group
+		if a.is_empty():
+			return 0 if group.is_empty() else 1
+		return 1 if group.to_lower() == str(a[0]).to_lower() else 0)
+
 	# `[Ref.]Activate [ActionRef] [RunOnActivateBlockFlag]`. The activator is
 	# ActionRef when given, else this dispatch's action reference. With the
 	# flag 1 the target's OnActivate block runs as for any activation;
@@ -849,6 +873,23 @@ func _register_defaults() -> void:
 		script_server.unlock(ctx.calling_reference)
 		return 1)
 
+	# `ref.FireWeapon Weapon`: fires one shot of Weapon from the calling
+	# reference (a marker, a trap, an actor) through ProjectileServer, with the
+	# ammo it names first. Returns the shot's id, 0 when nothing fires.
+	register("FireWeapon", func(a: Array, ctx: ScriptExecutionContext):
+		var weapon := _base_arg(a, 0) as WeaponBase
+		var tree := Engine.get_main_loop() as SceneTree
+		var server: Node = tree.root.get_node_or_null("ProjectileServer") if tree != null else null
+		if weapon == null or server == null or ctx.calling_reference == null:
+			return 0
+		var ammo := weapon.default_ammo()
+		var projectile := weapon.effective_projectile(ammo)
+		if projectile == null:
+			return 0
+		var from := _fire_origin(ctx.calling_reference)
+		server.show_muzzle_flash(projectile, from)
+		return server.fire(weapon, ctx.calling_reference, from, projectile, ammo, randi()))
+
 	register("PlaceAtMe", func(a: Array, ctx: ScriptExecutionContext):
 		if a.is_empty() or not place_at_me_handler.is_valid():
 			push_warning("ScriptFunctionRegistry: PlaceAtMe unavailable -- no world placement handler")
@@ -1003,6 +1044,21 @@ static func _faction_rank(actor: EsmReference, faction: EsmBase) -> int:
 static func _dialogue_server() -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	return tree.root.get_node_or_null("DialogueServer") if tree != null else null
+
+## Where a FireWeapon shot leaves `reference`, Godot world, facing along -Z:
+## its model's `ProjectileNode` facing the node's NIF +Y, else the reference's
+## own transform (its -Z, the placement's Gamebryo +Y). Its placement when it
+## has no node. `# ASSUMPTION` the fallback's facing.
+static func _fire_origin(reference: EsmReference) -> Transform3D:
+	var node := EsmNode.node_for(reference)
+	if node == null:
+		return EsmReferencePhysicaliser.placement_transform(reference.position, reference.rotation)
+	var muzzle := node.find_child(EsmWeaponNode.MUZZLE_NODE, true, false) as Node3D
+	if muzzle == null:
+		return node.global_transform.orthonormalized()
+	var forward := muzzle.global_basis.y.normalized()
+	var up := Vector3.UP if absf(forward.dot(Vector3.UP)) < 0.99 else Vector3.BACK
+	return Transform3D(Basis.looking_at(forward, up), muzzle.global_position)
 
 ## The first inventory item of a base, or null.
 static func _first_item(inventory: Inventory, base_form_id: int) -> InventoryItem:

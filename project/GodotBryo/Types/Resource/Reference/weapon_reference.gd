@@ -16,16 +16,16 @@ extends EsmReference
 		count = value
 		mark_dirty()
 ## The AMMO base loaded in the weapon, 0 when empty. Possibly XAMT (on 3 WEAP
-## REFRs; meaning inferred from the name, not decoded); not read. Set; saved;
-## not used yet (the weapon node spends it when firing,
-## Plans/Weapons/weapons.md).
+## REFRs; meaning inferred from the name, not decoded); not read. Set by
+## EsmWeaponNode's reload; saved; used by EsmWeaponNode.loaded_ammo(), the ammo
+## a shot fires.
 @export var loaded_ammo_form_id: int = 0:
 	set(value):
 		loaded_ammo_form_id = value
 		mark_dirty()
 ## Rounds loaded in the weapon. Possibly XAMC (on 3 WEAP REFRs; meaning
-## inferred from the name, not decoded); not read. Set; saved;
-## not used yet (the weapon node spends it when firing).
+## inferred from the name, not decoded); not read. Set; saved; used by
+## EsmWeaponNode: a shot spends one, a reload fills it from the holder.
 @export var loaded_ammo_count: int = 0:
 	set(value):
 		loaded_ammo_count = value

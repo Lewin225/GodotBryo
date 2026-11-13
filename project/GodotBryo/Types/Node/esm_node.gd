@@ -2,6 +2,8 @@
 class_name EsmNode
 extends Node3D
 
+const NifObjectAnimatorScript := preload("res://GodotBryo/Servers/NifServer/nif_object_animator.gd")
+
 ## The desired paired-model tier. This is per placement, rather than state on
 ## the shared EsmBase, because WorldStreamer chooses it from tile residency.
 enum VisualDetail {
@@ -85,6 +87,8 @@ func _register_reference() -> void:
 		reference.teleported.connect(_on_reference_teleported)
 	if not reference.texture_swapped.is_connected(_apply_texture_swap):
 		reference.texture_swapped.connect(_apply_texture_swap)
+	if not reference.anim_group_played.is_connected(_play_anim_group):
+		reference.anim_group_played.connect(_play_anim_group)
 	_enable_chain.clear()
 	var link := reference
 	while link != null:
@@ -104,6 +108,8 @@ func _unregister_reference() -> void:
 		reference.teleported.disconnect(_on_reference_teleported)
 	if reference.texture_swapped.is_connected(_apply_texture_swap):
 		reference.texture_swapped.disconnect(_apply_texture_swap)
+	if reference.anim_group_played.is_connected(_play_anim_group):
+		reference.anim_group_played.disconnect(_play_anim_group)
 	for link in _enable_chain:
 		if link.enable_state_changed.is_connected(_apply_enable_state):
 			link.enable_state_changed.disconnect(_apply_enable_state)
@@ -130,16 +136,19 @@ func _apply_texture_swap(block_name: String) -> void:
 			meshes.append(child)
 	for mesh in meshes:
 		for surface in mesh.mesh.get_surface_count() if mesh.mesh != null else 0:
-			var source := mesh.get_active_material(surface) as BaseMaterial3D
-			if source == null:
+			var source := mesh.get_active_material(surface)
+			if not (source is BaseMaterial3D or source is ShaderMaterial):
 				continue
-			var alpha_safe := source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+			var alpha_safe := bool(source.get_meta("nif_alpha_safe", false))
 			var texture: Texture2D = await TextureServer.request(path, alpha_safe)
 			# A later swap of the same block may have finished first.
 			if texture == null or not is_instance_valid(mesh) or reference.texture_swaps.get(block_name) != swapped:
 				continue
-			var material := source.duplicate() as BaseMaterial3D
-			material.albedo_texture = texture
+			var material := source.duplicate() as Material
+			if material is ShaderMaterial:
+				(material as ShaderMaterial).set_shader_parameter("texture_albedo", texture)
+			else:
+				(material as BaseMaterial3D).albedo_texture = texture
 			mesh.set_surface_override_material(surface, material)
 
 ## Hides a disabled reference and turns its collision off; shows an enabled
@@ -356,9 +365,19 @@ func _on_nif_ready(tree: Node3D, generation: int, detail: VisualDetail) -> void:
 	_active_visual_detail = detail
 	for block_name: String in reference.texture_swaps:
 		_apply_texture_swap(block_name)
+	if not reference.anim_group.is_empty():
+		_play_anim_group(reference.anim_group)
 	visual_detail_applied.emit(detail)
 	if detail == VisualDetail.FULL:
 		_on_nif_visual_ready(tree)
+
+## Plays the reference's animation group (PlayGroup) on the shown model's
+## NifObjectAnimator; a model without one has nothing to play.
+func _play_anim_group(group: String) -> void:
+	var visual := _visual_node(_active_visual_detail)
+	var object_animator := visual.get_node_or_null(NifObjectAnimatorScript.NODE_NAME) if visual != null else null
+	if object_animator != null:
+		object_animator.play_group(group)
 
 ## The NIF template only marks shapes with External_Emittance. XEMI belongs
 ## to this placement, so never mutate the material shared by other copies.
@@ -384,7 +403,15 @@ func _apply_external_emittance(visual: Node3D) -> void:
 			continue
 		if int(instance.get_meta("nif_external_emittance_applied_form_id", 0)) == emittance_form_id:
 			continue
-		var source := instance.mesh.surface_get_material(0) as StandardMaterial3D
+		var shared := instance.mesh.surface_get_material(0)
+		if shared is ShaderMaterial:
+			# The NIF shaders take XEMI as an instance uniform: its colour
+			# replaces the material colour (and is emitted, on the lit
+			# shader), and the shared material is kept.
+			instance.set_instance_shader_parameter("nif_emittance", Color(color.r, color.g, color.b, 1.0))
+			instance.set_meta("nif_external_emittance_applied_form_id", emittance_form_id)
+			continue
+		var source := shared as StandardMaterial3D
 		if source == null:
 			continue
 		var tinted := source.duplicate() as StandardMaterial3D

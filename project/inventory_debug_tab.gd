@@ -6,7 +6,8 @@ extends Control
 ## from the base. Increment adds one to a stack; Delete removes one from the
 ## entry; Drop places the whole entry in front of the actor
 ## (ActorReference.drop_entry()): a held reference as itself, a stack as one new
-## runtime reference per unit.
+## runtime reference per unit; Equip asks the player controller to equip the
+## entry (PlayerController.equip(), the actor's input packet).
 
 @onready var _filter_edit: LineEdit = $Margin/VBox/FilterEdit
 @onready var _tree: Tree = $Margin/VBox/ItemTree
@@ -14,6 +15,7 @@ extends Control
 @onready var _inc: Button = $Margin/VBox/Buttons/Increment
 @onready var _delete: Button = $Margin/VBox/Buttons/Delete
 @onready var _drop: Button = $Margin/VBox/Buttons/Drop
+@onready var _equip: Button = $Margin/VBox/Buttons/Equip
 
 var _game: Node3D
 
@@ -25,6 +27,7 @@ func _ready() -> void:
 	_inc.pressed.connect(_increment)
 	_delete.pressed.connect(_delete_selected)
 	_drop.pressed.connect(_drop_selected)
+	_equip.pressed.connect(_equip_selected)
 	_refresh()
 
 
@@ -176,3 +179,11 @@ func _drop_selected() -> void:
 	if entry == null or actor == null:
 		return
 	actor.drop_entry(entry)
+
+
+## Equips the selected entry through the player controller.
+func _equip_selected() -> void:
+	var entry := _selected_entry()
+	if entry == null or _game == null or _game.player == null:
+		return
+	_game.player.equip(entry)

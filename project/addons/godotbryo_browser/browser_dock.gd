@@ -1,7 +1,7 @@
 @tool
 extends VBoxContainer
 
-const BASE_TYPES := ["ACTI", "ALCH", "AMMO", "ARMA", "ARMO", "BOOK", "CCRD", "CLAS", "CMNY", "CONT", "CREA", "DOOR", "EYES", "FLST", "FURN", "HAIR", "KEYM", "LIGH", "LVLI", "MISC", "MSTT", "NPC_", "PACK", "QUST", "RACE", "SCOL", "STAT", "TACT", "TERM", "WEAP"]
+const BASE_TYPES := ["ACTI", "ALCH", "AMMO", "ARMA", "ARMO", "BOOK", "CCRD", "CLAS", "CMNY", "CONT", "CREA", "DOOR", "EYES", "FLST", "FURN", "HAIR", "KEYM", "LIGH", "LVLI", "MISC", "MSTT", "NPC_", "PACK", "PROJ", "QUST", "RACE", "SCOL", "STAT", "TACT", "TERM", "WEAP"]
 ## Record types with no placements: they are inspected, never found as
 ## references or opened as a scene.
 const UNPLACEABLE_TYPES := ["QUST"]

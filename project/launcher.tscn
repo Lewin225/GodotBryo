@@ -34,6 +34,7 @@ text = "Pick FalloutNV.esm..."
 
 [node name="DataLabel" type="Label" parent="Panel" unique_id=1204579923]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 autowrap_mode = 3
 
@@ -77,6 +78,12 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "One NPC on a floor: play its locomotion, IDLEs and weapon KFs slot by slot."
 text = "Animation viewer"
+
+[node name="SpecularViewerButton" type="Button" parent="Panel/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Lit NIFs with the Specular flag: each shape's normal and diffuse maps, split into RGB and alpha."
+text = "Specular viewer"
 
 [node name="HSeparator2" type="HSeparator" parent="Panel" unique_id=99619455]
 layout_mode = 2

@@ -11,7 +11,10 @@ class_name NifMaterialBuilder
 ## metadata onto whatever the path returns.
 ##
 ## Shapes with the Hair flag go to PATH_HAIR, shapes with the FaceGen flag to
-## PATH_SKIN; every other shape goes to PATH_STANDARD.
+## PATH_SKIN, shapes with the Refraction flag to PATH_REFRACTION,
+## BSShaderNoLightingProperty shapes to PATH_UNLIT, the remaining
+## BSShaderPPLightingProperty shapes to PATH_LIT; every other shape goes to
+## PATH_STANDARD.
 
 # For cache_key() only, which is static.
 const TextureServerScript := preload("res://GodotBryo/Servers/TextureServer/texture_server.gd")
@@ -31,7 +34,34 @@ const PATH_HAIR := &"hair"
 ## diffuse, but for a few gore caps, a DLC02 body and some with no diffuse.
 ## Slot 2 is a `_sk` texture on 238 of them, none on the rest.
 const PATH_SKIN := &"skin"
-const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN]
+## Shapes whose BSShaderPPLightingProperty sets the Refraction flag: screen
+## distortion meshes. 92 shapes in 83 NIFs, all BSShaderPPLightingProperty,
+## none with an NiAlphaProperty, 87 writing depth, none with the Hair or
+## FaceGen flag; 81 also set Fire Refraction. Explosion shock spheres
+## (ExplosionLarge01's GeoSphere03, the Fat Man's), muzzle flash warps,
+## shield and door fields. Their diffuse is FXWhite, FXPartTinyGlowy or a
+## distortion normal map (FXNormalDistort_n). Its stock material draws
+## nothing: refraction is not built, and the shape drawn as its texture is an
+## opaque white or flat surface.
+const PATH_REFRACTION := &"refraction"
+## BSShaderNoLightingProperty shapes: 7,936 in the shipped corpus (effects,
+## glows, light cards, AO fades). Built as a ShaderMaterial on the unlit NIF
+## shader (shaders/nif_unlit.gdshaderinc), one generated variant per
+## compile-time render state, with instance uniforms for per-instance alpha,
+## colour, XEMI and UV.
+const PATH_UNLIT := &"unlit"
+## BSShaderPPLightingProperty shapes without the Hair, FaceGen or Refraction
+## flag. Built as a ShaderMaterial on the lit NIF shader
+## (shaders/nif_lit.gdshaderinc), one generated variant per compile-time render
+## state, with the same instance uniforms as PATH_UNLIT.
+const PATH_LIT := &"lit"
+const PATHS: Array[StringName] = [PATH_STANDARD, PATH_HAIR, PATH_SKIN, PATH_REFRACTION, PATH_UNLIT, PATH_LIT]
+
+const UNLIT_SHADER_BODY := "res://GodotBryo/Servers/NifServer/shaders/nif_unlit.gdshaderinc"
+const LIT_SHADER_BODY := "res://GodotBryo/Servers/NifServer/shaders/nif_lit.gdshaderinc"
+## PATH_REFRACTION's shader: one for every refraction shape (none has an
+## NiAlphaProperty, so there is no render state to vary).
+const REFRACTION_SHADER := preload("res://GodotBryo/Servers/NifServer/shaders/nif_refraction.gdshader")
 
 const ROLE_DIFFUSE := &"diffuse"
 const ROLE_NORMAL := &"normal"
@@ -42,10 +72,28 @@ const ROLE_HAIR_HIGHLIGHT := &"hair_highlight"
 ## one flat colour (21, 6, 5); what the skin shader does with it is not known.
 const ROLE_SKIN_SK := &"skin_sk"
 
+## NiStencilProperty draw mode 3, DRAW_BOTH (niftools StencilDrawMode).
+const STENCIL_DRAW_BOTH := 3
 ## BSShaderFlags bit 18, Hair (nif.xml F3SF1).
 const SHADER_FLAG1_HAIR := 1 << 18
 ## BSShaderFlags bit 10, FaceGen (nif.xml F3SF1).
 const SHADER_FLAG1_FACEGEN := 1 << 10
+## BSShaderFlags bit 15, Refraction (nif.xml F3SF1).
+const SHADER_FLAG1_REFRACTION := 1 << 15
+## BSShaderPPLightingProperty flags1 bit 0: Specular. 43,821 of the 53,840 lit
+## shapes carry it.
+const SHADER_FLAG1_SPECULAR := 1 << 0
+## BSShaderPPLightingProperty flags1 bit 16: Fire Refraction. 81 of the 92
+## refraction shapes carry it.
+const SHADER_FLAG1_FIRE_REFRACTION := 1 << 16
+## BS shader flags1 bit 6 ("Empty" in nif.xml): on BSShaderNoLightingProperty
+## it enables the falloff (the GECK), _set_falloff().
+const SHADER_FLAG1_FALLOFF := 1 << 6
+## BS shader flags1 bit 19: Dynamic Alpha. A shape without an NiAlphaProperty
+## that carries it is drawn blended (_is_dynamic_alpha_blend()).
+const SHADER_FLAG1_DYNAMIC_ALPHA := 1 << 19
+## NiMaterialProperty's default glossiness, for a lit shape without one.
+const DEFAULT_GLOSSINESS := 10.0
 ## The blocks the GECK lists the Hair flag for.
 const HAIR_SHADER_BLOCKS: Array[String] = ["BSShaderPPLightingProperty", "Lighting30ShaderProperty"]
 
@@ -55,6 +103,9 @@ const LIGHT_SHAFT_SOFT_CLIP_METERS := 1.0
 const LIGHT_SHAFT_NEAR_FADE_METERS := 1.5
 const LIGHT_SHAFT_ALPHA_SCALE := 0.2
 
+# Shader body + render state key -> the generated Shader, shared by every
+# material with that body and state.
+static var _variant_shaders := {}
 static var _overrides := {}  # path -> Callable(NifMaterialContext) -> Material
 static var _built_any := false
 
@@ -82,6 +133,12 @@ static func path_for(nd: Dictionary) -> StringName:
 		return PATH_HAIR
 	if _is_skin(nd):
 		return PATH_SKIN
+	if _is_refraction(nd):
+		return PATH_REFRACTION
+	if String(nd.get("shader_type", "")) == "BSShaderNoLightingProperty":
+		return PATH_UNLIT
+	if String(nd.get("shader_type", "")) == "BSShaderPPLightingProperty":
+		return PATH_LIT
 	return PATH_STANDARD
 
 
@@ -99,6 +156,14 @@ static func _is_skin(nd: Dictionary) -> bool:
 	if String(nd["shader_type"]) != "BSShaderPPLightingProperty":
 		return false
 	return (int(nd["shader_flags1"]) & SHADER_FLAG1_FACEGEN) != 0
+
+
+static func _is_refraction(nd: Dictionary) -> bool:
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	if String(nd["shader_type"]) != "BSShaderPPLightingProperty":
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_REFRACTION) != 0
 
 
 ## The textures a shape's path uses: [{role, slot, path, alpha_safe}] in slot
@@ -166,6 +231,12 @@ static func _stock_builder(path: StringName) -> Callable:
 			return _build_hair
 		PATH_SKIN:
 			return _build_skin
+		PATH_REFRACTION:
+			return _build_refraction
+		PATH_UNLIT:
+			return _build_unlit
+		PATH_LIT:
+			return _build_lit
 	return _build_standard
 
 
@@ -173,6 +244,8 @@ static func _stock_builder(path: StringName) -> Callable:
 static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName,
 		role_paths: Dictionary, used_slots: Dictionary) -> void:
 	material.set_meta("nif_material_path", path)
+	# Whether the diffuse was fetched alpha-safe; a texture swap keeps it.
+	material.set_meta("nif_alpha_safe", _alpha_safe(nd))
 	# Role -> authored path, including roles the material does not render.
 	material.set_meta("nif_texture_roles", role_paths)
 	material.set_meta("nif_shader_type", String(nd["shader_type"]))
@@ -199,8 +272,24 @@ static func _stamp_metadata(material: Material, nd: Dictionary, path: StringName
 ## as the black they are encoded to. Not shader-fixable.
 static func _alpha_safe(nd: Dictionary) -> bool:
 	if not bool(nd.get("has_alpha_property", false)):
-		return false
+		return _is_dynamic_alpha_blend(nd)
 	return bool(nd["alpha_blend_enabled"]) or bool(nd["alpha_test_enabled"])
+
+
+## Whether a shape with no NiAlphaProperty is drawn blended: its BS shader
+## carries the Dynamic Alpha flag (flags1 bit 19). Census, every NIF outside
+## LOD: 81 shapes have the flag and no NiAlphaProperty (38 unlit, 43 lit),
+## among them the Fat Man explosion's smoke column (SmokeGeo:0, vertex alpha
+## 0 to 1, an NiAlphaController), which fades softly at its edges and over
+## time in the original (checked on the Xbox game); drawn opaque, it was cut
+## to its shape. Blended with the mix function. # ASSUMPTION: the flag means
+## the same on the other 80 shapes (consoles, Strip lights).
+static func _is_dynamic_alpha_blend(nd: Dictionary) -> bool:
+	if bool(nd.get("has_alpha_property", false)):
+		return false
+	if not bool(nd.get("has_shader_flags", false)):
+		return false
+	return (int(nd["shader_flags1"]) & SHADER_FLAG1_DYNAMIC_ALPHA) != 0
 
 
 ## [diffuse, normal, glow] slot indices for a texture convention, -1 for a
@@ -239,6 +328,7 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 
 	if context.has_vertex_colors:
 		mat.vertex_color_use_as_albedo = true
+	_apply_stencil(mat, nd)
 
 	var blend_enabled := false
 	var test_enabled := false
@@ -246,6 +336,10 @@ static func _build_standard(context: NifMaterialContext) -> Material:
 		blend_enabled = bool(nd["alpha_blend_enabled"])
 		test_enabled = bool(nd["alpha_test_enabled"])
 		_apply_alpha(mat, nd, blend_enabled, test_enabled)
+	elif _is_dynamic_alpha_blend(nd):
+		blend_enabled = true
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 
 	mat.albedo_texture = context.texture(ROLE_DIFFUSE)
 	var normal := context.texture(ROLE_NORMAL)
@@ -304,6 +398,235 @@ static func _build_skin(context: NifMaterialContext) -> Material:
 	return _build_standard(context)
 
 
+## PATH_REFRACTION's stock material: draws nothing. A fully transparent,
+## unshaded blend that writes no depth, so the distortion mesh neither shows
+## nor hides what is behind it. Its textures stay in `nif_texture_roles` for a
+## refraction override.
+static func _build_refraction(context: NifMaterialContext) -> Material:
+	var mat := ShaderMaterial.new()
+	mat.shader = REFRACTION_SHADER
+	mat.set_shader_parameter("texture_normal", context.texture(ROLE_NORMAL))
+	var flags1 := int(context.node.get("shader_flags1", 0))
+	mat.set_shader_parameter("fire_refraction", 1.0 if (flags1 & SHADER_FLAG1_FIRE_REFRACTION) != 0 else 0.0)
+	return mat
+
+
+## PATH_UNLIT's stock material. The mapping rules are _build_standard()'s
+## (shader depth flags, NiStencilProperty, NiAlphaProperty, the light-shaft
+## fades); their result is carried over into the unlit shader variant for its
+## compile-time state and into the variant's uniforms. Its render state is
+## also stored as `nif_render_state` metadata (render_state()).
+static func _build_unlit(context: NifMaterialContext) -> Material:
+	var rules := _build_standard(context) as StandardMaterial3D
+	var state := _shader_render_state(rules, context.node)
+	var mat := ShaderMaterial.new()
+	mat.shader = _variant_shader(UNLIT_SHADER_BODY, ["unshaded"], state)
+	mat.set_shader_parameter("albedo_color", rules.albedo_color)
+	mat.set_shader_parameter("texture_albedo", rules.albedo_texture)
+	mat.set_shader_parameter("use_vertex_color", 1.0 if rules.vertex_color_use_as_albedo else 0.0)
+	_set_falloff(mat, context.node)
+	_set_alpha_cutoff(mat, state)
+	if bool(state["proximity_fade"]):
+		mat.set_shader_parameter("proximity_fade_distance", rules.proximity_fade_distance)
+	if state["distance_fade_mode"] != BaseMaterial3D.DISTANCE_FADE_DISABLED:
+		mat.set_shader_parameter("distance_fade_min", rules.distance_fade_min_distance)
+		mat.set_shader_parameter("distance_fade_max", rules.distance_fade_max_distance)
+	mat.set_meta("nif_render_state", state)
+	return mat
+
+
+## PATH_LIT's stock material. As PATH_UNLIT's: _build_standard()'s rules
+## decide the render state, carried into the lit shader variant and its
+## uniforms, with the normal map (normal_scale 1 when present, 0 when not) and
+## the glow map as emission. Its render state is stored as `nif_render_state`.
+static func _build_lit(context: NifMaterialContext) -> Material:
+	var rules := _build_standard(context) as StandardMaterial3D
+	var state := _shader_render_state(rules, context.node)
+	var mat := ShaderMaterial.new()
+	mat.shader = _variant_shader(LIT_SHADER_BODY, [], state)
+	mat.set_shader_parameter("albedo_color", rules.albedo_color)
+	mat.set_shader_parameter("texture_albedo", rules.albedo_texture)
+	mat.set_shader_parameter("use_vertex_color", 1.0 if rules.vertex_color_use_as_albedo else 0.0)
+	if rules.normal_enabled:
+		mat.set_shader_parameter("texture_normal", rules.normal_texture)
+		mat.set_shader_parameter("normal_scale", rules.normal_scale)
+	if rules.emission_enabled:
+		mat.set_shader_parameter("texture_emission", rules.emission_texture)
+	_set_specular(mat, context.node)
+	_set_alpha_cutoff(mat, state)
+	mat.set_meta("nif_render_state", state)
+	return mat
+
+
+## The unlit shader's falloff uniforms, on a shape whose flags1 has bit 6 (the
+## GECK's flag enabling BSShaderNoLightingProperty's falloff). Census of unlit
+## shapes outside LOD: 1,520 carry the bit, 1,320 with their own falloff
+## values (light beams: cos 0.98 to 0.17, opacity 1 to 0, so a beam card fades
+## as it turns edge-on and crossed cards do not double up; the Fat Man's
+## MeshGeoSphere01: cos 0.94 to 0.71); the 6,416 without the bit, most with
+## the default (1, cos 90, 1, 0), do not fade. The falloff scales alpha, so a
+## shape drawn opaque is unchanged.
+static func _set_falloff(mat: ShaderMaterial, nd: Dictionary) -> void:
+	if not bool(nd.get("has_falloff", false)):
+		return
+	if (int(nd.get("shader_flags1", 0)) & SHADER_FLAG1_FALLOFF) == 0:
+		return
+	mat.set_shader_parameter("falloff_enabled", 1.0)
+	mat.set_shader_parameter("falloff_start_angle", float(nd["falloff_start_angle"]))
+	mat.set_shader_parameter("falloff_stop_angle", float(nd["falloff_stop_angle"]))
+	mat.set_shader_parameter("falloff_start_opacity", float(nd["falloff_start_opacity"]))
+	mat.set_shader_parameter("falloff_stop_opacity", float(nd["falloff_stop_opacity"]))
+
+
+## The lit shader's specular uniforms: the Specular shader flag, and the
+## roughness from NiMaterialProperty's glossiness (a Phong exponent; census of
+## lit shapes with the flag: 10 on 19,488, 60 on 9,375, 70 on 4,156, 5 to 100
+## in all) by the Blinn-Phong to GGX mapping sqrt(2 / (glossiness + 2)). The
+## material's specular colour is not used: 39,845 of the 43,821 flagged shapes
+## carry a black one, and no original lit shader takes a specular colour
+## constant. A shape without an NiMaterialProperty uses glossiness 10.
+static func _set_specular(mat: ShaderMaterial, nd: Dictionary) -> void:
+	var flagged := bool(nd.get("has_shader_flags", false)) and (int(nd.get("shader_flags1", 0)) & SHADER_FLAG1_SPECULAR) != 0
+	mat.set_shader_parameter("specular_enabled", 1.0 if flagged else 0.0)
+	var glossiness := maxf(float(nd.get("material_glossiness", DEFAULT_GLOSSINESS)), 0.0)
+	mat.set_shader_parameter("specular_roughness", sqrt(2.0 / (glossiness + 2.0)))
+
+
+## The render state for the NIF shaders: the StandardMaterial3D rules' state,
+## except that a shape with both NiAlphaProperty bits is blended with its
+## authored blend function and also alpha tested (`alpha_test`), as the file
+## asks. StandardMaterial3D cannot do both, so its rules keep one
+## (_apply_alpha()); the shaders discard at the authored threshold in the
+## blended pass. The test function is GREATER on every dual-bit property
+## (alpha_dual_bit.md); a threshold of 0 still rejects alpha 0, as there.
+static func _shader_render_state(rules: StandardMaterial3D, nd: Dictionary) -> Dictionary:
+	var state := _standard_render_state(rules)
+	state["alpha_test"] = false
+	if not bool(nd.get("has_alpha_property", false)):
+		return state
+	if not (bool(nd["alpha_blend_enabled"]) and bool(nd["alpha_test_enabled"])):
+		return state
+	state["transparency"] = BaseMaterial3D.TRANSPARENCY_ALPHA
+	match String(nd["alpha_blend_func"]):
+		"add":
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_ADD
+		"multiply":
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_MUL
+		_:
+			state["blend_mode"] = BaseMaterial3D.BLEND_MODE_MIX
+	state["alpha_test"] = true
+	state["alpha_scissor_threshold"] = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
+	return state
+
+
+## Sets the variant's alpha cutoff: the scissor threshold, or the alpha test
+## threshold of a blended and tested shape.
+static func _set_alpha_cutoff(mat: ShaderMaterial, state: Dictionary) -> void:
+	var scissor: bool = state["transparency"] == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	if scissor or bool(state.get("alpha_test", false)):
+		mat.set_shader_parameter("alpha_scissor_threshold", state["alpha_scissor_threshold"])
+
+
+## A material's render state, whichever path built it: transparency,
+## blend_mode, shading_mode, depth_draw_mode, depth_test_disabled, cull_mode,
+## proximity_fade, distance_fade_mode (BaseMaterial3D's enums), and the values
+## alpha_test (the NIF shaders only: blended and alpha tested), vertex_color,
+## has_albedo_texture, has_normal_texture,
+## has_emission_texture, albedo_color, alpha_scissor_threshold,
+## proximity_fade_distance, distance_fade_max_distance. Empty for a material
+## that is neither a StandardMaterial3D nor built by PATH_UNLIT.
+static func render_state(material: Material) -> Dictionary:
+	if material is StandardMaterial3D:
+		return _standard_render_state(material as StandardMaterial3D)
+	if material != null and material.has_meta("nif_render_state"):
+		return material.get_meta("nif_render_state")
+	return {}
+
+
+static func _standard_render_state(mat: StandardMaterial3D) -> Dictionary:
+	return {
+		"transparency": mat.transparency,
+		"blend_mode": mat.blend_mode,
+		"shading_mode": mat.shading_mode,
+		"depth_draw_mode": mat.depth_draw_mode,
+		"depth_test_disabled": mat.get_flag(BaseMaterial3D.FLAG_DISABLE_DEPTH_TEST),
+		"cull_mode": mat.cull_mode,
+		"proximity_fade": mat.proximity_fade_enabled,
+		"distance_fade_mode": mat.distance_fade_mode,
+		"vertex_color": mat.vertex_color_use_as_albedo,
+		"has_albedo_texture": mat.albedo_texture != null,
+		"has_normal_texture": mat.normal_enabled and mat.normal_texture != null,
+		"has_emission_texture": mat.emission_enabled and mat.emission_texture != null,
+		"albedo_color": mat.albedo_color,
+		"alpha_scissor_threshold": mat.alpha_scissor_threshold,
+		"proximity_fade_distance": mat.proximity_fade_distance,
+		"distance_fade_max_distance": mat.distance_fade_max_distance,
+	}
+
+
+## The shader variant of `body` for a render state, generated once per body
+## and compile-time combination and shared. `base_modes` are the body's own
+## render modes (unshaded for the unlit body).
+static func _variant_shader(body: String, base_modes: PackedStringArray, state: Dictionary) -> Shader:
+	var modes: PackedStringArray = base_modes.duplicate()
+	var defines: PackedStringArray = []
+	match int(state["transparency"]):
+		BaseMaterial3D.TRANSPARENCY_ALPHA:
+			defines.append("NIF_ALPHA")
+			match int(state["blend_mode"]):
+				BaseMaterial3D.BLEND_MODE_ADD:
+					modes.append("blend_add")
+				BaseMaterial3D.BLEND_MODE_MUL:
+					modes.append("blend_mul")
+				_:
+					modes.append("blend_mix")
+		BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+			defines.append("NIF_ALPHA")
+			defines.append("NIF_SCISSOR")
+	match int(state["depth_draw_mode"]):
+		BaseMaterial3D.DEPTH_DRAW_ALWAYS:
+			modes.append("depth_draw_always")
+		BaseMaterial3D.DEPTH_DRAW_DISABLED:
+			modes.append("depth_draw_never")
+		_:
+			modes.append("depth_draw_opaque")
+	if bool(state["depth_test_disabled"]):
+		modes.append("depth_test_disabled")
+	match int(state["cull_mode"]):
+		BaseMaterial3D.CULL_DISABLED:
+			modes.append("cull_disabled")
+		BaseMaterial3D.CULL_FRONT:
+			modes.append("cull_front")
+		_:
+			modes.append("cull_back")
+	if bool(state.get("alpha_test", false)):
+		defines.append("NIF_ALPHA_TEST")
+	if bool(state["proximity_fade"]):
+		defines.append("NIF_PROXIMITY_FADE")
+	if int(state["distance_fade_mode"]) != BaseMaterial3D.DISTANCE_FADE_DISABLED:
+		defines.append("NIF_DISTANCE_FADE")
+	var key := body + " | " + ", ".join(modes) + " | " + " ".join(defines)
+	if _variant_shaders.has(key):
+		return _variant_shaders[key]
+	var code := "shader_type spatial;\nrender_mode %s;\n" % ", ".join(modes)
+	for define in defines:
+		code += "#define %s\n" % define
+	code += "#include \"%s\"\n" % body
+	var shader := Shader.new()
+	shader.code = code
+	_variant_shaders[key] = shader
+	return shader
+
+
+## The number of shader variants of `body` generated so far.
+static func variant_count(body: String) -> int:
+	var count := 0
+	for key in _variant_shaders:
+		if String(key).begins_with(body + " | "):
+			count += 1
+	return count
+
+
 ## FO3/FNV BSShaderProperty flags (xEdit wbBSShaderFlags/2). Only the two depth
 ## bits have a direct BaseMaterial3D mapping here. Disabling depth testing also
 ## disables writes in Godot, even if the authored write bit happens to be set.
@@ -315,24 +638,41 @@ static func _apply_shader_depth(mat: StandardMaterial3D, flags1: int, flags2: in
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS if depth_write else BaseMaterial3D.DEPTH_DRAW_DISABLED
 
 
+## NiStencilProperty's draw mode -> cull. 2,017 shapes carry one, all draw
+## mode 3 (DRAW_BOTH): two-sided, so no culling (foliage, light cards, effect
+## planes). Modes 0 to 2 (CCW_OR_BOTH, CCW, CW) appear on no shipped shape
+## and keep the default back-face cull; which Godot face CW and CCW name
+## after the tree builder's winding conversion is not checked.
+static func _apply_stencil(mat: StandardMaterial3D, nd: Dictionary) -> void:
+	if not bool(nd.get("has_stencil_property", false)):
+		return
+	if int(nd["stencil_draw_mode"]) == STENCIL_DRAW_BOTH:
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+
 ## NiAlphaProperty -> Godot transparency. Blend and test are separate bits and
 ## a shape can set either or both. StandardMaterial3D cannot combine authored
-## blending with authored alpha testing; try alpha scissor for the dual-bit
-## case, using the authored cutoff so discarded pixels cannot occlude each
-## other when depth writing is enabled. This drops the authored edge blending.
+## blending with authored alpha testing, so a dual-bit shape keeps one by its
+## blend function. An additive or multiply shape blends, as a blend-only one
+## does: those blends are order independent, and their test thresholds (1 to 3
+## of 255 on the effect cards) discard nothing visible. A mix shape uses alpha
+## scissor at the authored cutoff, so its depth write keeps overlapping cards
+## sorted; this drops its authored edge blending.
 static func _apply_alpha(mat: StandardMaterial3D, nd: Dictionary,
 		blend_enabled: bool, test_enabled: bool) -> void:
-	if blend_enabled and test_enabled:
+	var blend_func := String(nd["alpha_blend_func"])
+	var order_independent := blend_func == "add" or blend_func == "multiply"
+	if blend_enabled and test_enabled and not order_independent:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		# NiAlphaProperty's GREATER 0 still rejects fully transparent pixels.
 		# Godot's cutoff of 0 rejects none, so use the smallest 8-bit step.
 		mat.alpha_scissor_threshold = maxf(float(nd["alpha_threshold"]), 1.0 / 255.0)
 	elif blend_enabled:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		# Light shafts and glow overlays ship src=SRC_ALPHA dst=ONE and are
-		# genuinely additive; grime decals ship ZERO/SRC_COLOR and multiply.
-		# Defaulting everything to mix loses both.
-		match String(nd["alpha_blend_func"]):
+		# Light shafts, glow overlays and muzzle flashes ship src=SRC_ALPHA
+		# dst=ONE and are genuinely additive; grime decals ship ZERO/SRC_COLOR
+		# and multiply. Defaulting everything to mix loses both.
+		match blend_func:
 			"add":
 				mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 			"multiply":
