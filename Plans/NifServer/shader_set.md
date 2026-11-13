@@ -425,7 +425,8 @@ animated and tinted shapes on their shared material instead of a copy per instan
    Instance materials closed: every material controller the original's shaders take plays.
    Not built, by reason: SPEC colour (no lit shader takes a specular colour), 2 blend-interpolator
    links (scolgsdochouse.nif), unlit emissive (unused in the original), hidden emitter meshes
-   (particles). Open: the light-shaft LIGHT_SHAFT_ALPHA_SCALE (0.2) may be too faint with falloff.
+   (particles). The light-shaft LIGHT_SHAFT_ALPHA_SCALE (0.2) with falloff: found to be the correct
+   behaviour in game, kept.
 6. Tile shader; NiTexturingProperty and NiMaterialProperty-only shapes.
 
 ### Texture channels
