@@ -650,8 +650,11 @@ func cancel() -> void:
 	_animator = null
 	_skeleton = null
 
-func _exit_tree() -> void:
-	cancel()
+## Cancels when the node is freed, not on leaving the tree: a reparent (the
+## actor's reference changing CELL) keeps the clips and the KfAnimator.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		cancel()
 
 func _on_kf_library_delivered(raw_library: AnimationLibrary, generation: int, source_path: String) -> void:
 	if generation != _generation or not _loading:

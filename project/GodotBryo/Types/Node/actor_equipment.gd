@@ -136,10 +136,14 @@ func cancel() -> void:
 func _ready() -> void:
 	_connect_state_signals()
 
-func _exit_tree() -> void:
-	cancel()
-	_stop_watching_inventory()
-	_disconnect_state_signals()
+## Cancels and stops watching when the node is freed, not on leaving the
+## tree: a reparent (the actor's reference changing CELL) keeps the equipment
+## following the inventory.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		cancel()
+		_stop_watching_inventory()
+		_disconnect_state_signals()
 
 func _stop_watching_inventory() -> void:
 	if inventory != null and is_instance_valid(inventory) and inventory.inventory_changed.is_connected(_project_from_inventory):
