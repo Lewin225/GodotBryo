@@ -100,12 +100,19 @@ the last call.
 | Bip01 | Bip01's translation |
 | Bip01 + NonAccum Yaw | Bip01's translation and NonAccum's yaw about Z |
 | NonAccum | NonAccum's translation in XY and its yaw about Z |
-| Root Transform | Bip01's translation then NonAccum's facing against the stance yaw (90 degrees), as one transform; the clip is drawn with all of it out (Bip01 at the origin, NonAccum turned to the stance) |
+| Root Transform | Bip01's translation then NonAccum's facing against `stance_yaw`, as one transform; the clip is drawn with all of it out (Bip01 at the origin, NonAccum turned to the stance) |
 
 Root Transform is what ActorAnimator uses, with `root_motion_excluded_slot = 1` (locomotion, which
 the controller moves). It is a tested guess: the only reading that plays Doc Mitchell's chair
 enter, seated loop and exit correctly; not checked against the original. The other modes are kept
 for comparison in the Animation viewer.
+
+`stance_yaw` is the rig's NonAccum yaw, the facing at which a Root Transform clip faces forward
+(default 90 degrees, the humanoid rig's). `set_stance_from(animation)` reads it from a clip's
+NonAccum start rotation; ActorAnimator sets it from the rig's idle. Across every creature and
+humanoid locomotion KF, NonAccum's yaw is constant per rig and differs between rigs (humanoid 90,
+dog, House and gecko 0, securitron 180, brahmin -60), while every rig's forward clips move Bip01
+along +Y.
 
 `hold_unkeyed_root`: a root clip that keys no Bip01 has Bip01 drawn at the clip's origin.
 

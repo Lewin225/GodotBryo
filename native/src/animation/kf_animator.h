@@ -84,6 +84,15 @@ public:
 	Transform3D consume_root_motion();
 	void set_root_motion_excluded_slot(int p_slot);
 	int get_root_motion_excluded_slot() const;
+	// NonAccum's yaw about Z (radians) at which a Root Transform clip faces
+	// forward. Each rig has its own: NonAccum's yaw is constant across a rig's
+	// clips (humanoid 90 degrees, dog 0, securitron 180), and Bip01 +Y is
+	// forward on all of them.
+	void set_stance_yaw(float p_yaw);
+	float get_stance_yaw() const;
+	// Sets stance_yaw to NonAccum's yaw at the start of `p_animation`. Returns
+	// false and leaves it unchanged when the clip keys no NonAccum rotation.
+	bool set_stance_from(const Ref<Animation> &p_animation);
 
 	// The KfAnimator that clips played with a source_serial follow.
 	void set_sync_source(const NodePath &p_path);
@@ -266,6 +275,9 @@ private:
 	int _measured_slot = -1;
 	Transform3D _measured_motion;
 	int _root_motion_excluded_slot = -1;
+	// The humanoid rig's NonAccum yaw, 90 degrees (the standing stance of 342
+	// Special Idles; kf_root_census).
+	float _stance_yaw = 1.5707963f;
 	std::map<int, Slot> _slots;
 	uint64_t _next_serial = 1;
 	uint64_t _frame = 0;
