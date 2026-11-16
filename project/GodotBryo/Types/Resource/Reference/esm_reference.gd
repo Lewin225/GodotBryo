@@ -21,6 +21,10 @@ signal texture_swapped(block_name: String)
 ## Emitted when PlayGroup plays an animation group on this reference
 ## (play_group()); EsmNode plays it on the model.
 signal anim_group_played(group: String)
+## Emitted by receive_hit() after this reference's script has run its hit
+## blocks, for a loaded node to show the hit. `report` is ProjectileServer's
+## hit report.
+signal hit(shooter: EsmReference, weapon: WeaponBase, report: Dictionary)
 
 ## XESP flags (xEdit's names).
 const ENABLE_PARENT_OPPOSITE := 0x01
@@ -311,6 +315,16 @@ func get_enable_parent() -> EsmReference:
 ## This reference's actor values, or null when it is not an actor.
 func get_actor_values() -> ActorValues:
 	return null
+
+## `shooter` hit this reference with `weapon` (either may be null): runs its
+## script's OnHit block that accepts the shooter and its OnHitWith block that
+## accepts the weapon, the shooter as action reference, then emits `hit`.
+## Runs whether or not the reference has a node. Called by ProjectileServer
+## for each hit it reports.
+func receive_hit(shooter: EsmReference, weapon: WeaponBase, report: Dictionary) -> void:
+	ScriptServer.dispatch_event(self, "OnHit", shooter)
+	ScriptServer.dispatch_event_for(self, "OnHitWith", weapon, shooter)
+	hit.emit(shooter, weapon, report)
 
 ## Built-in activation of this reference: its base type's activate(). The
 ## dispatch point for ScriptServer; a reference type may override it.

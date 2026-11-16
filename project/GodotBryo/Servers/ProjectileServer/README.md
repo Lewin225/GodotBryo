@@ -25,7 +25,7 @@ ProjectileServer.segment_point(projectile, seconds) -> Vector3        # static, 
 ProjectileServer.damage_log: PackedStringArray                        # latest hits, oldest first
 ProjectileServer.show_effects: bool                                   # muzzle flash, tracers, impacts
 signal shot_created(shot: Dictionary)          # id, weapon, shooter, from, projectile, ammo, seed, directions
-signal hit(shot_id: int, hit: Dictionary)      # shot_id, position, normal, collider, target, damage
+signal hit(shot_id: int, hit: Dictionary)      # shot_id, position, normal, collider, target, damage, shooter, weapon
 signal lethal_hit(shot_id: int, target: EsmReference)
 signal shot_resolved(shot_id: int, ends: PackedVector3Array)
 signal projectile_launched(projectile: ProjectileReference)
@@ -49,6 +49,12 @@ signal projectile_ended(projectile: ProjectileReference, reason: String)
   server reports it (`hit`, `damage_log`) and does not apply it: resistances, criticals, limbs
   and Health belong to the damage system. `lethal_hit` fires once per target per shot when the
   shot's total damage to that target reaches its current Health.
+- **Hits reach the reference.** After emitting `hit`, the server calls
+  `target.receive_hit(shooter, weapon, report)` on the reference hit: it runs the reference's
+  `OnHit` and `OnHitWith` script blocks (ScriptServer) and emits the reference's `hit` signal,
+  for a loaded node to show. The server never calls a node. Each projectile of a shot is a hit
+  of its own, so a shotgun's pellets each run `OnHit` (unverified against the original).
+  Explosions reach only actors (`_actors_within`).
 - **Effects**, under the server as `ProjectileEffect` nodes: a tracer (the PROJ's model flying to the ray's end) by
   Tracer Chance, always for a beam; the weapon's INAM impact where a ray hits (Organic on an
   actor, Stone elsewhere, until collision keeps its havok material). An effect's lifetime starts
