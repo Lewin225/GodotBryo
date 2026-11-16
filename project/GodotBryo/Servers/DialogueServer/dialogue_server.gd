@@ -90,14 +90,15 @@ func choose_info(topic: DialogueTopicBase, speaker: EsmReference, listener: EsmR
 	return null
 
 ## `speaker` says the INFO `choose_info()` picks in `topic` to `listener`
-## (null for Say). The INFO is marked said at once; the line starts when its
-## voice files are loaded, on a worker thread when any is not cached (usually
-## the next frame): its begin script runs on the speaker, then each response is
-## said and played for its duration; when the last ends, the end script runs
-## and the speaker's `SayToDone` block for the topic. A line the speaker is
-## already saying is replaced. With `skip_begin_script` the begin script is
-## not run (a line replayed from a save that had already begun). Returns the
-## line, or null when no INFO qualifies.
+## (null for Say). The INFO is marked said and its begin script runs on the
+## speaker at once, so a script that says the topic again on the next frame
+## sees what the begin script did, however long the voice takes to load. The
+## responses start when the voice files are loaded, on a worker thread when
+## any is not cached (usually the next frame): each is said and played for its
+## duration; when the last ends, the end script runs and the speaker's
+## `SayToDone` block for the topic. A line the speaker is already saying is
+## replaced. With `skip_begin_script` the begin script is not run (a line
+## replayed from a save). Returns the line, or null when no INFO qualifies.
 func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference, chosen: DialogueInfoBase = null, skip_begin_script := false) -> DialogueLine:
 	var info := chosen if chosen != null else choose_info(topic, speaker, listener)
 	if info == null or speaker == null:
@@ -117,22 +118,24 @@ func say(speaker: EsmReference, topic: DialogueTopicBase, listener: EsmReference
 	_cut(_lines.get(speaker.instance_id))
 	_lines[speaker.instance_id] = line
 	mark_said(info, speaker)
+	if not skip_begin_script:
+		ScriptServer.run_result_script(info.begin_script_source, speaker, listener)
+	if _lines.get(speaker.instance_id) != line:
+		return line
 	if missing.is_empty():
 		_start(line)
 	else:
 		_tasks[WorkerThreadPool.add_task(_load_voice.bind(line, missing))] = line
 	return line
 
-## A line replaced before it ends still runs its scripts: its Begin script if
-## it had not started, its End script and SayToDone; it ends as if finished,
-## without continuing a conversation.
+## A line replaced before it ends still runs its End script and SayToDone
+## (its Begin script ran when it was said); it ends as if finished, without
+## continuing a conversation.
 func _cut(line: DialogueLine) -> void:
 	if line == null:
 		return
 	_lines.erase(line.speaker.instance_id)
 	_stop(line)
-	if not line.started and not line.skip_begin_script:
-		ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
 	ScriptServer.run_result_script(line.info.end_script_source, line.speaker, line.listener)
 	ScriptServer.dispatch_event_for(line.speaker, "SayToDone", line.topic)
 	line_finished.emit(line)
@@ -228,8 +231,8 @@ func _load_lip(path: String) -> LipReader:
 		return null
 	return lip
 
-## Begins a line whose voice is loaded: sets each response's stream and
-## duration, runs the begin script, and says the first response.
+## Begins the responses of a line whose voice is loaded: sets each
+## response's stream and duration and says the first response.
 func _start(line: DialogueLine) -> void:
 	for i in line.info.responses.size():
 		var stream: AudioStream = _streams.get(line.voice_paths[i])
@@ -237,8 +240,6 @@ func _start(line: DialogueLine) -> void:
 		line.lips.append(_lips.get(line.voice_paths[i]))
 		line.durations.append(stream.get_length() if stream != null and stream.get_length() > 0.0 else _text_duration(line.info.responses[i].text))
 	line.started = true
-	if not line.skip_begin_script:
-		ScriptServer.run_result_script(line.info.begin_script_source, line.speaker, line.listener)
 	if _lines.get(line.speaker.instance_id) == line and not line.info.responses.is_empty():
 		_say_response(line)
 
@@ -568,7 +569,7 @@ func save_state() -> Dictionary:
 			"topic": _record_text(line.topic.form_id),
 			"info": _record_text(line.info.form_id),
 			"listener": String(line.listener.instance_id) if line.listener != null else null,
-			"begun": line.started or line.skip_begin_script,
+			"begun": true,
 		})
 	return {"said": said, "talked_to_player": talked, "added_topics": topics, "saying": saying}
 

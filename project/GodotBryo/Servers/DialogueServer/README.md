@@ -47,14 +47,18 @@ conditions and its own pass, the speaker has not said it (Say Once) or has not s
 starts a set: it and the qualifying Random INFOs after it, up to one flagged Random End; one
 is chosen with `rng`.
 
-**Saying.** `say()` chooses the INFO and marks it said at once, so an end script that says
-the same topic again gets the next line. The line starts when its voice files are loaded:
+**Saying.** `say()` chooses the INFO, marks it said and runs its begin script on the speaker
+(the listener as action reference) at once, so an end script that says the same topic again
+gets the next line, and a script that says a topic every frame until the begin script changes
+its condition says it once, however long the voice takes to load: VCG02SunnyPatrolTriggerREF's
+OnTrigger and three `VReactionVeronicaSCRIPT` reactions depend on it (a census of the 205
+`Say`/`SayTo` calls in FalloutNV.esm's GameMode, MenuMode, OnTrigger and ScriptEffectUpdate
+blocks). The responses start when the voice files are loaded:
 cached ones at once, others read and parsed on a `WorkerThreadPool` task (usually ready the
 next frame; Doc's 15 VCG01Intro files take 0.05-1.4 ms to read and 0.05 ms each to parse). The `.lip` beside each voice file (same path, `.lip`) is read on the same task into a
 `LipReader`; `DialogueLine.current_lip()` gives the response's, which the speaker's
 `ActorFacialPlayer` plays.
-Starting runs the begin script on the speaker (the listener as action reference). Each
-response lasts its voice file's length and plays it at the speaker, through an
+Each response lasts its voice file's length and plays it at the speaker, through an
 `AudioStreamPlayer3D` the line owns, placed each frame at the speaker's eyes (its head
 tracking's eye point, or its position plus `voice_height` without a 3D node) and silent
 while the speaker is in another space than the player; the falloff (`voice_unit_size`,
@@ -79,7 +83,7 @@ except through what is chosen, as in the original; `end_conversation()` is for s
 tests (with `say_goodbye` the speaker says GOODBYE, which the GECK's Topics Tab says is used
 when the player exits the dialogue menu). `skip()` moves a line to its next response.
 **A line never loses its scripts:** one replaced before it ends (the speaker says another)
-runs its Begin script if it had not started, then its End script and SayToDone. Lines run under the Dialog menu while other menus pause them. The
+runs its End script and SayToDone. Lines run under the Dialog menu while other menus pause them. The
 first topic list loads the 2,283 top-level topics once (425 ms; later lists about 20 ms).
 The player's `DialogueSession` shows the speaker, the response and the choices.
 
@@ -110,12 +114,19 @@ factions from its record or, when its template flags say so, its template
   assumed. Quests of equal priority keep file order.
 - Say Once per actor, Random End: from search summaries of geckwiki.com.
 - ANAM restricting the speaker at runtime.
-- Result scripts running on the speaker; an INFO marked said as it starts; a new line
-  replacing the one being said; subtitles always shown (SayTo's ForceSubtitle is ignored).
+- Result scripts running on the speaker; a new line replacing the one being said (six
+  repeated `Say` calls in the census guard themselves with `IsTalking`, which suggests the
+  original interrupts too); a replaced line running its End script. REPCONChrisHavFinalIntercomScript
+  says ChrisHavTellsJasonReady every frame Chris is in its trigger until the line's End
+  script sets `VMS01.JasonExodusSpeech`: here the second frame's `Say` cuts the first line,
+  whose End script runs, and the replacement runs it again (`SetStage VMS01 50` twice).
+  Either the original ignores a repeated `Say` of the line being said or a replaced line
+  does not run its End script; subtitles always shown (SayTo's ForceSubtitle is ignored).
 - The duration of an unvoiced response.
 - The topic list: top-level topics without being added, top-level first, by priority; the
   speaker saying GOODBYE when the player leaves.
 
 ## Tests
 
-`tests/test_dialogue_server.tscn`, `tests/test_vcg01_opening.tscn` (VCG01 stage 0 to 55).
+`tests/test_dialogue_server.tscn`, `tests/test_vcg01_opening.tscn` (VCG01 stage 0 to 55),
+`tests/test_vcg02_bottle_intro.tscn` (the begin script stops a per-frame `SayTo`).
