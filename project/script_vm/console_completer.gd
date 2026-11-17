@@ -102,6 +102,7 @@ const SIGNATURES := {
 	"GetLocked|GetOpenState": "",
 	"SetOpenState": "Open:flag",
 	"GetDestroyed": "",
+	"ToggleNavMesh|TNM": "[Mode:int]",
 	"SetDestroyed": "Destroyed:flag",
 	"AddScriptPackage|DebugAddScriptPackageAll": "Package:package",
 	"RemoveScriptPackage|EvaluatePackage|evp|DebugRemoveScriptPackageAll|DebugActorCost|MarkForDelete": "",

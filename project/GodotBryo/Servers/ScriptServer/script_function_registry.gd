@@ -933,6 +933,13 @@ func _register_defaults() -> void:
 		return 0
 	register(["ToggleCollision", "TCL"], toggle_collision)
 
+	# `TNM [Mode]`: the navmesh debug view (NavmeshDebugView): 0 off, 1
+	# NpcSimulationServer's NAVM near the camera, 2 Godot's local navigation;
+	# with no mode, the next one. Returns the mode now shown.
+	register(["ToggleNavMesh", "TNM"], func(a: Array, _c):
+		var mode := int(_number(a, 0)) if a.size() > 0 else -1
+		return NpcSimulationServer.set_navmesh_view(mode))
+
 	# `TGM` / `TDM`: toggle the player's god / demigod mode (the flags on
 	# ScriptServer; nothing reads them yet, as there is no damage system).
 	# Not per reference. Return the new state, 1 or 0.

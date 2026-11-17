@@ -153,6 +153,11 @@ func clear() -> void:
 	_roots_by_space.clear()
 	_free_maps()
 
+## The regions and seam links on `space_form_id`'s map, for NavmeshDebugView.
+func get_space_nodes(space_form_id: int) -> Array[Node]:
+	var root: Node3D = _roots_by_space.get(space_form_id)
+	return root.get_children() if root != null else [] as Array[Node]
+
 static func to_godot(point: Vector3) -> Vector3:
 	return GAMEBRYO_TO_GODOT_BASIS * point
 

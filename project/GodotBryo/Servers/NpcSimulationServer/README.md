@@ -95,6 +95,24 @@ under `native/tools/` so any claim here can be re-run.
   add a second conversion downstream. This was an actual bug during the build:
   without it, actors in Hoover Dam Power Plant sat 12 m from a navmesh whose raw
   z-range was 10368..11652 (= 148..166 m).
+- *`NVTR` triangle Flags* (`navm_triangle_flag_census.cpp`, over 825,732
+  triangles in the masters; meanings matched to the GECK's navmesh markings):
+
+  | bit | meaning | evidence |
+  |---|---|---|
+  | `0x0001` `0x0002` `0x0004` | edge 0-1 / 1-2 / 2-0 crosses an `NVEX` link | see above |
+  | `0x0010` | no large creatures | 253 triangles in contiguous patches (83.9% of their neighbours share it); in narrow spots in CampSearchlightFireStation01, seen with `TNM 1` |
+  | `0x0040` | preferred path | 3,712 triangles in contiguous patches (81.6%); along Sunny Smiles' tutorial route in Goodsprings, seen with `TNM 1` |
+  | `0x0200` | water | 34,374 triangles; where the cell has a water height, 99.8% lie below it (median 15.4 m deep) against 17.8% of the other triangles in those records (`navm_water_flag_census.cpp`) |
+  | `0x0400` | door triangle | set on exactly the 1,342 triangles `NVDP` names, and no others |
+  | `0x0800` | always set | 100% of triangles |
+
+  Nothing reads them yet; routing could cost preferred triangles less, keep
+  actors that cannot swim off water and large actors off `0x0010`.
+- *`NVTR` Cover Flags hold cover for edges 0-1 and 1-2.* Bits 0-5 sit on a
+  triangle whose edge 0-1 is open in 96.2% of cases, bits 6-11 on one whose
+  edge 1-2 is open in 96.3%; edge 2-0 has none. Every triangle `NVCA` lists has
+  nonzero Cover Flags (40,086); 23,800 more have them unlisted.
 
 **Approximated:** a crossing whose flagged edge lies more than 0.5 m from its
 target triangle (4.9% of links) is no funnel gate; the route hops between the
@@ -105,6 +123,14 @@ two triangles' closest points there (see Path quality).
 - What `NVEX` "Type" means. Values are 95.50% `0`, 2.24% `1`, 2.24% `2`, 0.02%
   `3`. The near-identical counts for 1 and 2 suggest a directional pair, but
   that is a guess and nothing reads the field.
+- How each 6-bit cover group splits. The common values (`0x01`, `0x1F`, `0x3F`
+  and their shifted forms) suggest a 4-bit height plus two side bits, the
+  GECK's cover height and the "edge cover" bars at each end; `TNM 1` draws them
+  that way, so it can be checked against the objects the cover stands beside.
+- Water in 252 `NAVM` records whose cell has no usable water height (none, or
+  a value above 1e6): about 20,000 water triangles, possibly under placed
+  water (`PWAT`) or a worldspace water setting.
+
 **Guarded:** an unflagged edge slot past the triangle array would read past it;
 the loader clamps any to `-1` and counts them (`clamped_out_of_range_edges`).
 None occur in the shipped masters, and the test asserts that, and that every
@@ -285,6 +311,25 @@ including through doors.
   42.6 MB for every space; routes of about 2 km reach 91/100 in 84 ms mean
   (NSS: 90/100, 91 ms), with Godot's `path_search_max_polygons` lifted from its
   4,096 default, which otherwise ends every such route short.
+
+## Navmesh debug view (`TNM`)
+
+`ToggleNavMesh` / `TNM [mode]` (console) sets `NavmeshDebugView`, a child of this
+server: 0 off, 1 NSS, 2 Godot; with no mode, the next one. A legend names the
+colours.
+
+- **1, NSS** -- this server's `NAVM` triangles within 40 m of the camera, in the
+  player's space (`NavmeshReader.get_triangles_near`, which filters records by
+  their `NVGD` bounds, so a worldspace costs no more than an interior), fetched
+  again when the camera moves 5 m. Fill by triangle Flags (door, water,
+  preferred, no large creatures); cyan edges cross into another record, yellow
+  edges are open; a quad stands on each edge with Cover Flags, its height the
+  group's low four bits x 0.2 m, with dark bars for the next two bits.
+- **2, Godot** -- `LocalNavigation`'s map for the player's space within 40 m:
+  each region's polygons in its own colour, the pathways of the edge
+  connections Godot made between regions in cyan, seam links in magenta. Drawn
+  from the regions themselves: Godot's own navigation debug drawing does not
+  appear for regions that entered the tree before it was switched on.
 
 ## Packages and low-level travel (first slice)
 

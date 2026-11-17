@@ -23,6 +23,7 @@ void NavmeshReader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_record_seam_links", "record_index", "min_gap", "max_gap"), &NavmeshReader::get_record_seam_links);
 	ClassDB::bind_method(D_METHOD("get_record_door_links", "record_index"), &NavmeshReader::get_record_door_links);
 	ClassDB::bind_method(D_METHOD("get_record_triangle_flags", "record_index"), &NavmeshReader::get_record_triangle_flags);
+	ClassDB::bind_method(D_METHOD("get_triangles_near", "space_form_id", "center", "radius"), &NavmeshReader::get_triangles_near);
 	ClassDB::bind_method(D_METHOD("get_space_bounds", "space_form_id"), &NavmeshReader::get_space_bounds);
 	ClassDB::bind_method(D_METHOD("get_coarse_neighbors", "record_index"), &NavmeshReader::get_coarse_neighbors);
 	ClassDB::bind_method(D_METHOD("snap", "space_form_id", "position", "max_distance", "use_coarse_index"),
@@ -189,6 +190,40 @@ PackedInt32Array NavmeshReader::get_record_triangle_flags(int record_index) cons
 	if (r == nullptr) return out;
 	for (const nav::Triangle &t : r->triangles) out.push_back((int32_t)t.flags);
 	return out;
+}
+
+Dictionary NavmeshReader::get_triangles_near(int space_form_id, const Vector3 &center, float radius) const {
+	PackedVector3Array points;
+	PackedInt32Array flags, cover_flags, open_edges;
+	nav::Vec3 c = to_nav(center);
+	float radius_sq = radius * radius;
+	for (uint32_t ri : db_.records_in_space((uint32_t)space_form_id)) {
+		const nav::NavMeshRecord *r = db_.record_at(ri);
+		if (r == nullptr || !r->bounds.contains_xy(c, radius)) continue;
+		if (c.z < r->bounds.min.z - radius || c.z > r->bounds.max.z + radius) continue;
+		for (const nav::Triangle &t : r->triangles) {
+			if (t.vertex[0] >= r->vertices.size() || t.vertex[1] >= r->vertices.size() || t.vertex[2] >= r->vertices.size()) continue;
+			const nav::Vec3 &a = r->vertices[t.vertex[0]], &b = r->vertices[t.vertex[1]], &v = r->vertices[t.vertex[2]];
+			float cx = (a.x + b.x + v.x) / 3.0f - c.x, cy = (a.y + b.y + v.y) / 3.0f - c.y;
+			if (cx * cx + cy * cy > radius_sq) continue;
+			points.push_back(to_godot(a));
+			points.push_back(to_godot(b));
+			points.push_back(to_godot(v));
+			flags.push_back((int32_t)t.flags);
+			cover_flags.push_back((int32_t)t.cover_flags);
+			int32_t open = 0;
+			for (int e = 0; e < 3; ++e) {
+				if (t.edge[e] == -1 && t.edge_link[e] == -1) open |= 1 << e;
+			}
+			open_edges.push_back(open);
+		}
+	}
+	Dictionary d;
+	d["points"] = points;
+	d["flags"] = flags;
+	d["cover_flags"] = cover_flags;
+	d["open_edges"] = open_edges;
+	return d;
 }
 
 Dictionary NavmeshReader::get_space_geometry(int space_form_id) const {
