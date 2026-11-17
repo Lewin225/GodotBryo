@@ -1,3 +1,5 @@
+> **Quick build:** `python build_native.py` at the repo root builds all three extensions and copies Terrain3D into the project. The manual steps below are what it runs.
+
 # Native GDExtension
 
 Phase 0 native module. See [phases/0/00-build-scaffolding.md](../phases/0/00-build-scaffolding.md)
