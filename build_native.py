@@ -4,7 +4,6 @@
     python build_native.py                      # debug build for this OS
     python build_native.py --target release
     python build_native.py --only nv_engine terrain_streamer
-    python build_native.py --zlib-path C:/vcpkg/installed/x64-windows   # Windows
 
 Steps (each is a separate SCons build):
   nv_engine         native/            -> project/bin/
@@ -13,8 +12,8 @@ Steps (each is a separate SCons build):
                                           project/addons/terrain_3d/bin/
 
 Needs Python 3, SCons, a C++17 compiler (MSVC or MinGW on Windows) and the
-submodules (git submodule update --init --recursive). On Windows also zlib,
-via --zlib-path or the ZLIB_PATH environment variable (see native/build_zlib.py).
+submodules (git submodule update --init --recursive). zlib is built from the
+native/zlib submodule; no system zlib is needed.
 Anything after `--` is passed to every scons invocation.
 """
 import argparse
@@ -49,7 +48,6 @@ def main():
 	parser.add_argument("--platform", default=host_platform(), choices=["linux", "windows", "macos"])
 	parser.add_argument("--target", default="debug", choices=["debug", "release"])
 	parser.add_argument("--jobs", "-j", type=int, default=os.cpu_count() or 1)
-	parser.add_argument("--zlib-path", help="Windows: directory containing zlib include/ and lib/")
 	parser.add_argument("--only", nargs="+", choices=STEPS, help="build just these steps")
 	parser.add_argument("scons_args", nargs="*", help="extra scons arguments (after --)")
 	args = parser.parse_args()
@@ -61,8 +59,6 @@ def main():
 	ours = ["target=" + template, "api_version=4.7", "disable_exceptions=no"]
 	if args.platform == "linux":
 		ours.append("use_static_cpp=no")
-	if args.zlib_path:
-		ours.append("zlib_path=" + os.path.abspath(args.zlib_path))
 
 	if "nv_engine" in steps:
 		run_scons(NATIVE, ours + common)

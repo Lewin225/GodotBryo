@@ -12,3 +12,6 @@
 	path = native/SunshineClouds2
 	url = https://github.com/Bonkahe/SunshineClouds2.git
 	branch = OverhaulSunshineClouds2.5
+[submodule "native/zlib"]
+	path = native/zlib
+	url = https://github.com/madler/zlib.git

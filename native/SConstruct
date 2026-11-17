@@ -58,8 +58,9 @@ env = SConscript("godot-cpp/SConstruct")
 # adds its sources here as it's implemented; common/ holds shared helpers
 # (endian-aware byte reading, etc.) used by all of them.
 env.Append(CPPPATH=["src/"])
-build_zlib.configure(env, ARGUMENTS) # zlib, for BSA per-file decompression
+zlib_objects = build_zlib.configure(env, ARGUMENTS) # zlib, for BSA per-file decompression
 sources = Glob("src/*.cpp")
+sources += zlib_objects
 sources += Glob("src/common/*.cpp")
 sources += Glob("src/bsa/*.cpp")
 sources += Glob("src/esm/*.cpp")

@@ -71,8 +71,8 @@ if env["platform"] != "macos" and os.name == "posix":
 	env.Replace(ARFLAGS=["rc"])
 
 env.Append(CPPPATH=["../src", "src"])
-build_zlib.configure(env, ARGUMENTS)
-sources = Glob("src/*.cpp") + Glob("../src/common/*.cpp") + Glob("../src/esm/esm_file.cpp")
+zlib_objects = build_zlib.configure(env, ARGUMENTS)
+sources = zlib_objects + Glob("src/*.cpp") + Glob("../src/common/*.cpp") + Glob("../src/esm/esm_file.cpp")
 extension_name = "terrain_streamer"
 project_bin_dir = "../../project/addons/terrain_streamer/bin/"
 
