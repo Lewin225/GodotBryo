@@ -15,6 +15,8 @@ signal entered_interior(cell_form_id: int)
 signal entered_exterior(worldspace_form_id: int)
 
 const COC_MARKER_BASE_EDITOR_ID := "COCMarkerHeading"
+## Metres CenterOnCell searches from a CELL's centre for a navmesh point.
+const NAVMESH_SNAP_DISTANCE := 1000.0
 ## Seconds a transition runs before the loading screen offers Force finish.
 const FORCE_FINISH_AFTER_SECONDS := 5.0
 
@@ -27,8 +29,9 @@ const FORCE_FINISH_AFTER_SECONDS := 5.0
 var loaded_space_form_id := 0
 var _target_space_form_id := 0
 var _generation := 0
-## Set when a CenterOnCell destination has no COC marker: the body is placed
-## above the loaded CELL's geometry instead of at the reference.
+## Set when a CenterOnCell destination has no arrival_spot(): once the CELL
+## has settled, the body is placed above its geometry instead of at the
+## reference.
 var _drop_into_cell := false
 ## Seconds the current transition has been running.
 var _transition_seconds := 0.0
@@ -122,8 +125,12 @@ func is_transitioning() -> bool:
 ## An interior has loaded and the body waits, frozen, for it to settle.
 var _settling := false
 
-## CenterOnCell / COC: moves the possessed actor to an interior CELL's
-## COCMarkerHeading. Returns the CELL FormID, or {"error": ...}.
+## CenterOnCell / COC: moves the possessed actor into an interior CELL, at
+## the first of: its COCMarkerHeading; the landing of a load door into it (the
+## XTEL of the door a load door in the CELL leads to); the navmesh point
+## nearest the centre of its references. A CELL with none of these drops the
+## body above its geometry once it has settled. Returns the CELL FormID, or
+## {"error": ...}.
 func center_on_cell(args: Array) -> Variant:
 	if args.is_empty():
 		return { "error": "CenterOnCell requires a cell EditorID." }
@@ -134,16 +141,56 @@ func center_on_cell(args: Array) -> Variant:
 		return { "error": "No CELL with EditorID '%s' in the loaded ESM." % str(args[0]) }
 	if EsmServer.get_space_form_id_for_cell(cell) != cell:
 		return { "error": "'%s' is exterior; CenterOnWorld is not implemented yet." % str(args[0]) }
-	var marker: EsmReference = null
-	for reference in EsmServer.get_references_in_cell(cell):
-		if reference.base != null and reference.base.editor_id == COC_MARKER_BASE_EDITOR_ID:
-			marker = reference
-			break
-	_drop_into_cell = marker == null
+	var spot := arrival_spot(cell)
+	_drop_into_cell = spot.is_empty()
 	ScriptServer.move_reference(player.possessed, cell,
-			marker.position if marker != null else Vector3.ZERO,
-			marker.rotation if marker != null else Vector3.ZERO)
+			spot.get("position", Vector3.ZERO), spot.get("rotation", Vector3.ZERO))
 	return cell
+
+## Where CenterOnCell places the player in interior `cell`: {"position",
+## "rotation", "source"} (Gamebryo axes, metres, radians), source being
+## "coc_marker", "door_landing" or "navmesh"; empty when the CELL has none.
+static func arrival_spot(cell: int) -> Dictionary:
+	var references := EsmServer.get_references_in_cell(cell)
+	var spot := _coc_marker_spot(references)
+	if spot.is_empty():
+		spot = _door_landing_spot(cell, references)
+	if spot.is_empty():
+		spot = _navmesh_spot(cell, references)
+	return spot
+
+static func _coc_marker_spot(references: Array[EsmReference]) -> Dictionary:
+	for reference in references:
+		if reference.base != null and reference.base.editor_id == COC_MARKER_BASE_EDITOR_ID:
+			return {"position": reference.position, "rotation": reference.rotation, "source": "coc_marker"}
+	return {}
+
+## The landing of the first load door whose partner lands in `cell`: where
+## the player arrives coming through it.
+static func _door_landing_spot(cell: int, references: Array[EsmReference]) -> Dictionary:
+	for reference in references:
+		var door := reference as DoorReference
+		if door == null or not door.has_teleport:
+			continue
+		var partner := door.get_teleport_destination()
+		if partner == null or not partner.has_teleport or partner.get_teleport_destination_space_form_id() != cell:
+			continue
+		return {"position": partner.teleport_position, "rotation": partner.teleport_rotation, "source": "door_landing"}
+	return {}
+
+## The navmesh point nearest the centre of `cell`'s references, facing north.
+static func _navmesh_spot(cell: int, references: Array[EsmReference]) -> Dictionary:
+	var navmesh: NavmeshReader = NpcSimulationServer.navmesh
+	if navmesh == null or not navmesh.is_loaded() or references.is_empty():
+		return {}
+	var centre := Vector3.ZERO
+	for reference in references:
+		centre += reference.position
+	centre /= references.size()
+	var snapped: Dictionary = navmesh.snap(cell, centre, NAVMESH_SNAP_DISTANCE, false)
+	if not bool(snapped.get("found", false)):
+		return {}
+	return {"position": snapped["position"], "rotation": Vector3.ZERO, "source": "navmesh"}
 
 func _on_reference_teleported(reference: EsmReference, _old_space_form_id: int, new_space_form_id: int) -> void:
 	if player == null or reference != player.possessed:
@@ -168,11 +215,7 @@ func _on_load_completed(cell_form_id: int, success: bool) -> void:
 		return
 	loaded_space_form_id = cell_form_id
 	entered_interior.emit(cell_form_id)
-	if _drop_into_cell:
-		_drop_into_cell = false
-		_drop_body_into_current_cell()
-	else:
-		_place_body()
+	_place_body()
 	# Held frozen until the cell's geometry, and so its floor, has arrived.
 	_settling = true
 	cell_streamer.settled.connect(_on_cell_settled.bind(_generation), CONNECT_ONE_SHOT)
@@ -183,6 +226,9 @@ func _on_cell_settled(_cell_form_id: int, generation: int) -> void:
 	if generation != _generation:
 		return
 	_settling = false
+	if _drop_into_cell:
+		_drop_into_cell = false
+		_drop_body_into_current_cell()
 	player.set_frozen(false)
 
 ## Streams a worldspace in around the possessed actor. The body is placed
@@ -229,8 +275,9 @@ func _place_body() -> void:
 	var actor := player.possessed
 	player.place_body(EsmReferencePhysicaliser.placement_transform(actor.position, actor.rotation).origin, -actor.rotation.z)
 
-## Places the body above the current CELL's geometry, for a CELL with no COC
-## marker. The body's own sync then writes where it lands back to the actor.
+## Places the body above the current CELL's geometry, for a CELL with no
+## arrival_spot(), once its geometry has arrived. The body's own sync then
+## writes where it lands back to the actor.
 func _drop_body_into_current_cell() -> void:
 	var bounds: Variant = _current_cell_aabb()
 	if bounds == null:
