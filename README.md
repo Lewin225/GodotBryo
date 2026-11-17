@@ -61,28 +61,14 @@ It reads the original ESM/BSA/NIF/DDS files directly, so you need your own copy 
 Why Godot? Lightweight, existing renderer, free, easy to extend through GDExtension, source available, multi-platform.
 
 
-<img width="3416" height="1348" alt="105" src="https://github.com/user-attachments/assets/4e8344cf-1ab2-4580-ab38-6e4dd9008f11" />
+<img height="500" alt="105" src="https://github.com/user-attachments/assets/4e8344cf-1ab2-4580-ab38-6e4dd9008f11" />
 
 
 Why at all. I don't like the character controller in new vegas, and I never found a mod that fixed it the way I wanted. + this runs on Linux
-
-I'd also like to add boneworks style vr weapon controls, coop and those [nice half life alyx npc animations where they place feet properly](https://www.youtube.com/watch?v=UOYSg08eu5Q). Generally just touch up and modernise the handling like fallout 4 did
-
-
-<img width="2418" height="1359" alt="68" src="https://github.com/user-attachments/assets/b631fb6d-5ad1-441e-a7e8-c92c1b33a303" />
+I'd also like to add boneworks style vr weapon controls, coop and those [nice half life alyx npc animations where they place feet properly](https://www.youtube.com/watch?v=UOYSg08eu5Q). Generally just touch up and modernise the handling like fallout 4 tried to do
 
 
-The goal is an open platform to do stuff with new vegas / fo3 in an easier way than modding or injecting the original. planning on a feature to replace a given REFR with a godot scene, to allow easy modding and allow a vr mod to replace weapons
-
-
-<img width="2651" height="1139" alt="11" src="https://github.com/user-attachments/assets/be4eba31-4d48-4c37-9535-cb46f268e933" />
-
-
-Moviemaker kinda works too, and you can drag and drop from the inspector to build scenes for it
-
-
-<img width="2192" height="1291" alt="72" src="https://github.com/user-attachments/assets/bedee1e3-13ab-4b24-a149-dfa3e33eb0b3" />
-
+<img height="500" alt="11" src="https://github.com/user-attachments/assets/be4eba31-4d48-4c37-9535-cb46f268e933" />
 
 
 ## Where it's at
