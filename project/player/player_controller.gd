@@ -576,10 +576,16 @@ func _handle_noclip_movement(delta: float) -> void:
 	global_position += velocity * delta
 
 
-## Whether a text field (the console, a debug tab's input) has keyboard
-## focus. Movement keys are polled, so without this typing would also walk.
+## Whether a text field (the console, a debug tab's input, the issue
+## reporter's window) has keyboard focus, in whichever window has focus.
+## Movement keys are polled from Input, which every window feeds, so without
+## this typing would also walk.
 func is_typing() -> bool:
-	var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+	if not is_inside_tree():
+		return false
+	var window := Window.get_focused_window()
+	var viewport: Viewport = window if window != null else get_viewport()
+	var focus := viewport.gui_get_focus_owner()
 	return focus is LineEdit or focus is TextEdit
 
 
