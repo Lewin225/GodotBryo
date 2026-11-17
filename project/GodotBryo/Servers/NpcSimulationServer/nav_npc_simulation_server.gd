@@ -5,16 +5,12 @@ extends Node
 ## [NavmeshReader], indexes every placed actor and XTEL door, and grounds each
 ## actor against the navmesh; it runs only when called.
 ##
-## Two layers, deliberately kept distinct because their confidence levels
-## differ:
-##
-## - The triangle mesh, and adjacency WITHIN a NAVM record, are authored data.
-##   Positions and routes derived from them are as good as the ESM.
-## - Which records connect to which is also authored (NVEX). Where exactly the
-##   crossing happens between two records is NOT authored and is derived
-##   geometrically in the native layer; see NavmeshDatabase's cross-record
-##   stitch. Routes are therefore exact within a record and approximate at
-##   record seams.
+## The triangle mesh, adjacency within a NAVM record, and the crossings between
+## records are authored data: an NVTR edge with its link flag set names the
+## NVEX link it crosses (see NavmeshDatabase's cross-record links). Positions
+## and routes built on them are as good as the ESM, except at the 4.9% of
+## crossings whose target triangle lies more than 0.5 m from the edge, where a
+## route hops between the two triangles' closest points.
 ##
 ## NAVM centers are a query optimiser only. `use_coarse_index` toggles the
 ## authored-bounds broad-phase; it changes query cost, never the answer (the

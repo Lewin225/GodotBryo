@@ -120,7 +120,7 @@ PackedVector3Array NavmeshReader::get_record_triangle_points(int record_index) c
 	return out;
 }
 
-// The derived cross-record links between records of one space, each pair once
+// The cross-record links between records of one space, each pair once
 // (lower global triangle first), as consecutive points: from-triangle centroid,
 // then to-triangle centroid.
 PackedVector3Array NavmeshReader::get_space_cross_links(int space_form_id) const {

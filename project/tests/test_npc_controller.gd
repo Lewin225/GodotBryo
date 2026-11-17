@@ -12,6 +12,8 @@ const MINIMUM_WALK := 6.0
 const SPEED_SCALE := 5.0
 ## Physics frames allowed for each walk.
 const WALK_FRAMES := 20 * 60
+## Metres in plan from a seam that the seam-crossing walk starts and ends.
+const SEAM_CLEARANCE := 2.0
 
 var failures := 0
 
@@ -133,8 +135,9 @@ func _check_avoidance_follows_enable_state(controller: NpcController, doc: Actor
 	check(controller.agent.avoidance_enabled, "enabled again, he does")
 
 ## Interior 0x10D629's NAVM records meet at seams 1.12-3.84 m wide, which
-## only LocalNavigation's seam links join: Doc walks from beside a seam across
-## it into the other record.
+## only LocalNavigation's seam links join: Doc walks from SEAM_CLEARANCE
+## beside a seam across it into the other record, far enough that his agent
+## walks the link rather than reaching the far side's point from the near one.
 func _check_seam_crossing(controller: NpcController, doc: ActorReference) -> void:
 	var cell := 0x10D629
 	var navmesh := NpcSimulationServer.navmesh
@@ -146,8 +149,8 @@ func _check_seam_crossing(controller: NpcController, doc: ActorReference) -> voi
 	var seam: Dictionary = navmesh.get_record_seam_links(records[0], LocalNavigation.EDGE_CONNECTION_MARGIN, LocalNavigation.MAX_SEAM_LINK_GAP)
 	var seam_points: PackedVector3Array = seam["points"]
 	var far_record: int = seam["target_records"][0]
-	var start := _nearest_centre(navmesh, records[0], seam_points[0], false)
-	var target := _nearest_centre(navmesh, far_record, seam_points[1], false)
+	var start := _nearest_centre(navmesh, records[0], seam_points[0], false, SEAM_CLEARANCE)
+	var target := _nearest_centre(navmesh, far_record, seam_points[1], false, SEAM_CLEARANCE)
 	check(bool(NpcSimulationServer.route(cell, start, target).get("found", false)), "NavmeshReader routes across a seam of 0x%X (%.1f m)" % [cell, start.distance_to(target)])
 	ScriptServer.move_reference(doc, cell, start, doc.rotation)
 	ScriptServer.apply_pending_moves()
@@ -189,13 +192,16 @@ func _check_stuck_recovery(controller: NpcController, doc: ActorReference) -> vo
 	controller.stuck_seconds = 3.0
 
 ## The triangle centre of `record` nearest `point` (Gamebryo axes, as
-## NavmeshReader gives it), or farthest from it.
-func _nearest_centre(navmesh: NavmeshReader, record: int, point: Vector3, farthest: bool) -> Vector3:
+## NavmeshReader gives it), or farthest from it, among those at least
+## `min_planar` metres from it in plan.
+func _nearest_centre(navmesh: NavmeshReader, record: int, point: Vector3, farthest: bool, min_planar := 0.0) -> Vector3:
 	var points: PackedVector3Array = navmesh.get_record_triangle_points(record)
 	var best := Vector3.ZERO
 	var best_distance := INF
 	for first in range(0, points.size(), 3):
 		var centre := (points[first] + points[first + 1] + points[first + 2]) / 3.0
+		if Vector2(centre.x - point.x, centre.y - point.y).length() < min_planar:
+			continue
 		var distance := centre.distance_to(point)
 		if farthest:
 			distance = -distance
