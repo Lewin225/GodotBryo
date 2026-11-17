@@ -853,6 +853,15 @@ func _register_defaults() -> void:
 		ctx.calling_reference.marked_for_delete = true
 		return 1)
 
+	# `[Ref.]SetDestroyed Flag`: 1 destroys the calling reference, 0 restores it.
+	register("SetDestroyed", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null:
+			return 0
+		ctx.calling_reference.destroyed = ScriptExecutionContext.is_truthy(a[0]) if a.size() > 0 else true
+		return 1)
+	register("GetDestroyed", func(_a, ctx: ScriptExecutionContext):
+		return 1 if ctx.calling_reference != null and ctx.calling_reference.destroyed else 0)
+
 	# Actor values of the calling actor, named by script name (`GetAV Health`).
 	register(["GetActorValue", "GetAV"], func(a: Array, ctx: ScriptExecutionContext):
 		return _read_actor_value(a, ctx, "get_current"))

@@ -147,6 +147,16 @@ const ENABLE_PARENT_POP_IN := 0x02
 		marked_for_delete = value
 		mark_dirty()
 
+## Not an ESM field: set by SetDestroyed, read by GetDestroyed. The player
+## can neither target nor activate a destroyed reference (InteractRay);
+## script activation, hits and the reference's own script are unaffected.
+## No SetDestroyed target in FalloutNV.esm's scripts has a DEST base, so no
+## destruction-stage model is shown. Saved.
+@export var destroyed: bool = false:
+	set(value):
+		destroyed = value
+		mark_dirty()
+
 ## Not an ESM field: whether Disable has hidden this reference; starts as
 ## `initially_disabled`. Set by set_disabled() (Enable, Disable); ignored while
 ## the reference has an enable parent. Saved. Use is_disabled() for the state

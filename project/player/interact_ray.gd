@@ -45,6 +45,9 @@ func _update_target() -> void:
 			if is_instance_valid(player_body) and (target == player_body or (target is Node and player_body.is_ancestor_of(target))):
 				target = null
 				collider = null
+			elif _is_destroyed(target):
+				target = null
+				collider = null
 			else:
 				itype = get_interaction_type(target)
 				iaction = get_interaction_action(target)
@@ -55,6 +58,13 @@ func _update_target() -> void:
 		current_type = itype
 		current_action = iaction
 		target_changed.emit(current_target, current_collider, current_type, current_action)
+
+
+## Whether `target` is the node of a destroyed reference (SetDestroyed), which
+## the player cannot target.
+static func _is_destroyed(target: Object) -> bool:
+	var node := target as EsmNode
+	return node != null and node.reference != null and node.reference.destroyed
 
 
 ## Interactions happen on the semantic EsmNode, Not the collider
