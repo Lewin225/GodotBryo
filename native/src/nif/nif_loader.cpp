@@ -417,7 +417,7 @@ float spline_basis(int i, int degree, float u, int count) {
 	// sample. Knot j is repeated at both ends and uniform in the middle.
 	// The knot vector belongs to the original cubic spline and must remain
 	// unchanged while Cox-de Boor recurses through lower degrees.
-	constexpr int spline_degree = 3;
+	static constexpr int spline_degree = 3;
 	auto knot = [count](int j) -> float {
 		if (j <= spline_degree) return 0.0f;
 		if (j >= count) return static_cast<float>(count - spline_degree);
