@@ -1,0 +1,64 @@
+17/11/2026,9f92921,Console,Added ToggleNavMesh (TNM) to show the navmesh
+17/11/2026,38fd5cd,NPCs,Off-screen NPCs no longer cut across areas with no navmesh
+17/11/2026,38fd5cd,NPCs,No longer turn towards navmesh corners when walking between navmesh tiles (e.g. Sunny leaving the saloon)
+17/11/2026,f966278,Rendering,Debanding enabled: smoother gradients in skies and dark interiors
+17/11/2026,68f8a8d,Tools,Updated the issue reporter (F10)
+17/11/2026,0858232,Scripts,COC(Center on cell) now uses a door marker or navmesh if no coc marker exists in the cell
+17/11/2026,ccc28a9,References,Now decide on their own if they can be activated (eg door openable). Ignored by ref.Activate
+17/11/2026,39d5bf4,Scripts,Added ref.SetDestroyed and ref.GetDestroyed
+17/11/2026,39d5bf4,References,Added a "destroyed" flag to references
+17/11/2026,4c43c12,Scripts,Added IsWeaponOut and GetWeaponAnimType
+17/11/2026,4c43c12,Projectiles,Projectiles can now signal the hit reference and trigger onhit scripts
+17/11/2026,c1810d0,Dialog,NPC dialog handling improved when triggered by scripts
+17/11/2026,1708099, NIF Loading,Freeside bus door now has collisions (fix bhkConvexTransformShape)
+17/11/2026,d674d08,Static Collections,Fixed missing meshes when used more than once
+17/11/2026,daa9a1f,Actors,No longer stop animating when crossing a cell boundary
+17/11/2026,95210fd,KF Animations,Creatures now face the correct direction while animating
+13/11/2026,3c640df,Rendering,Muzzle flashes point down the barrel
+13/11/2026,8d6e87e,Rendering,Refraction and fading effects
+13/11/2026,be943a0,Rendering,Glowing materials and specular highlights
+12/11/2026,ca573c7,Performance,Animation cache is compressed and old versions are cleaned up
+12/11/2026,7252ce7,Scripts,Added PlayGroup and IsAnimPlaying
+12/11/2026,a8c81d1,Animation,Objects play their own animations
+10/11/2026,3192c92,Rendering,Animated textures now scroll
+10/11/2026,f868a20,Rendering,Transparent objects blend correctly
+10/11/2026,4793f46,Rendering,Lit objects use a new shader closer to the original
+10/11/2026,0c778d0,Rendering,Unlit and effect meshes use the original shading
+10/11/2026,de22590,Tools,Equip items from the inventory debug tab
+09/11/2026,5820bf8,Weapons,Mines and grenades leave the hand at the right moment
+09/11/2026,f823f7b,Weapons,Weapons fire bullets and projectiles
+08/11/2026,19df4f9,Weapons,Automatic weapon fire loops seamlessly
+08/11/2026,ef211b2,Weapons,Automatic and semi-automatic and spin-up weapons fire correctly
+08/11/2026,2f42e4c,Weapons,Weapon sounds for firing and equipping and reloading
+08/11/2026,c1784be,Weapons,Weapon animations play on actors and first person arms
+08/11/2026,103c2bb,Weapons,Weapons hang on actors when holstered and can be drawn and holstered
+08/11/2026,eab1e80,Console,Added the in-game console
+07/11/2026,94913a2,First Person,First person arms follow the player's animations
+07/11/2026,3c0cc4d,Animation,New animation system: idles play over walking and animations move the actor
+06/11/2026,f71f66a,Items,Pick up and drop items; dropped items fall and settle
+06/11/2026,7dbb8d7,Physics,Moving objects simulate with physics
+06/11/2026,aae8b10,Launcher,Choose the startup script
+06/11/2026,cc6bd7a,Launcher,Choose where saves are stored
+04/11/2026,786d2e8,Saves,Lines being spoken resume after loading
+04/11/2026,dd718eb,Saves,Quick load on F6
+03/11/2026,9969d67,Saves,Save and load games; quick save on F5
+02/11/2026,08cc182,Creatures,Creatures are placed in the world and can talk
+01/11/2026,d7e95e7,Creatures,Creatures animate when moving
+01/11/2026,200dfd3,Creatures,Creatures have their full bodies
+01/11/2026,c8781e4,Tools,Added a Simulation debug tab and the issue reporter (F10)
+01/11/2026,1f38274,NPCs,Disabled NPCs stay hidden until enabled
+01/11/2026,aa0d2bc,NPCs,Leveled NPCs match their area's level and use their race's face shapes
+31/10/2026,27693e5,NPCs,Templated NPCs are picked from their leveled list
+31/10/2026,258695c,New Game,New Game runs the game's own start script and then an optional custom startup script
+31/10/2026,d6b2dc2,Rendering,Clouds turned off for now and frame rate uncapped
+31/10/2026,2766ee8,Performance,NPCs with the same skeleton share animation data
+31/10/2026,70110cb,Performance,Quest scripts and idle off-screen NPCs update less often
+31/10/2026,485a888,Faces,NPCs use their own skin tone and face animations
+30/10/2026,ec3d497,Faces,Lip sync to voice lines
+29/10/2026,0ec609b,Faces,NPCs blink and show the emotion of their line
+28/10/2026,e101476,Faces,NPC heads have facial expressions
+28/10/2026,864b2f3,Dialog,Actors stay put during conversations and the player turns to face them
+28/10/2026,3483b81,Actors,Actors now turn to face who they are talking to if turning the head isn't enough
+26/10/2026,2f0e5d5,Loading,Added a Force finish button to the loading screen
+25/10/2026,ad66ead,Launcher,Added a launcher to pick your game data folder and start a new game
+25/10/2026,41d6f40,Project,Released as open source under GPL-3.0

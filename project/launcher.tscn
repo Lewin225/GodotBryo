@@ -2,130 +2,186 @@
 
 [ext_resource type="Script" uid="uid://dg34gor6rhhjo" path="res://launcher.gd" id="1_launcher"]
 
+[sub_resource type="Theme" id="Theme_4emaf"]
+Label/colors/font_color = Color(1, 0.676, 0.27999997, 1)
+
 [node name="Launcher" type="MarginContainer" unique_id=1981425138]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = SubResource("Theme_4emaf")
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_top = 24
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 24
 script = ExtResource("1_launcher")
 
-[node name="Panel" type="VBoxContainer" parent="." unique_id=789061148]
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=388676645]
+layout_mode = 2
+theme_override_constants/separation = 30
+
+[node name="Panel" type="VBoxContainer" parent="HBoxContainer" unique_id=789061148]
 custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_override_constants/separation = 16
 
-[node name="Notice" type="Label" parent="Panel" unique_id=830941798]
+[node name="Notice" type="Label" parent="HBoxContainer/Panel" unique_id=830941798]
 layout_mode = 2
-text = "GodotBryo is early and most of Fallout: New Vegas is missing: no combat, Pip-Boy or inventory yet, and plenty of bugs. A new game starts in Doc Mitchell's house.
+text = "GodotByro currently only supports new vegas, use the button below to select the master ESM file (Usually in (the game's folder)/data/FalloutNV.esm   - DLC will not be loaded (yet)
 
-Pick FalloutNV.esm from your own copy of the game below."
+Mouse over any button for more information"
 autowrap_mode = 3
 
-[node name="ChooseButton" type="Button" parent="Panel" unique_id=416218449]
+[node name="ChooseButton" type="Button" parent="HBoxContainer/Panel" unique_id=416218449]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Pick FalloutNV.esm..."
 
-[node name="DataLabel" type="Label" parent="Panel" unique_id=1204579923]
+[node name="DataLabel" type="Label" parent="HBoxContainer/Panel" unique_id=1204579923]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="StatusLabel" type="Label" parent="Panel" unique_id=1367150205]
+[node name="StatusLabel" type="Label" parent="HBoxContainer/Panel" unique_id=1367150205]
 unique_name_in_owner = true
 layout_mode = 2
 autowrap_mode = 3
 
-[node name="HSeparator" type="HSeparator" parent="Panel" unique_id=1191683697]
+[node name="HSeparator" type="HSeparator" parent="HBoxContainer/Panel" unique_id=1191683697]
 layout_mode = 2
 
-[node name="Storage" type="HBoxContainer" parent="Panel" unique_id=539425675]
+[node name="Storage" type="HBoxContainer" parent="HBoxContainer/Panel" unique_id=539425675]
 layout_mode = 2
 
-[node name="StorageLabel" type="Label" parent="Panel/Storage" unique_id=530398701]
+[node name="StorageLabel" type="Label" parent="HBoxContainer/Panel/Storage" unique_id=530398701]
 layout_mode = 2
 text = "Save storage:"
 
-[node name="StorageOption" type="OptionButton" parent="Panel/Storage" unique_id=1745963101]
+[node name="StorageOption" type="OptionButton" parent="HBoxContainer/Panel/Storage" unique_id=1745963101]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
+tooltip_text = "Choose a save storage mode
+JSON - a full json save file for each quicksave
+               + human readable
+               - large. 
+              good for debugging, not long playthroughs
 
-[node name="LoadButton" type="Button" parent="Panel/Storage" unique_id=1414773606]
+GIT - A git repo for a playthrough, saves are commits
+           -Requires git to be installed on path. 
+           + each save in that playthrough is a lightweight commit - 
+           + any regular diff tool can be used to view and backup your data. 
+           A silly idea, but works well. Cannot yet create branches, but will"
+
+[node name="LoadButton" type="Button" parent="HBoxContainer/Panel/Storage" unique_id=1414773606]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 8
+tooltip_text = "Loads the save that is selected in the box below"
 text = "Load"
 
-[node name="SaveList" type="ItemList" parent="Panel" unique_id=1544434068]
+[node name="SaveList" type="ItemList" parent="HBoxContainer/Panel" unique_id=1544434068]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 160)
 layout_mode = 2
 
-[node name="Buttons" type="HBoxContainer" parent="Panel" unique_id=1897394980]
+[node name="Buttons" type="HBoxContainer" parent="HBoxContainer/Panel" unique_id=1897394980]
 layout_mode = 2
 
-[node name="AnimationViewerButton" type="Button" parent="Panel/Buttons" unique_id=736215804]
+[node name="AnimationViewerButton" type="Button" parent="HBoxContainer/Panel/Buttons" unique_id=736215804]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "One NPC on a floor: play its locomotion, IDLEs and weapon KFs slot by slot."
+tooltip_text = "Launches the humanoid animation viewer - 
+one NPC on a floor play its locomotion, IDLEs and weapon KFs slot by slot."
 text = "Animation viewer"
 
-[node name="SpecularViewerButton" type="Button" parent="Panel/Buttons" unique_id=1489379874]
+[node name="SpecularViewerButton" type="Button" parent="HBoxContainer/Panel/Buttons" unique_id=1489379874]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Lit NIFs with the Specular flag: each shape's normal and diffuse maps, split into RGB and alpha."
+tooltip_text = "Launch the specular viewer, shows all NIFs with the Specular flag
+each shape's normal and diffuse maps, split into RGB and alpha."
 text = "Specular viewer"
 
-[node name="HSeparator2" type="HSeparator" parent="Panel" unique_id=99619455]
+[node name="HSeparator2" type="HSeparator" parent="HBoxContainer/Panel" unique_id=99619455]
 layout_mode = 2
 
-[node name="Start" type="HBoxContainer" parent="Panel" unique_id=1880174341]
+[node name="Start" type="HBoxContainer" parent="HBoxContainer/Panel" unique_id=1880174341]
 layout_mode = 2
 
-[node name="StartLabel" type="Label" parent="Panel/Start" unique_id=1858118409]
+[node name="StartLabel" type="Label" parent="HBoxContainer/Panel/Start" unique_id=1858118409]
 layout_mode = 2
 text = "Start New :"
 
-[node name="StartOption" type="OptionButton" parent="Panel/Start" unique_id=2028967653]
+[node name="StartOption" type="OptionButton" parent="HBoxContainer/Panel/Start" unique_id=2028967653]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+tooltip_text = "Choose a script used to create your new game
+\"New Game\" skips the intro, but not doc mitchell
+\"Test Traps\" sets your stats to a default and drops you in the dev room, after that, coc to where you want to be"
 
-[node name="NewGameButton" type="Button" parent="Panel/Start" unique_id=1124772363]
+[node name="NewGameButton" type="Button" parent="HBoxContainer/Panel/Start" unique_id=1124772363]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Start a new game using the selected start script"
 text = "New game"
 
-[node name="StartupScriptEdit" type="CodeEdit" parent="Panel" unique_id=1213185414]
+[node name="StartupScriptEdit" type="CodeEdit" parent="HBoxContainer/Panel" unique_id=1213185414]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
 placeholder_text = "Startup script (GECK / console commands)"
 gutters_draw_line_numbers = true
 
-[node name="HSeparator3" type="HSeparator" parent="Panel" unique_id=653685185]
+[node name="HSeparator3" type="HSeparator" parent="HBoxContainer/Panel" unique_id=653685185]
 layout_mode = 2
 
-[node name="QuitButton" type="Button" parent="Panel" unique_id=810559842]
+[node name="QuitButton" type="Button" parent="HBoxContainer/Panel" unique_id=810559842]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 8
+tooltip_text = "does the thing"
 text = "Quit"
+
+[node name="HBoxContainer" type="VBoxContainer" parent="HBoxContainer" unique_id=1894911665]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="HBoxContainer/HBoxContainer" unique_id=412071711]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "Changelog"
+horizontal_alignment = 1
+
+[node name="ChangelogTree" type="Tree" parent="HBoxContainer/HBoxContainer" unique_id=978031626]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+tooltip_text = "Double click a change to open in github"
+columns = 4
+column_titles_visible = true
+enable_recursive_folding = false
+enable_drag_unfolding = false
+hide_root = true
+select_mode = 1
+auto_tooltip = false
+scroll_horizontal_enabled = false
+scroll_hint_mode = 3
 
 [node name="EsmDialog" type="FileDialog" parent="." unique_id=1576453459]
 unique_name_in_owner = true
+oversampling_override = 1.0
 title = "Open a File"
 file_mode = 0
 access = 2
 filters = PackedStringArray("FalloutNV.esm ; Fallout: New Vegas master file")
 use_native_dialog = true
+
+[connection signal="item_activated" from="HBoxContainer/HBoxContainer/ChangelogTree" to="." method="_on_changelog_tree_item_activated"]

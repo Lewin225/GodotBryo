@@ -19,6 +19,7 @@ const GameScript := preload("res://game.gd")
 const GAME_SCENE := "res://game.tscn"
 const ANIMATION_VIEWER_SCENE := "res://animation_viewer.tscn"
 const SPECULAR_VIEWER_SCENE := "res://specular_viewer.tscn"
+
 ## Startup scripts offered by the start drop-down, by title. The chosen one
 ## fills the script box, which New game runs (game.gd's startup_script).
 const TRAP_RANGE_SCRIPT := """; Skips the Doc Mitchell tutorial intro and completes VCG01
@@ -94,7 +95,36 @@ func _ready() -> void:
 		return
 	EsmServer.esm_ready.connect(_on_esm_ready)
 	EsmServer.failed.connect(_on_esm_failed)
+	
+	
+	%ChangelogTree.create_item()
+	%ChangelogTree.set_column_title(0,'Date')
+	%ChangelogTree.set_column_title(1,'Commit')
+	%ChangelogTree.set_column_title(2,'Area')
+	%ChangelogTree.set_column_title(3,'Change')
 
+	var changelog = FileAccess.open("res://changelog.csv",FileAccess.READ)
+	while true:
+		var line = changelog.get_csv_line()
+		if len(line) < 1 or changelog.eof_reached(): break
+		var treeitem:TreeItem = %ChangelogTree.create_item()
+		var i = 0
+		for column in line:
+			treeitem.set_cell_mode(i,TreeItem.CELL_MODE_STRING)
+			treeitem.set_text(i,column)
+			i = i + 1
+	%ChangelogTree.set_column_expand(0,false)
+	%ChangelogTree.set_column_custom_minimum_width(0, 120)
+	%ChangelogTree.set_column_expand(1,false)
+	%ChangelogTree.set_column_custom_minimum_width(1, 0)
+	%ChangelogTree.set_column_expand(2,false)
+	%ChangelogTree.set_column_custom_minimum_width(2, 150)
+	%ChangelogTree.set_column_expand_ratio(3, 7)
+	
+func _on_changelog_tree_item_activated() -> void:
+	var selected_row:TreeItem = %ChangelogTree.get_selected()
+	var commit = selected_row.get_text(1)
+	OS.shell_open('https://github.com/Lewin225/GodotBryo/commit/'+commit)
 
 func _show_configuration() -> void:
 	var config: Dictionary = GameDataSettings.get_config()
