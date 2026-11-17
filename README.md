@@ -19,6 +19,7 @@ What's working - in short.
 
 Major missing pieces right now
 - **Inventory** - All actors and containers get one, but there's no container ui right now
+- **Multi ESM / Load Order / ESP Plugins** - Currently will only load the master ESM - so can't load game updates either
 
 
 Change Plans from the Original Engine
