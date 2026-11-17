@@ -66,7 +66,7 @@ shape = SubResource("CapsuleShape3D_player")
 
 [node name="FirstPersonRig" parent="." unique_id=1748862093 instance=ExtResource("62_fprig")]
 physics_interpolation_mode = 2
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.10318935, 0.013227493)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.013)
 held_bones = PackedStringArray("Bip01 Looking")
 
 [node name="EsmActorNode" parent="." unique_id=123295044 instance=ExtResource("2_qjkh3")]

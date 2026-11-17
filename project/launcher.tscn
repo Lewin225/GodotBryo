@@ -79,7 +79,7 @@ layout_mode = 2
 tooltip_text = "One NPC on a floor: play its locomotion, IDLEs and weapon KFs slot by slot."
 text = "Animation viewer"
 
-[node name="SpecularViewerButton" type="Button" parent="Panel/Buttons"]
+[node name="SpecularViewerButton" type="Button" parent="Panel/Buttons" unique_id=1489379874]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Lit NIFs with the Specular flag: each shape's normal and diffuse maps, split into RGB and alpha."
