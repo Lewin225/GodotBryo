@@ -36,6 +36,27 @@ def host_platform():
 	return "linux"
 
 
+def link_sunshine_clouds():
+	"""project/addons/SunshineClouds2 is a git symlink into the submodule.
+
+	Git for Windows checks a symlink out as a plain text file unless symlinks
+	are enabled, and Godot then reports the addon as missing. Replace it with a
+	directory junction, which needs no special privileges.
+	"""
+	if host_platform() != "windows":
+		return
+	link = os.path.join(REPO, "project", "addons", "SunshineClouds2")
+	target = os.path.join(NATIVE, "SunshineClouds2", "addons", "SunshineClouds2")
+	if not os.path.isdir(target):
+		print("warning: native/SunshineClouds2 is empty; run git submodule update --init")
+		return
+	if os.path.isdir(link):
+		return
+	if os.path.exists(link):
+		os.remove(link)
+	subprocess.check_call(["cmd", "/c", "mklink", "/J", link, target])
+
+
 def run_scons(cwd, args):
 	command = [sys.executable, "-m", "SCons"] + args
 	print("\n==> (%s) scons %s" % (os.path.relpath(cwd, REPO), " ".join(args)), flush=True)
@@ -84,6 +105,7 @@ def main():
 		if copied == 0:
 			sys.exit("Terrain3D built but no %s found in %s" % (pattern, built))
 
+	link_sunshine_clouds()
 	print("\nDone.")
 
 

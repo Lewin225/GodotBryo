@@ -4,5 +4,7 @@ compatibility_minimum = "4.7"
 
 [libraries]
 linux.debug.x86_64 = "res://addons/terrain_streamer/bin/libterrain_streamer.linux.template_debug.x86_64.so"
+windows.debug.x86_64 = "res://addons/terrain_streamer/bin/libterrain_streamer.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/terrain_streamer/bin/libterrain_streamer.windows.template_release.x86_64.dll"
 macos.debug = "res://addons/terrain_streamer/bin/libterrain_streamer.macos.template_debug.framework"
 macos.release = "res://addons/terrain_streamer/bin/libterrain_streamer.macos.template_release.framework"
