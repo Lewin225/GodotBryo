@@ -199,6 +199,7 @@ lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 global_illumination/gi/use_half_resolution=true
 anti_aliasing/quality/msaa_2d=1
 anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/use_debanding=true
 scaling_3d/mode=1
 scaling_3d/mode.macos=3
 scaling_3d/scale=0.75

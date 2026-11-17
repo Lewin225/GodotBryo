@@ -21,6 +21,10 @@ signal texture_swapped(block_name: String)
 ## Emitted when PlayGroup plays an animation group on this reference
 ## (play_group()); EsmNode plays it on the model.
 signal anim_group_played(group: String)
+## Emitted by receive_hit() after this reference's script has run its hit
+## blocks, for a loaded node to show the hit. `report` is ProjectileServer's
+## hit report.
+signal hit(shooter: EsmReference, weapon: WeaponBase, report: Dictionary)
 
 ## XESP flags (xEdit's names).
 const ENABLE_PARENT_OPPOSITE := 0x01
@@ -141,6 +145,17 @@ const ENABLE_PARENT_POP_IN := 0x02
 @export var marked_for_delete: bool = false:
 	set(value):
 		marked_for_delete = value
+		mark_dirty()
+
+## Not an ESM field: set by SetDestroyed, read by GetDestroyed and by
+## EsmBase.can_activate(), so the player can neither target nor activate a
+## destroyed reference; script activation, hits and the reference's own
+## script are unaffected.
+## No SetDestroyed target in FalloutNV.esm's scripts has a DEST base, so no
+## destruction-stage model is shown. Saved.
+@export var destroyed: bool = false:
+	set(value):
+		destroyed = value
 		mark_dirty()
 
 ## Not an ESM field: whether Disable has hidden this reference; starts as
@@ -312,8 +327,27 @@ func get_enable_parent() -> EsmReference:
 func get_actor_values() -> ActorValues:
 	return null
 
+## `shooter` hit this reference with `weapon` (either may be null): runs its
+## script's OnHit block that accepts the shooter and its OnHitWith block that
+## accepts the weapon, the shooter as action reference, then emits `hit`.
+## Runs whether or not the reference has a node. Called by ProjectileServer
+## for each hit it reports.
+func receive_hit(shooter: EsmReference, weapon: WeaponBase, report: Dictionary) -> void:
+	ScriptServer.dispatch_event(self, "OnHit", shooter)
+	ScriptServer.dispatch_event_for(self, "OnHitWith", weapon, shooter)
+	hit.emit(shooter, weapon, report)
+
 ## Built-in activation of this reference: its base type's activate(). The
 ## dispatch point for ScriptServer; a reference type may override it.
 func default_activate(activator: EsmReference) -> void:
 	if base != null:
 		base.activate(self, activator)
+
+## Whether `activator` may start activating this reference: its base type's
+## can_activate(), or not destroyed when it has no base. Asked by an actor's
+## activation entry points (the player's InteractRay and PlayerController),
+## not by ScriptServer.activate(): script Activate reaches any reference.
+func can_activate(activator: EsmReference) -> bool:
+	if base == null:
+		return not destroyed
+	return base.can_activate(self, activator)

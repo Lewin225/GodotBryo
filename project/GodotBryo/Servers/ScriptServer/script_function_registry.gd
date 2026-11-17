@@ -628,9 +628,22 @@ func _register_defaults() -> void:
 	register("IsSneaking", func(_a: Array, ctx: ScriptExecutionContext):
 		var actor := ctx.calling_reference as ActorReference
 		return 1 if actor != null and actor.is_sneaking else 0)
+	# `[Actor.]IsWeaponOut`: 1 while the actor has a weapon drawn.
+	register("IsWeaponOut", func(_a: Array, ctx: ScriptExecutionContext):
+		var actor := ctx.calling_reference as ActorReference
+		return 1 if actor != null and actor.get_drawn_weapon() != null else 0)
+	# `[Actor.]GetWeaponAnimType`: the equipped weapon's WEAP DNAM Animation
+	# Type plus 1; 0 with no weapon equipped (an assumption: no script tests
+	# it). The +1 is VMS22CamTargetScript's: it tests == 4 with the MS22
+	# camera equipped, whose Animation Type is 3 (Pistol); with it, the
+	# other shipped tests read sensibly (Ultra-Luxe's `!= 1`, not unarmed;
+	# VCG02's 4 to 8, the pistols to the energy rifles).
+	register("GetWeaponAnimType", func(_a: Array, ctx: ScriptExecutionContext):
+		var weapon := _equipped_weapon_base(ctx.calling_reference as ActorReference)
+		return weapon.animation_type + 1 if weapon != null and weapon.animation_type >= 0 else 0)
 	# The state of systems this engine does not have yet, as it stands: nothing
 	# is hit (GetHitLocation -1, its "none"; 0 to 12 name body parts) or
-	# knocked down (GetKnockedState 0), no actor is in combat, has a weapon out,
+	# knocked down (GetKnockedState 0), no actor is in combat,
 	# sleeps (GetSleeping 0; 1 to 4 are sleep states), greets the player, has
 	# planted an explosive or activated a used item, and VATS is off. The idle
 	# tree's top-level items test these, so reading them as unimplemented (0)
@@ -640,8 +653,6 @@ func _register_defaults() -> void:
 	register("GetKnockedState", func(_a: Array, _ctx: ScriptExecutionContext):
 		return 0)
 	register("IsInCombat", func(_a: Array, _ctx: ScriptExecutionContext):
-		return 0)
-	register("IsWeaponOut", func(_a: Array, _ctx: ScriptExecutionContext):
 		return 0)
 	register("GetSleeping", func(_a: Array, _ctx: ScriptExecutionContext):
 		return 0)
@@ -842,6 +853,15 @@ func _register_defaults() -> void:
 		ctx.calling_reference.marked_for_delete = true
 		return 1)
 
+	# `[Ref.]SetDestroyed Flag`: 1 destroys the calling reference, 0 restores it.
+	register("SetDestroyed", func(a: Array, ctx: ScriptExecutionContext):
+		if ctx.calling_reference == null:
+			return 0
+		ctx.calling_reference.destroyed = ScriptExecutionContext.is_truthy(a[0]) if a.size() > 0 else true
+		return 1)
+	register("GetDestroyed", func(_a, ctx: ScriptExecutionContext):
+		return 1 if ctx.calling_reference != null and ctx.calling_reference.destroyed else 0)
+
 	# Actor values of the calling actor, named by script name (`GetAV Health`).
 	register(["GetActorValue", "GetAV"], func(a: Array, ctx: ScriptExecutionContext):
 		return _read_actor_value(a, ctx, "get_current"))
@@ -912,6 +932,13 @@ func _register_defaults() -> void:
 			return 1 if target.noclip else 0
 		return 0
 	register(["ToggleCollision", "TCL"], toggle_collision)
+
+	# `TNM [Mode]`: the navmesh debug view (NavmeshDebugView): 0 off, 1
+	# NpcSimulationServer's NAVM near the camera, 2 Godot's local navigation;
+	# with no mode, the next one. Returns the mode now shown.
+	register(["ToggleNavMesh", "TNM"], func(a: Array, _c):
+		var mode := int(_number(a, 0)) if a.size() > 0 else -1
+		return NpcSimulationServer.set_navmesh_view(mode))
 
 	# `TGM` / `TDM`: toggle the player's god / demigod mode (the flags on
 	# ScriptServer; nothing reads them yet, as there is no damage system).
@@ -1002,6 +1029,16 @@ static func _weapon_slots_of(reference: EsmReference, base_form_id: int) -> Arra
 	if actor == null:
 		return []
 	return actor.get_weapon_slots_of(base_form_id)
+
+## The weapon `actor` has equipped: the drawn one, else the one in the slot
+## drawn last (the weapon a draw would take out). Null for no actor or none.
+static func _equipped_weapon_base(actor: ActorReference) -> WeaponBase:
+	if actor == null:
+		return null
+	var weapon := actor.get_drawn_weapon()
+	if weapon == null:
+		weapon = actor.get_weapon(actor.last_drawn_weapon_slot)
+	return weapon.base as WeaponBase if weapon != null else null
 
 static func _inventory_of(ref: EsmReference) -> Inventory:
 	return ref.get("contents") as Inventory if ref != null and "contents" in ref else null

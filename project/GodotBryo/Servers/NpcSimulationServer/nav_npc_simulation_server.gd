@@ -5,16 +5,12 @@ extends Node
 ## [NavmeshReader], indexes every placed actor and XTEL door, and grounds each
 ## actor against the navmesh; it runs only when called.
 ##
-## Two layers, deliberately kept distinct because their confidence levels
-## differ:
-##
-## - The triangle mesh, and adjacency WITHIN a NAVM record, are authored data.
-##   Positions and routes derived from them are as good as the ESM.
-## - Which records connect to which is also authored (NVEX). Where exactly the
-##   crossing happens between two records is NOT authored and is derived
-##   geometrically in the native layer; see NavmeshDatabase's cross-record
-##   stitch. Routes are therefore exact within a record and approximate at
-##   record seams.
+## The triangle mesh, adjacency within a NAVM record, and the crossings between
+## records are authored data: an NVTR edge with its link flag set names the
+## NVEX link it crosses (see NavmeshDatabase's cross-record links). Positions
+## and routes built on them are as good as the ESM, except at the 4.9% of
+## crossings whose target triangle lies more than 0.5 m from the edge, where a
+## route hops between the two triangles' closest points.
 ##
 ## NAVM centers are a query optimiser only. `use_coarse_index` toggles the
 ## authored-bounds broad-phase; it changes query cost, never the answer (the
@@ -57,6 +53,8 @@ var navmesh: NavmeshReader
 ## loaded, for physicalised actors' local pathing. Filled once the navmesh has
 ## loaded; cells made local before then are built when it has.
 var local_navigation := LocalNavigation.new()
+## Draws the navmesh for debugging (ToggleNavMesh / TNM); off by default.
+var navmesh_debug_view := NavmeshDebugView.new()
 ## Child node running actors' active packages (AddScriptPackage).
 var package_runner := PackageRunner.new()
 ## Child node moving the actors this server owns toward their move_target.
@@ -110,6 +108,9 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	local_navigation.name = "LocalNavigation"
 	add_child(local_navigation)
+	navmesh_debug_view.name = "NavmeshDebugView"
+	navmesh_debug_view.local_navigation = local_navigation
+	add_child(navmesh_debug_view)
 	package_runner.name = "PackageRunner"
 	add_child(package_runner)
 	low_level_travel.name = "LowLevelTravel"
@@ -201,6 +202,7 @@ func _load_navmesh() -> bool:
 		navmesh = result["reader"]
 		navmesh_load_stats = navmesh.get_load_stats()
 		local_navigation.set_navmesh(navmesh)
+		navmesh_debug_view.navmesh = navmesh
 		return true
 	# A stale project/bin/*.so predating this class does not fail loudly on its
 	# own -- it just makes the whole navmesh silently absent. Say so.
@@ -367,6 +369,11 @@ func _actors_from_index(bucket: Dictionary) -> Array[ActorReference]:
 	for actor in bucket.values():
 		result.append(actor as ActorReference)
 	return result
+
+## Shows the navmesh debug view in `mode` (NavmeshDebugView.MODE_OFF,
+## MODE_NSS or MODE_GODOT; -1 for the next one) and returns the mode shown.
+func set_navmesh_view(mode: int) -> int:
+	return navmesh_debug_view.set_mode(mode)
 
 ## Blocking route. Safe to call from a worker thread: NavmeshReader holds no
 ## file handle once loaded and every query on it is read-only, so one instance

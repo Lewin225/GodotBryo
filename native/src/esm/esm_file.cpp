@@ -777,7 +777,13 @@ std::optional<ReferencePlacement> EsmFile::get_actor_by_form_id(uint32_t base_fo
 	return pl;
 }
 
+// A SCOL's parts: each ONAM (the part's STAT) is followed by one DATA holding
+// every placement of that part, 28 bytes each (position xyz, rotation xyz,
+// scale). Across FalloutNV.esm's 98 SCOLs every DATA follows an ONAM and is a
+// whole number of placements; 204 of 423 parts hold more than one (1,404
+// placements in all).
 std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) const {
+	constexpr uint32_t kPlacementSize = 28;
 	std::vector<ReferencePlacement> out;
 	std::vector<uint8_t> data = read_record_data(scol);
 	std::vector<Subrecord> subs = parse_subrecords(data);
@@ -790,11 +796,31 @@ std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) 
 			util::ByteReader sr(s.data, s.size);
 			pending_stat_form_id = sr.read_u32();
 			have_pending = true;
-		} else if (s.type == "DATA" && have_pending && s.size >= 24) {
-			util::ByteReader sr(s.data, s.size);
-			ReferencePlacement pl;
-			pl.refr_form_id = scol.form_id; // parts have no FormID of their own
-			pl.base_form_id = pending_stat_form_id;
+			continue;
+		}
+		if (s.type != "DATA" || !have_pending) {
+			continue;
+		}
+		have_pending = false;
+		ReferencePlacement part;
+		part.refr_form_id = scol.form_id; // parts have no FormID of their own
+		part.base_form_id = pending_stat_form_id;
+		if (auto base = find_record_by_form_id(pending_stat_form_id)) {
+			part.base_type = base->type;
+			std::vector<uint8_t> base_data = read_record_data(*base);
+			std::vector<Subrecord> base_subs = parse_subrecords(base_data);
+			for (const auto &bs : base_subs) {
+				if (bs.type == "EDID") {
+					part.base_editor_id = bs.as_string();
+				} else if (bs.type == "MODL") {
+					part.model_path = bs.as_string();
+				}
+			}
+		}
+		util::ByteReader sr(s.data, s.size);
+		const uint32_t count = s.size / kPlacementSize;
+		for (uint32_t i = 0; i < count; i++) {
+			ReferencePlacement pl = part;
 			// Position, not rotation/scale: Gamebryo units -> meters (units.h).
 			pl.position[0] = read_f32(sr) * units::kGamebryoUnitsToMeters;
 			pl.position[1] = read_f32(sr) * units::kGamebryoUnitsToMeters;
@@ -802,23 +828,8 @@ std::vector<ReferencePlacement> EsmFile::get_scol_parts(const RecordInfo &scol) 
 			pl.rotation[0] = read_f32(sr);
 			pl.rotation[1] = read_f32(sr);
 			pl.rotation[2] = read_f32(sr);
-			pl.scale = (s.size >= 28) ? read_f32(sr) : 1.0f;
-
-			if (auto base = find_record_by_form_id(pending_stat_form_id)) {
-				pl.base_type = base->type;
-				std::vector<uint8_t> base_data = read_record_data(*base);
-				std::vector<Subrecord> base_subs = parse_subrecords(base_data);
-				for (const auto &bs : base_subs) {
-					if (bs.type == "EDID") {
-						pl.base_editor_id = bs.as_string();
-					} else if (bs.type == "MODL") {
-						pl.model_path = bs.as_string();
-					}
-				}
-			}
-
+			pl.scale = read_f32(sr);
 			out.push_back(std::move(pl));
-			have_pending = false;
 		}
 	}
 	return out;

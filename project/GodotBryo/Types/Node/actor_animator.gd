@@ -650,8 +650,11 @@ func cancel() -> void:
 	_animator = null
 	_skeleton = null
 
-func _exit_tree() -> void:
-	cancel()
+## Cancels when the node is freed, not on leaving the tree: a reparent (the
+## actor's reference changing CELL) keeps the clips and the KfAnimator.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		cancel()
 
 func _on_kf_library_delivered(raw_library: AnimationLibrary, generation: int, source_path: String) -> void:
 	if generation != _generation or not _loading:
@@ -672,6 +675,7 @@ func _finish_if_ready() -> void:
 		load_failed.emit("the KfAnimator was unavailable")
 		return
 	var idle_clip := _creature_clip(null) if _creature else _clip_name(_root_path + IDLE_CLIP_PATH, 0)
+	_set_stance(idle_clip)
 	if _clips.has(idle_clip):
 		_play_locomotion(idle_clip, 0.0)
 	else:
@@ -681,6 +685,18 @@ func _finish_if_ready() -> void:
 	if not _weapon_family.is_empty():
 		_play_weapon_clip(WEAPON_STANCE_SLOT, WeaponBase.CLIP_FOLDER + _weapon_family + "aim.kf", 0, null)
 	load_completed.emit(_clips.size())
+
+## Sets the KfAnimator's stance_yaw to this rig's NonAccum yaw, read from
+## `idle_clip`, or from the first loaded clip that keys NonAccum's rotation
+## when the idle does not. NonAccum's yaw is constant across a rig's clips and
+## differs between rigs (humanoid 90 degrees, dog 0, securitron 180).
+func _set_stance(idle_clip: String) -> void:
+	if _clips.has(idle_clip) and _animator.set_stance_from(_clips[idle_clip]):
+		return
+	for clip_name: String in _clips:
+		if _animator.set_stance_from(_clips[clip_name]):
+			return
+	push_warning("ActorAnimator: no loaded clip keys Bip01 NonAccum's rotation under " + _root_path)
 
 func _ensure_animator() -> KfAnimator:
 	if _animator != null and is_instance_valid(_animator):

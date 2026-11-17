@@ -40,7 +40,7 @@ struct LoadStats {
 	uint64_t records = 0, vertices = 0, triangles = 0;
 	uint64_t authored_edge_links = 0, derived_cross_links = 0;
 	uint64_t components = 0;                 // connected walkable regions
-	uint64_t clamped_out_of_range_edges = 0; // the 82 known-malformed NVTR edges
+	uint64_t clamped_out_of_range_edges = 0; // unflagged NVTR edges past the triangle array (none in the shipped masters)
 	uint64_t unresolved_edge_link_targets = 0;
 	size_t resident_bytes = 0;
 };
@@ -88,15 +88,15 @@ public:
 			bool use_coarse_index = true) const;
 
 	// A* between two points in the same space. Crosses record boundaries via
-	// the derived cross-record links (see CrossRecordLink -- authored about
-	// which records connect, approximate about exactly where). Waypoints are
-	// funnelled per record (see build_waypoints), so the result is the shortest
-	// line inside the triangle corridor rather than one point per triangle.
+	// the cross-record links (see CrossRecordLink: a flagged NVTR edge and the
+	// NVEX target it names). Waypoints are funnelled along the whole corridor
+	// (see build_waypoints), so the result is the shortest line inside the
+	// triangle corridor rather than one point per triangle.
 	RouteResult route(uint32_t space_form_id, const Vec3 &from, const Vec3 &to,
 			float snap_radius, bool use_coarse_index = true) const;
 
-	// The derived cross-record links, keyed by their from-triangle (global
-	// index); every pair is stored once in each direction.
+	// The cross-record links, keyed by their from-triangle (global index);
+	// every link is stored once in each direction.
 	const std::unordered_map<uint32_t, std::vector<CrossRecordLink>> &cross_record_links() const { return cross_links_; }
 
 	// Coarse record-level connectivity, straight from authored NVEX targets.
@@ -121,11 +121,18 @@ public:
 	// their distance, or FLT_MAX when either record has no open edge.
 	float closest_open_edge_points(uint32_t record_a, uint32_t record_b, Vec3 *point_a, Vec3 *point_b) const;
 
-	// Turns an A* triangle corridor into walkable waypoints, funnelled per
-	// record so the result is the shortest line inside that corridor rather
-	// than a centroid-per-triangle zigzag.
+	// Turns an A* triangle corridor into walkable waypoints: one funnel along
+	// the corridor, whose gates are the shared edge inside a record and the
+	// flagged NVTR edge across a record seam, so the result is the shortest
+	// line inside that corridor rather than a centroid-per-triangle zigzag.
+	// A crossing with no gate (no link found, or the flagged edge more than
+	// MAX_GATE_GAP from the target triangle) ends the funnel at the closest
+	// points between the two triangles and starts the next one there.
 	std::vector<Vec3> build_waypoints(const std::vector<uint32_t> &triangle_path,
 			const Vec3 &start, const Vec3 &goal) const;
+	// Metres a flagged edge may lie from its target triangle and still be a
+	// funnel gate; 99.2% of links in FalloutNV.esm are within it.
+	static constexpr float MAX_GATE_GAP = 0.5f;
 
 	// Re-seats a smoothed path onto the real navmesh surface. Smoothing
 	// interpolates height linearly between waypoints, which floats the path off
@@ -148,6 +155,11 @@ public:
 			const std::vector<Vec3> &waypoints, float tolerance = 1.0f, int max_lookahead = 12) const;
 
 private:
+	// The funnel gate from global triangle `here` to `next`, left/right as
+	// seen travelling from `here`; false when they share no edge (in a
+	// record) or no usable crossing (across records).
+	bool in_record_gate(uint32_t here, uint32_t next, Vec3 *left, Vec3 *right) const;
+	bool crossing_gate(uint32_t here, uint32_t next, Vec3 *left, Vec3 *right) const;
 	void load_one(const std::string &path);
 	void build_indices();
 	void build_cross_record_links();

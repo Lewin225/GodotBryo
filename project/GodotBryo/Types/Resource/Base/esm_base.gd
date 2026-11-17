@@ -98,6 +98,12 @@ func activate(ref: EsmReference, activator: EsmReference) -> void:
 	if is_item() and actor != null:
 		actor.pick_up(ref)
 
+## Whether `activator` may start activating `ref`, a reference of this type:
+## not while it is destroyed (SetDestroyed). Stateless, like activate(); types
+## with further rules override it.
+func can_activate(ref: EsmReference, _activator: EsmReference) -> bool:
+	return not ref.destroyed
+
 ## Record types of the items an actor can pick up from the world into its
 ## inventory.
 const ITEM_RECORD_TYPES := ["MISC", "ALCH", "AMMO", "KEYM", "WEAP", "ARMO", "BOOK", "CCRD", "CMNY"]

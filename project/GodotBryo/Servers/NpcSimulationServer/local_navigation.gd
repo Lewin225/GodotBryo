@@ -11,14 +11,14 @@ extends Node
 ## navigation meshes are built on a worker thread and its nodes added on the
 ## main thread.
 ##
-## Records join where their open edges meet. Godot's edge connections join
-## those within a 0.5 m margin: 82% of NVEX-joined record pairs in
-## FalloutNV.esm, and 616 pairs NVEX does not record, 427 of them coincident
-## (`native/tools/navm_seam_gap_census.cpp`). A NavigationLink3D joins each
-## NVEX-joined pair whose closest open edges are 0.5-4 m apart (72 exterior
-## pairs, and the four of interior 0x10D629 at 1.12-3.84 m), between those two
-## closest points, so it crosses at the seam. NVEX pairs farther apart (1,062)
-## get nothing. Edge connections stall only on a whole
+## Records join where their open edges meet (an open edge has no in-record
+## neighbour; link-flagged edges, the ones NVEX links cross, are open). Godot's
+## edge connections join those within a 0.5 m margin: 7,625 of the 8,091
+## NVEX-joined record pairs in NpcSimulationServer's masters. A
+## NavigationLink3D joins each NVEX-joined pair whose closest open edges are
+## 0.5-4 m apart (129, among them the four of interior 0x10D629 at
+## 1.12-3.84 m), between those two closest points, so it crosses at the seam.
+## NVEX pairs farther apart (337) get nothing. Edge connections stall only on a whole
 ## worldspace's records (`_diag/diag_navserver_bench`), which local maps never
 ## hold.
 
@@ -152,6 +152,11 @@ func clear() -> void:
 		root.free()
 	_roots_by_space.clear()
 	_free_maps()
+
+## The regions and seam links on `space_form_id`'s map, for NavmeshDebugView.
+func get_space_nodes(space_form_id: int) -> Array[Node]:
+	var root: Node3D = _roots_by_space.get(space_form_id)
+	return root.get_children() if root != null else [] as Array[Node]
 
 static func to_godot(point: Vector3) -> Vector3:
 	return GAMEBRYO_TO_GODOT_BASIS * point

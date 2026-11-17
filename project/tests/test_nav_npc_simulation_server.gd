@@ -46,9 +46,13 @@ func _ready() -> void:
 	_check(int(stats.get("records", 0)) > 6000, "loaded every NAVM record (%d)" % int(stats.get("records", 0)))
 	_check(int(stats.get("triangles", 0)) > 800000, "loaded every triangle (%d)" % int(stats.get("triangles", 0)))
 	_check(int(stats.get("unresolved_edge_link_targets", -1)) == 0, "every authored NVEX target resolved to a real record")
-	# 82 NVTR edges across the shipped masters are out of range by exactly one.
-	# Indexing them would read past the triangle array, so they must be clamped.
-	_check(int(stats.get("clamped_out_of_range_edges", -1)) == 82, "the 82 known out-of-range NVTR edges are clamped, not trusted")
+	# An NVTR edge whose Flags bit is set holds an NVEX index, not a triangle
+	# (navm_edge_link_flag_census): read that way, no in-record edge is out of
+	# range, and every NVEX link whose target exists is a cross-record link.
+	_check(int(stats.get("clamped_out_of_range_edges", -1)) == 0, "no in-record NVTR edge is out of range once link-flagged edges are read as NVEX indices")
+	var authored_links := int(stats.get("authored_edge_links", 0))
+	var cross_links := int(stats.get("derived_cross_links", 0))
+	_check(authored_links > 0 and cross_links >= authored_links * 0.998 and cross_links <= authored_links, "each NVEX link is crossed by its flagged edge (%d cross-record links of %d NVEX entries)" % [cross_links, authored_links])
 
 	# --- the coarse index is an optimiser, never a different answer ---
 	var space_ids: PackedInt32Array = navmesh.get_space_ids()

@@ -89,6 +89,14 @@ func _ready() -> void:
 	if front_door == null:
 		_finish()
 		return
+	# VCG01 stage 0 destroyed the door; Doc's farewell INFO (001057E7) restores it.
+	player.interact_ray.current_target = EsmNode.node_for(front_door)
+	check(front_door.destroyed, "VCG01 has destroyed the front door")
+	player.request_activate()
+	await get_tree().physics_frame
+	check(player_ref.current_space_form_id == house, "the controller does not activate the destroyed door")
+	var farewell := esm_server.get_base(0x001057E7) as DialogueInfoBase
+	script_server.run_result_script(farewell.begin_script_source, doc, player_ref)
 	player.interact_ray.current_target = EsmNode.node_for(front_door)
 	player.request_activate()
 	check(await _await_space(coordinator, wasteland), "activating the door loads WastelandNV")
@@ -147,7 +155,34 @@ func _ready() -> void:
 	var reply: Dictionary = script_server.run_debug_line("coc GSProspectorSaloonInterior")
 	check(bool(reply.get("ok", false)), "coc is accepted")
 	check(await _await_space(coordinator, saloon) and player_ref.current_space_form_id == saloon, "coc loads the saloon around the player")
+
+	# A CELL without a COC marker: a load door's landing, else the navmesh,
+	# else a drop onto its geometry.
+	await _check_coc_without_marker(esm_server, script_server, coordinator, player, "NovacMcBrideHouse", "door_landing")
+	await _check_coc_without_marker(esm_server, script_server, coordinator, player, "OVSleepCell01", "navmesh")
+	await _check_coc_without_marker(esm_server, script_server, coordinator, player, "CraftsmanHomesInterior01", "")
 	_finish()
+
+## COC into `cell_editor_id`, which has no COCMarkerHeading: arrival_spot()
+## comes from `source` ("" for none), and the body ends standing on a floor
+## at that spot, or inside the CELL's geometry when there is none.
+func _check_coc_without_marker(esm_server, script_server, coordinator: TransitionCoordinator, player: PlayerController, cell_editor_id: String, source: String) -> void:
+	var cell := int(esm_server.reader.find_cell_by_editor_id(cell_editor_id).get("form_id", 0))
+	var spot := TransitionCoordinator.arrival_spot(cell)
+	check(String(spot.get("source", "")) == source, "%s's arrival spot comes from %s (%s)" % [cell_editor_id, source if source != "" else "nothing", spot.get("source", "nothing")])
+	script_server.run_debug_line("coc " + cell_editor_id)
+	check(await _await_space(coordinator, cell), "coc loads %s" % cell_editor_id)
+	for _frame in 60:
+		await get_tree().physics_frame
+	var at := EsmReferencePhysicaliser.authored_position(player.global_position)
+	if not spot.is_empty():
+		var target: Vector3 = spot["position"]
+		check(Vector2(at.x, at.y).distance_to(Vector2(target.x, target.y)) < 0.5 and absf(at.z - target.z) < 2.0,
+				"the body stands at that spot (%s, spot %s)" % [at, target])
+	else:
+		var bounds: Variant = coordinator._current_cell_aabb()
+		check(bounds != null and (bounds as AABB).grow(0.5).has_point(player.global_position), "the body lies inside the CELL's geometry (%s in %s)" % [player.global_position, bounds])
+	check(player.is_grounded, "and stands on a floor (is_grounded)")
 
 ## The vigor tester's trigger (REFR 00104C16, VCG01VigorTesterTriggerSCRIPT):
 ## a Box primitive whose OnTriggerEnter Player sets VCG01 stage 60.

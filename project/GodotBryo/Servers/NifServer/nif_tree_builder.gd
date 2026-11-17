@@ -466,6 +466,7 @@ static func _build_ragdoll(src: NifSource, nodes: Array, skeleton: Skeleton3D,
 			var col := CollisionShape3D.new()
 			col.name = "%s_%d" % [String(cs["kind"]), int(cs["block_index"])]
 			col.shape = shape
+			col.transform = _shape_transform(cs)
 			phys.add_child(col)
 		claimed[i] = true
 	return claimed
@@ -1037,8 +1038,18 @@ static func _build_collision(src: NifSource, root: Node3D, built: Array,
 				cs.transform = Transform3D(Basis(b["rotation"] as Quaternion),
 					Vector3(b["translation"]))
 			body_node_by_block[int(b["block_index"])] = container
+		cs.transform = cs.transform * _shape_transform(s)
 		container.add_child(cs)
 	_build_joints(root, bodies, body_node_by_block)
+
+
+## The shape's placement in its body: the bhkTransformShape /
+## bhkConvexTransformShape wrappers above it, composed (NifSource), or identity
+## when it has none.
+static func _shape_transform(shape: Dictionary) -> Transform3D:
+	if not bool(shape.get("has_transform", false)):
+		return Transform3D.IDENTITY
+	return shape["transform"]
 
 
 ## Constraint -> joint, for constraints between two bodies _build_collision

@@ -227,10 +227,21 @@ void collect_shapes(const nifly::NifFile &nif, uint32_t shape_block, int32_t nod
 	// catches both. The wrapper exists purely to place the shape it holds.
 	if (auto *xform = dynamic_cast<nifly::bhkTransformShape *>(shape)) {
 		if (!xform->shapeRef.IsEmpty()) {
+			// The file's matrix is column-major (Havok's hkTransform: three
+			// rotation columns, then the translation in [12..14]); across all
+			// 166 transform shapes in the shipped NIFs [3], [7] and [11] are
+			// zero and [12..14] carry the offset. Transposed here into the
+			// row-major form compose_4x4 and the export read.
 			float local[16];
-			for (int i = 0; i < 16; i++) {
-				local[i] = xform->xform[i];
+			for (int row = 0; row < 4; row++) {
+				for (int column = 0; column < 4; column++) {
+					local[row * 4 + column] = xform->xform[column * 4 + row];
+				}
 			}
+			local[12] = 0.0f;
+			local[13] = 0.0f;
+			local[14] = 0.0f;
+			local[15] = 1.0f;
 			// Translation is a Havok length; the rotation block is unitless.
 			local[3] *= units::kHavokToMeters;
 			local[7] *= units::kHavokToMeters;

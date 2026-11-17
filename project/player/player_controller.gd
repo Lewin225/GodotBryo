@@ -576,10 +576,16 @@ func _handle_noclip_movement(delta: float) -> void:
 	global_position += velocity * delta
 
 
-## Whether a text field (the console, a debug tab's input) has keyboard
-## focus. Movement keys are polled, so without this typing would also walk.
+## Whether a text field (the console, a debug tab's input, the issue
+## reporter's window) has keyboard focus, in whichever window has focus.
+## Movement keys are polled from Input, which every window feeds, so without
+## this typing would also walk.
 func is_typing() -> bool:
-	var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+	if not is_inside_tree():
+		return false
+	var window := Window.get_focused_window()
+	var viewport: Viewport = window if window != null else get_viewport()
+	var focus := viewport.gui_get_focus_owner()
 	return focus is LineEdit or focus is TextEdit
 
 
@@ -992,6 +998,8 @@ func possess(actor_reference: ActorReference) -> void:
 	possessed = actor_reference
 	if possessed != null:
 		possessed.using_changed.connect(_on_using_changed)
+	if interact_ray != null:
+		interact_ray.activator = possessed
 	# The body's actor node shows the possessed actor (first person: shadow
 	# only); its skeleton gives the seated camera its head. placed_by_parent:
 	# this controller is the possessed actor's body, so the actor node does not
@@ -1292,12 +1300,14 @@ func _on_head_skeleton_updated() -> void:
 		_head_pose = _head_skeleton.global_transform * _head_skeleton.get_bone_global_pose(bone)
 
 ## Activates what the interact ray is aimed at, with the possessed actor as the
-## activator.
+## activator, when the target's can_activate() allows it.
 func request_activate() -> void:
 	if possessed == null or interact_ray == null:
 		return
 	var target := interact_ray.current_target as EsmNode
-	if target != null and target.reference != null:
+	if target == null or target.reference == null:
+		return
+	if target.reference.can_activate(possessed):
 		ScriptServer.activate(target.reference, possessed)
 
 ## An idle's root motion (ActorAnimator.root_moved, in this controller's

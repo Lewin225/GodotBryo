@@ -62,6 +62,14 @@ public:
 	Dictionary get_record_door_links(int record_index) const;
 	PackedInt32Array get_record_triangle_flags(int record_index) const;
 
+	// The triangles of `space_form_id` whose centroid lies within `radius`
+	// metres of `center` in plan (Gamebryo axes), for a debug view near the
+	// camera: {points: PackedVector3Array (3 per triangle), flags and
+	// cover_flags: PackedInt32Array (NVTR Flags and Cover Flags), open_edges:
+	// PackedInt32Array (bit e set when edge e has no in-record neighbour and
+	// no link)}. Records are filtered by their NVGD bounds first.
+	Dictionary get_triangles_near(int space_form_id, const Vector3 &center, float radius) const;
+
 	// Union of the authored NVGD bounds of every record in a space, as
 	// {found, min, max}, for framing a camera without touching triangles.
 	Dictionary get_space_bounds(int space_form_id) const;

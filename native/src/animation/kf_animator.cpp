@@ -30,9 +30,6 @@ const char *const VISIBILITY_SUFFIX = ":visible";
 // Below this, a weight counts as nothing.
 constexpr float WEIGHT_EPSILON = 0.0001f;
 
-// NonAccum's facing in the KFs: its X axis along Bip01's +Y, yaw 90 degrees
-// (the standing stance of 342 Special Idles; kf_root_census).
-constexpr float STANCE_YAW = 1.5707963f;
 
 // Rotation about Z of `q`'s X axis, radians.
 float yaw_about_z(const Quaternion &q) {
@@ -118,6 +115,11 @@ void KfAnimator::_bind_methods() {
 			"set_root_motion_mode", "get_root_motion_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "root_motion_excluded_slot"), "set_root_motion_excluded_slot",
 			"get_root_motion_excluded_slot");
+	ClassDB::bind_method(D_METHOD("set_stance_yaw", "yaw"), &KfAnimator::set_stance_yaw);
+	ClassDB::bind_method(D_METHOD("get_stance_yaw"), &KfAnimator::get_stance_yaw);
+	ClassDB::bind_method(D_METHOD("set_stance_from", "animation"), &KfAnimator::set_stance_from);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "stance_yaw", PROPERTY_HINT_NONE, "radians_as_degrees"), "set_stance_yaw",
+			"get_stance_yaw");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "hold_unkeyed_root"), "set_hold_unkeyed_root", "is_holding_unkeyed_root");
 	ADD_GROUP("Sync", "");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "sync_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "KfAnimator"),
@@ -261,6 +263,35 @@ void KfAnimator::set_root_motion_excluded_slot(int p_slot) {
 
 int KfAnimator::get_root_motion_excluded_slot() const {
 	return _root_motion_excluded_slot;
+}
+
+void KfAnimator::set_stance_yaw(float p_yaw) {
+	_stance_yaw = p_yaw;
+}
+
+float KfAnimator::get_stance_yaw() const {
+	return _stance_yaw;
+}
+
+bool KfAnimator::set_stance_from(const Ref<Animation> &p_animation) {
+	if (p_animation.is_null()) {
+		return false;
+	}
+	const NodePath non_accum_bone = NodePath(String(NON_ACCUM_BONE));
+	for (int track = 0; track < p_animation->get_track_count(); track++) {
+		if (p_animation->track_get_type(track) != Animation::TYPE_ROTATION_3D) {
+			continue;
+		}
+		if (p_animation->track_get_key_count(track) == 0) {
+			continue;
+		}
+		if (p_animation->track_get_path(track) != non_accum_bone) {
+			continue;
+		}
+		_stance_yaw = yaw_about_z(p_animation->rotation_track_interpolate(track, 0.0));
+		return true;
+	}
+	return false;
 }
 
 int KfAnimator::get_root_clip_slot() const {
@@ -1086,7 +1117,7 @@ Transform3D KfAnimator::_root_transform(const Clip &p_clip, double p_time) const
 	}
 	float facing = 0.0f;
 	if (p_clip.non_accum_rotation_track != -1) {
-		facing = yaw_about_z(p_clip.animation->rotation_track_interpolate(p_clip.non_accum_rotation_track, p_time)) - STANCE_YAW;
+		facing = yaw_about_z(p_clip.animation->rotation_track_interpolate(p_clip.non_accum_rotation_track, p_time)) - _stance_yaw;
 	}
 	return Transform3D(Basis(Vector3(0.0f, 0.0f, 1.0f), facing), translation);
 }

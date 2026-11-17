@@ -102,9 +102,9 @@ Vec3 closest_point_on_triangle(const Vec3 &p, const Vec3 &a, const Vec3 &b, cons
 const std::vector<uint32_t> kEmptyIndices;
 
 // Approximate closest points between two triangles, by projecting back and
-// forth a few times. Used where a path leaves one NAVM record for another: the
-// records do not share vertices, so the crossing is a real gap, and jumping
-// centroid-to-centroid makes that gap far wider than it needs to be.
+// forth a few times. Used where a route crosses into another NAVM record with
+// no usable gate (build_waypoints): the crossing hops between these points
+// rather than between the triangles' centroids.
 void closest_points_between_triangles(const Vec3 &a0, const Vec3 &a1, const Vec3 &a2,
 		const Vec3 &b0, const Vec3 &b1, const Vec3 &b2, Vec3 *out_a, Vec3 *out_b) {
 	Vec3 pa = mul(add(add(a0, a1), a2), 1.0f / 3.0f);
@@ -274,12 +274,18 @@ void NavmeshDatabase::load_one(const std::string &path) {
 					size_t o = k * 16;
 					Triangle &t = record.triangles[k];
 					for (int j = 0; j < 3; ++j) t.vertex[j] = rd_u16(d, n, o + j * 2);
+					t.flags = rd_u16(d, n, o + 12);
+					t.cover_flags = rd_u16(d, n, o + 14);
 					for (int j = 0; j < 3; ++j) {
 						int16_t raw_edge = (int16_t)rd_u16(d, n, o + 6 + j * 2);
-						// 82 edges across all shipped masters are exactly
-						// triangle_count -- out of range by one. Clamping to -1
-						// keeps them out of the graph; indexing them would read
-						// past the array.
+						// Flags bit j: the slot is an NVEX index (checked against
+						// the NVEX count in build_cross_record_links).
+						if (t.flags & (1u << j)) {
+							t.edge_link[j] = raw_edge;
+							continue;
+						}
+						// An in-record index past the triangle array would read
+						// past it; none occur unflagged in FalloutNV.esm.
 						if (raw_edge >= 0 && (size_t)raw_edge >= count) {
 							t.edge[j] = -1;
 							stats_.clamped_out_of_range_edges++;
@@ -287,8 +293,6 @@ void NavmeshDatabase::load_one(const std::string &path) {
 							t.edge[j] = raw_edge;
 						}
 					}
-					t.flags = rd_u16(d, n, o + 12);
-					t.cover_flags = rd_u16(d, n, o + 14);
 				}
 			} else if (sub.type == "NVEX") {
 				size_t count = edge_link_count ? edge_link_count : n / 10;
@@ -371,42 +375,30 @@ void NavmeshDatabase::build_indices() {
 void NavmeshDatabase::build_cross_record_links() {
 	auto t_stitch = Clock::now();
 
-	// For each authored NVEX link, connect the target triangle it names to
-	// whichever triangle of the linking record is geometrically nearest. The
-	// ESM names only the target side, and geometric seam matching was measured
-	// and ruled out (2.10% hit rate), so the local side is derived here. This
-	// is the one approximation in the graph and it is confined to record
-	// crossings; within a record, adjacency is entirely authored.
+	// Each flagged NVTR edge names the NVEX link it crosses: this triangle,
+	// across that edge, to the NVEX target triangle. Both directions are
+	// stored, each knowing the edge it crosses.
 	for (size_t i = 0; i < records_.size(); ++i) {
 		const NavMeshRecord &from = records_[i];
-		if (from.triangles.empty()) continue;
+		for (size_t t = 0; t < from.triangles.size(); ++t) {
+			const Triangle &tri = from.triangles[t];
+			for (int e = 0; e < 3; ++e) {
+				int32_t link_index = tri.edge_link[e];
+				if (link_index < 0 || (size_t)link_index >= from.edge_links.size()) continue;
+				const EdgeLink &link = from.edge_links[link_index];
+				auto it = record_by_form_.find(link.target_navmesh_form_id);
+				if (it == record_by_form_.end()) continue;
+				const NavMeshRecord &to = records_[it->second];
+				if (link.target_triangle_index >= to.triangles.size()) continue;
 
-		for (const EdgeLink &link : from.edge_links) {
-			auto it = record_by_form_.find(link.target_navmesh_form_id);
-			if (it == record_by_form_.end()) continue;
-			const NavMeshRecord &to = records_[it->second];
-			if (link.target_triangle_index >= to.triangles.size()) continue;
+				uint32_t from_global = from.global_triangle_offset + (uint32_t)t;
+				uint32_t to_global = to.global_triangle_offset + link.target_triangle_index;
+				float cost = distance(triangle_centroid((uint32_t)i, (uint32_t)t), triangle_centroid(it->second, link.target_triangle_index));
 
-			Vec3 target_centroid = triangle_centroid(it->second, link.target_triangle_index);
-
-			uint32_t best_local = 0;
-			float best_dist_sq = std::numeric_limits<float>::max();
-			for (size_t t = 0; t < from.triangles.size(); ++t) {
-				Vec3 c = triangle_centroid((uint32_t)i, (uint32_t)t);
-				float d = distance_sq(c, target_centroid);
-				if (d < best_dist_sq) {
-					best_dist_sq = d;
-					best_local = (uint32_t)t;
-				}
+				cross_links_[from_global].push_back(CrossRecordLink{ from_global, to_global, cost, from_global, (uint8_t)e });
+				cross_links_[to_global].push_back(CrossRecordLink{ to_global, from_global, cost, from_global, (uint8_t)e });
+				stats_.derived_cross_links++;
 			}
-
-			uint32_t from_global = from.global_triangle_offset + best_local;
-			uint32_t to_global = to.global_triangle_offset + link.target_triangle_index;
-			float cost = std::sqrt(best_dist_sq);
-
-			cross_links_[from_global].push_back(CrossRecordLink{ from_global, to_global, cost });
-			cross_links_[to_global].push_back(CrossRecordLink{ to_global, from_global, cost });
-			stats_.derived_cross_links++;
 		}
 	}
 
@@ -427,7 +419,7 @@ void NavmeshDatabase::build_cross_record_links() {
 
 void NavmeshDatabase::build_components() {
 	// Union-find over every triangle, joined by authored in-record adjacency and
-	// by the derived cross-record links. What comes out is the set of regions an
+	// by the cross-record links. What comes out is the set of regions an
 	// actor can actually walk between without using a door.
 	//
 	// This exists because "same space" does not mean "reachable". NCR
@@ -611,112 +603,112 @@ bool NavmeshDatabase::resolve_global_triangle(uint32_t global_triangle, uint32_t
 	return true;
 }
 
+namespace {
+
+// Orders edge (a, b) of triangle (a, b, c) as a gate's left and right, seen
+// travelling out of that triangle across the edge (`leaving`) or into it.
+void orient_gate(const Vec3 &a, const Vec3 &b, const Vec3 &c, bool leaving, Vec3 *left, Vec3 *right) {
+	bool swap = signed_area_xy(a, b, c) < 0.0f;
+	if (!leaving) swap = !swap;
+	*left = swap ? b : a;
+	*right = swap ? a : b;
+}
+
+// Distance from segment (p, q) to triangle (a, b, c): its edges, and the
+// segment's ends and middle over the triangle.
+float segment_triangle_distance(const Vec3 &p, const Vec3 &q, const Vec3 &a, const Vec3 &b, const Vec3 &c) {
+	Vec3 c1, c2;
+	float best = closest_segment_points(p, q, a, b, &c1, &c2);
+	best = std::min(best, closest_segment_points(p, q, b, c, &c1, &c2));
+	best = std::min(best, closest_segment_points(p, q, c, a, &c1, &c2));
+	Vec3 middle = mul(add(p, q), 0.5f);
+	for (const Vec3 &point : { p, q, middle }) {
+		best = std::min(best, distance(point, closest_point_on_triangle(point, a, b, c)));
+	}
+	return best;
+}
+
+} // namespace
+
+bool NavmeshDatabase::in_record_gate(uint32_t here, uint32_t next, Vec3 *left, Vec3 *right) const {
+	uint32_t record_index = 0, local = 0, next_local = 0;
+	if (!resolve_global_triangle(here, &record_index, &local)) return false;
+	if (!resolve_global_triangle(next, nullptr, &next_local)) return false;
+	const NavMeshRecord &record = records_[record_index];
+	if (local >= record.triangles.size()) return false;
+	const Triangle &tri = record.triangles[local];
+	// Edge slot e spans vertices e and (e+1)%3 -- the xEdit schema's own
+	// field naming ("Edge 0-1", "Edge 1-2", "Edge 2-0").
+	for (int e = 0; e < 3; ++e) {
+		if (tri.edge[e] < 0 || (uint32_t)tri.edge[e] != next_local) continue;
+		uint16_t a = tri.vertex[e], b = tri.vertex[(e + 1) % 3], c = tri.vertex[(e + 2) % 3];
+		if (a >= record.vertices.size() || b >= record.vertices.size() || c >= record.vertices.size()) return false;
+		orient_gate(record.vertices[a], record.vertices[b], record.vertices[c], true, left, right);
+		return true;
+	}
+	return false;
+}
+
+bool NavmeshDatabase::crossing_gate(uint32_t here, uint32_t next, Vec3 *left, Vec3 *right) const {
+	auto links = cross_links_.find(here);
+	if (links == cross_links_.end()) return false;
+	for (const CrossRecordLink &link : links->second) {
+		if (link.to_global_triangle != next) continue;
+		uint32_t edge_record = 0, edge_local = 0, other_record = 0, other_local = 0;
+		uint32_t other = link.edge_global_triangle == here ? next : here;
+		if (!resolve_global_triangle(link.edge_global_triangle, &edge_record, &edge_local)) continue;
+		if (!resolve_global_triangle(other, &other_record, &other_local)) continue;
+		const NavMeshRecord &record = records_[edge_record];
+		const Triangle &tri = record.triangles[edge_local];
+		uint16_t a = tri.vertex[link.edge_slot], b = tri.vertex[(link.edge_slot + 1) % 3], c = tri.vertex[(link.edge_slot + 2) % 3];
+		if (a >= record.vertices.size() || b >= record.vertices.size() || c >= record.vertices.size()) continue;
+		Vec3 o0, o1, o2;
+		if (!triangle_corners(other_record, other_local, &o0, &o1, &o2)) continue;
+		if (segment_triangle_distance(record.vertices[a], record.vertices[b], o0, o1, o2) > MAX_GATE_GAP) continue;
+		orient_gate(record.vertices[a], record.vertices[b], record.vertices[c], link.edge_global_triangle == here, left, right);
+		return true;
+	}
+	return false;
+}
+
 std::vector<Vec3> NavmeshDatabase::build_waypoints(const std::vector<uint32_t> &triangle_path,
 		const Vec3 &start, const Vec3 &goal) const {
-	// A centroid-per-triangle path zigzags where triangles are small and takes
-	// needlessly long straights where they are large. Funnelling it gives the
-	// shortest line that stays inside the same corridor.
-	//
-	// The funnel runs per RECORD, not across the whole path: it needs each pair
-	// of consecutive triangles to share an edge, which holds inside a record
-	// (authored NVTR adjacency) but not across one. Seam vertices were measured
-	// as non-coincident (2.10% match rate), so a record crossing stays an
-	// explicit hop between the two linked triangles' centroids.
-	std::vector<Vec3> waypoints;
 	if (triangle_path.empty()) return { start, goal };
-
-	size_t run_start = 0;
-	while (run_start < triangle_path.size()) {
-		uint32_t run_record = 0, ignored = 0;
-		if (!resolve_global_triangle(triangle_path[run_start], &run_record, &ignored)) break;
-
-		size_t run_end = run_start;
-		while (run_end + 1 < triangle_path.size()) {
-			uint32_t next_record = 0;
-			if (!resolve_global_triangle(triangle_path[run_end + 1], &next_record, &ignored)) break;
-			if (next_record != run_record) break;
-			++run_end;
-		}
-
-		const NavMeshRecord &record = records_[run_record];
-		// Where this run begins and ends: the real endpoints at the extremes of
-		// the whole path, the crossing triangles' centroids in between.
-		uint32_t first_local = 0, last_local = 0;
-		resolve_global_triangle(triangle_path[run_start], &ignored, &first_local);
-		resolve_global_triangle(triangle_path[run_end], &ignored, &last_local);
-		// At a record boundary, enter and leave at the point on this record's
-		// triangle CLOSEST to the neighbouring record's triangle, not at the
-		// centroid. Centroid-to-centroid turns a seam a few centimetres wide
-		// into a hop tens of metres long, and that hop is a straight line over
-		// whatever lies between -- which is how paths ended up crossing navless
-		// ground.
-		Vec3 run_from = start;
-		if (run_start > 0) {
-			run_from = triangle_centroid(run_record, first_local);
-			uint32_t prev_record = 0, prev_local = 0;
-			if (resolve_global_triangle(triangle_path[run_start - 1], &prev_record, &prev_local)) {
-				Vec3 a0, a1, a2, b0, b1, b2, here, there;
-				if (triangle_corners(run_record, first_local, &a0, &a1, &a2) &&
-						triangle_corners(prev_record, prev_local, &b0, &b1, &b2)) {
-					closest_points_between_triangles(a0, a1, a2, b0, b1, b2, &here, &there);
-					run_from = here;
-				}
-			}
-		}
-		Vec3 run_to = goal;
-		if (run_end + 1 < triangle_path.size()) {
-			run_to = triangle_centroid(run_record, last_local);
-			uint32_t next_record = 0, next_local = 0;
-			if (resolve_global_triangle(triangle_path[run_end + 1], &next_record, &next_local)) {
-				Vec3 a0, a1, a2, b0, b1, b2, here, there;
-				if (triangle_corners(run_record, last_local, &a0, &a1, &a2) &&
-						triangle_corners(next_record, next_local, &b0, &b1, &b2)) {
-					closest_points_between_triangles(a0, a1, a2, b0, b1, b2, &here, &there);
-					run_to = here;
-				}
-			}
-		}
-
-		std::vector<Gate> gates;
-		gates.reserve(run_end - run_start);
-		for (size_t i = run_start; i < run_end; ++i) {
-			uint32_t local = 0, next_local = 0;
-			resolve_global_triangle(triangle_path[i], &ignored, &local);
-			resolve_global_triangle(triangle_path[i + 1], &ignored, &next_local);
-			if (local >= record.triangles.size()) continue;
-			const Triangle &tri = record.triangles[local];
-
-			// Which of this triangle's three edges leads to the next triangle.
-			// Edge slot e spans vertices e and (e+1)%3 -- that is the xEdit
-			// schema's own field naming ("Edge 0-1", "Edge 1-2", "Edge 2-0"),
-			// not an inference about winding.
-			int shared = -1;
-			for (int e = 0; e < 3; ++e) {
-				if (tri.edge[e] >= 0 && (uint32_t)tri.edge[e] == next_local) { shared = e; break; }
-			}
-			if (shared < 0) continue; // not edge-adjacent; leave the corridor open here
-
-			uint16_t a = tri.vertex[shared];
-			uint16_t b = tri.vertex[(shared + 1) % 3];
-			uint16_t c = tri.vertex[(shared + 2) % 3];
-			if (a >= record.vertices.size() || b >= record.vertices.size() || c >= record.vertices.size()) continue;
-
-			// Left/right must be consistent for the funnel's side tests. Derive
-			// it from this triangle's own winding rather than assuming the data
-			// uses one convention throughout.
-			Gate gate{ record.vertices[a], record.vertices[b] };
-			if (signed_area_xy(record.vertices[a], record.vertices[b], record.vertices[c]) < 0.0f) {
-				gate = Gate{ record.vertices[b], record.vertices[a] };
-			}
-			gates.push_back(gate);
-		}
-
-		std::vector<Vec3> run_points = funnel(run_from, run_to, gates);
-		for (const Vec3 &p : run_points) {
+	std::vector<Vec3> waypoints;
+	std::vector<Gate> gates;
+	Vec3 run_from = start;
+	auto finish_run = [&](const Vec3 &run_to) {
+		for (const Vec3 &p : funnel(run_from, run_to, gates)) {
 			if (waypoints.empty() || distance_sq(waypoints.back(), p) > 1e-6f) waypoints.push_back(p);
 		}
-		run_start = run_end + 1;
+		gates.clear();
+	};
+
+	for (size_t i = 0; i + 1 < triangle_path.size(); ++i) {
+		uint32_t here = triangle_path[i], next = triangle_path[i + 1];
+		uint32_t here_record = 0, next_record = 0, here_local = 0, next_local = 0;
+		if (!resolve_global_triangle(here, &here_record, &here_local)) continue;
+		if (!resolve_global_triangle(next, &next_record, &next_local)) continue;
+		Gate gate;
+		if (here_record == next_record) {
+			// Not edge-adjacent: no gate, the corridor stays open here.
+			if (in_record_gate(here, next, &gate.left, &gate.right)) gates.push_back(gate);
+			continue;
+		}
+		if (crossing_gate(here, next, &gate.left, &gate.right)) {
+			gates.push_back(gate);
+			continue;
+		}
+		// No usable crossing gate: this funnel ends at the point of `here`
+		// closest to `next`, and the next one starts at the point of `next`
+		// closest to `here`.
+		Vec3 a0, a1, a2, b0, b1, b2, from_here, to_next;
+		if (!triangle_corners(here_record, here_local, &a0, &a1, &a2) || !triangle_corners(next_record, next_local, &b0, &b1, &b2)) continue;
+		closest_points_between_triangles(a0, a1, a2, b0, b1, b2, &from_here, &to_next);
+		finish_run(from_here);
+		run_from = to_next;
 	}
+	finish_run(goal);
 
 	if (waypoints.empty()) return { start, goal };
 	if (distance_sq(waypoints.back(), goal) > 1e-6f) waypoints.push_back(goal);
@@ -916,22 +908,24 @@ RouteResult NavmeshDatabase::route(uint32_t space_form_id, const Vec3 &from, con
 		return result;
 	}
 
-	// A* over triangles: in-record neighbors come from authored NVTR edges,
-	// record crossings from the derived cross-record links.
+	// A* over triangles: in-record neighbours come from authored NVTR edges,
+	// record crossings from the flagged-edge cross-record links. A triangle is
+	// entered at a point on the edge crossed into it (the start triangle at the
+	// start point): the point of that edge closest to the line from the
+	// previous entry point to the goal, where a straight walk would cross it.
+	// A step costs the distance between entry points, and the heuristic is the
+	// distance from the entry point to the goal. Centroid or edge-midpoint
+	// costs mislead in fans of long thin triangles, where those points lie far
+	// from where a walk crosses.
 	std::unordered_map<uint32_t, float> g_score;
 	std::unordered_map<uint32_t, uint32_t> came_from;
+	std::unordered_map<uint32_t, Vec3> entry_point;
 	using Entry = std::pair<float, uint32_t>; // (f score, global triangle)
 	std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
 
-	auto centroid_of_global = [&](uint32_t global) -> Vec3 {
-		uint32_t ri = 0, li = 0;
-		if (!resolve_global_triangle(global, &ri, &li)) return Vec3();
-		return triangle_centroid(ri, li);
-	};
-
-	Vec3 goal_centroid = centroid_of_global(goal.global_triangle);
 	g_score[start.global_triangle] = 0.0f;
-	open.push({ distance(centroid_of_global(start.global_triangle), goal_centroid), start.global_triangle });
+	entry_point[start.global_triangle] = start.position;
+	open.push({ distance(start.position, goal.position), start.global_triangle });
 
 	bool reached = false;
 	while (!open.empty()) {
@@ -945,34 +939,44 @@ RouteResult NavmeshDatabase::route(uint32_t space_form_id, const Vec3 &from, con
 		auto g_it = g_score.find(node);
 		if (g_it == g_score.end()) continue;
 		float node_g = g_it->second;
-		Vec3 node_centroid = centroid_of_global(node);
+		Vec3 node_entry = entry_point[node];
 
 		uint32_t ri = 0, li = 0;
 		if (!resolve_global_triangle(node, &ri, &li)) continue;
 		const NavMeshRecord &r = records_[ri];
 
-		auto consider = [&](uint32_t neighbor, float step_cost) {
-			float tentative = node_g + step_cost;
+		auto consider = [&](uint32_t neighbor, const Vec3 &edge_a, const Vec3 &edge_b) {
+			Vec3 crossing, on_line;
+			closest_segment_points(edge_a, edge_b, node_entry, goal.position, &crossing, &on_line);
+			float tentative = node_g + distance(node_entry, crossing);
 			auto it = g_score.find(neighbor);
 			if (it != g_score.end() && it->second <= tentative) return;
 			g_score[neighbor] = tentative;
 			came_from[neighbor] = node;
-			float h = distance(centroid_of_global(neighbor), goal_centroid);
-			open.push({ tentative + h, neighbor });
+			entry_point[neighbor] = crossing;
+			open.push({ tentative + distance(crossing, goal.position), neighbor });
 		};
 
 		if (li < r.triangles.size()) {
+			const Triangle &tri = r.triangles[li];
 			for (int e = 0; e < 3; ++e) {
-				int32_t nb = r.triangles[li].edge[e];
+				int32_t nb = tri.edge[e];
 				if (nb < 0 || (size_t)nb >= r.triangles.size()) continue;
-				uint32_t neighbor = r.global_triangle_offset + (uint32_t)nb;
-				consider(neighbor, distance(node_centroid, triangle_centroid(ri, (uint32_t)nb)));
+				uint16_t a = tri.vertex[e], b = tri.vertex[(e + 1) % 3];
+				if (a >= r.vertices.size() || b >= r.vertices.size()) continue;
+				consider(r.global_triangle_offset + (uint32_t)nb, r.vertices[a], r.vertices[b]);
 			}
 		}
 		auto cross = cross_links_.find(node);
 		if (cross != cross_links_.end()) {
 			for (const CrossRecordLink &link : cross->second) {
-				consider(link.to_global_triangle, link.cost > 0.0f ? link.cost : 1.0f);
+				uint32_t edge_record = 0, edge_local = 0;
+				if (!resolve_global_triangle(link.edge_global_triangle, &edge_record, &edge_local)) continue;
+				const NavMeshRecord &er = records_[edge_record];
+				const Triangle &et = er.triangles[edge_local];
+				uint16_t a = et.vertex[link.edge_slot], b = et.vertex[(link.edge_slot + 1) % 3];
+				if (a >= er.vertices.size() || b >= er.vertices.size()) continue;
+				consider(link.to_global_triangle, er.vertices[a], er.vertices[b]);
 			}
 		}
 	}

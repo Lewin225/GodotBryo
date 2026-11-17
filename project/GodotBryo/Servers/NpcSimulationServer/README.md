@@ -40,14 +40,14 @@ every shipped master once, then serves read-only queries.
 
 Measured on real data (base game + all five DLC masters):
 
-- **6,139 records, 621,256 vertices, 826,632 triangles, 31.2 MB resident** by
-  the database's own count (`resident_bytes`); **42.6 MB** of heap is still
+- **6,139 records, 621,256 vertices, 826,632 triangles, 31.3 MB resident** by
+  the database's own count (`resident_bytes`); **42.3 MB** of heap is still
   allocated after `load()` returns (`native/tools/navmesh_memory.cpp`, glibc
   `mallinfo2`), the difference being container overhead. Loading briefly takes
   far more: `EsmFile`'s whole-plugin record index, freed afterwards.
-- **~0.36 s to load**, against a 5 s boot budget. Dominated by opening the
-  plugin files (~0.16 s) and the derived cross-record stitch (~0.11 s); the
-  actual NAVM parse is ~0.03 s.
+- **~0.3 s to load**, against a 5 s boot budget. Dominated by opening the
+  plugin files (~0.17 s); the NAVM parse is ~0.03 s and building the
+  cross-record links ~0.02 s.
 - 481 distinct spaces; the exterior Mojave is one space holding 4,041 records.
 
 Loading the whole game's navmesh up front is therefore cheap enough that
@@ -57,25 +57,36 @@ idea got shelved and the measurement does not support it.
 ## Confidence levels — read before extending this
 
 The ESM's navmesh format is only partly documented. xEdit's FNV schema names the
-subrecords but routes the two fields that matter through callbacks
-(`wbNVTREdgeToStr`, `wbNavmeshEdgeLinkEnum`) whose bodies are not in the copy
-vendored under `enginedocs/xEdit/`. Everything below was settled by exhaustive
+subrecords but routes two fields through callbacks (`wbNVTREdgeToStr`,
+`wbNavmeshEdgeLinkEnum`) whose bodies are not in the copy vendored under
+`enginedocs/xEdit/`. Everything below was settled by exhaustive
 census over the whole shipped population, not a sample. The tools are committed
 under `native/tools/` so any claim here can be re-run.
 
 **Authored and confirmed:**
 
-- *Within-record triangle adjacency.* `NVTR` edge fields are `-1` for "no
-  neighbour in this record", otherwise an in-record triangle index. No other
-  encoding exists: of 2,479,896 edge slots, 13.260% are `-1`, 86.737% are in
-  `[0, triangle_count)`, and **zero** are any other negative value.
-  (`navm_edge_encoding_census.cpp`)
+- *`NVTR` edge slots hold one of two things, chosen by the triangle's Flags.*
+  Bit e (`0x01` Edge 0-1, `0x02` Edge 1-2, `0x04` Edge 2-0) set: the slot is an
+  index into the record's `NVEX` Edge Links -- the link that edge crosses into
+  another record. Clear: `-1` for no neighbour, otherwise an in-record triangle
+  index. Over every master (`navm_edge_link_flag_census.cpp`): all 110,078
+  flagged slots hold a valid `NVEX` index, one per `NVEX` entry; unflagged
+  slots hold only `-1` or an in-record index, never anything out of range.
+  Read as in-record indices, the flagged slots had joined 109,996 pairs of
+  unrelated triangles, and the 82 "out of range by one" slots once clamped as
+  malformed data were flagged slots whose `NVEX` index exceeded the triangle
+  count.
 - *Record-level connectivity.* `NVEX` target FormIDs always resolve to a real
   NAVM record (0 unresolved), and connectivity is 99.07% reciprocal (15,794 of
   15,942 directed pairs have a matching reverse count).
   (`navm_nvex_semantics_census.cpp`)
 - *`NVEX` "Triangle" indexes the **target** record*, not the local one: in range
   for the target in 99.882% of links, but for the owning record in only 78.932%.
+- *Where two records connect.* Each `NVEX` link is crossed by the flagged edge
+  that names it, into the target triangle: the target lies within 0.5 m of that
+  edge for 95.1% of links, within 2 m for 95.8%. 130 targets are in records not
+  loaded. `NavmeshDatabase::build_cross_record_links()` builds one cross-record
+  link per flagged edge, in both directions, each knowing the edge it crosses.
 - *`NVGD` bounds exist on 6,139/6,139 records* — an exhaustive result, so the
   coarse broad-phase has no fallback path.
 - *Coordinate space.* Exterior NAVM vertices are worldspace-absolute
@@ -84,59 +95,73 @@ under `native/tools/` so any claim here can be re-run.
   add a second conversion downstream. This was an actual bug during the build:
   without it, actors in Hoover Dam Power Plant sat 12 m from a navmesh whose raw
   z-range was 10368..11652 (= 148..166 m).
+- *`NVTR` triangle Flags* (`navm_triangle_flag_census.cpp`, over 825,732
+  triangles in the masters; meanings matched to the GECK's navmesh markings):
 
-**Derived, not authored — this is the one approximation:**
+  | bit | meaning | evidence |
+  |---|---|---|
+  | `0x0001` `0x0002` `0x0004` | edge 0-1 / 1-2 / 2-0 crosses an `NVEX` link | see above |
+  | `0x0010` | no large creatures | 253 triangles in contiguous patches (83.9% of their neighbours share it); in narrow spots in CampSearchlightFireStation01, seen with `TNM 1` |
+  | `0x0040` | preferred path | 3,712 triangles in contiguous patches (81.6%); along Sunny Smiles' tutorial route in Goodsprings, seen with `TNM 1` |
+  | `0x0200` | water | 34,374 triangles; where the cell has a water height, 99.8% lie below it (median 15.4 m deep) against 17.8% of the other triangles in those records (`navm_water_flag_census.cpp`) |
+  | `0x0400` | door triangle | set on exactly the 1,342 triangles `NVDP` names, and no others |
+  | `0x0800` | always set | 100% of triangles |
 
-- *Where two records connect.* `NVEX` says *which* records connect but never
-  names the local triangle a link leaves from. Geometric seam matching was tried
-  as an alternative and **ruled out**: only 2.10% of boundary edges in
-  NVEX-linked records share vertex positions with a linked record
-  (`navm_stitch_census.cpp`), so seams do not have coincident vertices.
-  `NavmeshDatabase::build_cross_record_links()` therefore pairs each authored
-  target triangle with whichever triangle of the linking record is geometrically
-  nearest. Routes are exact within a record and approximate at record seams.
+  Nothing reads them yet; routing could cost preferred triangles less, keep
+  actors that cannot swim off water and large actors off `0x0010`.
+- *`NVTR` Cover Flags hold cover for edges 0-1 and 1-2.* Bits 0-5 sit on a
+  triangle whose edge 0-1 is open in 96.2% of cases, bits 6-11 on one whose
+  edge 1-2 is open in 96.3%; edge 2-0 has none. Every triangle `NVCA` lists has
+  nonzero Cover Flags (40,086); 23,800 more have them unlisted.
+
+**Approximated:** a crossing whose flagged edge lies more than 0.5 m from its
+target triangle (4.9% of links) is no funnel gate; the route hops between the
+two triangles' closest points there (see Path quality).
 
 **Not established — do not build on these without new evidence:**
 
 - What `NVEX` "Type" means. Values are 95.50% `0`, 2.24% `1`, 2.24% `2`, 0.02%
   `3`. The near-identical counts for 1 and 2 suggest a directional pair, but
   that is a guess and nothing reads the field.
-- Whether the named target triangle is a precise seam pairing. It is probably
-  not — only 10.631% of named target triangles even have a boundary edge, so
-  they are generally interior triangles.
+- How each 6-bit cover group splits. The common values (`0x01`, `0x1F`, `0x3F`
+  and their shifted forms) suggest a 4-bit height plus two side bits, the
+  GECK's cover height and the "edge cover" bars at each end; `TNM 1` draws them
+  that way, so it can be checked against the objects the cover stands beside.
+- Water in 252 `NAVM` records whose cell has no usable water height (none, or
+  a value above 1e6): about 20,000 water triangles, possibly under placed
+  water (`PWAT`) or a worldspace water setting.
 
-**Known bad data, handled:** 82 of 2,479,896 `NVTR` edge slots hold exactly
-`triangle_count` — out of range by one. They are clamped to `-1` at load. This
-is not cosmetic: indexing on them reads past the triangle array. The test asserts
-the count is exactly 82 so a parser change that silently swallows more is caught.
+**Guarded:** an unflagged edge slot past the triangle array would read past it;
+the loader clamps any to `-1` and counts them (`clamped_out_of_range_edges`).
+None occur in the shipped masters, and the test asserts that, and that every
+`NVEX` link whose target exists became a cross-record link.
 
 ## Path quality
 
+A* runs over triangles: in-record neighbours from `NVTR`, record crossings from
+the cross-record links. A triangle is entered at the point of the crossed edge
+closest to the line from the previous entry point to the goal -- where a
+straight walk would cross it -- and a step costs the distance between entry
+points; the heuristic is the distance from the entry point to the goal.
+Centroid-to-centroid costs chose badly in fans of long thin triangles: leaving
+the saloon (`tests/test_nav_seam_route`), the route walked along a fan of five
+seam triangles to cross at the alley's wall.
+
 A* returns a corridor of triangles. Emitting one waypoint per triangle centroid
 produces two visible artifacts: a zigzag ("vibration") where triangles are small
-and dense, and needlessly long straights where they are large. Two passes fix it:
+and dense, and needlessly long straights where they are large. Passes fix it:
 
 1. **Funnel** (`build_waypoints`) — Simple Stupid Funnel Algorithm, the shortest
-   line inside the corridor. Run **per record**, because it needs consecutive
-   triangles to share an edge; that holds inside a record via authored NVTR
-   adjacency but not across one, since seam vertices are not coincident.
+   line inside the corridor, run along the whole corridor. Its gates are the
+   shared edge between consecutive triangles of one record and the flagged edge
+   where the corridor crosses into another, so a route crosses a seam wherever
+   the straight line does. A crossing with no gate (its flagged edge more than
+   0.5 m from the target triangle) ends one funnel at the closest point of the
+   triangle it leaves and starts the next at the closest point of the one it
+   enters.
 2. **Line-of-sight simplification** (`simplify_by_line_of_sight`) — drops a
    waypoint only when the shortcut past it is *sampled and verified* to stay on
-   real navmesh. This straightens across record seams, which the per-record
-   funnel cannot do alone, without ever inventing a line over a gap.
-
-Measured on one real 224-triangle Mojave route:
-
-| | waypoints | mean turn | reversals (>90°) | length |
-|---|---|---|---|---|
-| centroids only | 224 | — | — | 1737 m |
-| + funnel | 97 | 43.7° | 8 / 95 | 1649 m |
-| + line-of-sight | 48 | 30.5° | 0 / 46 | 1611 m |
-| + height projection | 537 | **5.2°** | 2 / 533 | 1602 m |
-
-(straight-line distance is 1464 m.) Waypoint count rises again at the last step
-because that pass *inserts* terrain-following points; the count is not the
-metric, smoothness and surface adherence are.
+   real navmesh, never inventing a line over a gap.
 
 3. **Height projection** (`project_onto_navmesh`) — re-seats the path's height on
    the real surface. Smoothing interpolates height linearly between waypoints,
@@ -159,7 +184,18 @@ metric, smoothness and surface adherence are.
    "finds" mesh at the hole's rim), and a sample with no surface near the walked
    height is simply not inserted rather than fabricated.
 
-Surface adherence, sampled every 0.5 m along real routes:
+Measured over 40 seeded WastelandNV routes 50-800 m long (`tests/test_nav_seam_route`):
+
+| | found | length / straight line | length with no navmesh beneath |
+|---|---|---|---|
+| flagged edges read as in-record neighbours, centroid A* | 40/40 | 1.305 | **16.0%** (4,400 m) |
+| flagged edges as `NVEX` crossings, entry-point A* | 40/40 | 1.351 | **3.2%** (897 m) |
+
+The older routes were shorter because the false in-record neighbours let them
+cut across ground with no navmesh.
+
+Surface adherence of the height projection, sampled every 0.5 m along real
+routes (measured before flagged edges were read as crossings):
 
 | | >2 m off surface | within 1 m | waypoints off-mesh |
 |---|---|---|---|
@@ -191,7 +227,7 @@ straight line **clipping through the fence**. Every trip in or out of NCRCF drew
 as an unwalkable red leg.
 
 `NavmeshDatabase::build_components()` runs a union-find over every triangle at
-load, joined by authored in-record adjacency and the derived cross-record links.
+load, joined by authored in-record adjacency and the cross-record links.
 `SnapResult.component` then tells any caller which walkable region a point is in,
 and portals are indexed by the components on each side of the door -- a door
 being the only thing that joins two components.
@@ -257,13 +293,17 @@ including through doors.
   and its nodes added on the main thread; `cell_ready` follows. A cell made non-local
   before its build lands is never applied.
 - **Seams** — Godot's edge connections at a 0.5 m margin join the record seams
-  within it (82% of NVEX-joined pairs, and 616 pairs NVEX does not record, 427
-  of them coincident); a `NavigationLink3D` named `Seam_...` joins each
-  NVEX-joined pair 0.5-4 m apart (76), between the two closest
-  points on their open edges (`NavmeshReader.get_record_seam_links`). See
-  `native/tools/navm_seam_gap_census.cpp` and `_diag/diag_local_seams`. Edge
-  connections stall only on a whole worldspace (on WastelandNV the free-edge
-  search had not finished after a minute), which local maps never hold.
+  within it (7,625 of the 8,091 NVEX-joined record pairs, measured between open
+  edges, which include the link-flagged ones); a `NavigationLink3D` named
+  `Seam_...` joins each NVEX-joined pair 0.5-4 m apart (129), between the two
+  closest points on their open edges (`NavmeshReader.get_record_seam_links`);
+  337 pairs lie farther apart. Edge connections stall only on a whole
+  worldspace (on WastelandNV the free-edge search had not finished after a
+  minute), which local maps never hold.
+- **Godot's own path between waypoints** can bend to a fan vertex where NSS's
+  straight hop does not: Godot's polygon A* picks a poor corridor through fans
+  of thin triangles (Sunny's alley hop: 10.80 m against 10.23 m, through a
+  seam vertex). Not fixed.
 - **Cell size 0.1 m** — at Godot's 0.25 m default, distinct vertices in
   GSDocMitchellHouse share a cell and the map reports an edge error.
 - **Why not the whole worldspace in Godot** — measured on WastelandNV
@@ -271,6 +311,25 @@ including through doors.
   42.6 MB for every space; routes of about 2 km reach 91/100 in 84 ms mean
   (NSS: 90/100, 91 ms), with Godot's `path_search_max_polygons` lifted from its
   4,096 default, which otherwise ends every such route short.
+
+## Navmesh debug view (`TNM`)
+
+`ToggleNavMesh` / `TNM [mode]` (console) sets `NavmeshDebugView`, a child of this
+server: 0 off, 1 NSS, 2 Godot; with no mode, the next one. A legend names the
+colours.
+
+- **1, NSS** -- this server's `NAVM` triangles within 40 m of the camera, in the
+  player's space (`NavmeshReader.get_triangles_near`, which filters records by
+  their `NVGD` bounds, so a worldspace costs no more than an interior), fetched
+  again when the camera moves 5 m. Fill by triangle Flags (door, water,
+  preferred, no large creatures); cyan edges cross into another record, yellow
+  edges are open; a quad stands on each edge with Cover Flags, its height the
+  group's low four bits x 0.2 m, with dark bars for the next two bits.
+- **2, Godot** -- `LocalNavigation`'s map for the player's space within 40 m:
+  each region's polygons in its own colour, the pathways of the edge
+  connections Godot made between regions in cyan, seam links in magenta. Drawn
+  from the regions themselves: Godot's own navigation debug drawing does not
+  appear for regions that entered the tree before it was switched on.
 
 ## Packages and low-level travel (first slice)
 
@@ -536,6 +595,7 @@ controller's ground ray); it still cannot be routed anywhere without navmesh.
 cd project
 ../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_nav_npc_simulation_server.tscn
 ../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_local_navigation.tscn
+../tools/Godot_v4.7.1-stable_linux.x86_64 --headless --path . tests/test_nav_seam_route.tscn
 ```
 
 Requires a current `project/bin/*.so`. A stale one does not fail loudly — the

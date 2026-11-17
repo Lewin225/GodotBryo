@@ -285,9 +285,15 @@ func _apply_animation_state() -> void:
 	if actor_reference.special_idle != null:
 		ScriptServer.actor_idles.replay(actor_reference)
 
-func _exit_tree() -> void:
-	_cancel_visual_load()
-	animator.cancel()
+## Cancels the visual and animation loads when the node is freed. Not on
+## leaving the tree: a streamer reparents the node to the tile under its
+## reference when the reference changes CELL, and the actor keeps its body and
+## clips across that move.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_cancel_visual_load()
+		if animator != null:
+			animator.cancel()
 
 
 ## Humanoids request several authored NIFs, rather than the one generic model

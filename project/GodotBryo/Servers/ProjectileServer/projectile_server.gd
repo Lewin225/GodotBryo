@@ -9,7 +9,8 @@ extends Node
 ## replay with the same seed (no hits).
 signal shot_created(shot: Dictionary)
 ## A shot's projectile hit something. `hit`: shot_id, position, normal (Godot
-## world), collider, target (the EsmReference hit, or null), damage.
+## world), collider, target (the EsmReference hit, or null), damage, shooter,
+## weapon. The target then receives the hit (EsmReference.receive_hit()).
 signal hit(shot_id: int, hit: Dictionary)
 ## The damage `shot_id` deals `target` would kill it: emitted once per target
 ## per shot, before anything shows. The kill cam listens.
@@ -218,15 +219,14 @@ func _resolve_hitscan(shot: Dictionary) -> void:
 		if show_effects:
 			_show_impact(shot["weapon"], target, result["position"], result["normal"], direction)
 		_log_hit(shot, target, damage)
-		var report := {
+		_report(shot, {
 			"shot_id": shot["id"],
 			"position": result["position"],
 			"normal": result["normal"],
 			"collider": result["collider"],
 			"target": target,
 			"damage": damage,
-		}
-		hit.emit(int(shot["id"]), report)
+		})
 		if target != null:
 			totals[target] = float(totals.get(target, 0.0)) + damage
 	_keep_resolved(shot, ends)
@@ -664,6 +664,18 @@ func _come_to_rest(reference: ProjectileReference, point: Vector3, velocity: Vec
 	_place(reference, reference.current_space_form_id, point, velocity)
 
 
+## Emits `hit` with `report`, the shot's shooter and weapon added, then has
+## the target, if any, receive the hit (EsmReference.receive_hit(), which runs
+## its script's OnHit and OnHitWith blocks).
+func _report(shot: Dictionary, report: Dictionary) -> void:
+	report["shooter"] = shot.get("shooter")
+	report["weapon"] = shot.get("weapon")
+	hit.emit(int(shot["id"]), report)
+	var target: EsmReference = report.get("target")
+	if target != null:
+		target.receive_hit(report["shooter"], report["weapon"], report)
+
+
 ## Reports a moving projectile's direct hit: the weapon's damage per
 ## projectile, the impact, the damage log and a lethal hit.
 func _report_hit(reference: ProjectileReference, target: EsmReference, point: Vector3, normal: Vector3, velocity: Vector3) -> void:
@@ -672,7 +684,7 @@ func _report_hit(reference: ProjectileReference, target: EsmReference, point: Ve
 	if show_effects and reference.weapon != null:
 		_show_impact(reference.weapon, target, point, normal, velocity.normalized())
 	_log_hit(shot, target, damage)
-	hit.emit(reference.shot_id, {
+	_report(shot, {
 		"shot_id": reference.shot_id,
 		"position": point,
 		"normal": normal,
@@ -735,7 +747,7 @@ func explode(explosion: ExplosionBase, point: Vector3, shot_id: int = 0, shooter
 			var falloff := clampf(1.0 - point.distance_to(at) / radius, 0.0, 1.0)
 			var damage := explosion.damage * falloff
 			_log_hit(shot, target, damage)
-			hit.emit(shot_id, {"shot_id": shot_id, "position": at, "normal": Vector3.ZERO, "collider": null, "target": target, "damage": damage, "explosion": explosion})
+			_report(shot, {"shot_id": shot_id, "position": at, "normal": Vector3.ZERO, "collider": null, "target": target, "damage": damage, "explosion": explosion})
 			if would_kill(target, damage):
 				lethal_hit.emit(shot_id, target)
 		_push_bodies(space, explosion, point, radius)

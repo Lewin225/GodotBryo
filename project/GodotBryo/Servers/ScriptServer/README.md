@@ -57,7 +57,10 @@ references in `_physics_process()`, earlier in the frame. Script `MoveTo Target 
 `MenuMode` run every frame only for references marked loaded with
 `set_reference_loaded()`, which also runs `OnLoad` (once per load).
 `dispatch_event_for(reference, block_type, subject)` runs blocks for a non-reference
-subject: a menu ID, or a topic for `SayToDone <topic>`, matched by editor ID. `SayTo` and
+subject: a menu ID, a topic for `SayToDone <topic>`, or a weapon for `OnHitWith <weapon>`,
+matched by editor ID. `OnHit [actor]` and `OnHitWith [weapon]` run when
+`EsmReference.receive_hit()` is called (ProjectileServer, for each hit), the shooter as action
+reference. `SayTo` and
 `Say` speak through `DialogueServer.say()`; `StartConversation Player [Topic]` starts a
 conversation (`DialogueServer.start_conversation`), and `AddTopic` adds a topic to the
 player's list.
@@ -119,6 +122,16 @@ lists. `GetIsID`, `GetIsReference`, `GetInCell`, `GetInWorldspace`, `GetInSameCe
 `GetLocked`, `GetOpenState` and `SetOpenState` read and set `is_locked` / `is_open`;
 `SetOpenState` lets a loaded door play the change. `MarkForDelete` sets
 `EsmReference.marked_for_delete`, which the streamers do not spawn again.
+`SetDestroyed` / `GetDestroyed` set and read `EsmReference.destroyed` (saved).
+`EsmReference.can_activate(activator)` (the base type's `can_activate()`, by default not
+destroyed) is asked by an actor's activation entry points, not by `activate()`: the player's
+`InteractRay` does not target a reference it refuses, so it shows no prompt, and
+`PlayerController` does not activate one. Script `Activate`, hits and the reference's own
+blocks are unaffected. VCG01
+destroys Doc Mitchell's front door until his farewell INFO, and VCG02's bottles destroy
+themselves `OnLoad` so they cannot be picked up. Every `SetDestroyed` target in FalloutNV.esm's
+scripts (281 call targets: ACTI, DOOR, TERM, TACT, CREA, NPC_, FURN, MISC) has a base without DEST, so
+no destruction-stage model is involved.
 
 **Conditions.** `evaluate_conditions(conditions, context)` evaluates a list of CTDA
 `ConditionSubrecord`s through `ConditionEvaluator`, stateless. Each condition calls its function (by
@@ -278,7 +291,10 @@ Each is a reason to test before building on it.
 | `GetSitting` is 0 not sitting, 1 wants to sit, 2 sitting down, 3 sitting, 4 wants to stand, 5 standing up | `ActorReference.sit_state`, `FurnitureSeating` | the idle tree's order (SitDown 2, DefaultSitIdle 1, sitting idles 3, StandUp 4) and Oblivion-era docs, recalled | console `GetSitting` on an NPC as it sits down, sits and stands |
 | A seated actor faces the furniture's heading plus the marker's orientation | `FurnitureSeating.get_placement` | inferred from census A4 | an NPC sitting in a chair turned in the world |
 | `PlayIdle` on an actor with no 3D node ends at once; on a seated actor it does nothing | `ActorIdles.play` | conservative default; no source | `PlayIdle` on a distant NPC, then on a seated one |
-| GetHitLocation is -1; GetKnockedState, IsInCombat, IsWeaponOut, GetSleeping, IsGreetingPlayer, GetPlantedExplosive, GetUsedItemActivate, GetVATSMode, GetVATSValue are 0 | registry | the state of systems not built yet | each again once hits, combat, sleep, VATS and AI procedures exist |
+| GetHitLocation is -1; GetKnockedState, IsInCombat, GetSleeping, IsGreetingPlayer, GetPlantedExplosive, GetUsedItemActivate, GetVATSMode, GetVATSValue are 0 | registry | the state of systems not built yet | each again once hits, combat, sleep, VATS and AI procedures exist |
+| GetWeaponAnimType is the equipped weapon's DNAM Animation Type + 1, 0 with none | registry | VMS22CamTargetScript tests 4 with the camera (Animation Type 3) equipped; 0 for no weapon has none | a script testing GetWeaponAnimType with no weapon equipped |
+| Destroyed blocks only the player's activation; NPCs (packages) and script `Activate` still activate a destroyed reference | `EsmReference.can_activate`, asked by `InteractRay` and `PlayerController` only | VCG02TargetSCRIPT's `OnActivate` ("activated with an xmarker after the quest is over") expects a script activation to reach a destroyed bottle; NPCs not checked | an NPC package through a destroyed door, e.g. GSDocMitchellHouseIntDoorREF during VCG01 |
+| A destroyed reference with DEST shows its last stage's model | not built | GECK wiki, recalled; no SetDestroyed target has DEST, only GetDestroyed on damaged ACTI (vertibirds) | when destruction from damage exists |
 | GetCurrentAIProcedure is DIALOGUE while an actor says or hears a line or is in a conversation, SITTING while it uses furniture, then by its package (Travel travels while it has somewhere to go, then waits; a Dialogue package greets until done), DO_NOTHING with none; GetCurrentAIPackage is 6 in dialogue, else its package type mapped by name | `ActorAICodes` | codes from the GECK pages (GetCurrentAIProcedure's is Fallout 3's); the mapping from names | `GetCurrentAIProcedure` on an NPC walking a Travel package, then arrived, then talking |
 | Each response said picks a gesture for the speaker and the listener (its SNAM / LNAM, else the idle tree); a looping one ends with the line | `ActorIdles._on_response_started` | GECK "Idle Animations" says each "conversation item"; read as a response | a long multi-response INFO in a conversation |
 | Ambient idles come every 20 s x energy / 50 (at least 1 s) while an NPC stands idle with no package idle collection | `ActorIdles.update_ambient` | GECK: lower energy idles more often; the formula has no source | an energy-10 and an energy-100 NPC standing side by side |
