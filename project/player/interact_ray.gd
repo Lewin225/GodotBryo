@@ -11,6 +11,9 @@ var current_target: Object = null
 var current_collider: Object = null
 var current_type: StringName = &"none"
 var current_action: String = ""
+## The reference that would activate the target: the possessed actor, set by
+## PlayerController.possess(). Passed to the target's can_activate().
+var activator: EsmReference = null
 
 
 func _ready() -> void:
@@ -45,7 +48,7 @@ func _update_target() -> void:
 			if is_instance_valid(player_body) and (target == player_body or (target is Node and player_body.is_ancestor_of(target))):
 				target = null
 				collider = null
-			elif _is_destroyed(target):
+			elif not _can_activate(target):
 				target = null
 				collider = null
 			else:
@@ -60,11 +63,13 @@ func _update_target() -> void:
 		target_changed.emit(current_target, current_collider, current_type, current_action)
 
 
-## Whether `target` is the node of a destroyed reference (SetDestroyed), which
-## the player cannot target.
-static func _is_destroyed(target: Object) -> bool:
+## Whether `activator` may activate `target`: an EsmNode's reference decides
+## (EsmReference.can_activate()); anything else is targeted as before.
+func _can_activate(target: Object) -> bool:
 	var node := target as EsmNode
-	return node != null and node.reference != null and node.reference.destroyed
+	if node == null or node.reference == null:
+		return true
+	return node.reference.can_activate(activator)
 
 
 ## Interactions happen on the semantic EsmNode, Not the collider

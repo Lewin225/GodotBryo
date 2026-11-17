@@ -147,9 +147,10 @@ const ENABLE_PARENT_POP_IN := 0x02
 		marked_for_delete = value
 		mark_dirty()
 
-## Not an ESM field: set by SetDestroyed, read by GetDestroyed. The player
-## can neither target nor activate a destroyed reference (InteractRay);
-## script activation, hits and the reference's own script are unaffected.
+## Not an ESM field: set by SetDestroyed, read by GetDestroyed and by
+## EsmBase.can_activate(), so the player can neither target nor activate a
+## destroyed reference; script activation, hits and the reference's own
+## script are unaffected.
 ## No SetDestroyed target in FalloutNV.esm's scripts has a DEST base, so no
 ## destruction-stage model is shown. Saved.
 @export var destroyed: bool = false:
@@ -341,3 +342,12 @@ func receive_hit(shooter: EsmReference, weapon: WeaponBase, report: Dictionary) 
 func default_activate(activator: EsmReference) -> void:
 	if base != null:
 		base.activate(self, activator)
+
+## Whether `activator` may start activating this reference: its base type's
+## can_activate(), or not destroyed when it has no base. Asked by an actor's
+## activation entry points (the player's InteractRay and PlayerController),
+## not by ScriptServer.activate(): script Activate reaches any reference.
+func can_activate(activator: EsmReference) -> bool:
+	if base == null:
+		return not destroyed
+	return base.can_activate(self, activator)

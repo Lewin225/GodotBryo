@@ -3,8 +3,8 @@ extends Node3D
 ## SetDestroyed. VCG01's stage 0 runs `GSDocMitchellHouseIntDoorREF.setDestroyed
 ## 1` ("Set door to Doc's house to not work initially"), and Doc's farewell
 ## INFO (001057E7) runs `SetDestroyed 0` "so player can leave". A destroyed
-## reference is one the player's InteractRay cannot target, so the door cannot
-## be activated until Doc lets the player go. VCG02's bottles destroy
+## reference refuses activation (can_activate()), so the player's InteractRay
+## does not target the door until Doc lets the player go. VCG02's bottles destroy
 ## themselves OnLoad, so they cannot be picked up. The flag is saved.
 
 const DOOR_ID := "GSDocMitchellHouseIntDoorREF"
@@ -44,12 +44,14 @@ func _ready() -> void:
 	check(door.destroyed, "VCG01 stage 0 destroys the door")
 	check(int(ScriptServer.run_result_script("%s.GetDestroyed" % DOOR_ID, null)) == 1, "GetDestroyed reads 1")
 	check(_targets(ray) == null, "the player cannot target the destroyed door")
+	check(not door.can_activate(ScriptServer.player_reference), "the destroyed door refuses the player's activation (can_activate)")
 	check(bool(SaveFields.write(door).get("destroyed", false)), "the destroyed flag is saved")
 
 	var farewell := EsmServer.get_base(FAREWELL_INFO) as DialogueInfoBase
 	ScriptServer.run_result_script(farewell.begin_script_source, EsmServer.find_reference_by_editor_id("DocMitchellREF"), ScriptServer.player_reference)
 	check(not door.destroyed, "Doc's farewell INFO restores the door")
 	check(_targets(ray) == node, "and the player can target it again")
+	check(door.can_activate(ScriptServer.player_reference), "and activate it (can_activate)")
 
 	var bottle := _a_bottle()
 	check(bottle != null, "a VCG02Bottle reference exists")
@@ -75,6 +77,7 @@ func _aim_ray_at(node: Node3D) -> InteractRay:
 		first = false
 	var centre := mesh_box.get_center()
 	var ray := InteractRay.new()
+	ray.activator = EsmServer.get_player_reference()
 	add_child(ray)
 	for offset: Vector3 in [Vector3(1.2, 0, 0), Vector3(-1.2, 0, 0), Vector3(0, 0, 1.2), Vector3(0, 0, -1.2)]:
 		ray.global_position = centre + offset

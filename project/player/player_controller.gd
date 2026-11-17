@@ -992,6 +992,8 @@ func possess(actor_reference: ActorReference) -> void:
 	possessed = actor_reference
 	if possessed != null:
 		possessed.using_changed.connect(_on_using_changed)
+	if interact_ray != null:
+		interact_ray.activator = possessed
 	# The body's actor node shows the possessed actor (first person: shadow
 	# only); its skeleton gives the seated camera its head. placed_by_parent:
 	# this controller is the possessed actor's body, so the actor node does not
@@ -1292,12 +1294,14 @@ func _on_head_skeleton_updated() -> void:
 		_head_pose = _head_skeleton.global_transform * _head_skeleton.get_bone_global_pose(bone)
 
 ## Activates what the interact ray is aimed at, with the possessed actor as the
-## activator.
+## activator, when the target's can_activate() allows it.
 func request_activate() -> void:
 	if possessed == null or interact_ray == null:
 		return
 	var target := interact_ray.current_target as EsmNode
-	if target != null and target.reference != null:
+	if target == null or target.reference == null:
+		return
+	if target.reference.can_activate(possessed):
 		ScriptServer.activate(target.reference, possessed)
 
 ## An idle's root motion (ActorAnimator.root_moved, in this controller's

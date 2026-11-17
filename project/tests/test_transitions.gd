@@ -89,6 +89,14 @@ func _ready() -> void:
 	if front_door == null:
 		_finish()
 		return
+	# VCG01 stage 0 destroyed the door; Doc's farewell INFO (001057E7) restores it.
+	player.interact_ray.current_target = EsmNode.node_for(front_door)
+	check(front_door.destroyed, "VCG01 has destroyed the front door")
+	player.request_activate()
+	await get_tree().physics_frame
+	check(player_ref.current_space_form_id == house, "the controller does not activate the destroyed door")
+	var farewell := esm_server.get_base(0x001057E7) as DialogueInfoBase
+	script_server.run_result_script(farewell.begin_script_source, doc, player_ref)
 	player.interact_ray.current_target = EsmNode.node_for(front_door)
 	player.request_activate()
 	check(await _await_space(coordinator, wasteland), "activating the door loads WastelandNV")
