@@ -15,16 +15,17 @@ What's working - in short.
 - **Stutter** : Very minimal(but only tested on an nvme) Profiled every major update with tracy(cpu) and nvidia insight(gpu). I hunt this frequently because I hate it
 - **Animation** : Animation data is upscaled to play nice at high framerates, included model, bone, kf and lipsync animations
 - **Saving** : Two built in save backends (Git or Plain Json), with an interface to add your own. godotbyro keys extra save data, so fos support wasn't a concern, you can add it though
+- - **Classic Weapons** - Equip, Viewmodels and base animations are in. Melee will not hitreg
 
 Major missing pieces right now
 - **Inventory** - All actors and containers get one, but there's no container ui right now
-- **Weapons and Combat** - Was waiting on inventory and npc packages. But will be getting a lot of gamefeel work as it's the original engine's weakest area imo
+
 
 Change Plans from the Original Engine
 - **Rendering** - Implemented - A modern vulkan renderer that can use modern hardware - godot gives us this for free
 - **Simulation** - Implemented - Deeper simulation of off screen npc's
 - **Threading** - Implemented - Any work that can go to other cores or the gpu is offloaded, Included mesh parsing, file loading, npc simulation, cell loading, texture fetch, terrain rendering
-- **Movement** - Floating capsule with ground ray
+- **Movement** - Floating capsule with ground ray, no root motion
 - **CO-OP** - Not yet - Groundwork is there, all actors are pawns that a player or remote client can control
 - **VR** - Net Yet, once desktop is finished - VR Support in both solo and coop, with genuine weapon/item interactions + lockpicking and physical doors
 - **Custom Mods** - Not yet - Load a custom mod format that can add godot scenes as custom base types and create them with a refr
