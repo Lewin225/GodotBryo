@@ -2,6 +2,10 @@
 import glob
 import os
 import subprocess
+import sys
+
+sys.path.insert(0, os.path.abspath("."))
+import build_zlib
 
 
 def apply_nifly_patches():
@@ -54,7 +58,7 @@ env = SConscript("godot-cpp/SConstruct")
 # adds its sources here as it's implemented; common/ holds shared helpers
 # (endian-aware byte reading, etc.) used by all of them.
 env.Append(CPPPATH=["src/"])
-env.Append(LIBS=["z"]) # zlib, for BSA per-file decompression
+build_zlib.configure(env, ARGUMENTS) # zlib, for BSA per-file decompression
 sources = Glob("src/*.cpp")
 sources += Glob("src/common/*.cpp")
 sources += Glob("src/bsa/*.cpp")

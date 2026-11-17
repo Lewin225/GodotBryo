@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(".."))
+import build_zlib
+
 env = SConscript("../godot-cpp/SConstruct")
 
 # The shared godot-cpp archive contains enough generated objects that GNU
@@ -60,12 +66,12 @@ def _posix_ar_spawn(sh, escape, cmd, args, env):
 	return proc.returncode
 
 
-if env["platform"] != "macos":
+if env["platform"] != "macos" and os.name == "posix":
 	env["SPAWN"] = _posix_ar_spawn
 	env.Replace(ARFLAGS=["rc"])
 
 env.Append(CPPPATH=["../src", "src"])
-env.Append(LIBS=["z"])
+build_zlib.configure(env, ARGUMENTS)
 sources = Glob("src/*.cpp") + Glob("../src/common/*.cpp") + Glob("../src/esm/esm_file.cpp")
 extension_name = "terrain_streamer"
 project_bin_dir = "../../project/addons/terrain_streamer/bin/"

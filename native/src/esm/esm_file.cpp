@@ -1,6 +1,7 @@
 #include "esm_file.h"
 
 #include "../common/byte_reader.h"
+#include "../common/file_path.h"
 #include "../common/units.h"
 
 #include <algorithm>
@@ -363,7 +364,7 @@ std::unordered_map<std::string, uint32_t> EsmFile::record_type_histogram() const
 }
 
 void EsmFile::open(const std::string &path) {
-	std::ifstream input(path, std::ios::binary | std::ios::ate);
+	std::ifstream input(util::path_from_utf8(path), std::ios::binary | std::ios::ate);
 	if (!input) {
 		throw std::runtime_error("EsmFile: could not open file: " + path);
 	}

@@ -1,4 +1,5 @@
 #include "gltf_export.h"
+#include "../common/file_path.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -227,7 +228,7 @@ void export_gltf(const Mesh &mesh, const std::string &path) {
 		 << ",\"uri\":\"data:application/octet-stream;base64," << b64 << "\"}]"
 		 << "}";
 
-	std::ofstream out(path, std::ios::binary);
+	std::ofstream out(util::path_from_utf8(path), std::ios::binary);
 	if (!out) {
 		throw std::runtime_error("nif::export_gltf: could not open output path: " + path);
 	}

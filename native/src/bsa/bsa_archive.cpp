@@ -1,6 +1,7 @@
 #include "bsa_archive.h"
 
 #include "../common/byte_reader.h"
+#include "../common/file_path.h"
 
 #include <algorithm>
 #include <cstring>
@@ -32,7 +33,7 @@ BsaArchive::~BsaArchive() {
 }
 
 void BsaArchive::open(const std::string &path) {
-	file_ = std::fopen(path.c_str(), "rb");
+	file_ = util::fopen_utf8(path, "rb");
 	if (!file_) {
 		throw std::runtime_error("BsaArchive: could not open file: " + path);
 	}

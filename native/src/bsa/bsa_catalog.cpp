@@ -1,5 +1,7 @@
 #include "bsa_catalog.h"
 
+#include "../common/file_path.h"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -114,18 +116,18 @@ bool BsaArchiveCatalog::open_data_dir(const std::string &data_dir, std::string &
 	index_.clear();
 
 	std::error_code ec;
-	if (!std::filesystem::is_directory(data_dir, ec)) {
+	if (!std::filesystem::is_directory(util::path_from_utf8(data_dir), ec)) {
 		error = "not a directory: " + data_dir;
 		return false;
 	}
 
 	std::vector<std::string> names;
-	for (const auto &de : std::filesystem::directory_iterator(data_dir, ec)) {
+	for (const auto &de : std::filesystem::directory_iterator(util::path_from_utf8(data_dir), ec)) {
 		if (ec) {
 			error = "could not enumerate: " + data_dir;
 			return false;
 		}
-		const std::string fname = de.path().filename().string();
+		const std::string fname = util::path_to_utf8(de.path().filename());
 		if (ends_with_ci(fname, ".bsa")) {
 			names.push_back(fname);
 		}
@@ -135,11 +137,11 @@ bool BsaArchiveCatalog::open_data_dir(const std::string &data_dir, std::string &
 		return false;
 	}
 
-	const std::filesystem::path root(data_dir);
+	const std::filesystem::path root = util::path_from_utf8(data_dir);
 	for (const auto &fname : priority_order(std::move(names))) {
 		auto archive = std::make_unique<BsaArchive>();
 		try {
-			archive->open((root / fname).string());
+			archive->open(util::path_to_utf8(root / util::path_from_utf8(fname)));
 		} catch (const std::exception &e) {
 			failed_.push_back(fname + ": " + e.what());
 			continue;
